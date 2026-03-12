@@ -164,14 +164,13 @@ export default async function handler(req, res) {
       }
 
       /* ---------- CREATE PROJECT ---------- */
-      const {
-        project_name,
-        site_address,
-        zip_code,
-        equipment,
-        modality,
-        magnet_event,
-        disposal_required
+      const project_name = body.project_name;
+const site_address = body.site_address || null;
+const zip_code = body.zip_code || null;
+const equipment = body.equipment || null;
+const modality = body.modality;
+const magnet_event = body.magnet_event || null;
+const disposal_required = !!body.disposal_required;
       } = body;
 
       if (!project_name || !modality) {
