@@ -7,7 +7,6 @@ export default async function handler(req, res) {
   "Access-Control-Allow-Origin",
   "https://espin-equipment.vercel.app"
 );
-  );
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
