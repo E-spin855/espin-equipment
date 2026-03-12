@@ -2,18 +2,10 @@ import { kv } from "@vercel/kv";
 
 export default async function handler(req, res) {
 
-  // ✅ Dynamic CORS (safe for Vercel + WKWebView)
-  const allowedOrigins = [
-    "https://espin-equipment.vercel.app",
-    "https://espin-medical-app.vercel.app"
-  ];
-
   const origin = req.headers.origin;
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
+  // ✅ CORS headers FIRST
+  res.setHeader("Access-Control-Allow-Origin", origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
@@ -21,7 +13,7 @@ export default async function handler(req, res) {
   );
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // ✅ Preflight
+  // ✅ Handle preflight BEFORE anything else
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -44,7 +36,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
-    // ✅ Apple review / master override PIN
+    // Apple review / master override
     if (normalizedPin === "123456") {
       return res.status(200).json({
         success: true,
@@ -63,7 +55,6 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
-    // ✅ Single-use PIN
     await kv.del(key);
 
     return res.status(200).json({
