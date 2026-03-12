@@ -1,18 +1,26 @@
 import { kv } from "@vercel/kv";
 
 export default async function handler(req, res) {
-  // ✅ STRICT, WKWebView-SAFE CORS
-  // ✅ STRICT, WKWebView-SAFE CORS
-res.setHeader(
-  "Access-Control-Allow-Origin",
-  "https://espin-equipment.vercel.app"
-);
-res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-res.setHeader(
-  "Access-Control-Allow-Headers",
-  "Content-Type, X-Requested-With"
-);
-res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // ✅ Dynamic CORS (safe for Vercel + WKWebView)
+  const allowedOrigins = [
+    "https://espin-equipment.vercel.app",
+    "https://espin-medical-app.vercel.app"
+  ];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-Requested-With"
+  );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
   // ✅ Preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -62,6 +70,7 @@ res.setHeader("Access-Control-Allow-Credentials", "true");
       success: true,
       email: normalizedEmail
     });
+
   } catch (err) {
     console.error("verify-pin error:", err);
     return res.status(500).json({ error: "Internal server error" });
