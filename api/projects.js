@@ -170,7 +170,6 @@ const equipment = body.equipment || null;
 const modality = body.modality;
 const magnet_event = body.magnet_event || null;
 const disposal_required = !!body.disposal_required;
-      } = body;
 
       if (!project_name || !modality) {
         return res.status(400).json({ error: "Missing required fields" });
