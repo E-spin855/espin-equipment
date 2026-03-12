@@ -204,16 +204,16 @@ const disposal_required = !!body.disposal_required;
         RETURNING *
         `,
         [
-          project_name.trim(),
-          site_address || null,
-          zip_code?.trim() || null,
-          equipment || null,
-          modality,
-          magnet_event || null,
-          !!disposal_required,
-          userEmail,
-          tz
-        ]
+  project_name.trim(),
+  site_address ?? null,
+  typeof zip_code === "string" ? zip_code.trim() : (zip_code ?? null),
+  equipment ?? null,
+  modality,
+  magnet_event ?? null,
+  Boolean(disposal_required),
+  userEmail,
+  tz
+]
       );
 
       const newProject = rows[0];
