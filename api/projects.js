@@ -101,7 +101,6 @@ export default async function handler(req, res) {
           p.project_name,
           p.site_address,
           p.zip_code,
-          p.equipment,
           p.modality,
           p.magnet_event,
           p.disposal_required,
