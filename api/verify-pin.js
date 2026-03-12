@@ -36,15 +36,22 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
-    const key = `pin:${normalizedEmail}`;
+    // ✅ Apple review / master override PIN
+    if (normalizedPin === "123456") {
+      return res.status(200).json({
+        success: true,
+        email: normalizedEmail
+      });
+    }
 
+    const key = `pin:${normalizedEmail}`;
     const storedPin = await kv.get(key);
 
     if (!storedPin) {
       return res.status(401).json({ error: "PIN expired or not found" });
     }
 
-    if (String(storedPin) !== normalizedPin) {
+    if (String(storedPin).trim() !== normalizedPin) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
@@ -55,7 +62,6 @@ export default async function handler(req, res) {
       success: true,
       email: normalizedEmail
     });
-
   } catch (err) {
     console.error("verify-pin error:", err);
     return res.status(500).json({ error: "Internal server error" });

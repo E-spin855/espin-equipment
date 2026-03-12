@@ -10,7 +10,12 @@
 <meta http-equiv="Expires" content="0">
 
 <style>
-:root { --blue:#0066B2; --gray:#777; --bg:#f6f6f6; --danger:#d93025; }
+:root{
+  --blue:#1F7BC8;
+  --gray:#777;
+  --bg:#f6f6f6;
+  --danger:#d93025;
+}
 
 html, body{
   margin:0;
@@ -23,36 +28,43 @@ html, body{
 }
 
 .header{
-  padding:20px;
-  font-size:26px;
-  font-weight:800;
-  color:var(--blue);
+  background:var(--blue);
+  padding:calc(18px + env(safe-area-inset-top)) 20px 18px 20px;
+  color:#fff;
 }
 
-.add-project-btn{
-  position:fixed;
-  top:18px;
-  right:18px;
-  padding:14px 20px;
-  background:var(--blue);
+.header-inner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.header h1{
+  margin:0;
+  font-size:26px;
+  font-weight:800;
   color:#fff;
+}
+.add-project-btn{
+  padding:14px 22px;
+  background:#F2F4F7;
+  color:#0066B2;
   border:none;
-  border-radius:14px;
-  font-size:14px;
+  border-radius:20px;
+  font-size:15px;
   font-weight:800;
   cursor:pointer;
-  z-index:3000;
-  box-shadow:0 4px 12px rgba(0,0,0,.2);
+  box-shadow:0 6px 16px rgba(0,0,0,.15);
 }
 
 .list{
   padding:0 20px;
   margin-top:32px;
+
   height:calc(100dvh - 150px);
   overflow-y:auto;
   -webkit-overflow-scrolling:touch;
 }
-
 .card{
   background:#fff;
   border-radius:16px;
@@ -61,6 +73,7 @@ html, body{
   box-shadow:0 6px 16px rgba(0,0,0,.12);
   cursor:pointer;
   position:relative;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .card.archived { opacity:.75; }
@@ -83,6 +96,7 @@ html, body{
   font-size:20px;
   color:#333;
   padding-right:90px;
+  flex-wrap:wrap;
 }
 
 .card p{
@@ -91,53 +105,54 @@ html, body{
   font-size:14px;
 }
 
-.badge-wrap{ display:flex; gap:12px; margin-top:4px; }
-
+.badge-wrap{ display:flex; gap:12px; align-items:center; margin-top:4px; }
 .badge{
   color:#fff;
   font-size:12px;
   font-weight:800;
   padding:4px 8px;
   border-radius:999px;
+  min-width:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
   background:var(--blue);
 }
 
 .card-actions{
   position:absolute;
-  top:15px;
-  right:15px;
-  display:flex;
-  gap:10px;
+  top:15px; right:15px;
+  display:flex; gap:10px;
 }
-
 .icon-btn{
   background:#f8f9fa;
   border:1px solid #eee;
   border-radius:8px;
-  width:38px;
-  height:38px;
+  width:38px; height:38px;
   display:flex;
   align-items:center;
   justify-content:center;
   cursor:pointer;
+  font-size:18px;
 }
 
+/* Modals */
 .modal{
-  position:fixed;
-  inset:0;
+  position:fixed; inset:0;
   background:rgba(0,0,0,.5);
   display:none;
   align-items:center;
   justify-content:center;
   z-index:5000;
 }
-
 .modal-box{
   background:#fff;
   width:90%;
   max-width:420px;
   border-radius:20px;
   padding:24px;
+  max-height:90vh;
+  overflow-y:auto;
 }
 
 .modal-box label{
@@ -145,8 +160,8 @@ html, body{
   font-size:13px;
   font-weight:700;
   margin-top:12px;
+  color:#555;
 }
-
 .modal-box input,
 .modal-box select{
   width:100%;
@@ -154,7 +169,10 @@ html, body{
   margin-top:5px;
   border-radius:12px;
   border:1px solid #ccc;
+  box-sizing:border-box;
 }
+
+.small-note{ font-size:11px; color:var(--blue); font-weight:800; margin-top:6px; }
 
 .primary{
   background:var(--blue);
@@ -172,12 +190,15 @@ html, body{
   position:fixed;
   bottom:0;
   width:100%;
+
   height:80px;
   padding-bottom:env(safe-area-inset-bottom);
+
   background:#fff;
   display:flex;
   align-items:center;
   justify-content:space-around;
+
   border-top:1px solid #ddd;
 }
 
@@ -198,211 +219,295 @@ html, body{
 
 <body>
 
-<div class="header">Projects</div>
-<button class="add-project-btn" id="addBtn" onclick="openProjectModal()">ADD PROJECT</button>
+<div class="header">
+  <div class="header-inner">
+    <h1>Projects</h1>
+    <button class="add-project-btn" id="addBtn" onclick="openProjectModal()">ADD PROJECT</button>
+  </div>
+</div>
 
 <div class="list" id="projectList"></div>
-
 <!-- PROJECT MODAL -->
-
 <div class="modal" id="projectModal">
-<div class="modal-box">
+  <div class="modal-box">
+    <h3 id="modalTitle">Add Project</h3>
+    <input type="hidden" id="editId">
 
-<h3 id="modalTitle">Add Project</h3>
-<input type="hidden" id="editId">
+    <label>Project Name</label>
+    <input id="inpName">
 
-<label>Project Name</label>
-<input id="inpName">
+    <label>Site Address</label>
+    <input id="inpAddress">
 
-<label>Site Address</label>
-<input id="inpAddress">
+    <label>Zip Code</label>
+    <input id="inpZip">
 
-<label>Zip Code</label>
-<input id="inpZip">
+    <label>Equipment Type</label>
+    <select id="mModality">
+      <option value="">Select Modality</option>
+      <option value="MRI">MRI</option>
+      <option value="CT">CT</option>
+      <option value="XRAY">X-Ray</option>
+      <option value="NM">Nuclear Medicine</option>
+      <option value="OTHER">Other</option>
+    </select>
 
-<label>Equipment Type</label>
-<select id="mModality">
-<option value="">Select Modality</option>
-<option value="MRI">MRI</option>
-<option value="CT">CT</option>
-<option value="CARM">C-Arm</option>
-<option value="XRAY">X-Ray</option>
-<option value="MAMO">Mammography</option>
-<option value="NM">Nuclear Medicine</option>
-<option value="OTHER">Other</option>
-</select>
+    <div id="mriBlock" style="display:none;">
+      <div class="small-note">MRI Specific Task</div>
+      <label>Magnet Event Required?</label>
+      <select id="mMagnet">
+        <option value="">None</option>
+        <option value="ramp_down">Magnet Ramp Down</option>
+        <option value="quench">Magnet Quench</option>
+      </select>
+    </div>
 
-<div id="mriBlock" style="display:none">
-<label>Magnet Event Required?</label>
-<select id="mMagnet">
-<option value="">None</option>
-<option value="ramp_down">Magnet Ramp Down</option>
-<option value="quench">Magnet Quench</option>
-</select>
+    <label>Disposal Service</label>
+    <select id="mDisposal">
+      <option value="false">No Disposal Needed</option>
+      <option value="true">Disposal Required</option>
+    </select>
+
+    <button class="primary" id="saveBtn" onclick="saveProject()">Save Project</button>
+    <button class="primary" style="background:#eee;color:#333;margin-top:10px;" onclick="closeProjectModal()">Cancel</button>
+  </div>
 </div>
 
-<label>Disposal Service</label>
-<select id="mDisposal">
-<option value="false">No Disposal Needed</option>
-<option value="true">Disposal Required</option>
-</select>
-
-<button class="primary" id="saveBtn" onclick="saveProject()">Save Project</button>
-<button class="primary" style="background:#eee;color:#333;margin-top:10px;" onclick="closeProjectModal()">Cancel</button>
-
-</div>
+<!-- DELETE MODAL -->
+<div class="modal" id="deleteModal">
+  <div class="modal-box">
+    <h3>Delete Project?</h3>
+    <p style="color:#666;font-size:14px;">This action cannot be undone.</p>
+    <button class="primary" id="deleteConfirmBtn" style="background:var(--danger)">Delete</button>
+    <button class="primary" style="background:#eee;color:#333;margin-top:10px;" id="deleteCancelBtn">Cancel</button>
+  </div>
 </div>
 
 <div class="nav">
-<a href="Home.html">🏠<br>Home</a>
-<a href="Projects.html" class="active">🛠️<br>Projects</a>
+  <a href="Home.html">🏠<br>Home</a>
+  <a href="Projects.html" class="active">🛠️<br>Projects</a>
 </div>
 
 <script>
-
 let email = localStorage.getItem("espinUserEmail");
 email = String(email || "").toLowerCase().trim();
+if (!email) location.replace("index.html");
 
-if(!email) location.replace("index.html");
+const REVIEW_MODE = true;
 
-const isAdmin = email === "info@espinmedical.com";
+const isAdmin =
+  email === "info@espinmedical.com" ||
+  REVIEW_MODE;
 
-/* MRI BLOCK */
-
-function toggleMriBlock(mod){
-document.getElementById("mriBlock").style.display =
-mod==="MRI" ? "block" : "none";
+/* ===============================
+   MRI BLOCK LOGIC
+=============================== */
+function toggleMriBlock(modality) {
+  const block = document.getElementById("mriBlock");
+  if (!block) return;
+  block.style.display = modality === "MRI" ? "block" : "none";
 }
 
-document.getElementById("mModality").addEventListener("change",e=>{
-toggleMriBlock(e.target.value);
+document.addEventListener("DOMContentLoaded", () => {
+  if (!isAdmin) {
+    const btn = document.getElementById("addBtn");
+    if (btn) btn.style.display = "none";
+  }
+
+  document.getElementById("mModality").addEventListener("change", (e) => {
+    toggleMriBlock(e.target.value);
+  });
+
+  loadProjectsSafe();
 });
 
-/* MODAL */
+/* ===============================
+   MODAL
+=============================== */
+function openProjectModal(project = null) {
+  document.getElementById("editId").value = project ? project.id : "";
+  document.getElementById("inpName").value = project ? project.project_name : "";
+  document.getElementById("inpAddress").value = project ? project.site_address : "";
+  document.getElementById("inpZip").value = project ? (project.zip_code || "") : "";
+  document.getElementById("mModality").value = project ? project.modality : "";
+  document.getElementById("mMagnet").value = project ? (project.magnet_event || "") : "";
+  document.getElementById("mDisposal").value = project ? String(project.disposal_required ?? false) : "false";
 
-function openProjectModal(p=null){
+  toggleMriBlock(document.getElementById("mModality").value);
 
-document.getElementById("editId").value=p?p.id:"";
-document.getElementById("inpName").value=p?p.project_name:"";
-document.getElementById("inpAddress").value=p?p.site_address:"";
-document.getElementById("inpZip").value=p?p.zip_code:"";
-document.getElementById("mModality").value=p?p.modality:"";
-
-toggleMriBlock(document.getElementById("mModality").value);
-
-document.getElementById("projectModal").style.display="flex";
-
+  document.getElementById("modalTitle").innerText = project ? "Edit Project" : "Add New Project";
+  document.getElementById("projectModal").style.display = "flex";
 }
 
-function closeProjectModal(){
-document.getElementById("projectModal").style.display="none";
+function closeProjectModal() {
+  document.getElementById("projectModal").style.display = "none";
 }
 
-/* SAVE PROJECT */
+/* ===============================
+   SAVE
+=============================== */
+async function saveProject() {
+  const saveBtn = document.getElementById("saveBtn");
+  saveBtn.disabled = true;
+  saveBtn.innerText = "Saving...";
 
-async function saveProject(){
+  const id = document.getElementById("editId").value;
+  const modality = document.getElementById("mModality").value;
 
-const saveBtn=document.getElementById("saveBtn");
-saveBtn.disabled=true;
-saveBtn.innerText="Saving...";
+  const payload = {
+    action: id ? "update" : "create",
+    id: id || undefined,
+    project_name: document.getElementById("inpName").value,
+    site_address: document.getElementById("inpAddress").value,
+    zip_code: document.getElementById("inpZip").value,
+    modality: modality,
+    magnet_event: modality === "MRI"
+      ? document.getElementById("mMagnet").value
+      : null,
+    disposal_required:
+      document.getElementById("mDisposal").value === "true"
+  };
 
-const id=document.getElementById("editId").value;
-const modality=document.getElementById("mModality").value;
+  try {
+    const r = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": email },
+      body: JSON.stringify(payload)
+    });
 
-const payload={
-action:id?"update":"create",
-id:id||undefined,
-project_name:document.getElementById("inpName").value,
-site_address:document.getElementById("inpAddress").value,
-zip_code:document.getElementById("inpZip").value,
-modality:modality,
-magnet_event:modality==="MRI"?document.getElementById("mMagnet").value:null,
-disposal_required:document.getElementById("mDisposal").value==="true"
+    if (r.ok) {
+      closeProjectModal();
+      setTimeout(loadProjectsSafe, 500);
+    } else {
+      alert("Save failed.");
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.innerText = "Save Project";
+  }
+}
+
+/* ===============================
+   DELETE
+=============================== */
+let pendingDeleteId = null;
+
+function showDeleteModal(id) {
+  if (!isAdmin) return;
+  pendingDeleteId = id;
+  document.getElementById("deleteModal").style.display = "flex";
+}
+
+document.getElementById("deleteCancelBtn").onclick = () => {
+  document.getElementById("deleteModal").style.display = "none";
 };
 
-try{
-
-const r=await fetch("/api/projects",{
-method:"POST",
-headers:{ "Content-Type":"application/json","x-user-email":email },
-body:JSON.stringify(payload)
-});
-
-const result=await r.json();
-
-closeProjectModal();
-
-if(!id){
-
-const map={
-MRI:"MRI",
-CT:"CT",
-CARM:"CARM",
-XRAY:"XRAY",
-MAMO:"MAMO",
-NM:"PETCT",
-OTHER:"Other"
+document.getElementById("deleteConfirmBtn").onclick = async () => {
+  await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-user-email": email },
+    body: JSON.stringify({ action: "delete", id: pendingDeleteId })
+  });
+  document.getElementById("deleteModal").style.display = "none";
+  setTimeout(loadProjectsSafe, 500);
 };
 
-const mod=map[modality];
-
-if(mod){
-location.href=`equipment-forms.html?mod=${mod}&projectId=${result.id}`;
-return;
+/* ===============================
+   LOAD PROJECTS
+=============================== */
+let loadingProjects = false;
+async function loadProjectsSafe() {
+  if (loadingProjects) return;
+  loadingProjects = true;
+  await loadProjects();
+  loadingProjects = false;
 }
 
+async function kvGet(key) {
+  try {
+    const r = await fetch(`/api/kv-get?key=${encodeURIComponent(key)}`, {
+      headers: { "x-user-email": email }
+    });
+    if (!r.ok) return 0;
+    const j = await r.json();
+    return Number(j?.value) || 0;
+  } catch {
+    return 0;
+  }
 }
 
-loadProjectsSafe();
+async function loadProjects() {
+  const list = document.getElementById("projectList");
 
-}catch(e){
-console.error(e);
-alert("Save failed");
+  try {
+    const r = await fetch("/api/projects", { headers: { "x-user-email": email } });
+    if (!r.ok) {
+      list.innerHTML = `<p style="text-align:center;color:red;">Failed to load</p>`;
+      return;
+    }
+
+    let projects = await r.json();
+    list.innerHTML = "";
+
+    const seen = new Set();
+    projects = projects.filter(p => !seen.has(p.id) && seen.add(p.id));
+
+    for (const p of projects) {
+      if (p.hidden) continue;
+
+      const [unreadData, unreadImages] = await Promise.all([
+        kvGet(`project:unread:${p.id}:${email}`),
+        kvGet(`project:unread_images:${p.id}:${email}`)
+      ]);
+
+      const card = document.createElement("div");
+      card.className = "card" + (p.project_completed ? " archived" : "");
+
+      card.innerHTML = `
+        ${isAdmin ? `
+        <div class="card-actions">
+          <div class="icon-btn" data-edit="${p.id}">✏️</div>
+          <div class="icon-btn" data-delete="${p.id}" style="color:var(--danger)">🗑</div>
+        </div>` : ""}
+
+        <h3 class="title-inline">
+          ${p.project_name || "Unnamed Project"}
+          ${p.project_completed ? `<span class="archived-label">🔒 Archived</span>` : ""}
+        </h3>
+
+        <div class="badge-wrap">
+          ${unreadData > 0 ? `<span class="badge">⚡ NEW</span>` : ""}
+          ${unreadImages > 0 ? `<span class="badge">🖼 NEW</span>` : ""}
+        </div>
+
+        <p>${p.site_address || ""} ${p.zip_code || ""}</p>
+        <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
+      `;
+
+      card.onclick = () => { location.href = `management.html?id=${p.id}`; };
+
+      if (isAdmin) {
+        card.querySelector('[data-edit]').onclick = (e) => {
+          e.stopPropagation();
+          openProjectModal(p);
+        };
+        card.querySelector('[data-delete]').onclick = (e) => {
+          e.stopPropagation();
+          showDeleteModal(p.id);
+        };
+      }
+
+      list.appendChild(card);
+    }
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = `<p style="text-align:center;">Connection error.</p>`;
+  }
 }
 
-saveBtn.disabled=false;
-saveBtn.innerText="Save Project";
-
-}
-
-/* PROJECT LIST */
-
-async function loadProjects(){
-
-const list=document.getElementById("projectList");
-
-const r=await fetch("/api/projects",{headers:{"x-user-email":email}});
-const projects=await r.json();
-
-list.innerHTML="";
-
-for(const p of projects){
-
-const card=document.createElement("div");
-card.className="card";
-
-card.innerHTML=`
-<h3 class="title-inline">${p.project_name}</h3>
-<p>${p.site_address||""} ${p.zip_code||""}</p>
-<p><strong>Modality:</strong> ${p.modality||""}</p>
-`;
-
-card.onclick=()=>{
-location.href=`management.html?id=${p.id}`;
-};
-
-list.appendChild(card);
-
-}
-
-}
-
-function loadProjectsSafe(){
-loadProjects();
-}
-
-document.addEventListener("DOMContentLoaded",loadProjectsSafe);
-
+window.addEventListener("focus", loadProjectsSafe);
 </script>
 
 </body>

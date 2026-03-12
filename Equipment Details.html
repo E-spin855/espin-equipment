@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Equipment Details | Espin Medical</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+
+    const projectId =
+      params.get("projectId") ||
+      params.get("id") ||
+      localStorage.getItem("activeProjectId");
+
+    const modalityId =
+      params.get("modalityId") ||
+      localStorage.getItem("activeModalityId") ||
+      "";
+
+    const modality =
+      String(
+        params.get("modality") ||
+        localStorage.getItem("activeModality") ||
+        "CT"
+      ).toUpperCase().trim();
+
+    const auth = localStorage.getItem("espinAuth");
+    let userEmail = localStorage.getItem("espinUserEmail");
+
+    if (!projectId || auth !== "true" || !userEmail) {
+      location.replace("/");
+    }
+
+    userEmail = String(userEmail).toLowerCase().trim();
+
+    /* KEEP SAME BADGE/UNREAD KEYS */
+    const BADGE_STORAGE_KEY = `badges_${projectId}`;
+    const BADGE_KV_KEY = `project:badges_details:${projectId}:${userEmail}`;
+    const UNREAD_KEY = `project:unread:${projectId}:${userEmail}`;
+    const UNREAD_IMAGES_KEY = `project:unread_images:${projectId}:${userEmail}`;
+  </script>
+
+  <style>
+    :root{
+      --blue:#0066B2;
+      --green:#2e7d32;
+      --light:#f8f9fa;
+      --border:#e9ecef;
+      --text:#111;
+      --muted:#666;
+      --bg:#fff;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      background:var(--light);
+      color:var(--text);
+      padding-top:95px;
+      padding-bottom:140px;
+      -webkit-tap-highlight-color:transparent;
+    }
+
+    .topbar{
+      background:var(--blue);
+      color:#fff;
+      padding:calc(18px + env(safe-area-inset-top)) 18px 18px 18px;
+      display:flex;
+      gap:14px;
+      align-items:center;
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      z-index:1000;
+    }
+
+    .topbar h1{
+      position:absolute;
+      left:50%;
+      transform:translateX(-50%);
+      margin:0;
+      font-size:20px;
+      font-weight:800;
+      text-align:center;
+      width:70%;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .back-btn{
+      cursor:pointer;
+      font-size:30px;
+      font-weight:700;
+      line-height:1;
+      z-index:2;
+    }
+
+    .container{
+      max-width:520px;
+      margin:0 auto;
+      padding:24px 18px 18px 18px;
+    }
+
+    .meta-card{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:14px 16px;
+      margin-bottom:18px;
+    }
+
+    .meta-title{
+      font-size:12px;
+      font-weight:800;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      margin-bottom:6px;
+    }
+
+    .meta-value{
+      font-size:18px;
+      font-weight:800;
+      color:var(--blue);
+    }
+
+    .meta-sub{
+      margin-top:4px;
+      font-size:13px;
+      color:var(--muted);
+    }
+
+    .group{
+      background:#fff;
+      border-radius:14px;
+      margin-bottom:18px;
+      border:1px solid var(--border);
+      overflow:hidden;
+    }
+
+    .group-title{
+      background:var(--blue);
+      color:#fff;
+      padding:14px 16px;
+      font-weight:800;
+      font-size:15px;
+    }
+
+    .field{
+      padding:16px;
+      border-bottom:1px solid #f1f1f1;
+      color:#000;
+    }
+
+    .field:last-child{
+      border-bottom:none;
+    }
+
+    .label{
+      font-weight:800;
+      margin-bottom:8px;
+      display:block;
+      color:#111;
+    }
+
+    .helper{
+      display:block;
+      margin-top:4px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+      font-weight:600;
+    }
+
+    input, textarea, select{
+      width:100%;
+      padding:14px;
+      border-radius:10px;
+      border:1px solid #ccc;
+      font-size:16px;
+      box-sizing:border-box;
+      background:#fff;
+      color:#000;
+      appearance:none;
+      -webkit-appearance:none;
+    }
+
+    textarea{
+      min-height:110px;
+      resize:vertical;
+    }
+
+    .row-2{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+
+    .btn-submit{
+      width:100%;
+      padding:20px;
+      background:var(--blue);
+      color:#fff;
+      border:none;
+      border-radius:14px;
+      font-weight:800;
+      font-size:18px;
+      cursor:pointer;
+    }
+
+    .success{
+      background:var(--green)!important;
+    }
+
+    .error-box{
+      background:#fff;
+      border:1px solid #f2c7c7;
+      color:#b42318;
+      border-radius:14px;
+      padding:16px;
+      font-weight:800;
+    }
+
+    @media (max-width: 480px){
+      .row-2{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div id="backToManagement" class="back-btn" onclick="location.href='management.html'">←</div>
+    <h1 id="pageTitle">CT Equipment Details</h1>
+  </div>
+
+  <div class="container">
+    <div class="meta-card">
+      <div class="meta-title">Modality</div>
+      <div class="meta-value" id="modalityLabel">CT</div>
+      <div class="meta-sub">Technical intake sheet</div>
+    </div>
+
+    <div id="form-container">Loading…</div>
+
+    <button class="btn-submit" id="submitBtn" onclick="saveData()">
+      Save & Submit Update
+    </button>
+  </div>
+
+  <script>
+    let formData = {};
+    let dirtyFields = new Set();
+
+    function normalizeDateForInput(val) {
+      if (!val) return "";
+      return String(val).slice(0, 10);
+    }
+
+    function group(title) {
+      const g = document.createElement("div");
+      g.className = "group";
+      g.innerHTML = '<div class="group-title">' + title + '</div>';
+      return g;
+    }
+
+    function wrapField(label, key, helper) {
+      const d = document.createElement("div");
+      d.className = "field";
+      d.dataset.key = key;
+
+      const l = document.createElement("label");
+      l.className = "label";
+      l.textContent = label;
+      d.appendChild(l);
+
+      if (helper) {
+        const h = document.createElement("span");
+        h.className = "helper";
+        h.textContent = helper;
+        d.appendChild(h);
+      }
+
+      return d;
+    }
+
+    function makeInput(label, key, value, type = "text", helper = "") {
+      const d = wrapField(label, key, helper);
+      const i = document.createElement("input");
+      i.type = type;
+
+      if (type === "date") {
+        i.value = normalizeDateForInput(value);
+        formData[key] = i.value || "";
+      } else {
+        i.value = value || "";
+        formData[key] = i.value;
+      }
+
+      i.oninput = function () {
+        formData[key] = i.value;
+        dirtyFields.add(key);
+      };
+
+      d.appendChild(i);
+      return d;
+    }
+
+    function makeTextarea(label, key, value, helper = "") {
+      const d = wrapField(label, key, helper);
+      const t = document.createElement("textarea");
+      t.value = value || "";
+      formData[key] = t.value;
+
+      t.oninput = function () {
+        formData[key] = t.value;
+        dirtyFields.add(key);
+      };
+
+      d.appendChild(t);
+      return d;
+    }
+
+    function makeSelect(label, key, value, options, helper = "") {
+      const d = wrapField(label, key, helper);
+      const s = document.createElement("select");
+
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = "Select";
+      s.appendChild(ph);
+
+      options.forEach(opt => {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        if (String(value || "") === String(opt.value)) o.selected = true;
+        s.appendChild(o);
+      });
+
+      formData[key] = s.value || "";
+
+      s.onchange = function () {
+        formData[key] = s.value;
+        dirtyFields.add(key);
+      };
+
+      d.appendChild(s);
+      return d;
+    }
+
+    function appendRow(groupEl, fields) {
+      const row = document.createElement("div");
+      row.className = "row-2";
+      fields.forEach(f => row.appendChild(f));
+      groupEl.appendChild(row);
+    }
+
+    function renderCTForm(d) {
+      const fc = document.getElementById("form-container");
+      fc.innerHTML = "";
+
+      const g1 = group("System Information");
+      g1.appendChild(makeInput("Model", "ct_model", d.ct_model || ""));
+      appendRow(g1, [
+        makeInput("Number of Slices", "ct_number_of_slices", d.ct_number_of_slices || "", "number"),
+        makeSelect("Console Single or Dual", "ct_console_type", d.ct_console_type || "", [
+          { value: "Single", label: "Single" },
+          { value: "Dual", label: "Dual" }
+        ])
+      ]);
+      g1.appendChild(makeInput("GOC Version (GE Only)", "ct_goc_version", d.ct_goc_version || ""));
+      g1.appendChild(makeInput("SW Version", "ct_sw_version", d.ct_sw_version || ""));
+      g1.appendChild(
+        makeTextarea(
+          "SW Options Installed",
+          "ct_sw_options_installed",
+          d.ct_sw_options_installed || "",
+          "If screenshot exists, upload it in Equipment Images."
+        )
+      );
+      fc.appendChild(g1);
+
+      const g2 = group("Manufacturing & Installation");
+      appendRow(g2, [
+        makeInput(
+          "Date of Manufacturing",
+          "ct_date_of_manufacturing",
+          d.ct_date_of_manufacturing || "",
+          "date",
+          "Provide screenshot in Equipment Images."
+        ),
+        makeInput("Date of Installation", "ct_date_of_installation", d.ct_date_of_installation || "", "date")
+      ]);
+      fc.appendChild(g2);
+
+      const g3 = group("Tube Information");
+      g3.appendChild(
+        makeInput(
+          "Tube Model",
+          "ct_tube_model",
+          d.ct_tube_model || "",
+          "text",
+          "Provide screenshot in Equipment Images."
+        )
+      );
+      appendRow(g3, [
+        makeInput(
+          "Tube Size (mHu)",
+          "ct_tube_size_mhu",
+          d.ct_tube_size_mhu || "",
+          "text",
+          "Provide screenshot in Equipment Images."
+        ),
+        makeInput(
+          "Tube Installation Date",
+          "ct_tube_installation_date",
+          d.ct_tube_installation_date || "",
+          "date",
+          "Provide screenshot in Equipment Images."
+        )
+      ]);
+      g3.appendChild(
+        makeInput(
+          "Tube mAs and Scan/Sec",
+          "ct_tube_mas_scan_sec",
+          d.ct_tube_mas_scan_sec || "",
+          "text",
+          "Provide screenshot in Equipment Images."
+        )
+      );
+      fc.appendChild(g3);
+
+      const g4 = group("Usage");
+      appendRow(g4, [
+        makeInput("Total Number of Patients", "ct_total_number_of_patients", d.ct_total_number_of_patients || "", "number"),
+        makeInput("Approximate Patient Volume Per Day", "ct_patient_volume_per_day", d.ct_patient_volume_per_day || "", "number")
+      ]);
+      fc.appendChild(g4);
+
+      const g5 = group("Cooling & Injector");
+      appendRow(g5, [
+        makeSelect("Cooling", "ct_cooling", d.ct_cooling || "", [
+          { value: "Water", label: "Water" },
+          { value: "Air", label: "Air" }
+        ]),
+        makeSelect("Does Injector Come With It", "ct_injector_included", d.ct_injector_included || "", [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" }
+        ])
+      ]);
+      appendRow(g5, [
+        makeInput("Injector Model", "ct_injector_model", d.ct_injector_model || ""),
+        makeInput("Injector Date of Manufacturing", "ct_injector_date_of_manufacturing", d.ct_injector_date_of_manufacturing || "", "date")
+      ]);
+      fc.appendChild(g5);
+
+      const g6 = group("System Status");
+      appendRow(g6, [
+        makeSelect("Is the System in Use", "ct_system_in_use", d.ct_system_in_use || "", [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" }
+        ]),
+        makeInput("If No, How Long Out of Use", "ct_how_long_out_of_use", d.ct_how_long_out_of_use || "")
+      ]);
+      g6.appendChild(makeTextarea("Known Defects", "ct_known_defects", d.ct_known_defects || ""));
+      fc.appendChild(g6);
+
+      const g7 = group("Removal & Service");
+      g7.appendChild(
+        makeInput(
+          "Expected Equipment Availability",
+          "expected_equipment_availability",
+          d.expected_equipment_availability || "",
+          "date"
+        )
+      );
+      appendRow(g7, [
+        makeInput("Who Serviced Equipment", "ct_serviced_by", d.ct_serviced_by || ""),
+        makeSelect("Latest PM Report", "ct_latest_pm_report", d.ct_latest_pm_report || "", [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" }
+        ])
+      ]);
+      fc.appendChild(g7);
+
+      const g8 = group("Site Information");
+      g8.appendChild(makeInput("Location Within the Facility", "ct_location_within_facility", d.ct_location_within_facility || ""));
+      g8.appendChild(
+        makeSelect("Loading Dock", "ct_loading_dock", d.ct_loading_dock || "", [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" }
+        ])
+      );
+      fc.appendChild(g8);
+
+      const g9 = group("General Notes");
+      g9.appendChild(makeTextarea("Notes", "notes", d.notes || ""));
+      fc.appendChild(g9);
+    }
+
+    async function load() {
+      try {
+        document.getElementById("modalityLabel").textContent = modality;
+        document.getElementById("pageTitle").textContent = modality + " Equipment Details";
+
+        const qs = new URLSearchParams({
+          projectId,
+          modality
+        });
+
+        if (modalityId) qs.set("modalityId", modalityId);
+
+        const res = await fetch("/api/project-details?" + qs.toString(), {
+          headers: {
+            "x-user-email": userEmail
+          }
+        });
+
+        const d = await res.json();
+        formData = Object.assign({}, d || {});
+
+        if (modality === "CT") {
+          renderCTForm(d || {});
+          return;
+        }
+
+        document.getElementById("form-container").innerHTML =
+          '<div class="error-box">No equipment template is configured yet for ' + modality + '.</div>';
+      } catch (e) {
+        document.getElementById("form-container").innerHTML =
+          '<div class="error-box">Error loading equipment details.</div>';
+      }
+    }
+
+    load();
+  </script>
+
+  <script>
+    async function saveData() {
+      if (!dirtyFields.size) return;
+
+      const btn = document.getElementById("submitBtn");
+      btn.disabled = true;
+      btn.innerText = "Saving...";
+
+      const payload = {};
+      dirtyFields.forEach(k => (payload[k] = formData[k]));
+      const changedFields = Object.keys(payload);
+
+      try {
+        const res = await fetch("/api/project-details", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": userEmail
+          },
+          body: JSON.stringify({
+            projectId,
+            modality,
+            modalityId,
+            data: payload
+          })
+        });
+
+        await res.json();
+        dirtyFields.clear();
+
+        if (changedFields.length) {
+          await fetch("/api/update-task", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-email": userEmail
+            },
+            body: JSON.stringify({
+              projectId,
+              modality,
+              modalityId
+            })
+          });
+
+          await fetch("/api/send-project-emails", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-email": userEmail
+            },
+            body: JSON.stringify({
+              projectId,
+              modality,
+              modalityId,
+              changedFields
+            })
+          });
+        }
+
+        btn.innerText = "✓ Success";
+        btn.classList.add("success");
+
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.classList.remove("success");
+          btn.innerText = "Save & Submit Update";
+        }, 2000);
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerText = "Error. Try again.";
+      }
+    }
+  </script>
+
+  <script>
+    /* =========================================
+       AUTO REFRESH WHEN APP RETURNS FROM PUSH
+    ========================================= */
+
+    let espinLastRefresh = Date.now();
+
+    function espinAutoRefresh() {
+      const now = Date.now();
+      if (now - espinLastRefresh < 2000) return;
+      espinLastRefresh = now;
+      location.reload();
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        espinAutoRefresh();
+      }
+    });
+
+    window.addEventListener("focus", espinAutoRefresh);
+    window.addEventListener("pageshow", espinAutoRefresh);
+  </script>
+</body>
+</html>
