@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Admin | Project Contacts</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<script>
+(() => {
+  const auth = localStorage.getItem("espinAuth");
+  const email = localStorage.getItem("espinUserEmail");
+  if (auth !== "true" || !email) location.replace("index.html");
+})();
+</script>
+
+<style>
+:root {
+  --blue: #0066B2;
+  --light-blue: #eef5ff;
+  --gray: #64748b;
+  --bg: #f8fafc;
+  --danger: #ef4444;
+  --ok: #10b981;
+  --border: #e2e8f0;
+  --input-bg: #ffffff;
+}
+
+body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: #1e293b; }
+.header { background: var(--blue); color: #fff; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+.card { background: #fff; border-radius: 12px; border: 1px solid var(--border); padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+.row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.field { flex: 1; min-width: 200px; }
+
+label { font-size: 12px; font-weight: 700; color: var(--gray); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.025em; }
+select, input { 
+  width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); 
+  background: var(--input-bg); font-size: 14px; transition: all 0.2s; box-sizing: border-box;
+}
+select:focus, input:focus { outline: none; border-color: var(--blue); ring: 2px var(--light-blue); }
+
+.btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
+.btn:hover { opacity: 0.9; }
+.btn.primary { background: var(--blue); color: #fff; }
+.btn.ghost { background: var(--light-blue); color: var(--blue); }
+.btn.danger { background: #fee2e2; color: var(--danger); }
+
+.status-bar { 
+  position: fixed; top: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; 
+  font-weight: 600; display: none; z-index: 1000; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
+}
+.status-bar.ok { display: block; background: var(--ok); color: white; }
+.status-bar.err { display: block; background: var(--danger); color: white; }
+
+.table-container { overflow-x: auto; }
+.contact-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+.contact-row { background: #fff; }
+.contact-td { 
+  padding: 12px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  vertical-align: middle; 
+}
+.contact-td:first-child { border-left: 1px solid var(--border); border-radius: 8px 0 0 8px; }
+.contact-td:last-child { border-right: 1px solid var(--border); border-radius: 0 8px 8px 0; text-align: right; }
+
+.action-btn-group { display: flex; gap: 8px; justify-content: flex-end; }
+.icon-btn { 
+  width: 36px; height: 36px; border-radius: 6px; border: none; cursor: pointer; 
+  display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.2s;
+}
+.icon-btn.save { background: var(--blue); color: white; }
+.icon-btn.delete { background: #fee2e2; color: var(--danger); }
+
+.archive-section { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 20px; }
+.nav-link { color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; background: rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 6px; }
+#who { font-size: 12px; opacity: 0.9; font-weight: 500; }
+</style>
+</head>
+
+<body>
+<div id="statusCard" class="status-bar"></div>
+
+<div class="header">
+  <div><strong>Admin</strong> <span style="opacity:0.5;margin:0 8px">/</span> Project Contacts</div>
+  <div style="display:flex;gap:20px;align-items:center">
+    <a href="Projects.html" class="nav-link">View Projects</a>
+    <div id="who"></div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="row">
+      <div class="field">
+        <label>Select Project(s)</label>
+        <select id="projectSelect" multiple style="height: 120px;"></select>
+      </div>
+      <button class="btn primary" id="refreshBtn">Refresh List</button>
+    </div>
+
+    <div class="archive-section">
+      <div class="row">
+        <div class="field">
+          <label>Archived Project Visibility</label>
+          <select id="archiveStatusSelect" disabled>
+            <option value="false">Visible in App</option>
+            <option value="true">Hidden from App</option>
+          </select>
+        </div>
+        <button class="btn ghost" id="updateStatusBtn" disabled>Update Visibility</button>
+      </div>
+      <div class="row" style="margin-top:20px; border-top:1px dashed var(--border); padding-top:20px">
+        <div class="field">
+          <label style="color:var(--danger)">Danger Zone</label>
+          <p style="font-size:12px; color:var(--gray); margin:0 0 10px 0">Permanently remove archived projects from the database.</p>
+          <button class="btn danger" id="deleteProjectsBtn">Delete Selected Archived</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between; align-items: center; margin-bottom: 20px;">
+      <h3 style="margin:0; font-size:18px">Project Contacts</h3>
+      <button class="btn primary" id="addContactBtn">+ Add Contact</button>
+    </div>
+    <div class="table-container" id="contactsWrap">
+      <div class="note" style="text-align:center; padding: 40px; color: var(--gray)">Select a project to manage contacts.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "https://espin-medical-app.vercel.app";
+function getAdminEmail() {
+  return (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+}
+
+document.getElementById("who").textContent = getAdminEmail();
+
+const projectSelect = document.getElementById("projectSelect");
+const archiveStatusSelect = document.getElementById("archiveStatusSelect");
+const updateStatusBtn = document.getElementById("updateStatusBtn");
+const deleteProjectsBtn = document.getElementById("deleteProjectsBtn");
+const contactsWrap = document.getElementById("contactsWrap");
+const statusCard = document.getElementById("statusCard");
+const refreshBtn = document.getElementById("refreshBtn");
+const addContactBtn = document.getElementById("addContactBtn");
+
+let currentContacts = [];
+
+const headers = () => ({
+  "Content-Type": "application/json",
+  "x-user-email": getAdminEmail()
+});
+
+function setStatus(ok, msg) {
+  statusCard.className = "status-bar " + (ok ? "ok" : "err");
+  statusCard.textContent = msg;
+  statusCard.style.display = "block";
+  setTimeout(() => statusCard.style.display = "none", 4000);
+}
+
+function getSelectedProjectIds() {
+  return Array.from(projectSelect.selectedOptions).map(o => o.value);
+}
+
+async function initProjects() {
+  try {
+    const r = await fetch(`${API_BASE}/api/admin/projects`, { headers: headers() });
+    const d = await r.json();
+    projectSelect.innerHTML = d.map(p =>
+      `<option value="${p.id}">${p.project_completed ? `📦 ${p.project_name} (Archived)` : `🚀 ${p.project_name}`}</option>`
+    ).join("");
+    archiveStatusSelect.disabled = true;
+    updateStatusBtn.disabled = true;
+  } catch (e) { setStatus(false, "Failed to load projects"); }
+}
+
+projectSelect.onchange = async () => {
+  loadContacts();
+  const ids = getSelectedProjectIds();
+  if (ids.length !== 1) {
+    archiveStatusSelect.disabled = true;
+    updateStatusBtn.disabled = true;
+    return;
+  }
+
+  const r = await fetch(`${API_BASE}/api/projects?id=${ids[0]}`, { headers: headers() });
+  if (!r.ok) return;
+  const p = await r.json();
+
+  if (p.project_completed) {
+    archiveStatusSelect.value = String(p.hidden || false);
+    archiveStatusSelect.disabled = false;
+    updateStatusBtn.disabled = false;
+  } else {
+    archiveStatusSelect.disabled = true;
+    updateStatusBtn.disabled = true;
+  }
+};
+
+updateStatusBtn.onclick = async () => {
+  const ids = getSelectedProjectIds();
+  if (ids.length !== 1) return;
+  const isHidden = archiveStatusSelect.value === "true";
+  try {
+    const r = await fetch(`${API_BASE}/api/projects`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ action: "setHidden", id: ids[0], hidden: isHidden })
+    });
+    if (r.ok) {
+      setStatus(true, "Visibility updated");
+      initProjects();
+    } else {
+      const txt = await r.text();
+      setStatus(false, txt || "Update failed");
+    }
+  } catch (e) { setStatus(false, "Connection error"); }
+};
+
+deleteProjectsBtn.onclick = async () => {
+  const ids = getSelectedProjectIds();
+  if (!ids.length) return setStatus(false, "Select projects first");
+  if (!confirm(`Permanently delete ${ids.length} project(s)?`)) return;
+  try {
+    for (const id of ids) {
+      await fetch(`${API_BASE}/api/projects`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ action: "delete", id: String(id) })
+      });
+    }
+    setStatus(true, "Projects deleted");
+    initProjects();
+  } catch (e) { setStatus(false, "Delete failed"); }
+};
+
+async function loadContacts() {
+  const ids = getSelectedProjectIds();
+  if (ids.length !== 1) {
+    contactsWrap.innerHTML = `<div class="note" style="text-align:center; padding:40px;">Select exactly one project.</div>`;
+    return;
+  }
+  try {
+    const r = await fetch(`${API_BASE}/api/admin/project-contacts?projectId=${ids[0]}`, { headers: headers() });
+    currentContacts = await r.json() || [];
+    renderContacts(currentContacts);
+  } catch (e) { setStatus(false, "Load error"); }
+}
+
+function renderContacts(rows) {
+  const roleOptions = (v) => ["project_manager", "team_leader", "authorized"]
+    .map(r => `<option value="${r}" ${v === r ? "selected" : ""}>${r.replace('_', ' ')}</option>`).join("");
+
+  contactsWrap.innerHTML = `
+  <table class="contact-table">
+    <thead>
+        <tr>
+            <th style="text-align:left;"><label>Role</label></th>
+            <th style="text-align:left;"><label>Name</label></th>
+            <th style="text-align:left;"><label>Email</label></th>
+            <th style="text-align:left;"><label>Phone</label></th>
+            <th style="text-align:right;"><label>Actions</label></th>
+        </tr>
+    </thead>
+    <tbody>
+    ${rows.map((r, i) => `
+      <tr class="contact-row" data-index="${i}">
+        <td class="contact-td"><select class="role">${roleOptions(r.role)}</select></td>
+        <td class="contact-td"><input class="name" value="${r.full_name || ""}"></td>
+        <td class="contact-td"><input class="email" value="${r.email || ""}"></td>
+        <td class="contact-td"><input class="phone" value="${r.phone || ""}"></td>
+        <td class="contact-td">
+          <div class="action-btn-group">
+            <button class="icon-btn save">✓</button>
+            <button class="icon-btn delete">✕</button>
+          </div>
+        </td>
+      </tr>
+    `).join("")}
+    </tbody>
+  </table>`;
+
+  // Attach Save Listeners
+  document.querySelectorAll(".save").forEach(btn => {
+    btn.onclick = async () => {
+      const projectId = getSelectedProjectIds()[0];
+      if (!projectId) return setStatus(false, "Select a project first");
+
+      const tr = btn.closest("tr");
+      const idx = tr.dataset.index;
+      const c = currentContacts[idx];
+
+      const payload = {
+        id: c.id || null,
+        role: tr.querySelector(".role").value,
+        full_name: tr.querySelector(".name").value.trim(),
+        email: tr.querySelector(".email").value.trim().toLowerCase(),
+        phone: tr.querySelector(".phone").value.trim(),
+        projectId: projectId,
+        can_login: true,
+        can_receive_email: true
+      };
+
+      try {
+        const r = await fetch(`${API_BASE}/api/admin/project-contacts`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload)
+        });
+        if (r.ok) {
+          setStatus(true, "Saved");
+          loadContacts();
+        } else {
+          const txt = await r.text();
+          setStatus(false, txt || "Error saving");
+        }
+      } catch (e) { setStatus(false, "Save failed"); }
+    };
+  });
+
+  // Attach Delete Listeners
+  document.querySelectorAll(".delete").forEach(btn => {
+    btn.onclick = async () => {
+      const tr = btn.closest("tr");
+      const c = currentContacts[tr.dataset.index];
+      if (!c.id) { loadContacts(); return; }
+      if (!confirm("Delete contact?")) return;
+      
+      try {
+        const r = await fetch(`${API_BASE}/api/admin/project-contacts`, {
+          method: "DELETE", headers: headers(), 
+          body: JSON.stringify({ id: c.id, projectId: getSelectedProjectIds()[0] })
+        });
+        if (r.ok) { setStatus(true, "Deleted"); loadContacts(); }
+      } catch (e) { setStatus(false, "Delete failed"); }
+    };
+  });
+}
+
+addContactBtn.onclick = () => {
+  if (getSelectedProjectIds().length !== 1) return setStatus(false, "Select one project");
+  currentContacts.push({ id: null, role: "authorized", full_name: "", email: "", phone: "" });
+  renderContacts(currentContacts);
+};
+
+refreshBtn.onclick = initProjects;
+initProjects();
+</script>
+</body>
+</html>

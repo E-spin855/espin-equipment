@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Espin Medical Login</title>
+
+<style>
+:root{
+  --brand-blue:#2B76D2;
+  --blue:#0066B2;
+  --blue-dark:#004f8a;
+  --blue-light:#1a7fd1;
+}
+*{box-sizing:border-box;}
+html,body{
+  margin:0;
+  padding:0;
+  width:100%;
+  height:100%;
+  background:var(--brand-blue);
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  color:#fff;
+}
+.page{
+  min-height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  padding-bottom:120px; /* space for footer */
+}
+.container{
+  width:100%;
+  max-width:400px;
+  text-align:center;
+}
+.logo-area{margin-bottom:20px;}
+.logo-area img{
+  display:block;
+  width:100%;
+  max-width:260px;
+  margin:0 auto;
+  pointer-events:none;
+  user-select:none;
+}
+h1{font-size:26px;margin:0 0 10px;}
+.subtitle{font-size:15px;opacity:.9;margin-bottom:25px;line-height:1.4;}
+input{
+  width:100%;
+  padding:16px;
+  margin-bottom:12px;
+  border-radius:14px;
+  border:none;
+  font-size:18px;
+  color:#333;
+}
+.checkbox-container{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin:5px 0 25px;
+  text-align:left;
+}
+#keepMeIn{width:22px;height:22px;}
+.btn{
+  width:100%;
+  padding:18px;
+  border-radius:16px;
+  font-size:20px;
+  font-weight:600;
+  color:#fff;
+  background:linear-gradient(var(--blue-light),var(--blue));
+  border:none;
+  box-shadow:0 5px 0 var(--blue-dark);
+  cursor:pointer;
+}
+.btn:disabled{opacity:.6;}
+#pinInput{
+  text-align:center;
+  letter-spacing:8px;
+  font-size:24px;
+  font-weight:bold;
+}
+.hidden{display:none!important;}
+
+/* FOOTER */
+.footer{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  padding:14px 18px calc(14px + env(safe-area-inset-bottom));
+  text-align:center;
+  font-size:11px;
+  line-height:1.4;
+  opacity:.75;
+  background:linear-gradient(
+    to top,
+    rgba(0,0,0,.18),
+    rgba(0,0,0,0)
+  );
+}
+.footer strong{
+  font-weight:600;
+}
+</style>
+</head>
+
+<body>
+
+<div class="page">
+<div class="container">
+
+  <!-- EMAIL STEP -->
+  <div id="emailStep">
+    <div class="logo-area">
+      <img src="/index logo.png" alt="Espin Medical">
+    </div>
+    <h1>Welcome</h1>
+    <p class="subtitle">Enter your work email to receive a secure login code.</p>
+    <input id="emailInput" type="email" placeholder="Email Address" autocomplete="email">
+    <div class="checkbox-container">
+      <input type="checkbox" id="keepMeIn">
+      <label for="keepMeIn">Keep me signed in</label>
+    </div>
+    <button id="btn1" class="btn">Continue</button>
+  </div>
+
+  <!-- PIN STEP -->
+  <div id="pinStep" class="hidden">
+    <div class="logo-area">
+      <img src="/index logo.png" alt="Espin Medical">
+    </div>
+    <h1>Verify PIN</h1>
+    <p class="subtitle">Enter the 6-digit code sent to your email.</p>
+    <input id="pinInput" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
+    <button id="btn2" class="btn">Sign In</button>
+    <p id="backBtn" style="margin-top:15px;font-size:14px;opacity:.8;cursor:pointer">← Back</p>
+  </div>
+
+</div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <strong>© 2026 Espin Medical.</strong> All rights reserved.<br>
+  Developed and owned by Espin Medical. Unauthorized use, reproduction, or distribution is prohibited.
+</div>
+
+<script>
+const API_URL = "https://espin-medical-app.vercel.app";
+
+/* DOM */
+const emailInput = document.getElementById("emailInput");
+const pinInput   = document.getElementById("pinInput");
+const btn1       = document.getElementById("btn1");
+const btn2       = document.getElementById("btn2");
+const emailStep  = document.getElementById("emailStep");
+const pinStep    = document.getElementById("pinStep");
+const keepMeIn   = document.getElementById("keepMeIn");
+const backBtn    = document.getElementById("backBtn");
+
+/* AUTO LOGIN */
+(function(){
+  const auth = localStorage.getItem("espinAuth");
+  const keep = localStorage.getItem("espinKeepSignedIn");
+  if (auth === "true" && keep === "true") {
+    location.replace("Home.html");
+  }
+})();
+
+/* RESET */
+function resetLogin(){
+  localStorage.removeItem("tempEmail");
+  localStorage.removeItem("espinAuth");
+  localStorage.removeItem("espinUserEmail");
+  localStorage.removeItem("espinKeepSignedIn");
+  pinInput.value="";
+  btn2.disabled=false;
+  btn2.textContent="Sign In";
+  pinStep.classList.add("hidden");
+  emailStep.classList.remove("hidden");
+}
+
+/* SEND PIN */
+btn1.addEventListener("click", async ()=>{
+  const email = emailInput.value.trim().toLowerCase();
+  if(!email.includes("@")) return alert("Enter a valid email.");
+
+  btn1.disabled = true;
+  btn1.textContent = "Sending…";
+
+  try{
+    const res = await fetch(`${API_URL}/api/send-pin`,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({
+        email,
+        platform:"ios",
+        deviceToken: window.iosDeviceToken || null
+      })
+    });
+
+    const data = await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      throw new Error(data.error || "User not authorized for login");
+    }
+
+    localStorage.setItem("tempEmail",email);
+    emailStep.classList.add("hidden");
+    pinStep.classList.remove("hidden");
+
+  }catch(err){
+    btn1.disabled = false;
+    btn1.textContent = "Continue";
+    alert(err.message || "Unable to send PIN");
+  }
+});
+
+/* VERIFY PIN */
+btn2.addEventListener("click", async ()=>{
+  const pin = pinInput.value.trim();
+  if(pin.length!==6) return alert("Enter full PIN");
+  const email = localStorage.getItem("tempEmail");
+  if(!email) return resetLogin();
+  btn2.disabled=true;
+  btn2.textContent="Verifying…";
+  try{
+    const res = await fetch(`${API_URL}/api/verify-pin`,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ email,pin })
+    });
+    if(!res.ok) throw 0;
+    localStorage.setItem("espinAuth","true");
+    localStorage.setItem("espinUserEmail",email);
+    localStorage.setItem("espinKeepSignedIn", keepMeIn.checked?"true":"false");
+    localStorage.removeItem("tempEmail");
+    if (window.webkit?.messageHandlers?.loginSuccess) {
+      window.webkit.messageHandlers.loginSuccess.postMessage({ email });
+    }
+    location.replace("Home.html");
+  }catch{
+    resetLogin();
+    alert("Invalid or expired PIN");
+  }
+});
+
+/* BACK */
+backBtn.addEventListener("click", resetLogin);
+</script>
+
+</body>
+</html>
