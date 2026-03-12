@@ -19,7 +19,7 @@ function cors(res) {
 }
 
 /* ===============================
-   HELPERS
+   HELPER
 =============================== */
 
 function getProjectId(req) {
