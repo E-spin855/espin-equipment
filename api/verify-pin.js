@@ -2,17 +2,16 @@ import { kv } from "@vercel/kv";
 
 export default async function handler(req, res) {
 
-  const origin = req.headers.origin;
+ const origin = req.headers.origin;
 
-  // ✅ CORS headers FIRST
-  res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, X-Requested-With"
-  );
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-
+// CORS
+res.setHeader("Access-Control-Allow-Origin", "*");
+res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+res.setHeader(
+  "Access-Control-Allow-Headers",
+  "Content-Type, X-Requested-With"
+);
+res.setHeader("Access-Control-Allow-Credentials", "true");
   // ✅ Handle preflight BEFORE anything else
   if (req.method === "OPTIONS") {
     return res.status(200).end();
