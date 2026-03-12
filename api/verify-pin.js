@@ -2,18 +2,17 @@ import { kv } from "@vercel/kv";
 
 export default async function handler(req, res) {
   // ✅ STRICT, WKWebView-SAFE CORS
-  res.setHeader(
-    res.setHeader(
+  // ✅ STRICT, WKWebView-SAFE CORS
+res.setHeader(
   "Access-Control-Allow-Origin",
   "https://espin-equipment.vercel.app"
 );
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, X-Requested-With"
-  );
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-
+res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+res.setHeader(
+  "Access-Control-Allow-Headers",
+  "Content-Type, X-Requested-With"
+);
+res.setHeader("Access-Control-Allow-Credentials", "true");
   // ✅ Preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
