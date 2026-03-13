@@ -58,6 +58,7 @@ export default async function handler(req, res) {
   const client = await pool.connect();
 
   try {
+
     const userEmail = String(req.headers["x-user-email"] || "")
       .toLowerCase()
       .trim();
@@ -69,8 +70,9 @@ export default async function handler(req, res) {
     const isAdminOverride = userEmail === "info@espinmedical.com";
 
     /* ===============================
-       GET — SINGLE PROJECT
+       GET SINGLE PROJECT
     =============================== */
+
     if (req.method === "GET" && req.query.id) {
 
       const { rows } = await client.query(
@@ -94,8 +96,9 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       GET — LIST PROJECTS
+       GET PROJECT LIST
     =============================== */
+
     if (req.method === "GET") {
 
       const { rows } = await client.query(
@@ -105,9 +108,6 @@ export default async function handler(req, res) {
           p.project_name,
           p.site_address,
           p.zip_code,
-          p.modality,
-          p.magnet_event,
-          p.disposal_required,
           p.sales_rep_first,
           p.sales_rep_last,
           p.sales_rep_phone,
@@ -130,13 +130,15 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       POST — CREATE / DELETE
+       POST CREATE / DELETE
     =============================== */
+
     if (req.method === "POST") {
 
       const body = req.body || {};
 
-      /* ---------- ADMIN DELETE ---------- */
+      /* ADMIN DELETE */
+
       if (body.action === "delete") {
 
         if (!isAdminOverride) {
@@ -158,23 +160,19 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      /* ---------- CREATE PROJECT ---------- */
+      /* CREATE PROJECT */
 
       const project_name = body.project_name;
       const site_address = body.site_address || null;
       const zip_code = body.zip_code || null;
-      const equipment = body.equipment || null;
-      const modality = body.modality;
-      const magnet_event = body.magnet_event || null;
-      const disposal_required = !!body.disposal_required;
 
       const sales_rep_first = body.sales_rep_first || null;
       const sales_rep_last = body.sales_rep_last || null;
       const sales_rep_phone = body.sales_rep_phone || null;
       const sales_rep_email = body.sales_rep_email || null;
 
-      if (!project_name || !modality) {
-        return res.status(400).json({ error: "Missing required fields" });
+      if (!project_name) {
+        return res.status(400).json({ error: "Missing project name" });
       }
 
       const tz = getTzFromZip();
@@ -185,10 +183,6 @@ export default async function handler(req, res) {
           project_name,
           site_address,
           zip_code,
-          equipment,
-          modality,
-          magnet_event,
-          disposal_required,
           sales_rep_first,
           sales_rep_last,
           sales_rep_phone,
@@ -202,10 +196,10 @@ export default async function handler(req, res) {
           hidden
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,
-          $8,$9,$10,$11,
-          $12,
-          $13,$13,
+          $1,$2,$3,
+          $4,$5,$6,$7,
+          $8,
+          $9,$9,
           false,false,NULL,false
         )
         RETURNING *
@@ -214,10 +208,6 @@ export default async function handler(req, res) {
           project_name.trim(),
           site_address ?? null,
           typeof zip_code === "string" ? zip_code.trim() : (zip_code ?? null),
-          equipment ?? null,
-          modality,
-          magnet_event ?? null,
-          Boolean(disposal_required),
           sales_rep_first,
           sales_rep_last,
           sales_rep_phone,
@@ -227,14 +217,13 @@ export default async function handler(req, res) {
         ]
       );
 
-      const newProject = rows[0];
-
-      return res.status(201).json(newProject);
+      return res.status(201).json(rows[0]);
     }
 
     /* ===============================
-       PUT — UPDATE PROJECT
+       UPDATE PROJECT
     =============================== */
+
     if (req.method === "PUT") {
 
       const projectId = getProjectId(req);
@@ -243,15 +232,11 @@ export default async function handler(req, res) {
         project_name,
         site_address,
         zip_code,
-        equipment,
-        modality,
-        magnet_event,
-        disposal_required,
-        project_completed,
         sales_rep_first,
         sales_rep_last,
         sales_rep_phone,
-        sales_rep_email
+        sales_rep_email,
+        project_completed
       } = req.body || {};
 
       const tz = getTzFromZip();
@@ -262,18 +247,14 @@ export default async function handler(req, res) {
           project_name      = $1,
           site_address      = $2,
           zip_code          = COALESCE($3, zip_code),
-          equipment         = $4,
-          modality          = $5,
-          magnet_event      = $6,
-          disposal_required = $7,
-          sales_rep_first   = $8,
-          sales_rep_last    = $9,
-          sales_rep_phone   = $10,
-          sales_rep_email   = $11,
-          project_completed = $12,
-          timezone          = $13,
-          updated_timezone  = $13
-        WHERE id = $14
+          sales_rep_first   = $4,
+          sales_rep_last    = $5,
+          sales_rep_phone   = $6,
+          sales_rep_email   = $7,
+          project_completed = $8,
+          timezone          = $9,
+          updated_timezone  = $9
+        WHERE id = $10
         AND ${accessClause("p")}
         RETURNING *
         `,
@@ -281,10 +262,6 @@ export default async function handler(req, res) {
           project_name,
           site_address,
           zip_code ?? null,
-          equipment,
-          modality,
-          magnet_event || null,
-          !!disposal_required,
           sales_rep_first,
           sales_rep_last,
           sales_rep_phone,
@@ -302,8 +279,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
 
   } catch (err) {
+
     console.error("Projects API error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+
+    return res.status(500).json({
+      error: "Internal server error"
+    });
+
   } finally {
     client.release();
   }

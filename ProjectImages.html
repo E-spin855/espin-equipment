@@ -653,19 +653,25 @@ sendBtn.onclick = async () => {
         body: JSON.stringify({ photoId:id, queued:true })
       });
     }
+    /* INCLUDE EQUIPMENT SPECS */
+let specs = {};
 
-    /* THEN SEND EMAILS */
-    await fetch(`${API_BASE}/api/project-photos/email`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-      body: JSON.stringify({ projectId, photoIds: ids })
-    });
+try {
+  specs = JSON.parse(localStorage.getItem("espinSpecs") || "{}");
+} catch {
+  specs = {};
+}
 
-    await fetch(`${API_BASE}/api/image-tasks`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json","x-user-email": userEmail },
-      body: JSON.stringify({ projectId, photoIds: ids })
-    });
+/* THEN SEND EMAILS */
+await fetch(`${API_BASE}/api/project-photos/email`, {
+  method:"POST",
+  headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+  body: JSON.stringify({
+    projectId,
+    photoIds: ids,
+    specs
+  })
+});
 
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]").forEach(cb => (cb.checked=false));
