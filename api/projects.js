@@ -69,32 +69,31 @@ export default async function handler(req, res) {
 
     const isAdminOverride = userEmail === "info@espinmedical.com";
 
-    /* ===============================
-       GET SINGLE PROJECT
-    =============================== */
+   /* ===============================
+   GET SINGLE PROJECT
+=============================== */
 
-    if (req.method === "GET" && req.query.id) {
+if (req.method === "GET" && req.query.id) {
 
-      const { rows } = await client.query(
-        `
-        SELECT *
-        FROM projects p
-        WHERE p.id = $2
-        AND (
-          $3 = true
-          OR ${accessClause("p")}
-        )
-        `,
-        [userEmail, req.query.id, isAdminOverride]
-      );
+  const { rows } = await client.query(
+    `
+    SELECT *
+    FROM projects p
+    WHERE p.id = $1
+    AND (
+      $2 = true
+      OR ${accessClause("p")}
+    )
+    `,
+    [req.query.id, isAdminOverride, userEmail]
+  );
 
-      if (!rows.length) {
-        return res.status(404).json({ error: "Project not found" });
-      }
+  if (!rows.length) {
+    return res.status(404).json({ error: "Project not found" });
+  }
 
-      return res.status(200).json(rows[0]);
-    }
-
+  return res.status(200).json(rows[0]);
+}
     /* ===============================
        GET PROJECT LIST
     =============================== */
