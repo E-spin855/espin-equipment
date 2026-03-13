@@ -6,6 +6,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
 /* ===============================
    CORS
 =============================== */
@@ -20,7 +21,7 @@ function cors(res) {
 }
 
 /* ===============================
-   HELPER
+   HELPERS
 =============================== */
 
 function getProjectId(req) {
@@ -71,15 +72,16 @@ export default async function handler(req, res) {
        GET — SINGLE PROJECT
     =============================== */
     if (req.method === "GET" && req.query.id) {
+
       const { rows } = await client.query(
         `
         SELECT *
         FROM projects p
         WHERE p.id = $2
-          AND (
-            $3 = true
-            OR ${accessClause("p")}
-          )
+        AND (
+          $3 = true
+          OR ${accessClause("p")}
+        )
         `,
         [userEmail, req.query.id, isAdminOverride]
       );
@@ -95,6 +97,7 @@ export default async function handler(req, res) {
        GET — LIST PROJECTS
     =============================== */
     if (req.method === "GET") {
+
       const { rows } = await client.query(
         `
         SELECT
@@ -105,6 +108,10 @@ export default async function handler(req, res) {
           p.modality,
           p.magnet_event,
           p.disposal_required,
+          p.sales_rep_first,
+          p.sales_rep_last,
+          p.sales_rep_phone,
+          p.sales_rep_email,
           p.project_completed,
           p.is_archived,
           p.archived_at,
@@ -113,7 +120,7 @@ export default async function handler(req, res) {
           p.created_at
         FROM projects p
         WHERE ${accessClause("p")}
-          AND p.hidden = false
+        AND p.hidden = false
         ORDER BY p.created_at DESC
         `,
         [userEmail]
@@ -123,38 +130,26 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       POST — ADMIN ACTIONS + CREATE
+       POST — CREATE / DELETE
     =============================== */
     if (req.method === "POST") {
+
       const body = req.body || {};
 
-      /* ---------- ADMIN: DELETE ---------- */
+      /* ---------- ADMIN DELETE ---------- */
       if (body.action === "delete") {
+
         if (!isAdminOverride) {
           return res.status(403).json({ error: "Admin only" });
         }
 
         const projectId = body.id;
-        if (!projectId) {
-          return res.status(400).json({ error: "Missing id" });
-        }
 
-        const exists = await client.query(
-          `SELECT id FROM projects WHERE id = $1`,
-          [projectId]
-        );
-
-        if (!exists.rows.length) {
-          return res.status(404).json({ error: "Project not found" });
-        }
-
-        /* ---- CLEAN DEPENDENCIES FIRST ---- */
         await client.query(`DELETE FROM project_photos WHERE project_id = $1`, [projectId]);
         await client.query(`DELETE FROM project_details WHERE project_id = $1`, [projectId]);
         await client.query(`DELETE FROM project_contacts WHERE project_id = $1`, [projectId]);
         await client.query(`DELETE FROM project_events WHERE project_id = $1`, [projectId]);
 
-        /* ---- DELETE PROJECT ---- */
         await client.query(
           `DELETE FROM projects WHERE id = $1`,
           [projectId]
@@ -164,13 +159,19 @@ export default async function handler(req, res) {
       }
 
       /* ---------- CREATE PROJECT ---------- */
+
       const project_name = body.project_name;
-const site_address = body.site_address || null;
-const zip_code = body.zip_code || null;
-const equipment = body.equipment || null;
-const modality = body.modality;
-const magnet_event = body.magnet_event || null;
-const disposal_required = !!body.disposal_required;
+      const site_address = body.site_address || null;
+      const zip_code = body.zip_code || null;
+      const equipment = body.equipment || null;
+      const modality = body.modality;
+      const magnet_event = body.magnet_event || null;
+      const disposal_required = !!body.disposal_required;
+
+      const sales_rep_first = body.sales_rep_first || null;
+      const sales_rep_last = body.sales_rep_last || null;
+      const sales_rep_phone = body.sales_rep_phone || null;
+      const sales_rep_email = body.sales_rep_email || null;
 
       if (!project_name || !modality) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -188,6 +189,10 @@ const disposal_required = !!body.disposal_required;
           modality,
           magnet_event,
           disposal_required,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_phone,
+          sales_rep_email,
           admin_email,
           timezone,
           updated_timezone,
@@ -198,48 +203,31 @@ const disposal_required = !!body.disposal_required;
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,$7,
-          $8,
-          $9,$9,
+          $8,$9,$10,$11,
+          $12,
+          $13,$13,
           false,false,NULL,false
         )
         RETURNING *
         `,
         [
-  project_name.trim(),
-  site_address ?? null,
-  typeof zip_code === "string" ? zip_code.trim() : (zip_code ?? null),
-  equipment ?? null,
-  modality,
-  magnet_event ?? null,
-  Boolean(disposal_required),
-  userEmail,
-  tz
-]
+          project_name.trim(),
+          site_address ?? null,
+          typeof zip_code === "string" ? zip_code.trim() : (zip_code ?? null),
+          equipment ?? null,
+          modality,
+          magnet_event ?? null,
+          Boolean(disposal_required),
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_phone,
+          sales_rep_email,
+          userEmail,
+          tz
+        ]
       );
 
       const newProject = rows[0];
-      const newProjectId = newProject.id;
-
-      /* AUTO-ADD UNIVERSAL USERS */
-      await client.query(
-        `
-        INSERT INTO project_contacts
-        (project_id, role, full_name, email, can_login, can_receive_email)
-        SELECT
-            $1,
-            role,
-            full_name,
-            email,
-            can_login,
-            can_receive_email
-        FROM (
-            SELECT DISTINCT email, role, full_name, can_login, can_receive_email
-            FROM project_contacts
-        ) u
-        ON CONFLICT (project_id, email) DO NOTHING
-        `,
-        [newProjectId]
-      );
 
       return res.status(201).json(newProject);
     }
@@ -248,37 +236,8 @@ const disposal_required = !!body.disposal_required;
        PUT — UPDATE PROJECT
     =============================== */
     if (req.method === "PUT") {
+
       const projectId = getProjectId(req);
-      if (!projectId) {
-        return res.status(400).json({ error: "Missing projectId" });
-      }
-
-      const stateRes = await client.query(
-        `
-        SELECT project_completed
-        FROM projects p
-        WHERE p.id = $2
-          AND ${accessClause("p")}
-        `,
-        [userEmail, projectId]
-      );
-
-      if (!stateRes.rows.length) {
-        return res.status(404).json({ error: "Not found or not authorized" });
-      }
-
-      const isArchived = stateRes.rows[0].project_completed === true;
-      const keys = Object.keys(req.body || {});
-      const allowedOnArchived = ["hidden"];
-
-      if (isArchived) {
-        const illegal = keys.filter(k => !allowedOnArchived.includes(k));
-        if (illegal.length) {
-          return res.status(403).json({
-            error: "Project is archived and read-only"
-          });
-        }
-      }
 
       const {
         project_name,
@@ -288,19 +247,16 @@ const disposal_required = !!body.disposal_required;
         modality,
         magnet_event,
         disposal_required,
-        project_completed
+        project_completed,
+        sales_rep_first,
+        sales_rep_last,
+        sales_rep_phone,
+        sales_rep_email
       } = req.body || {};
 
-      if (project_completed === false) {
-        return res.status(400).json({
-          error: "project_completed is one-way"
-        });
-      }
-
       const tz = getTzFromZip();
-      const willComplete = project_completed === true;
 
-      const { rowCount, rows } = await client.query(
+      const { rows } = await client.query(
         `
         UPDATE projects p SET
           project_name      = $1,
@@ -310,16 +266,15 @@ const disposal_required = !!body.disposal_required;
           modality          = $5,
           magnet_event      = $6,
           disposal_required = $7,
-          project_completed = $8,
-          is_archived = CASE WHEN $8 = true THEN true ELSE is_archived END,
-          archived_at = CASE
-            WHEN $8 = true AND archived_at IS NULL THEN NOW()
-            ELSE archived_at
-          END,
-          timezone          = $9,
-          updated_timezone  = $9
-        WHERE id = $10
-          AND ${accessClause("p")}
+          sales_rep_first   = $8,
+          sales_rep_last    = $9,
+          sales_rep_phone   = $10,
+          sales_rep_email   = $11,
+          project_completed = $12,
+          timezone          = $13,
+          updated_timezone  = $13
+        WHERE id = $14
+        AND ${accessClause("p")}
         RETURNING *
         `,
         [
@@ -330,16 +285,16 @@ const disposal_required = !!body.disposal_required;
           modality,
           magnet_event || null,
           !!disposal_required,
-          !!willComplete,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_phone,
+          sales_rep_email,
+          !!project_completed,
           tz,
           projectId,
           userEmail
         ]
       );
-
-      if (!rowCount) {
-        return res.status(404).json({ error: "Not found or not authorized" });
-      }
 
       return res.status(200).json(rows[0]);
     }
