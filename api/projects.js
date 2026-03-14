@@ -36,6 +36,14 @@ function getTzFromZip() {
 
 export default async function handler(req, res) {
 
+  console.log("PROJECTS API VERSION 2 RUNNING");
+  console.log("METHOD:", req.method);
+  console.log("QUERY:", req.query);
+  console.log("BODY:", req.body);
+  console.log("HEADERS X-USER-EMAIL:", req.headers["x-user-email"]);
+  console.log("HEADERS X-USEREMAIL:", req.headers["x-useremail"]);
+  console.log("HEADERS X-USER_EMAIL:", req.headers["x-user_email"]);
+
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
 
@@ -49,6 +57,8 @@ export default async function handler(req, res) {
       req.headers["x-user_email"] ||
       ""
     ).toLowerCase().trim();
+
+    console.log("RESOLVED USER EMAIL:", userEmail);
 
     if (!userEmail) {
       return res.status(401).json({ error: "Missing user email" });
