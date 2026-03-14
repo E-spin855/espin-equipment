@@ -35,13 +35,13 @@ function getTzFromZip() {
 function accessClause(alias = "p") {
   return `
     (
-      ${alias}.admin_email = $1
+      ${alias}.admin_email = $2
       OR EXISTS (
         SELECT 1
         FROM project_contacts pc
         WHERE pc.project_id = ${alias}.id
-          AND LOWER(pc.email) = LOWER($1)
-          AND pc.can_login = true
+        AND LOWER(pc.email) = LOWER($2)
+        AND pc.can_login = true
       )
     )
   `;
@@ -69,31 +69,32 @@ export default async function handler(req, res) {
 
     const isAdminOverride = userEmail === "info@espinmedical.com";
 
-   /* ===============================
-   GET SINGLE PROJECT
-=============================== */
+    /* ===============================
+       GET SINGLE PROJECT
+    =============================== */
 
-if (req.method === "GET" && req.query.id) {
+    if (req.method === "GET" && req.query.id) {
 
-  const { rows } = await client.query(
-    `
-    SELECT *
-    FROM projects p
-    WHERE p.id = $1
-    AND (
-      $2 = true
-      OR ${accessClause("p")}
-    )
-    `,
-    [req.query.id, isAdminOverride, userEmail]
-  );
+      const { rows } = await client.query(
+        `
+        SELECT *
+        FROM projects p
+        WHERE p.id = $1
+        AND (
+          $2 = true
+          OR ${accessClause("p")}
+        )
+        `,
+        [req.query.id, isAdminOverride, userEmail]
+      );
 
-  if (!rows.length) {
-    return res.status(404).json({ error: "Project not found" });
-  }
+      if (!rows.length) {
+        return res.status(404).json({ error: "Project not found" });
+      }
 
-  return res.status(200).json(rows[0]);
-}
+      return res.status(200).json(rows[0]);
+    }
+
     /* ===============================
        GET PROJECT LIST
     =============================== */
@@ -118,11 +119,14 @@ if (req.method === "GET" && req.query.id) {
           p.timezone,
           p.created_at
         FROM projects p
-        WHERE ${accessClause("p")}
+        WHERE (
+          $1 = true
+          OR ${accessClause("p")}
+        )
         AND p.hidden = false
         ORDER BY p.created_at DESC
         `,
-        [userEmail]
+        [isAdminOverride, userEmail]
       );
 
       return res.status(200).json(rows);
@@ -150,11 +154,7 @@ if (req.method === "GET" && req.query.id) {
         await client.query(`DELETE FROM project_details WHERE project_id = $1`, [projectId]);
         await client.query(`DELETE FROM project_contacts WHERE project_id = $1`, [projectId]);
         await client.query(`DELETE FROM project_events WHERE project_id = $1`, [projectId]);
-
-        await client.query(
-          `DELETE FROM projects WHERE id = $1`,
-          [projectId]
-        );
+        await client.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
 
         return res.status(200).json({ ok: true });
       }
