@@ -214,7 +214,8 @@ export default async function handler(req, res) {
 
       const { rows } = await client.query(
         `
-        UPDATE projects SET
+        UPDATE projects
+        SET
           project_name = $1,
           site_address = $2,
           zip_code = $3,
