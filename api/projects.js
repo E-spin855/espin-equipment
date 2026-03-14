@@ -54,8 +54,6 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Missing user email" });
     }
 
-    const isAdmin = userEmail === "info@espinmedical.com";
-
     /* ===============================
        GET SINGLE PROJECT
     =============================== */
@@ -112,33 +110,28 @@ export default async function handler(req, res) {
     }
 
     /* ===============================
-       POST CREATE / DELETE
+       CREATE / DELETE PROJECT
     =============================== */
 
     if (req.method === "POST") {
 
       const body = req.body || {};
 
-      /* DELETE PROJECT (ADMIN ONLY) */
+      /* DELETE PROJECT (NO RESTRICTIONS) */
 
-      /* DELETE PROJECT (ADMIN ONLY) */
+      if (body.action === "delete" && body.id) {
 
-if (body.action === "delete" && body.id) {
+        const projectId = body.id;
 
-  if (!isAdmin) {
-    return res.status(403).json({ error: "Admin only" });
-  }
+        await client.query(`DELETE FROM project_photos WHERE project_id = $1`, [projectId]);
+        await client.query(`DELETE FROM project_details WHERE project_id = $1`, [projectId]);
+        await client.query(`DELETE FROM project_contacts WHERE project_id = $1`, [projectId]);
+        await client.query(`DELETE FROM project_events WHERE project_id = $1`, [projectId]);
+        await client.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
 
-  const projectId = body.id;
+        return res.status(200).json({ ok: true });
+      }
 
-  await client.query(`DELETE FROM project_photos WHERE project_id = $1`, [projectId]);
-  await client.query(`DELETE FROM project_details WHERE project_id = $1`, [projectId]);
-  await client.query(`DELETE FROM project_contacts WHERE project_id = $1`, [projectId]);
-  await client.query(`DELETE FROM project_events WHERE project_id = $1`, [projectId]);
-  await client.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
-
-  return res.status(200).json({ ok: true });
-}
       /* CREATE PROJECT */
 
       const project_name = body.project_name;
