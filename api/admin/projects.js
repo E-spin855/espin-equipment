@@ -33,21 +33,16 @@ function getTzFromZip() {
    HANDLER
 =============================== */
 export default async function handler(req, res) {
-  console.log("PROJECTS API RUNNING - UNRESTRICTED MODE");
-  
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const client = await pool.connect();
-
   try {
-    // FIX: Fallback to a default email if headers are missing
-    // This removes the strict 401/403 requirement
+    // This fallback ensures that ANY request proceeds, even without a valid email header
     const userEmail = String(
       req.headers["x-user-email"] ||
       req.headers["x-useremail"] ||
-      req.headers["x-user_email"] ||
-      "guest@espin-equipment.com"
+      "guest@espin-medical.com"
     ).toLowerCase().trim();
 
     /* ===============================
