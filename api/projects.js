@@ -1,7 +1,5 @@
 import { Pool } from "pg";
 
-console.log("ENV DATABASE_URL:", process.env.DATABASE_URL);
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -32,25 +30,12 @@ function getTzFromZip() {
   return "UTC";
 }
 
-function accessClause(alias = "p") {
-  return `
-    (
-      ${alias}.admin_email = $2
-      OR EXISTS (
-        SELECT 1
-        FROM project_contacts pc
-        WHERE pc.project_id = ${alias}.id
-        AND LOWER(pc.email) = LOWER($2)
-        AND pc.can_login = true
-      )
-    )
-  `;
-}
 /* ===============================
    HANDLER
 =============================== */
 
 export default async function handler(req, res) {
+
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
 
@@ -58,15 +43,18 @@ export default async function handler(req, res) {
 
   try {
 
-    const userEmail = String(req.headers["x-user-email"] || "")
-      .toLowerCase()
-      .trim();
+    const userEmail = String(
+      req.headers["x-user-email"] ||
+      req.headers["x-useremail"] ||
+      req.headers["x-user_email"] ||
+      ""
+    ).toLowerCase().trim();
 
     if (!userEmail) {
       return res.status(401).json({ error: "Missing user email" });
     }
 
-    const isAdminOverride = userEmail === "info@espinmedical.com";
+    const isAdmin = userEmail === "info@espinmedical.com";
 
     /* ===============================
        GET SINGLE PROJECT
@@ -77,14 +65,11 @@ export default async function handler(req, res) {
       const { rows } = await client.query(
         `
         SELECT *
-        FROM projects p
-        WHERE p.id = $1
-        AND (
-          $2 = true
-          OR ${accessClause("p")}
-        )
+        FROM projects
+        WHERE id = $1
+        AND hidden = false
         `,
-        [req.query.id, isAdminOverride, userEmail]
+        [req.query.id]
       );
 
       if (!rows.length) {
@@ -103,29 +88,24 @@ export default async function handler(req, res) {
       const { rows } = await client.query(
         `
         SELECT
-          p.id,
-          p.project_name,
-          p.site_address,
-          p.zip_code,
-          p.sales_rep_first,
-          p.sales_rep_last,
-          p.sales_rep_phone,
-          p.sales_rep_email,
-          p.project_completed,
-          p.is_archived,
-          p.archived_at,
-          p.hidden,
-          p.timezone,
-          p.created_at
-        FROM projects p
-        WHERE (
-          $1 = true
-          OR ${accessClause("p")}
-        )
-        AND p.hidden = false
-        ORDER BY p.created_at DESC
-        `,
-        [isAdminOverride, userEmail]
+          id,
+          project_name,
+          site_address,
+          zip_code,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_phone,
+          sales_rep_email,
+          project_completed,
+          is_archived,
+          archived_at,
+          hidden,
+          timezone,
+          created_at
+        FROM projects
+        WHERE hidden = false
+        ORDER BY created_at DESC
+        `
       );
 
       return res.status(200).json(rows);
@@ -139,11 +119,11 @@ export default async function handler(req, res) {
 
       const body = req.body || {};
 
-      /* ADMIN DELETE */
+      /* DELETE PROJECT (ADMIN ONLY) */
 
       if (body.action === "delete") {
 
-        if (!isAdminOverride) {
+        if (!isAdmin) {
           return res.status(403).json({ error: "Admin only" });
         }
 
@@ -161,13 +141,6 @@ export default async function handler(req, res) {
       /* CREATE PROJECT */
 
       const project_name = body.project_name;
-      const site_address = body.site_address || null;
-      const zip_code = body.zip_code || null;
-
-      const sales_rep_first = body.sales_rep_first || null;
-      const sales_rep_last = body.sales_rep_last || null;
-      const sales_rep_phone = body.sales_rep_phone || null;
-      const sales_rep_email = body.sales_rep_email || null;
 
       if (!project_name) {
         return res.status(400).json({ error: "Missing project name" });
@@ -204,12 +177,12 @@ export default async function handler(req, res) {
         `,
         [
           project_name.trim(),
-          site_address ?? null,
-          typeof zip_code === "string" ? zip_code.trim() : (zip_code ?? null),
-          sales_rep_first,
-          sales_rep_last,
-          sales_rep_phone,
-          sales_rep_email,
+          body.site_address ?? null,
+          body.zip_code ?? null,
+          body.sales_rep_first ?? null,
+          body.sales_rep_last ?? null,
+          body.sales_rep_phone ?? null,
+          body.sales_rep_email ?? null,
           userEmail,
           tz
         ]
@@ -241,19 +214,18 @@ export default async function handler(req, res) {
 
       const { rows } = await client.query(
         `
-        UPDATE projects p SET
-          project_name      = $1,
-          site_address      = $2,
-          zip_code          = COALESCE($3, zip_code),
-          sales_rep_first   = $4,
-          sales_rep_last    = $5,
-          sales_rep_phone   = $6,
-          sales_rep_email   = $7,
+        UPDATE projects SET
+          project_name = $1,
+          site_address = $2,
+          zip_code = $3,
+          sales_rep_first = $4,
+          sales_rep_last = $5,
+          sales_rep_phone = $6,
+          sales_rep_email = $7,
           project_completed = $8,
-          timezone          = $9,
-          updated_timezone  = $9
+          timezone = $9,
+          updated_timezone = $9
         WHERE id = $10
-        AND ${accessClause("p")}
         RETURNING *
         `,
         [
@@ -266,8 +238,7 @@ export default async function handler(req, res) {
           sales_rep_email,
           !!project_completed,
           tz,
-          projectId,
-          userEmail
+          projectId
         ]
       );
 
@@ -280,9 +251,7 @@ export default async function handler(req, res) {
 
     console.error("Projects API error:", err);
 
-    return res.status(500).json({
-      error: "Internal server error"
-    });
+    return res.status(500).json({ error: "Internal server error" });
 
   } finally {
     client.release();
