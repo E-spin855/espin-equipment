@@ -98,8 +98,7 @@ font-weight:700;
 margin-top:12px;
 }
 
-.modal-box input,
-.modal-box select{
+.modal-box input{
 width:100%;
 padding:12px;
 margin-top:5px;
@@ -155,10 +154,7 @@ font-weight:800;
 
 <div class="list" id="projectList"></div>
 
-<!-- PROJECT MODAL -->
-
 <div class="modal" id="projectModal">
-
 <div class="modal-box">
 
 <h3>Add Project</h3>
@@ -205,8 +201,6 @@ email = String(email || "").toLowerCase().trim();
 
 if(!email) location.replace("index.html");
 
-/* MODAL */
-
 function openProjectModal(p=null){
 
 document.getElementById("editId").value=p?p.id:"";
@@ -225,8 +219,6 @@ document.getElementById("projectModal").style.display="flex";
 function closeProjectModal(){
 document.getElementById("projectModal").style.display="none";
 }
-
-/* SAVE PROJECT */
 
 async function saveProject(){
 
@@ -269,11 +261,9 @@ const result=await r.json();
 
 closeProjectModal();
 
-/* open equipment form after creation */
-
 if(!id){
-
-location.href=`Equipment-Details.html?projectId=${result.id}`;
+location.href=`equipment-details.html?projectId=${result.id}`;
+return;
 }
 
 loadProjects();
@@ -289,17 +279,27 @@ saveBtn.disabled=false;
 saveBtn.innerText="Save Project";
 }
 
-/* LOAD PROJECTS */
-
 async function loadProjects(){
 
 const list=document.getElementById("projectList");
+
+try{
 
 const r=await fetch("/api/admin/projects",{
 headers:{ "x-user-email":email }
 });
 
+if(!r.ok){
+throw new Error("API error");
+}
+
 const projects=await r.json();
+
+if(!Array.isArray(projects)){
+console.error("Unexpected API response",projects);
+list.innerHTML="<p style='padding:20px'>No projects found</p>";
+return;
+}
 
 list.innerHTML="";
 
@@ -309,7 +309,7 @@ const card=document.createElement("div");
 card.className="card";
 
 card.innerHTML=`
-<h3>${p.project_name}</h3>
+<h3>${p.project_name||""}</h3>
 <p>${p.site_address||""} ${p.zip_code||""}</p>
 <p><strong>Sales Rep:</strong> ${p.sales_rep_first||""} ${p.sales_rep_last||""}</p>
 `;
@@ -319,7 +319,17 @@ location.href=`equipment-details.html?projectId=${p.id}`;
 };
 
 list.appendChild(card);
+
 }
+
+}catch(e){
+
+console.error(e);
+document.getElementById("projectList").innerHTML=
+"<p style='padding:20px'>Failed to load projects</p>";
+
+}
+
 }
 
 document.addEventListener("DOMContentLoaded",loadProjects);
