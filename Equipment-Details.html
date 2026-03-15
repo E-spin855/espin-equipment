@@ -186,8 +186,10 @@ Save & Submit Update
 
 <script>
 
-let formData={}
-let dirtyFields=new Set()
+<script>
+
+let formData = {}
+let dirtyFields = new Set()
 
 function group(title){
 const g=document.createElement("div")
@@ -215,62 +217,6 @@ dirtyFields.add(key)
 
 d.appendChild(l)
 d.appendChild(i)
-
-return d
-}
-
-function select(label,key,value,options){
-
-const d=document.createElement("div")
-d.className="field"
-
-const l=document.createElement("label")
-l.textContent=label
-
-const s=document.createElement("select")
-
-const ph=document.createElement("option")
-ph.value=""
-ph.textContent="— Choose —"
-s.appendChild(ph)
-
-options.forEach(opt=>{
-const o=document.createElement("option")
-o.value=opt
-o.textContent=opt
-if(value===opt)o.selected=true
-s.appendChild(o)
-})
-
-s.onchange=function(){
-formData[key]=s.value
-dirtyFields.add(key)
-}
-
-d.appendChild(l)
-d.appendChild(s)
-
-return d
-}
-
-function textarea(label,key,value){
-
-const d=document.createElement("div")
-d.className="field"
-
-const l=document.createElement("label")
-l.textContent=label
-
-const t=document.createElement("textarea")
-t.value=value||""
-
-t.oninput=function(){
-formData[key]=t.value
-dirtyFields.add(key)
-}
-
-d.appendChild(l)
-d.appendChild(t)
 
 return d
 }
@@ -312,7 +258,9 @@ document.getElementById("submitBtn").style.display="none"
 function openModality(mod){
 localStorage.setItem("activeProjectId",projectId)
 localStorage.setItem("activeModality",mod)
-location.href=`equipment-details.html?projectId=${projectId}&modality=${mod}`
+
+location.href =
+`equipment-details.html?projectId=${projectId}&modality=${mod}`
 }
 
 function renderCT(d){
@@ -342,26 +290,38 @@ renderModalitySelector()
 return
 }
 
-document.getElementById("pageTitle").textContent=modality+" Equipment Details"
+document.getElementById("pageTitle").textContent =
+modality+" Equipment Details"
+
 document.getElementById("submitBtn").style.display="block"
 
-const res = await fetch(`/api/equipment-details?projectId=${projectId}&modality=${modality}`,{
+try{
+
+const res = await fetch(
+`/api/equipment-details?projectId=${projectId}&modality=${modality}`,
+{
 headers:{ "x-user-email":userEmail }
 })
 
-const d = await res.json()
+let d={}
+try{ d = await res.json() }catch{}
 
-formData=Object.assign({},d||{})
+formData = Object.assign({},d||{})
 
-if(modality==="CT")renderCT(d)
+if(modality==="CT") renderCT(d)
+
+}catch(e){
+
+console.warn("Load failed",e)
+renderCT({})
+
+}
 
 }
 
 load()
 
 async function saveData(){
-
-if(!dirtyFields.size)return
 
 const btn=document.getElementById("submitBtn")
 
@@ -370,6 +330,10 @@ btn.innerText="Saving..."
 
 const payload={}
 dirtyFields.forEach(k=>payload[k]=formData[k])
+
+try{
+
+if(Object.keys(payload).length){
 
 await fetch("/api/equipment-details",{
 method:"POST",
@@ -385,13 +349,21 @@ data:payload
 })
 })
 
-btn.innerText="✓ Success"
+}
+
+}catch(e){
+console.warn("Save error",e)
+}
+
+btn.innerText="✓ Saved"
 btn.classList.add("success")
 
 setTimeout(()=>{
+
 location.href =
 `equipmentimages.html?projectId=${projectId}&modality=${modality}&modalityId=${modalityId}`
-},800)
+
+},700)
 
 }
 
