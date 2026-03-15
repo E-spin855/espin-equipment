@@ -6,7 +6,6 @@ ssl:{rejectUnauthorized:false}
 })
 
 function cors(res){
-res.setHeader("Access-Control-Allow-Credentials","true")
 res.setHeader("Access-Control-Allow-Origin","*")
 res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS")
 res.setHeader("Access-Control-Allow-Headers","Content-Type,x-user-email")
@@ -20,9 +19,9 @@ if(req.method==="OPTIONS"){
 return res.status(200).end()
 }
 
-const projectId = req.query.projectId || req.body.projectId
-const modality = req.query.modality || req.body.modality
-const userEmail = req.headers["x-user-email"]
+const projectId =
+req.query.projectId ||
+req.body.projectId
 
 if(!projectId){
 return res.status(400).json({error:"missing project"})
@@ -32,44 +31,61 @@ const client = await pool.connect()
 
 try{
 
+/* ---------------- GET ---------------- */
+
 if(req.method==="GET"){
 
 const q = await client.query(
 `
-SELECT data
+SELECT *
 FROM equipment_details
 WHERE project_id=$1
-AND modality=$2
 LIMIT 1
 `,
-[projectId,modality]
+[projectId]
 )
 
-return res.json(q.rows[0]?.data || {})
+return res.json(q.rows[0] || {})
 
 }
 
+/* ---------------- SAVE ---------------- */
+
 if(req.method==="POST"){
 
-const {data} = req.body
+const { data } = req.body
+
+const fields = Object.keys(data)
+if(!fields.length){
+return res.json({ok:true})
+}
+
+const set = fields
+.map((f,i)=>`${f}=$${i+2}`)
+.join(",")
+
+const values = [
+projectId,
+...fields.map(f=>data[f])
+]
 
 await client.query(
 `
-INSERT INTO equipment_details
-(project_id,modality,data,updated_by)
-VALUES ($1,$2,$3,$4)
-ON CONFLICT (project_id,modality)
-DO UPDATE SET
-data = equipment_details.data || $3,
-updated_by=$4,
-updated_at=NOW()
+INSERT INTO equipment_details (project_id)
+VALUES ($1)
+ON CONFLICT (project_id)
+DO NOTHING
 `,
-[
-projectId,
-modality,
-JSON.stringify(data),
-userEmail
-]
+[projectId]
+)
+
+await client.query(
+`
+UPDATE equipment_details
+SET ${set}, updated_at=NOW()
+WHERE project_id=$1
+`,
+values
 )
 
 return res.json({ok:true})
@@ -79,7 +95,7 @@ return res.json({ok:true})
 }catch(e){
 
 console.error(e)
-res.status(500).json({error:"server"})
+return res.status(500).json({error:"server"})
 
 }finally{
 client.release()
