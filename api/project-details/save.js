@@ -34,16 +34,16 @@ export default async function handler(req, res) {
       req.headers["x-useremail"] ||
       "system";
 
-    /* ───────────────────────────────
-       GET (LOAD FORM DATA)
-    ─────────────────────────────── */
+    /* ===============================
+       GET (LOAD EQUIPMENT DETAILS)
+    =============================== */
 
     if (req.method === "GET") {
 
       const { rows } = await client.query(
         `
         SELECT *
-        FROM project_details
+        FROM equipment_details
         WHERE project_id = $1
         `,
         [projectId]
@@ -52,9 +52,9 @@ export default async function handler(req, res) {
       return res.status(200).json(rows[0] || {});
     }
 
-    /* ───────────────────────────────
+    /* ===============================
        POST (SAVE EQUIPMENT DETAILS)
-    ─────────────────────────────── */
+    =============================== */
 
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method not allowed" });
@@ -62,9 +62,9 @@ export default async function handler(req, res) {
 
     const payload = req.body?.data || {};
 
-    /* ───────────────────────────────
-       ARCHIVE GUARD
-    ─────────────────────────────── */
+    /* ===============================
+       ARCHIVE GUARD (ESPIN CONNECT)
+    =============================== */
 
     const archiveCheck = await client.query(
       `SELECT is_archived FROM projects WHERE id = $1`,
@@ -77,38 +77,45 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ───────────────────────────────
+    /* ===============================
        ENSURE DETAILS ROW EXISTS
-    ─────────────────────────────── */
+    =============================== */
 
     await client.query(
       `
-      INSERT INTO project_details (project_id)
+      INSERT INTO equipment_details (project_id)
       VALUES ($1)
       ON CONFLICT (project_id) DO NOTHING
       `,
       [projectId]
     );
 
-    /* ───────────────────────────────
+    /* ===============================
        BEFORE SNAPSHOT
-    ─────────────────────────────── */
+    =============================== */
 
     const beforeRes = await client.query(
-      `SELECT * FROM project_details WHERE project_id = $1`,
+      `
+      SELECT *
+      FROM equipment_details
+      WHERE project_id = $1
+      `,
       [projectId]
     );
 
     const before = beforeRes.rows[0] || {};
 
-    /* ───────────────────────────────
-       DYNAMIC UPDATE BUILD
-    ─────────────────────────────── */
+    /* ===============================
+       BUILD DYNAMIC UPDATE
+    =============================== */
 
     const keys = Object.keys(payload);
 
     if (!keys.length) {
-      return res.status(200).json({ success: true, changedFields: [] });
+      return res.status(200).json({
+        success: true,
+        changedFields: []
+      });
     }
 
     const sets = [];
@@ -116,6 +123,9 @@ export default async function handler(req, res) {
     let idx = 1;
 
     for (const key of keys) {
+
+      // Prevent SQL injection
+      if (!/^[a-z0-9_]+$/i.test(key)) continue;
 
       sets.push(`${key} = $${idx}`);
       values.push(payload[key]);
@@ -126,7 +136,7 @@ export default async function handler(req, res) {
 
     await client.query(
       `
-      UPDATE project_details
+      UPDATE equipment_details
       SET ${sets.join(", ")},
           updated_at = NOW()
       WHERE project_id = $${idx}
@@ -134,9 +144,9 @@ export default async function handler(req, res) {
       values
     );
 
-    /* ───────────────────────────────
+    /* ===============================
        DIFF CALCULATION
-    ─────────────────────────────── */
+    =============================== */
 
     const changedFields = [];
 
@@ -150,9 +160,9 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ───────────────────────────────
-       STORE DIFF FOR UI BADGES
-    ─────────────────────────────── */
+    /* ===============================
+       STORE DIFF FOR BADGES
+    =============================== */
 
     if (changedFields.length) {
 
@@ -162,9 +172,9 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ───────────────────────────────
+    /* ===============================
        GET PROJECT INFO
-    ─────────────────────────────── */
+    =============================== */
 
     const { rows } = await client.query(
       `
@@ -177,24 +187,28 @@ export default async function handler(req, res) {
 
     const project = rows[0];
 
-    /* ───────────────────────────────
-       EMAIL NOTIFICATION
-    ─────────────────────────────── */
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
 
-    const allowed = Array.isArray(project?.allowed_emails)
+    /* ===============================
+       EMAIL NOTIFICATION
+    =============================== */
+
+    const allowed = Array.isArray(project.allowed_emails)
       ? project.allowed_emails
       : [];
 
     await resend.emails.send({
       from: `Espin Medical <${FROM_EMAIL}>`,
       to: ["info@espinmedical.com", ...allowed],
-      subject: `Project Update: ${project?.project_name || "Project"}`,
+      subject: `Project Update: ${project.project_name}`,
       html: "<p>Equipment details updated.</p>"
     });
 
-    /* ───────────────────────────────
+    /* ===============================
        EVENT LOG
-    ─────────────────────────────── */
+    =============================== */
 
     const eventRes = await client.query(
       `
@@ -208,9 +222,9 @@ export default async function handler(req, res) {
 
     const eventId = eventRes.rows[0].id;
 
-    /* ───────────────────────────────
+    /* ===============================
        BADGE COUNTERS
-    ─────────────────────────────── */
+    =============================== */
 
     const ADMIN_EMAIL = "info@espinmedical.com";
     const MASTER_KEY = `stats:total_unread:${ADMIN_EMAIL}`;
@@ -224,11 +238,12 @@ export default async function handler(req, res) {
       [projectId]
     );
 
-    let recipients = users.rows.map(u => u.email);
-
-    if (!recipients.includes(ADMIN_EMAIL)) {
-      recipients.push(ADMIN_EMAIL);
-    }
+    const recipients = [
+      ...new Set([
+        ...users.rows.map(u => u.email),
+        ADMIN_EMAIL
+      ])
+    ];
 
     const incrementCount = changedFields.length || 1;
 
@@ -243,13 +258,13 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ───────────────────────────────
+    /* ===============================
        PUSH NOTIFICATIONS
-    ─────────────────────────────── */
+    =============================== */
 
     await sendPushToUsers(
       "Project Updated",
-      project?.project_name || "Project",
+      project.project_name,
       {
         type: "project_update",
         project_id: projectId,
