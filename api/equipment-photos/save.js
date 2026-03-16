@@ -1,160 +1,108 @@
-import { Pool } from "pg";
-import { kv } from "@vercel/kv";
+<script>
+(() => {
+  if (localStorage.getItem("espinAuth") !== "true") {
+    location.replace("index.html");
+  }
+})();
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+/* USER */
+const userEmail = (localStorage.getItem("espinUserEmail") || "")
+  .toLowerCase()
+  .trim();
 
-function normalizeUploadcareUrl(url) {
-  if (!url) return null;
-  const match = url.match(/[a-f0-9-]{36}/i);
-  return match ? `https://ucarecdn.com/${match[0]}/` : url;
+/* API */
+const API_BASE = "";
+
+/* PROJECT ID — ALWAYS RESOLVE */
+const params = new URLSearchParams(location.search);
+
+let projectId =
+  params.get("projectId") ||
+  params.get("id") ||
+  localStorage.getItem("activeProjectId") ||
+  null;
+
+/* ensure valid uuid */
+if (projectId) {
+  const m = String(projectId).match(/[0-9a-fA-F-]{36}/);
+  projectId = m ? m[0] : null;
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const userEmail =
-    req.headers["x-user-email"] ||
-    req.headers["x-useremail"];
-
-  if (!userEmail) {
-    return res.status(401).json({ error: "Missing user email" });
-  }
-
-  const rawBody = req.body;
-  const body =
-    typeof req.body === "string"
-      ? JSON.parse(req.body)
-      : req.body || {};
-
-  let {
-    projectId,
-    photoId,
-    photo_url,
-    photo_title,
-    photo_comment
-  } = body;
-
-  const client = await pool.connect();
-
-  try {
-    const normalizedUrl = normalizeUploadcareUrl(photo_url);
-
-    /* ===============================
-       RESOLVE photoId IF MISSING
-    =============================== */
-    if (!photoId && normalizedUrl) {
-      const existing = await client.query(
-        `
-        SELECT id, project_id
-        FROM project_photos
-        WHERE photo_url = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-        `,
-        [normalizedUrl]
-      );
-
-      if (existing.rows.length) {
-        photoId = existing.rows[0].id;
-        projectId = existing.rows[0].project_id;
-      }
-    }
-
-    if (!projectId) {
-      return res.status(400).json({ error: "Missing projectId" });
-    }
-
-    /* ===============================
-       ARCHIVE GUARD
-    =============================== */
-    const arch = await client.query(
-      `SELECT project_completed FROM projects WHERE id = $1`,
-      [projectId]
-    );
-
-    if (arch.rows[0]?.project_completed === true) {
-      return res.status(403).json({ error: "Project is archived and read-only" });
-    }
-
-    /* ===============================
-       FLOW A — CREATE
-    =============================== */
-    if (!photoId) {
-      const insert = await client.query(
-        `
-        INSERT INTO project_photos (
-          project_id,
-          photo_url,
-          photo_title,
-          photo_comment,
-          queued_for_email,
-          uploaded_by_email,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, true, $5, NOW())
-        RETURNING id
-        `,
-        [
-          projectId,
-          normalizedUrl,
-          photo_title || null,
-          photo_comment || null,
-          userEmail
-        ]
-      );
-
-      /* ===============================
-         ✅ IMAGE BADGE WRITE (THE FIX)
-      =============================== */
-      const BADGE_KEY = `project:badges_images:${projectId}`;
-      const existing = (await kv.get(BADGE_KEY)) || [];
-
-      existing.push({
-        photoId: insert.rows[0].id,
-        ts: Date.now()
-      });
-
-      await kv.set(BADGE_KEY, existing);
-
-      return res.status(200).json({
-        success: true,
-        photoId: insert.rows[0].id
-      });
-    }
-
-    /* ===============================
-       FLOW B — UPDATE META (NO BADGE)
-    =============================== */
-    const update = await client.query(
-      `
-      UPDATE project_photos
-      SET
-        photo_title   = COALESCE($1, photo_title),
-        photo_comment = COALESCE($2, photo_comment)
-      WHERE id = $3
-      RETURNING id, photo_title, photo_comment
-      `,
-      [
-        photo_title ?? null,
-        photo_comment ?? null,
-        photoId
-      ]
-    );
-
-    return res.status(200).json({
-      success: true,
-      updated: update.rows[0] || null
-    });
-
-  } catch (err) {
-    console.error("SAVE ERROR:", err);
-    return res.status(500).json({ error: "Save failed" });
-  } finally {
-    client.release();
-  }
+if (!projectId) {
+  console.error("Missing projectId");
 }
+
+localStorage.setItem("activeProjectId", projectId);
+
+/* BACK NAV */
+function handleBack(){
+ location.href="equipment-details.html?projectId=" + projectId;
+}
+
+/* IMAGE ID RESOLVER */
+function getPrimaryId(p){
+ return String(
+   p?.id ||
+   p?.photoId ||
+   p?.photo_id ||
+   p?.uuid ||
+   p?.image_id ||
+   p?.imageId ||
+   ""
+ ).trim();
+}
+
+/* ===============================
+   NEW PILL LOGIC
+=============================== */
+
+const BADGE_STORAGE_KEY = `new_images_${projectId}`;
+const BADGE_KV_KEY = `project:badges_images:${projectId}:${userEmail}`;
+
+let newImageIds = new Set();
+
+/* load local state */
+try {
+  const local = JSON.parse(localStorage.getItem(BADGE_STORAGE_KEY) || "[]");
+  local.forEach(id => newImageIds.add(id));
+} catch {}
+
+/* mark seen */
+function clearNewImage(id){
+  if(!newImageIds.has(id)) return;
+
+  newImageIds.delete(id);
+
+  localStorage.setItem(
+    BADGE_STORAGE_KEY,
+    JSON.stringify([...newImageIds])
+  );
+}
+
+/* render badge */
+function renderNewBadge(card,id){
+
+  if(!newImageIds.has(id)) return;
+
+  const badge=document.createElement("div");
+
+  badge.textContent="NEW";
+
+  badge.style.cssText=`
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:#d93025;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  padding:4px 7px;
+  border-radius:6px;
+  z-index:10;
+  `;
+
+  card.style.position="relative";
+
+  card.appendChild(badge);
+}
+</script>

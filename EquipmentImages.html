@@ -4,9 +4,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <script>
-/* ===============================
-   AUTH + PARAMS
-=============================== */
 (() => {
   if (localStorage.getItem("espinAuth") !== "true") {
     location.replace("index.html");
@@ -14,8 +11,6 @@
 })();
 
 const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
-
-/* API BASE — SAME PROJECT */
 const API_BASE = "";
 
 const params = new URLSearchParams(location.search);
@@ -23,772 +18,540 @@ const urlProjectId = params.get("id") || params.get("projectId");
 if (urlProjectId) localStorage.setItem("activeProjectId", urlProjectId);
 const projectId = localStorage.getItem("activeProjectId");
 
-/* ===============================
-   NEW PILL (IMAGES) — STABLE
-=============================== */
-const BADGE_STORAGE_KEY = `new_images_${projectId}`;
-const BADGE_KV_KEY = `project:badges_images:${projectId}:${userEmail}`;
-let hasClearedBadges = false;
-
-function safeParseArray(value) {
-  try {
-    const v = typeof value === "string" ? JSON.parse(value) : value;
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
+function handleBack(){
+ location.href="equipment-details.html";
 }
 
-function uniqStrings(list) {
-  return Array.from(
-    new Set((list || []).map(x => String(x).trim()).filter(Boolean))
-  );
-}
-
-function candidateIds(p) {
-  const c = [
-    p?.id,
-    p?.photoId,
-    p?.photo_id,
-    p?.uuid,
-    p?.image_id,
-    p?.imageId,
-    p?.photo_uuid
-  ]
-    .map(v => String(v ?? "").trim())
-    .filter(Boolean);
-
-  return Array.from(new Set(c));
-}
-
-function getPrimaryId(p) {
-  const c = candidateIds(p);
-  return c[0] || "";
-}
-
-function getActiveBadges() {
-  const s = sessionStorage.getItem(BADGE_STORAGE_KEY);
-  const l = localStorage.getItem(BADGE_STORAGE_KEY);
-  return uniqStrings(safeParseArray(s || l || "[]"));
-}
-
-function saveBadgesLocally(list) {
-  const arr = uniqStrings(list);
-  const json = JSON.stringify(arr);
-  sessionStorage.setItem(BADGE_STORAGE_KEY, json);
-  localStorage.setItem(BADGE_STORAGE_KEY, json);
-}
-
-async function syncBadgesFromKV() {
-  try {
-    const r = await fetch(`${API_BASE}/api/kv-get`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: BADGE_KV_KEY })
-    });
-
-    const j = await r.json();
-    const val = uniqStrings(safeParseArray(j?.value));
-    saveBadgesLocally(val);
-    return val;
-  } catch {
-    return getActiveBadges();
-  }
-}
-
-async function writeBadgesToKV(list) {
-  try {
-    const arr = uniqStrings(list);
-    await fetch(`${API_BASE}/api/kv-set`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: BADGE_KV_KEY, value: JSON.stringify(arr) })
-    });
-  } catch {}
-}
-
-function clearBadgesOnExit() {
-  if (hasClearedBadges) return;
-  hasClearedBadges = true;
-
-  sessionStorage.removeItem(BADGE_STORAGE_KEY);
-  localStorage.removeItem(BADGE_STORAGE_KEY);
-
-  const payload = JSON.stringify({ key: BADGE_KV_KEY, value: "[]" });
-  const blob = new Blob([payload], { type: "application/json" });
-  navigator.sendBeacon(`${API_BASE}/api/kv-set`, blob);
-}
-
-function handleBack() {
-  clearBadgesOnExit();
-  setTimeout(() => { location.href = "equipment-details.html"; }, 100);
-}
-
-function isNewForPhoto(p, badgeSet) {
-  const ids = candidateIds(p);
-  for (const id of ids) {
-    if (badgeSet.has(id)) return true;
-  }
-  return false;
+function getPrimaryId(p){
+ return String(
+   p?.id ||
+   p?.photoId ||
+   p?.photo_id ||
+   p?.uuid ||
+   p?.image_id ||
+   p?.imageId ||
+   ""
+ ).trim();
 }
 </script>
 
 <style>
 :root{
-  --blue:#1F7BC8;
-  --gray:#777;
-  --bg:#f6f6f6;
-  --danger:#d93025;
+--blue:#1F7BC8;
+--gray:#777;
+--bg:#f6f6f6;
+--danger:#d93025;
 }
 
-*{
-  box-sizing:border-box;
+*{box-sizing:border-box}
+
+html,body{
+margin:0;
+padding:0;
+width:100%;
+min-height:100%;
+overflow:hidden;
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+background:#fff;
 }
 
-/* LOCK BODY */
-html, body{
-  margin:0;
-  padding:0;
-  width:100%;
-  max-width:100%;
-  min-height:100%;
-  overflow:hidden;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:#fff;
-}
-
-/* PAGE SCROLL LAYER */
 .page{
-  background:#fff;
-
-  min-height:100vh;
-  height:100vh;
-
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-
-  display:flex;
-  flex-direction:column;
-
-  padding-top:90px;
+min-height:100vh;
+height:100vh;
+overflow-y:auto;
+display:flex;
+flex-direction:column;
+padding-top:90px;
 }
-/* INNER CONTENT */
+
 .container{
-  width:100%;
-  max-width:320px;
-  margin:0 auto;
-  padding:0;
-  padding-bottom:400px;
+width:100%;
+max-width:320px;
+margin:auto;
+padding-bottom:400px;
 }
 
-/* HEADER */
 .header{
-  background:var(--blue);
-  color:#fff;
-
-  padding:calc(16px + env(safe-area-inset-top)) 16px 16px 16px;
-
-  display:flex;
-  align-items:center;
-  justify-content:center;
-
-  position:fixed;
-  top:0;
-  left:0;
-  right:0;
-
-  z-index:1000;
+background:var(--blue);
+color:#fff;
+padding:calc(16px + env(safe-area-inset-top)) 16px 16px 16px;
+display:flex;
+align-items:center;
+justify-content:center;
+position:fixed;
+top:0;
+left:0;
+right:0;
+z-index:1000;
 }
 
-/* HEADER TITLE */
 .header h1{
-  margin:0;
-  font-size:20px;
-  font-weight:800;
-  text-align:center;
+margin:0;
+font-size:20px;
+font-weight:800;
 }
+
 .back-arrow{
-  position:absolute;
-  left:16px;
-
-  top:50%;
-  transform:translateY(calc(-50% + env(safe-area-inset-top)/2));
-
-  color:#fff;
-  text-decoration:none;
-  font-size:32px;
-  font-weight:800;
-  cursor:pointer;
-  line-height:1;
-}
-#newDebug {
-  padding:10px 20px;
-  font-weight:800;
-  font-size:12px;
-  border-bottom:1px solid #eee;
-  background:#fff;
+position:absolute;
+left:16px;
+top:50%;
+transform:translateY(calc(-50% + env(safe-area-inset-top)/2));
+color:#fff;
+text-decoration:none;
+font-size:32px;
+font-weight:800;
+cursor:pointer;
 }
 
 .section-title{
-  font-size:22px;
-  font-weight:800;
-  margin:60px 0 18px 0;
+font-size:22px;
+font-weight:800;
+margin:60px 0 18px 0;
 }
 
-.upload-card {
-  border:2px dashed #ccc;
-  border-radius:16px;
-  padding:16px;
-  display:flex;
-  align-items:center;
-  gap:12px;
+.upload-card{
+border:2px dashed #ccc;
+border-radius:16px;
+padding:16px;
+display:flex;
+align-items:center;
+gap:12px;
 }
 
-.upload-card button {
-  flex:1;
-  padding:14px;
-  border-radius:12px;
-  border:none;
-  background:var(--blue);
-  color:#fff;
-  font-weight:800;
-  cursor:pointer;
+.upload-card button{
+flex:1;
+padding:14px;
+border-radius:12px;
+border:none;
+background:var(--blue);
+color:#fff;
+font-weight:800;
+cursor:pointer;
 }
 
-.spinner {
-  width:18px;
-  height:18px;
-  border:3px solid #ddd;
-  border-top:3px solid var(--blue);
-  border-radius:50%;
-  animation:spin 1s linear infinite;
-  display:none;
+.spinner{
+width:18px;
+height:18px;
+border:3px solid #ddd;
+border-top:3px solid var(--blue);
+border-radius:50%;
+animation:spin 1s linear infinite;
+display:none;
 }
 
-@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes spin{to{transform:rotate(360deg)}}
 
 .gallery{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:18px;
+display:grid;
+grid-template-columns:1fr;
+gap:18px;
 }
 
 .card{
-  width:100%;
-  margin:12px 0;
-  border:1px solid #ddd;
-  border-radius:16px;
-  overflow:hidden;
-  position:relative;
-}
-.new-badge{
-  position:absolute;
-  top:10px;
-  right:10px;
-  background:#ff3b30;
-  color:#fff;
-  padding:4px 10px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:800;
-  z-index:5;
-}
-
-.archived-overlay{
-  position:absolute;
-  inset:0;
-  background:rgba(255,255,255,.7);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:800;
-  z-index:10;
+width:100%;
+margin:12px 0;
+border:1px solid #ddd;
+border-radius:16px;
+overflow:hidden;
 }
 
 .card-header{
-  background:var(--blue);
-  padding:10px;
+background:var(--blue);
+padding:10px;
 }
 
 .card-header input{
-  width:100%;
-  border:none;
-  background:transparent;
-  color:#fff;
-  caret-color:#fff;
-  font-weight:800;
-  font-size:16px;
-  outline:none;
+width:100%;
+border:none;
+background:transparent;
+color:#fff;
+font-weight:800;
+font-size:16px;
+outline:none;
 }
+
 .card img{
-  width:100%;
-  height:360px;
-  object-fit:cover;
-  display:block;
+width:100%;
+height:360px;
+object-fit:cover;
+display:block;
 }
 
 .card-body{
-  padding:12px;
+padding:12px;
 }
 
 .card-body textarea{
-  width:100%;
-  min-height:60px;
-  border-radius:10px;
-  border:1px solid #ddd;
-  padding:10px;
-  box-sizing:border-box;
+width:100%;
+min-height:60px;
+border-radius:10px;
+border:1px solid #ddd;
+padding:10px;
 }
 
 .card-footer{
-  padding:12px;
-  border-top:1px solid #eee;
-  display:flex;
-  gap:8px;
-  align-items:center;
-}
-.batch-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #fff;
-  border-top: 1px solid #ddd;
-  padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
-  z-index: 9999;
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
-  touch-action: manipulation;
+padding:12px;
+border-top:1px solid #eee;
+display:flex;
+gap:8px;
+align-items:center;
 }
 
-.batch-btn {
-  width:100%;
-  padding:14px;
-  border-radius:12px;
-  font-size:16px;
-  font-weight:800;
-  border:none;
-  margin-bottom:10px;
-  cursor:pointer;
+.batch-bar{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+background:#fff;
+border-top:1px solid #ddd;
+padding:14px;
+z-index:9999;
+box-shadow:0 -4px 12px rgba(0,0,0,.1);
 }
 
-#sendBtn { background:var(--blue); color:#fff; }
-#deleteBtn { background:var(--danger); color:#fff; }
-
-button:disabled { opacity:.45; cursor:not-allowed; }
-
-.preview-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 99999;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .2s ease;
+.batch-btn{
+width:100%;
+padding:14px;
+border-radius:12px;
+font-size:16px;
+font-weight:800;
+border:none;
+margin-bottom:10px;
+cursor:pointer;
 }
 
-.preview-modal.active {
-  opacity: 1;
-  pointer-events: auto;
+#sendBtn{background:var(--blue);color:#fff}
+#deleteBtn{background:var(--danger);color:#fff}
+
+.preview-modal{
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.85);
+display:flex;
+align-items:center;
+justify-content:center;
+z-index:99999;
+opacity:0;
+pointer-events:none;
+transition:opacity .2s ease;
 }
 
-.preview-modal img {
-  max-width: 95%;
-  max-height: 90%;
-  object-fit: contain;
-  border-radius: 12px;
+.preview-modal.active{
+opacity:1;
+pointer-events:auto;
 }
 
-.preview-close {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  font-size: 28px;
-  color: #fff;
-  font-weight: 800;
-  cursor: pointer;
+.preview-modal img{
+max-width:95%;
+max-height:90%;
+object-fit:contain;
+border-radius:12px;
+}
+
+.preview-close{
+position:absolute;
+top:20px;
+right:20px;
+font-size:28px;
+color:#fff;
+font-weight:800;
+cursor:pointer;
 }
 </style>
 </head>
+
 <body>
 <div class="page">
 
 <div class="header">
-  <div onclick="handleBack()" class="back-arrow">←</div>
-  <h1>Project Images</h1>
+<div onclick="handleBack()" class="back-arrow">←</div>
+<h1>Project Images</h1>
 </div>
 
 <div class="container">
-  <div id="archiveBanner" class="archived-banner" style="display:none">
-    🔒 Archived · Read-only
-  </div>
 
-  <div class="section-title">Upload Image</div>
-  <div class="upload-card">
-    <input id="filePicker" type="file" accept="image/*" hidden>
-    <button id="chooseFileBtn" type="button">Choose Image</button>
-    <div id="uploadSpinner" class="spinner"></div>
-  </div>
+<div class="section-title">Upload Image</div>
 
-  <div id="gallery" class="gallery" style="margin-top:20px;"></div>
+<div class="upload-card">
+<input id="filePicker" type="file" accept="image/*" hidden>
+<button id="chooseFileBtn">Choose Image</button>
+<div id="uploadSpinner" class="spinner"></div>
+</div>
+
+<div id="gallery" class="gallery" style="margin-top:20px;"></div>
+
 </div>
 
 <div class="batch-bar">
-  <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
-  <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
+<button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
+<button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
 </div>
-<!-- PREVIEW MODAL -->
+
 <div id="previewModal" class="preview-modal">
-  <div class="preview-close" id="previewClose">✕</div>
-  <img id="previewImage" src="" alt="Preview">
+<div class="preview-close" id="previewClose">✕</div>
+<img id="previewImage">
 </div>
+
 <script>
-const CLOUD_NAME = "duljf51bg";
-const UPLOAD_PRESET = "espin_unsigned";
 
-const filePicker = document.getElementById("filePicker");
-const chooseFileBtn = document.getElementById("chooseFileBtn");
-const uploadSpinner = document.getElementById("uploadSpinner");
-const gallery = document.getElementById("gallery");
-const sendBtn = document.getElementById("sendBtn");
-const deleteBtn = document.getElementById("deleteBtn");
-/* PREVIEW LOGIC */
-const previewModal = document.getElementById("previewModal");
-const previewImage = document.getElementById("previewImage");
-const previewClose = document.getElementById("previewClose");
+const CLOUD_NAME="duljf51bg"
+const UPLOAD_PRESET="espin_unsigned"
 
-function openPreview(src) {
-  previewImage.src = src;
-  previewModal.classList.add("active");
-  document.body.style.overflow = "hidden";
+const filePicker=document.getElementById("filePicker")
+const chooseFileBtn=document.getElementById("chooseFileBtn")
+const uploadSpinner=document.getElementById("uploadSpinner")
+const gallery=document.getElementById("gallery")
+const sendBtn=document.getElementById("sendBtn")
+const deleteBtn=document.getElementById("deleteBtn")
+
+const previewModal=document.getElementById("previewModal")
+const previewImage=document.getElementById("previewImage")
+const previewClose=document.getElementById("previewClose")
+
+function openPreview(src){
+previewImage.src=src
+previewModal.classList.add("active")
+document.body.style.overflow="hidden"
 }
 
-function closePreview() {
-  previewModal.classList.remove("active");
-  previewImage.src = "";
-  document.body.style.overflow = "";
+function closePreview(){
+previewModal.classList.remove("active")
+previewImage.src=""
+document.body.style.overflow=""
 }
 
-previewClose.onclick = closePreview;
-previewModal.onclick = (e) => {
-  if (e.target === previewModal) closePreview();
-};
-let photos = [];
-let selected = new Set(); // stores primary id strings
-let uploading = false;
-let isArchived = false;
-
-/* ARCHIVE */
-async function loadArchiveState() {
-  try {
-    const r = await fetch(`${API_BASE}/api/projects?id=${projectId}`, {
-      headers: { "x-user-email": userEmail }
-    });
-    const p = await r.json();
-    isArchived = p?.project_completed === true;
-  } catch {
-    isArchived = false;
-  }
+previewClose.onclick=closePreview
+previewModal.onclick=e=>{
+if(e.target===previewModal)closePreview()
 }
 
-function applyArchiveUI() {
-  if (!isArchived) return;
+let photos=[]
+let selected=new Set()
+let uploading=false
 
-  document.getElementById("archiveBanner").style.display = "block";
-  chooseFileBtn.disabled = true;
-  sendBtn.disabled = true;
-  deleteBtn.disabled = true;
+function updateBatchState(){
+const sel=photos.filter(p=>selected.has(getPrimaryId(p)))
+sendBtn.disabled=!(sel.length&&sel.every(p=>(p.photo_title||"").trim()))
+deleteBtn.disabled=sel.length===0
 }
 
-function updateBatchState() {
-  if (isArchived) return;
-  const sel = photos.filter(p => selected.has(getPrimaryId(p)));
-  sendBtn.disabled = !(sel.length && sel.every(p => (p.photo_title || "").trim()));
-  deleteBtn.disabled = sel.length === 0;
+async function saveMeta(p){
+
+const payload = {
+  projectId,
+  photo_title: p.photo_title,
+  photo_comment: p.photo_comment
 }
 
-async function saveMeta(p) {
-  if (isArchived) return;
-  await fetch(`${API_BASE}/api/equipment-photos/save`, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-    body: JSON.stringify({
-      photoId: getPrimaryId(p),
-      projectId,
-      photo_title: p.photo_title,
-      photo_comment: p.photo_comment
-    })
-  });
+const pid = getPrimaryId(p)
+
+if(pid){
+  payload.photoId = pid
 }
 
-const debouncedSave = ((fn, d=600) => {
-  let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), d); };
-})(saveMeta);
+await fetch(`${API_BASE}/api/equipment-photos/save`,{
+  method:"POST",
+  headers:{
+    "Content-Type":"application/json",
+    "x-user-email":userEmail
+  },
+  body:JSON.stringify(payload)
+})
+}
+const debouncedSave=((fn,d=600)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}})(saveMeta)
 
-/* RENDER */
-function appendCard(p, badgeSet, forceBadge = false) {
-  const pid = getPrimaryId(p);
-  const card = document.createElement("div");
-  card.className = "card";
-  card.dataset.id = pid;
+function appendCard(p){
 
-  const showBadge = forceBadge ? true : isNewForPhoto(p, badgeSet);
+const pid=getPrimaryId(p)
 
-  card.innerHTML = `
-    ${showBadge ? '<div class="new-badge">NEW</div>' : ''}
-    <div class="card-header">
-  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Image Title...">
+const card=document.createElement("div")
+card.className="card"
+card.dataset.id=pid
+
+card.innerHTML=`
+<div class="card-header">
+<input type="text" value="${p.photo_title||""}" placeholder="Image Title...">
 </div>
-    <img src="${p.photo_url}">
-    <div class="card-body">
-      <textarea placeholder="Add a comment...">${p.photo_comment||''}</textarea>
-    </div>
-    <div class="card-footer">
-      <input type="checkbox">
-      <label>Select</label>
-    </div>`;
-const img = card.querySelector("img");
-img.style.cursor = "zoom-in";
-img.onclick = () => openPreview(p.photo_url);
-  const title = card.querySelector("input");
-  const note = card.querySelector("textarea");
-  const cb = card.querySelector("input[type=checkbox]");
+<img src="${p.photo_url}">
+<div class="card-body">
+<textarea placeholder="Add a comment...">${p.photo_comment||""}</textarea>
+</div>
+<div class="card-footer">
+<input type="checkbox">
+<label>Select</label>
+</div>
+`
 
-  if (isArchived) {
-    title.disabled = true;
-    note.disabled = true;
-    cb.disabled = true;
-  }
+const img=card.querySelector("img")
+img.style.cursor="zoom-in"
+img.onclick=()=>openPreview(p.photo_url)
 
-  title.oninput = () => {
-    p.photo_title = title.value;
-    debouncedSave(p);
-    updateBatchState();
-  };
+const title=card.querySelector("input")
+const note=card.querySelector("textarea")
+const cb=card.querySelector("input[type=checkbox]")
 
-  note.oninput = () => {
-    p.photo_comment = note.value;
-    debouncedSave(p);
-  };
-
- cb.onchange = () => {
-  cb.checked ? selected.add(pid) : selected.delete(pid);
-  updateBatchState();
-};
-
-gallery.append(card);
-return card;
+title.oninput=()=>{
+p.photo_title=title.value
+debouncedSave(p)
+updateBatchState()
 }
-/* UPLOAD */
-chooseFileBtn.onclick = () => { if(!uploading && !isArchived) filePicker.click(); };
 
-filePicker.onchange = async () => {
-  if (isArchived) return;
-  const file = filePicker.files[0];
-  if (!file) return;
+note.oninput=()=>{
+p.photo_comment=note.value
+debouncedSave(p)
+}
 
-  uploading = true;
-  uploadSpinner.style.display = "block";
-  chooseFileBtn.disabled = true;
+cb.onchange=()=>{
+cb.checked?selected.add(pid):selected.delete(pid)
+updateBatchState()
+}
 
-  try {
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", UPLOAD_PRESET);
+gallery.append(card)
+}
 
-    const cloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-      method:"POST",
-      body:fd
-    });
-    const data = await cloud.json();
+chooseFileBtn.onclick=()=>{if(!uploading)filePicker.click()}
 
-    const res = await fetch(`${API_BASE}/api/equipment-photos/save`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-      body: JSON.stringify({ projectId, photo_url:data.secure_url, photo_title:"", photo_comment:"" })
-    });
+filePicker.onchange=async()=>{
 
-    const out = await res.json();
-    const photoId = String(out?.photoId ?? out?.id ?? "").trim();
-    if (!photoId) return;
+const file=filePicker.files[0]
+if(!file)return
 
-    const cur = getActiveBadges();
-    if (!cur.includes(photoId)) cur.push(photoId);
-    saveBadgesLocally(cur);
-    await writeBadgesToKV(cur);
+uploading=true
+uploadSpinner.style.display="block"
 
-    const p = { id: photoId, photo_url:data.secure_url, photo_title:"", photo_comment:"" };
-    photos.unshift(p);
+try{
 
-    const badgeSet = new Set(getActiveBadges());
-    const card = appendCard(p, badgeSet, true);
-card.remove();
-gallery.prepend(card);
+const fd=new FormData()
+fd.append("file",file)
+fd.append("upload_preset",UPLOAD_PRESET)
 
-    updateBatchState();
-  } finally {
-    uploading = false;
-    uploadSpinner.style.display = "none";
-    chooseFileBtn.disabled = false;
-    filePicker.value = "";
-  }
-};
+const cloud=await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,{
+method:"POST",
+body:fd
+})
 
-/* SEND */
-sendBtn.onclick = async () => {
-  if (isArchived || sendBtn.disabled) return;
+const data=await cloud.json()
 
-  sendBtn.disabled = true;
-  sendBtn.innerText = "Sending...";
+const res=await fetch(`${API_BASE}/api/equipment-photos/save`,{
+method:"POST",
+headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+body:JSON.stringify({
+projectId,
+photo_url:data.secure_url,
+photo_title:"",
+photo_comment:""
+})
+})
 
-  try {
-    const ids = [...selected];
+const out=await res.json()
 
-    /* QUEUE IMAGES FIRST */
-    for (const id of ids) {
-      await fetch(`${API_BASE}/api/equipment-photos/queue`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-        body: JSON.stringify({ photoId:id, queued:true })
-      });
-    }
-    /* INCLUDE EQUIPMENT SPECS */
-let specs = {};
+const p={
+id:out?.photoId||out?.id,
+photo_url:data.secure_url,
+photo_title:"",
+photo_comment:""
+}
+
+photos.unshift(p)
+
+gallery.innerHTML=""
+photos.forEach(appendCard)
+
+updateBatchState()
+
+}finally{
+uploading=false
+uploadSpinner.style.display="none"
+filePicker.value=""
+}
+
+}
+
+sendBtn.onclick=async()=>{
+
+const ids=[...selected]
+
+await fetch(`${API_BASE}/api/equipment-photos/email`,{
+method:"POST",
+headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+body:JSON.stringify({projectId,photoIds:ids})
+})
+
+selected.clear()
+document.querySelectorAll(".card-footer input").forEach(cb=>cb.checked=false)
+updateBatchState()
+
+}
+
+deleteBtn.onclick=async()=>{
+
+for(const id of [...selected]){
+
+await fetch(`${API_BASE}/api/equipment-photos/delete`,{
+method:"POST",
+headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+body:JSON.stringify({photoId:id,projectId})
+})
+
+document.querySelector(`.card[data-id="${id}"]`)?.remove()
+
+photos=photos.filter(p=>getPrimaryId(p)!==id)
+
+}
+
+selected.clear()
+updateBatchState()
+
+}
+
+;(async()=>{
+
+let data = [];
 
 try {
-  specs = JSON.parse(localStorage.getItem("espinSpecs") || "{}");
-} catch {
-  specs = {};
+
+  const res = await fetch(
+    `${API_BASE}/api/equipment-photos/list?projectId=${projectId}`,
+    {
+      headers: {
+        "x-user-email": userEmail
+      }
+    }
+  );
+
+  if (!res.ok) {
+    console.error("Photo list API failed:", res.status);
+  } else {
+    const json = await res.json();
+
+    if (Array.isArray(json)) {
+      data = json;
+    } else {
+      console.error("Photo API returned non-array:", json);
+    }
+  }
+
+} catch (err) {
+  console.error("Photo fetch error:", err);
 }
 
-/* THEN SEND EMAILS */
-await fetch(`${API_BASE}/api/equipment-photos/email`, {
-  method:"POST",
-  headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-  body: JSON.stringify({
-    projectId,
-    photoIds: ids,
-    specs
-  })
-});
+photos=data
 
-    selected.clear();
-    document.querySelectorAll(".card-footer input[type=checkbox]").forEach(cb => (cb.checked=false));
+photos.sort((a,b)=>{
+const da=new Date(a?.created_at||0).getTime()
+const db=new Date(b?.created_at||0).getTime()
+return db-da
+})
 
-    sendBtn.innerText = "Send Selected Images";
-    updateBatchState();
+gallery.innerHTML=""
+photos.forEach(appendCard)
 
-  } catch (e) {
-    console.error("Send failed:", e);
-    sendBtn.innerText = "Send Selected Images";
-    sendBtn.disabled = false;
-  }
-};
-/* DELETE */
-deleteBtn.onclick = async () => {
-  if (isArchived || !selected.size) return;
+updateBatchState()
 
-  deleteBtn.disabled = true;
-  deleteBtn.innerText = "Deleting...";
+})()
 
-  try {
-    const badgeList = getActiveBadges();
-
-    for (const id of [...selected]) {
-      await fetch(`${API_BASE}/api/equipment-photos/delete`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-        body: JSON.stringify({ photoId:id, projectId })
-      });
-
-      document.querySelector(`.card[data-id="${id}"]`)?.remove();
-      photos = photos.filter(p => getPrimaryId(p) !== id);
-
-      const idx = badgeList.indexOf(id);
-      if (idx !== -1) badgeList.splice(idx, 1);
-    }
-
-    saveBadgesLocally(badgeList);
-    await writeBadgesToKV(badgeList);
-
-    selected.clear();
-    updateBatchState();
-  } catch (e) {
-    console.error("Delete failed:", e);
-    alert("Delete failed. Try again.");
-  } finally {
-    deleteBtn.innerText = "Delete Selected Images";
-    deleteBtn.disabled = false;
-  }
-};
-
-/* INIT */
-/* INIT */
-(async () => {
-
-  await loadArchiveState();
-  applyArchiveUI();
-
-  const kvBadges = await syncBadgesFromKV();
-  const badgeSet = new Set(kvBadges);
-
-  let data = [];
-
-  try {
-
-    const res = await fetch(`${API_BASE}/api/equipment-photos/list?projectId=${projectId}`, {
-      headers: { "x-user-email": userEmail }
-    });
-
-    if (!res.ok) {
-      console.error("Photo list API failed:", res.status);
-    } else {
-
-      const json = await res.json();
-
-      if (Array.isArray(json)) {
-        data = json;
-      } else {
-        console.error("Photo API returned non-array:", json);
-      }
-
-    }
-
-  } catch (err) {
-    console.error("Photo fetch error:", err);
-  }
-
-  photos = data;
-
-  /* FORCE NEWEST FIRST */
-  photos.sort((a,b) => {
-    const da = new Date(a?.created_at || 0).getTime();
-    const db = new Date(b?.created_at || 0).getTime();
-    return db - da;
-  });
-
-  gallery.innerHTML = "";
-
-  for (const p of photos) {
-    appendCard(p, badgeSet);
-  }
-
-  updateBatchState();
-
-})();
-
-  /* FORCE NEWEST FIRST */
-  photos.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-
-  gallery.innerHTML = "";
-
-  photos.forEach(p => appendCard(p, badgeSet));
-
-  updateBatchState();
-})();
 </script>
+
 </div>
 </body>
 </html>
