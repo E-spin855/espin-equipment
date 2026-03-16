@@ -7,7 +7,7 @@ const pool = new Pool({
 
 /* ===============================
    CORS
-================================ */
+=============================== */
 function cors(res) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -20,7 +20,7 @@ function cors(res) {
 
 /* ===============================
    GET PROJECT ID
-================================ */
+=============================== */
 function getProjectId(req) {
   return (
     req.query?.projectId ||
@@ -33,41 +33,41 @@ function getProjectId(req) {
 
 /* ===============================
    HANDLER
-================================ */
+=============================== */
 export default async function handler(req, res) {
 
   cors(res);
 
+  /* PRE-FLIGHT */
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  /* ONLY ALLOW GET */
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const userEmail = String(
+    req.headers["x-user-email"] ||
+    req.headers["x-useremail"] ||
+    req.headers["x-user_email"] ||
+    ""
+  ).toLowerCase().trim();
+
+  if (!userEmail) {
+    return res.status(401).json({ error: "Missing user email" });
+  }
+
+  const projectId = getProjectId(req);
+
+  if (!projectId) {
+    return res.status(400).json({ error: "Missing projectId" });
   }
 
   const client = await pool.connect();
 
   try {
-
-    const userEmail = String(
-      req.headers["x-user-email"] ||
-      req.headers["x-useremail"] ||
-      req.headers["x-user_email"] ||
-      ""
-    )
-      .toLowerCase()
-      .trim();
-
-    if (!userEmail) {
-      return res.status(401).json({ error: "Missing user email" });
-    }
-
-    const projectId = getProjectId(req);
-
-    if (!projectId) {
-      return res.status(400).json({ error: "Missing projectId" });
-    }
-
-    /* ===============================
-       LOAD PHOTOS
-    =============================== */
 
     const q = await client.query(
       `
@@ -90,6 +90,7 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error("equipment-photos list error:", err);
     return res.status(500).json({ error: "Server error" });
+
   } finally {
     client.release();
   }
