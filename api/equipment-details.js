@@ -15,7 +15,7 @@ module.exports = async function handler(req,res){
 
   cors(res)
 
-  if(req.method==="OPTIONS"){
+  if(req.method === "OPTIONS"){
     return res.status(200).end()
   }
 
@@ -33,17 +33,27 @@ module.exports = async function handler(req,res){
 
     try{
 
-      if(req.method==="GET"){
+      /* ===============================
+         GET
+      =============================== */
+
+      if(req.method === "GET"){
 
         const q = await client.query(
-          "SELECT * FROM equipment_details WHERE project_id=$1 LIMIT 1",
+          `SELECT * FROM equipment_details
+           WHERE project_id = $1
+           LIMIT 1`,
           [projectId]
         )
 
         return res.json(q.rows[0] || {})
       }
 
-      if(req.method==="POST"){
+      /* ===============================
+         POST
+      =============================== */
+
+      if(req.method === "POST"){
 
         const { data } = req.body || {}
 
@@ -52,6 +62,29 @@ module.exports = async function handler(req,res){
         if(!fields.length){
           return res.json({ok:true})
         }
+
+        /* ensure row exists */
+
+        const exists = await client.query(
+          `SELECT project_id
+           FROM equipment_details
+           WHERE project_id = $1
+           LIMIT 1`,
+          [projectId]
+        )
+
+        if(!exists.rows.length){
+
+          await client.query(
+            `INSERT INTO equipment_details
+             (project_id, created_at, updated_at)
+             VALUES ($1, NOW(), NOW())`,
+            [projectId]
+          )
+
+        }
+
+        /* build update */
 
         const set = fields
           .map((f,i)=>`${f}=$${i+2}`)
@@ -63,20 +96,21 @@ module.exports = async function handler(req,res){
         ]
 
         await client.query(
-          "INSERT INTO equipment_details(project_id) VALUES($1) ON CONFLICT DO NOTHING",
-          [projectId]
-        )
-
-        await client.query(
-          `UPDATE equipment_details SET ${set}, updated_at=NOW() WHERE project_id=$1`,
+          `UPDATE equipment_details
+           SET ${set},
+               updated_at = NOW()
+           WHERE project_id = $1`,
           values
         )
 
         return res.json({ok:true})
+
       }
 
     } finally {
+
       client.release()
+
     }
 
   } catch(e){
