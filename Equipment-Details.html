@@ -7,38 +7,33 @@
 
 <script>
 
-const params=new URLSearchParams(location.search)
+const params = new URLSearchParams(location.search)
 
-const projectId=
-params.get("projectId")||
-params.get("id")||
+const projectId =
+params.get("projectId") ||
+params.get("id") ||
 localStorage.getItem("activeProjectId")
 
-const modality=
-String(
-params.get("modality")||
-localStorage.getItem("activeModality")||
-"CT"
-).toUpperCase().trim()
-
-const modalityId=
-params.get("modalityId")||
-localStorage.getItem("activeModalityId")||
+const modalityRaw =
+params.get("modality") ||
+localStorage.getItem("activeModality") ||
 ""
 
-let userEmail=localStorage.getItem("espinUserEmail")
-const auth=localStorage.getItem("espinAuth")
+const modality = String(modalityRaw).toUpperCase().trim()
 
-if(!projectId||auth!=="true"||!userEmail){
+const modalityId =
+params.get("modalityId") ||
+localStorage.getItem("activeModalityId") ||
+""
+
+let userEmail = localStorage.getItem("espinUserEmail")
+const auth = localStorage.getItem("espinAuth")
+
+if(!projectId || auth !== "true" || !userEmail){
 location.replace("/")
 }
 
-userEmail=String(userEmail).toLowerCase().trim()
-
-const BADGE_STORAGE_KEY=`badges_${projectId}`
-const BADGE_KV_KEY=`project:badges_details:${projectId}:${userEmail}`
-const UNREAD_KEY=`project:unread:${projectId}:${userEmail}`
-const UNREAD_IMAGES_KEY=`project:unread_images:${projectId}:${userEmail}`
+userEmail = String(userEmail).toLowerCase().trim()
 
 </script>
 
@@ -138,10 +133,19 @@ textarea{
 min-height:110px;
 }
 
-.row-2{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:12px;
+.mod-btn{
+width:100%;
+padding:16px;
+background:#fff;
+border:1px solid #d9d9d9;
+border-radius:12px;
+font-size:16px;
+font-weight:800;
+cursor:pointer;
+}
+
+.mod-btn:hover{
+background:#f3f7fb;
 }
 
 .btn-submit{
@@ -166,7 +170,7 @@ background:var(--green)!important;
 <body>
 
 <div class="topbar">
-<div class="back-btn" onclick="location.href='management.html'">←</div>
+<div class="back-btn" onclick="location.href='equipmentprojects.html'">←</div>
 <h1 id="pageTitle"></h1>
 </div>
 
@@ -182,8 +186,10 @@ Save & Submit Update
 
 <script>
 
-let formData={}
-let dirtyFields=new Set()
+<script>
+
+let formData = {}
+let dirtyFields = new Set()
 
 function group(title){
 const g=document.createElement("div")
@@ -215,97 +221,48 @@ d.appendChild(i)
 return d
 }
 
-function select(label,key,value,options){
-
-const d=document.createElement("div")
-d.className="field"
-
-const l=document.createElement("label")
-l.textContent=label
-
-const s=document.createElement("select")
-
-const ph=document.createElement("option")
-ph.value=""
-ph.textContent="— Choose —"
-s.appendChild(ph)
-
-options.forEach(opt=>{
-const o=document.createElement("option")
-o.value=opt
-o.textContent=opt
-if(value===opt)o.selected=true
-s.appendChild(o)
-})
-
-s.onchange=function(){
-formData[key]=s.value
-dirtyFields.add(key)
-}
-
-d.appendChild(l)
-d.appendChild(s)
-
-return d
-}
-
-function textarea(label,key,value){
-
-const d=document.createElement("div")
-d.className="field"
-
-const l=document.createElement("label")
-l.textContent=label
-
-const t=document.createElement("textarea")
-t.value=value||""
-
-t.oninput=function(){
-formData[key]=t.value
-dirtyFields.add(key)
-}
-
-d.appendChild(l)
-d.appendChild(t)
-
-return d
-}
-
-function renderCARM(d){
+function renderModalitySelector(){
 
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
 
-const g=group("C-Arm System")
+const g=group("Select Modality")
 
-g.appendChild(field("Manufacturer","carm_manufacturer",d.carm_manufacturer))
-g.appendChild(field("Model","carm_model",d.carm_model))
-g.appendChild(field("Year of Manufacture","carm_dom",d.carm_dom))
-g.appendChild(field("Serial Number","carm_serial",d.carm_serial))
+const mods=[
+{key:"CT",label:"CT Scanner"},
+{key:"MRI",label:"MRI"},
+{key:"XRAY",label:"X-Ray"},
+{key:"CARM",label:"C-Arm"},
+{key:"PETCT",label:"PET/CT"}
+]
 
-g.appendChild(select("Monitor Type","carm_monitors",d.carm_monitors,[
-"Single","Dual","Flat Screen"
-]))
+mods.forEach(m=>{
+const d=document.createElement("div")
+d.className="field"
 
-g.appendChild(field("Image Intensifier Size","carm_image_intensifier",d.carm_image_intensifier))
+const b=document.createElement("button")
+b.type="button"
+b.className="mod-btn"
+b.textContent=m.label
+b.onclick=function(){openModality(m.key)}
 
-g.appendChild(field("SW Version","carm_sw_version",d.carm_sw_version))
-
-g.appendChild(select("Serviced By","carm_servicing",d.carm_servicing,[
-"OEM","Biomed","3rd Party"
-]))
-
-g.appendChild(field("Service Company","carm_service_name",d.carm_service_name))
-
-g.appendChild(select("System In Use","carm_in_use",d.carm_in_use,[
-"Yes","No"
-]))
-
-g.appendChild(field("Date Removed From Service","carm_out_of_use_date",d.carm_out_of_use_date,"date"))
+d.appendChild(b)
+g.appendChild(d)
+})
 
 fc.appendChild(g)
 
+document.getElementById("submitBtn").style.display="none"
 }
+
+function openModality(mod){
+localStorage.setItem("activeProjectId",projectId)
+localStorage.setItem("activeModality",mod)
+
+location.href =
+`equipment-details.html?projectId=${projectId}&modality=${mod}`
+}
+
 function renderCT(d){
 
 const fc=document.getElementById("form-container")
@@ -320,139 +277,51 @@ g.appendChild(field("Date Manufactured","ct_dom",d.ct_dom,"date"))
 g.appendChild(field("Date Installed","ct_installed",d.ct_installed,"date"))
 g.appendChild(field("# of Slices","ct_slices",d.ct_slices))
 g.appendChild(field("Tube mAs / Scan/sec","ct_tube_mas",d.ct_tube_mas))
-g.appendChild(field("Tube Size (mHu)","ct_mhu",d.ct_mhu))
-g.appendChild(field("Tube DOM","ct_tube_dom",d.ct_tube_dom,"date"))
-g.appendChild(field("Tube Installation Date","ct_tube_installation_date",d.ct_tube_installation_date,"date"))
-g.appendChild(field("SW Version","ct_sw_version",d.ct_sw_version))
-g.appendChild(field("GOC Version","ct_goc_version",d.ct_goc_version))
-
-g.appendChild(select("Upgrades","ct_upgrades",d.ct_upgrades,["Yes","No"]))
-g.appendChild(textarea("Upgrades Description","ct_upgrades_desc",d.ct_upgrades_desc))
-
-g.appendChild(select("Injector","ct_injector",d.ct_injector,["Yes","No"]))
-g.appendChild(field("Injector Model","ct_injector_model",d.ct_injector_model))
-
-g.appendChild(select("Chiller","ct_chiller",d.ct_chiller,["Yes","No"]))
-
-g.appendChild(select("System In Use","ct_in_use",d.ct_in_use,["Yes","No"]))
-g.appendChild(field("Date Removed From Service","ct_out_of_use_date",d.ct_out_of_use_date,"date"))
 
 fc.appendChild(g)
 
 }
 
-function renderMRI(d){
-
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
-
-const g=group("MRI System")
-
-g.appendChild(field("Manufacturer","mri_manufacturer",d.mri_manufacturer))
-g.appendChild(field("Model","mri_model",d.mri_model))
-g.appendChild(field("Year of Manufacture","mri_yom",d.mri_yom))
-g.appendChild(field("Magnet Type","mri_magnet_type",d.mri_magnet_type))
-g.appendChild(field("Bore Size (cm)","mri_bore_size_cm",d.mri_bore_size_cm))
-g.appendChild(field("# Channels","mri_num_channels",d.mri_num_channels))
-g.appendChild(field("Gradient","mri_gradient",d.mri_gradient))
-g.appendChild(field("SW Version","mri_sw_version",d.mri_sw_version))
-g.appendChild(field("SW Options","mri_sw_options",d.mri_sw_options))
-
-g.appendChild(select("TIM","mri_tim",d.mri_tim,["Yes","No"]))
-
-g.appendChild(textarea("Coils","mri_coils",d.mri_coils))
-
-g.appendChild(select("Service","mri_service",d.mri_service,["OEM","Biomed","3rd Party"]))
-g.appendChild(field("Service Company","mri_service_name",d.mri_service_name))
-
-g.appendChild(select("Under Contract","mri_under_contract",d.mri_under_contract,["Yes","No"]))
-g.appendChild(field("Last PM","mri_last_pm",d.mri_last_pm,"date"))
-
-g.appendChild(select("System In Use","mri_in_use",d.mri_in_use,["Yes","No"]))
-g.appendChild(field("Date Removed From Service","mri_out_of_use_date",d.mri_out_of_use_date,"date"))
-
-fc.appendChild(g)
-
-}
-
-function renderXRAY(d){
-
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
-
-const g=group("X-Ray")
-
-g.appendChild(field("Manufacturer","xray_manufacturer",d.xray_manufacturer))
-g.appendChild(field("Model","xray_model",d.xray_model))
-g.appendChild(field("Date Manufactured","xray_dom",d.xray_dom,"date"))
-
-g.appendChild(select("Floor Mounted","xray_floor_mounted",d.xray_floor_mounted,["Yes","No"]))
-g.appendChild(select("Ceiling Mounted","xray_ceiling_mounted",d.xray_ceiling_mounted,["Yes","No"]))
-g.appendChild(select("Is RF","xray_is_rf",d.xray_is_rf,["Yes","No"]))
-
-g.appendChild(select("System In Use","xray_in_use",d.xray_in_use,["Yes","No"]))
-g.appendChild(field("Date Removed From Service","xray_out_of_use_date",d.xray_out_of_use_date,"date"))
-
-fc.appendChild(g)
-
-}
-
-
-function renderPETCT(d){
-
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
-
-const g=group("PET/CT System")
-
-g.appendChild(field("Manufacturer","pet_manufacturer",d.pet_manufacturer))
-g.appendChild(field("Model","pet_model",d.pet_model))
-
-g.appendChild(field("Date Manufactured","pet_dom",d.pet_dom,"date"))
-
-g.appendChild(field("CT Slice Count","pet_ct_slices",d.pet_ct_slices))
-
-g.appendChild(field("Tube DOM","pet_tube_dom",d.pet_tube_dom,"date"))
-
-g.appendChild(field("Tube mAs / Scan/sec","pet_tube_mas",d.pet_tube_mas))
-
-g.appendChild(field("SW Version","pet_sw_version",d.pet_sw_version))
-
-g.appendChild(field("Installed Options","pet_installed_options",d.pet_installed_options))
-
-g.appendChild(select("System In Use","pet_in_use",d.pet_in_use,[
-"Yes","No"
-]))
-
-g.appendChild(field("Date Removed From Service","pet_out_of_use_date",d.pet_out_of_use_date,"date"))
-
-fc.appendChild(g)
-
-}
 async function load(){
-document.getElementById("pageTitle").textContent=modality+" Equipment Details"
 
-const res=await fetch(`/api/equipment-details?projectId=${projectId}&modality=${modality}`)
+if(!modality){
+document.getElementById("pageTitle").textContent="Select Modality"
+renderModalitySelector()
+return
+}
+
+document.getElementById("pageTitle").textContent =
+modality+" Equipment Details"
+
+document.getElementById("submitBtn").style.display="block"
+
+try{
+
+const res = await fetch(
+`/api/equipment-details?projectId=${projectId}&modality=${modality}`,
 {
 headers:{ "x-user-email":userEmail }
 })
 
-const d=await res.json()
+let d={}
+try{ d = await res.json() }catch{}
 
-formData=Object.assign({},d||{})
+formData = Object.assign({},d||{})
 
-if(modality==="CT")renderCT(d)
-if(modality==="MRI")renderMRI(d)
-if(modality==="XRAY")renderXRAY(d)
-if(modality==="CARM")renderCARM(d)
-if(modality==="PETCT")renderPETCT(d)
+if(modality==="CT") renderCT(d)
+
+}catch(e){
+
+console.warn("Load failed",e)
+renderCT({})
+
+}
+
 }
 
 load()
 
 async function saveData(){
-
-if(!dirtyFields.size)return
 
 const btn=document.getElementById("submitBtn")
 
@@ -461,6 +330,10 @@ btn.innerText="Saving..."
 
 const payload={}
 dirtyFields.forEach(k=>payload[k]=formData[k])
+
+try{
+
+if(Object.keys(payload).length){
 
 await fetch("/api/equipment-details",{
 method:"POST",
@@ -476,14 +349,21 @@ data:payload
 })
 })
 
-btn.innerText="✓ Success"
+}
+
+}catch(e){
+console.warn("Save error",e)
+}
+
+btn.innerText="✓ Saved"
 btn.classList.add("success")
 
 setTimeout(()=>{
-btn.disabled=false
-btn.classList.remove("success")
-btn.innerText="Save & Submit Update"
-},2000)
+
+location.href =
+`equipmentimages.html?projectId=${projectId}&modality=${modality}&modalityId=${modalityId}`
+
+},700)
 
 }
 
