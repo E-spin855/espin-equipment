@@ -5,57 +5,91 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+/* ===============================
+   CORS
+================================ */
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-user-email, x-useremail, x-user_email"
+  );
+}
+
+/* ===============================
+   GET PROJECT ID
+================================ */
+function getProjectId(req) {
+  return (
+    req.query?.projectId ||
+    req.query?.id ||
+    req.body?.projectId ||
+    req.body?.id ||
+    null
+  );
+}
+
+/* ===============================
+   HANDLER
+================================ */
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+
+  cors(res);
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
   }
-
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-
-  const projectId = req.query.projectId;
-  const userEmail = req.headers["x-user-email"];
-
-  if (!projectId) {
-    return res.status(400).json({ error: "Missing projectId" });
-  }
-
-  const cleanEmail = String(userEmail || "").toLowerCase().trim();
 
   const client = await pool.connect();
 
   try {
-    const { rows } = await client.query(
+
+    const userEmail = String(
+      req.headers["x-user-email"] ||
+      req.headers["x-useremail"] ||
+      req.headers["x-user_email"] ||
+      ""
+    )
+      .toLowerCase()
+      .trim();
+
+    if (!userEmail) {
+      return res.status(401).json({ error: "Missing user email" });
+    }
+
+    const projectId = getProjectId(req);
+
+    if (!projectId) {
+      return res.status(400).json({ error: "Missing projectId" });
+    }
+
+    /* ===============================
+       LOAD PHOTOS
+    =============================== */
+
+    const q = await client.query(
       `
-SELECT
-  p.id,
-  p.project_id,
-  p.photo_url,
-  p.photo_title,
-  p.photo_comment,
-  p.queued_for_email,
-  p.created_at
-FROM project_photos p
-WHERE p.project_id = $1
-AND (
-      p.uploaded_by_email = $2
-      OR p.queued_for_email = false
-)
-AND NOT EXISTS (
-  SELECT 1
-  FROM project_image_hidden h
-  WHERE h.image_id = p.id
-  AND lower(h.user_email) = lower($2)
-)
-ORDER BY p.created_at DESC, p.id DESC
+      SELECT
+        id,
+        project_id,
+        photo_url,
+        photo_title,
+        photo_comment,
+        created_at
+      FROM equipment_photos
+      WHERE project_id = $1
+      ORDER BY created_at DESC
       `,
-      [projectId, cleanEmail]
+      [projectId]
     );
 
-    return res.status(200).json(rows);
+    return res.status(200).json(q.rows);
 
   } catch (err) {
-    console.error("LIST ERROR:", err);
-    return res.status(500).json({ error: "Failed to load photos" });
+    console.error("equipment-photos list error:", err);
+    return res.status(500).json({ error: "Server error" });
   } finally {
     client.release();
   }
