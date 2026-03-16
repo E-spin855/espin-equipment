@@ -13,9 +13,10 @@
   }
 })();
 
-const API_BASE = "https://espin-medical-app.vercel.app";
-
 const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+
+/* API BASE — SAME PROJECT */
+const API_BASE = "";
 
 const params = new URLSearchParams(location.search);
 const urlProjectId = params.get("id") || params.get("projectId");
@@ -724,18 +725,59 @@ deleteBtn.onclick = async () => {
 };
 
 /* INIT */
+/* INIT */
 (async () => {
+
   await loadArchiveState();
   applyArchiveUI();
 
   const kvBadges = await syncBadgesFromKV();
   const badgeSet = new Set(kvBadges);
 
-  const res = await fetch(`${API_BASE}/api/equipment-photos/list?projectId=${projectId}`, {
-    headers:{ "x-user-email": userEmail }
+  let data = [];
+
+  try {
+
+    const res = await fetch(`${API_BASE}/api/equipment-photos/list?projectId=${projectId}`, {
+      headers: { "x-user-email": userEmail }
+    });
+
+    if (!res.ok) {
+      console.error("Photo list API failed:", res.status);
+    } else {
+
+      const json = await res.json();
+
+      if (Array.isArray(json)) {
+        data = json;
+      } else {
+        console.error("Photo API returned non-array:", json);
+      }
+
+    }
+
+  } catch (err) {
+    console.error("Photo fetch error:", err);
+  }
+
+  photos = data;
+
+  /* FORCE NEWEST FIRST */
+  photos.sort((a,b) => {
+    const da = new Date(a?.created_at || 0).getTime();
+    const db = new Date(b?.created_at || 0).getTime();
+    return db - da;
   });
 
-  photos = (await res.json()) || [];
+  gallery.innerHTML = "";
+
+  for (const p of photos) {
+    appendCard(p, badgeSet);
+  }
+
+  updateBatchState();
+
+})();
 
   /* FORCE NEWEST FIRST */
   photos.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
