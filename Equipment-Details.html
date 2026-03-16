@@ -1,201 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Equipment Details | Espin Medical</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-<script>
-
-const params=new URLSearchParams(location.search)
-
-const projectId=
-params.get("projectId")||
-params.get("id")||
-localStorage.getItem("activeProjectId")
-
-const modality=
-String(
-params.get("modality")||
-localStorage.getItem("activeModality")||
-""
-).toUpperCase().trim()
-
-const modalityId=
-params.get("modalityId")||
-localStorage.getItem("activeModalityId")||
-""
-
-let userEmail=localStorage.getItem("espinUserEmail")
-const auth=localStorage.getItem("espinAuth")
-
-if(!projectId||auth!=="true"||!userEmail){
-location.replace("/")
-}
-
-userEmail=String(userEmail).toLowerCase().trim()
-
-</script>
 
 <style>
-
-:root{
---blue:#0066B2;
---green:#2e7d32;
---light:#f8f9fa;
---border:#e9ecef;
---text:#111;
---muted:#666;
-}
-
-*{box-sizing:border-box}
+:root{--ink:#0b1e33;--accent:#0f7bff;}
 
 body{
+font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 margin:0;
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-background:var(--light);
-color:var(--text);
-padding-top:95px;
-padding-bottom:140px;
-}
-
-.topbar{
-background:var(--blue);
-color:#fff;
-padding:20px;
-display:flex;
-align-items:center;
-position:fixed;
-top:0;
-left:0;
-right:0;
-z-index:1000;
-}
-
-.back-btn{
-font-size:28px;
-cursor:pointer;
-}
-
-.topbar h1{
-flex:1;
-text-align:center;
-margin:0;
-font-size:20px;
-font-weight:800;
-}
-
-.container{
-max-width:520px;
-margin:auto;
-padding:20px;
-}
-
-.group{
 background:#fff;
-border:1px solid var(--border);
-border-radius:14px;
-margin-bottom:20px;
-overflow:hidden;
 }
 
-.group-title{
-background:var(--blue);
-color:#fff;
-padding:14px;
-font-weight:800;
+.wrap{
+max-width:900px;
+margin:auto;
+padding:24px;
 }
 
-.field{
-padding:14px;
-border-bottom:1px solid #eee;
-}
-
-.field:last-child{
-border-bottom:none;
-}
+h1{margin:0 0 10px}
 
 label{
-font-weight:700;
 display:block;
-margin-bottom:6px;
+font-weight:600;
+margin:10px 0 6px;
 }
 
 input,select,textarea{
 width:100%;
-padding:12px;
-border:1px solid #ccc;
-border-radius:10px;
-font-size:16px;
+padding:10px;
+border:1px solid #cfd9e3;
+border-radius:8px;
+font-size:15px;
 }
 
-textarea{
-min-height:110px;
-}
-
-.mod-btn{
-width:100%;
-padding:16px;
-background:#fff;
-border:1px solid #d9d9d9;
-border-radius:12px;
-font-size:16px;
-font-weight:800;
-cursor:pointer;
-}
-
-.btn-submit{
-width:100%;
-padding:20px;
-background:var(--blue);
+button{
+background:var(--accent);
 color:#fff;
 border:none;
-border-radius:14px;
-font-weight:800;
-font-size:18px;
+padding:12px 20px;
+border-radius:8px;
 cursor:pointer;
+margin-top:20px;
 }
 
-.success{
-background:var(--green)!important;
+.group{
+border:1px solid #e6ecf2;
+border-radius:10px;
+padding:18px;
+margin-top:18px;
 }
 
+.group-title{
+font-weight:700;
+margin-bottom:10px;
+font-size:18px;
+}
 </style>
 </head>
 
 <body>
 
-<div class="topbar">
-<div class="back-btn" onclick="location.href='equipmentprojects.html'">←</div>
-<h1 id="pageTitle"></h1>
-</div>
+<div class="wrap">
 
-<div class="container">
+<h1>Equipment Details</h1>
+
+<label>Modality</label>
+<select id="modality">
+<option value="">Select</option>
+<option value="CT">CT</option>
+<option value="MRI">MRI</option>
+<option value="XRAY">X-Ray</option>
+<option value="CARM">C-Arm</option>
+<option value="PETCT">PET/CT</option>
+</select>
 
 <div id="form-container"></div>
 
-<button class="btn-submit" id="submitBtn" onclick="saveData()">
-Save & Submit Update
-</button>
+<button onclick="saveData()">Save & Submit Update</button>
 
 </div>
 
 <script>
 
+const params=new URLSearchParams(location.search)
+const projectId=params.get("projectId")
+
 let formData={}
 let dirtyFields=new Set()
+
+/* ------------------ FIELD HELPERS ------------------ */
 
 function group(title){
 const g=document.createElement("div")
 g.className="group"
-g.innerHTML='<div class="group-title">'+title+'</div>'
+g.innerHTML=`<div class="group-title">${title}</div>`
 return g
 }
 
 function field(label,key,value,type="text"){
-
 const d=document.createElement("div")
-d.className="field"
 
 const l=document.createElement("label")
 l.textContent=label
@@ -204,7 +110,7 @@ const i=document.createElement("input")
 i.type=type
 i.value=value||""
 
-i.oninput=function(){
+i.oninput=()=>{
 formData[key]=i.value
 dirtyFields.add(key)
 }
@@ -215,10 +121,8 @@ d.appendChild(i)
 return d
 }
 
-function select(label,key,value,options){
-
+function select(label,key,value,opts){
 const d=document.createElement("div")
-d.className="field"
 
 const l=document.createElement("label")
 l.textContent=label
@@ -227,18 +131,18 @@ const s=document.createElement("select")
 
 const ph=document.createElement("option")
 ph.value=""
-ph.textContent="— Choose —"
+ph.textContent="Select"
 s.appendChild(ph)
 
-options.forEach(opt=>{
-const o=document.createElement("option")
-o.value=opt
-o.textContent=opt
-if(value===opt)o.selected=true
-s.appendChild(o)
+opts.forEach(o=>{
+const opt=document.createElement("option")
+opt.value=o
+opt.textContent=o
+if(o===value)opt.selected=true
+s.appendChild(opt)
 })
 
-s.onchange=function(){
+s.onchange=()=>{
 formData[key]=s.value
 dirtyFields.add(key)
 }
@@ -250,9 +154,7 @@ return d
 }
 
 function textarea(label,key,value){
-
 const d=document.createElement("div")
-d.className="field"
 
 const l=document.createElement("label")
 l.textContent=label
@@ -260,7 +162,7 @@ l.textContent=label
 const t=document.createElement("textarea")
 t.value=value||""
 
-t.oninput=function(){
+t.oninput=()=>{
 formData[key]=t.value
 dirtyFields.add(key)
 }
@@ -271,160 +173,160 @@ d.appendChild(t)
 return d
 }
 
-function renderModalitySelector(){
+/* ------------------ RENDERERS ------------------ */
+
+function renderCT(){
 
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
 
-const g=group("Select Modality")
-
-const mods=[
-{key:"CT",label:"CT Scanner"},
-{key:"MRI",label:"MRI"},
-{key:"XRAY",label:"X-Ray"},
-{key:"CARM",label:"C-Arm"},
-{key:"PETCT",label:"PET/CT"}
-]
-
-mods.forEach(m=>{
-const d=document.createElement("div")
-d.className="field"
-
-const b=document.createElement("button")
-b.type="button"
-b.className="mod-btn"
-b.textContent=m.label
-
-b.onclick=function(){
-
-localStorage.setItem("activeProjectId",projectId)
-localStorage.setItem("activeModality",m.key)
-
-location.href=
-`equipment-details.html?projectId=${projectId}&modality=${m.key}`
-
-}
-
-d.appendChild(b)
-g.appendChild(d)
-})
-
-fc.appendChild(g)
-
-document.getElementById("submitBtn").style.display="none"
-
-}
-
-/* --------- MODALITY RENDERERS ---------- */
-
-function renderCT(d){
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
 const g=group("CT Scanner")
 
-g.appendChild(field("Manufacturer","ct_manufacturer",d.ct_manufacturer))
-g.appendChild(field("Model","ct_model",d.ct_model))
-g.appendChild(field("Serial Number","ct_serial",d.ct_serial))
-g.appendChild(field("Date Manufactured","ct_dom",d.ct_dom,"date"))
-g.appendChild(field("Date Installed","ct_installed",d.ct_installed,"date"))
-g.appendChild(field("# of Slices","ct_slices",d.ct_slices))
-g.appendChild(field("Tube mAs / Scan/sec","ct_tube_mas",d.ct_tube_mas))
+g.appendChild(field("Manufacturer","ct_manufacturer"))
+g.appendChild(field("Model","ct_model"))
+g.appendChild(field("Serial Number","ct_serial"))
+
+g.appendChild(field("Date Manufactured","ct_dom","date"))
+g.appendChild(field("Date Installed","ct_installed","date"))
+
+g.appendChild(field("# of Slices","ct_slices"))
+g.appendChild(field("Tube mAs / Scan/sec","ct_tube_mas"))
+
+g.appendChild(field("Tube Size (mHu)","ct_mhu"))
+g.appendChild(field("Tube DOM","ct_tube_dom","date"))
+
+g.appendChild(field("Tube Installation Date","ct_tube_installation_date","date"))
+
+g.appendChild(field("SW Version","ct_sw_version"))
+g.appendChild(field("GOC Version","ct_goc_version"))
+
+g.appendChild(select("Upgrades","ct_upgrades","",["Yes","No"]))
+
+g.appendChild(textarea("Upgrades Description","ct_upgrades_desc"))
+
+g.appendChild(select("Injector","ct_injector","",["Yes","No"]))
+
+g.appendChild(field("Injector Model","ct_injector_model"))
+
+g.appendChild(select("Chiller","ct_chiller","",["Yes","No"]))
+
+g.appendChild(select("System In Use","ct_in_use","",["Yes","No"]))
+
+g.appendChild(field("Date Removed From Service","ct_out_of_use_date","date"))
 
 fc.appendChild(g)
+
 }
 
-function renderMRI(d){
+function renderMRI(){
+
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
+
 const g=group("MRI System")
 
-g.appendChild(field("Manufacturer","mri_manufacturer",d.mri_manufacturer))
-g.appendChild(field("Model","mri_model",d.mri_model))
-g.appendChild(field("Year of Manufacture","mri_yom",d.mri_yom))
+g.appendChild(field("Manufacturer","mri_manufacturer"))
+g.appendChild(field("Model","mri_model"))
+
+g.appendChild(field("Year of Manufacture","mri_yom"))
+g.appendChild(field("Magnet Type","mri_magnet_type"))
+
+g.appendChild(field("Bore Size (cm)","mri_bore_size_cm"))
+g.appendChild(field("# Channels","mri_num_channels"))
+g.appendChild(field("Gradient","mri_gradient"))
+
+g.appendChild(field("SW Version","mri_sw_version"))
+
+g.appendChild(textarea("Coils","mri_coils"))
+
+g.appendChild(select("Service","mri_service","",["OEM","Biomed","3rd Party"]))
+
+g.appendChild(field("Service Company","mri_service_name"))
+
+g.appendChild(select("System In Use","mri_in_use","",["Yes","No"]))
+
+g.appendChild(field("Date Removed From Service","mri_out_of_use_date","date"))
 
 fc.appendChild(g)
+
 }
 
-function renderXRAY(d){
+function renderXRAY(){
+
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
-const g=group("X-Ray")
 
-g.appendChild(field("Manufacturer","xray_manufacturer",d.xray_manufacturer))
-g.appendChild(field("Model","xray_model",d.xray_model))
+const g=group("X-Ray System")
+
+g.appendChild(field("Manufacturer","xray_manufacturer"))
+g.appendChild(field("Model","xray_model"))
+
+g.appendChild(select("Floor Mounted","xray_floor_mounted","",["Yes","No"]))
+g.appendChild(select("Ceiling Mounted","xray_ceiling_mounted","",["Yes","No"]))
 
 fc.appendChild(g)
+
 }
 
-function renderCARM(d){
+function renderCARM(){
+
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
-const g=group("C-Arm")
 
-g.appendChild(field("Manufacturer","carm_manufacturer",d.carm_manufacturer))
-g.appendChild(field("Model","carm_model",d.carm_model))
+const g=group("C-Arm System")
+
+g.appendChild(field("Manufacturer","carm_manufacturer"))
+g.appendChild(field("Model","carm_model"))
+
+g.appendChild(field("Serial Number","carm_serial"))
+
+g.appendChild(select("Monitor Type","carm_monitors","",["Single","Dual","Flat Screen"]))
+
+g.appendChild(field("Image Intensifier Size","carm_image_intensifier"))
 
 fc.appendChild(g)
+
 }
 
-function renderPETCT(d){
+function renderPETCT(){
+
 const fc=document.getElementById("form-container")
 fc.innerHTML=""
-const g=group("PET/CT")
 
-g.appendChild(field("Manufacturer","pet_manufacturer",d.pet_manufacturer))
-g.appendChild(field("Model","pet_model",d.pet_model))
+const g=group("PET / CT System")
+
+g.appendChild(field("Manufacturer","pet_manufacturer"))
+g.appendChild(field("Model","pet_model"))
+
+g.appendChild(field("CT Slice Count","pet_ct_slices"))
+
+g.appendChild(field("Tube DOM","pet_tube_dom","date"))
+
+g.appendChild(field("Tube mAs / Scan/sec","pet_tube_mas"))
 
 fc.appendChild(g)
-}
-
-async function load(){
-
-if(!modality){
-document.getElementById("pageTitle").textContent="Select Modality"
-renderModalitySelector()
-return
-}
-
-document.getElementById("pageTitle").textContent=modality+" Equipment Details"
-
-let d={}
-
-try{
-
-const res=await fetch(
-`/api/equipment-details?projectId=${projectId}&modality=${modality}`,
-{
-headers:{ "x-user-email":userEmail }
-}
-)
-
-try{ d=await res.json() }catch{}
-
-}catch(e){
-console.warn("load failed",e)
-}
-
-formData=Object.assign({},d||{})
-
-if(modality==="CT")renderCT(d)
-if(modality==="MRI")renderMRI(d)
-if(modality==="XRAY")renderXRAY(d)
-if(modality==="CARM")renderCARM(d)
-if(modality==="PETCT")renderPETCT(d)
 
 }
 
-load()
+/* ------------------ MODALITY SWITCH ------------------ */
+
+document.getElementById("modality").onchange=function(){
+
+const m=this.value
+
+if(m==="CT")renderCT()
+if(m==="MRI")renderMRI()
+if(m==="XRAY")renderXRAY()
+if(m==="CARM")renderCARM()
+if(m==="PETCT")renderPETCT()
+
+}
+
+/* ------------------ SAVE ------------------ */
 
 async function saveData(){
 
 if(!dirtyFields.size)return
-
-const btn=document.getElementById("submitBtn")
-
-btn.disabled=true
-btn.innerText="Saving..."
 
 const payload={}
 dirtyFields.forEach(k=>payload[k]=formData[k])
@@ -432,24 +334,15 @@ dirtyFields.forEach(k=>payload[k]=formData[k])
 await fetch("/api/equipment-details",{
 method:"POST",
 headers:{
-"Content-Type":"application/json",
-"x-user-email":userEmail
+"Content-Type":"application/json"
 },
 body:JSON.stringify({
 projectId,
-modality,
-modalityId,
 data:payload
 })
 })
 
-btn.innerText="✓ Success"
-btn.classList.add("success")
-
-setTimeout(()=>{
-location.href=
-`equipmentimages.html?projectId=${projectId}&modality=${modality}&modalityId=${modalityId}`
-},700)
+alert("Saved")
 
 }
 
