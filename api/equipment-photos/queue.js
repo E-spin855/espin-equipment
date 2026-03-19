@@ -1,9 +1,3 @@
-/* =========================================================
-   File: 1
-   Name: queue.js
-   Path: /api/project-photos/queue.js
-========================================================= */
-
 import { Pool } from "pg";
 
 const pool = new Pool({
@@ -44,20 +38,18 @@ export default async function handler(req, res) {
   const client = await pool.connect();
 
   try {
-    /* =====================================================
-       ACCESS CHECK (project_contacts based)
-    ===================================================== */
+    /* ACCESS CHECK */
     const { rows } = await client.query(
       `
       SELECT
-        pp.project_id,
+        ep.project_id,
         p.project_completed
-      FROM project_photos pp
-      JOIN projects p ON p.id = pp.project_id
+      FROM equipment_photos ep
+      JOIN projects p ON p.id = ep.project_id
       LEFT JOIN project_contacts pc
-        ON pc.project_id = pp.project_id
+        ON pc.project_id = ep.project_id
         AND LOWER(pc.email) = $2
-      WHERE pp.id = $1
+      WHERE ep.id = $1
         AND (
           LOWER($2) = $3
           OR pc.email IS NOT NULL
@@ -76,18 +68,12 @@ export default async function handler(req, res) {
       });
     }
 
-    /* =====================================================
-       FIX: NO MORE CLONING
-       - queued = true  → mark existing row queued
-       - queued = false → unqueue
-       This prevents duplicate project_photos rows.
-    ===================================================== */
-
+    /* QUEUE FLAG (NO CLONING) */
     if (queued) {
       await client.query(
         `
-        UPDATE project_photos
-        SET queued_for_email = true
+        UPDATE equipment_photos
+        SET hidden = false
         WHERE id = $1
         `,
         [photoId]
@@ -102,8 +88,8 @@ export default async function handler(req, res) {
     /* UNQUEUE */
     await client.query(
       `
-      UPDATE project_photos
-      SET queued_for_email = false
+      UPDATE equipment_photos
+      SET hidden = true
       WHERE id = $1
       `,
       [photoId]

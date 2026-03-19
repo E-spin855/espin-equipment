@@ -95,277 +95,302 @@ font-size:18px;
 
 <div id="form-container"></div>
 
-<button onclick="saveData()">Save & Submit Update</button>
+<button id="saveBtn" onclick="saveData()">Save & Submit Update</button>
 
 </div>
 
 <script>
 
-const params=new URLSearchParams(location.search)
-const projectId=params.get("projectId")
-document.getElementById("backLink").href=`equipmentprojects.html`
+/* ------------------ INIT ------------------ */
 
-let formData={}
-let dirtyFields=new Set()
+const params = new URLSearchParams(location.search);
+const projectId = params.get("projectId");
 
-/* ------------------ FIELD HELPERS ------------------ */
+if(!projectId){
+  alert("Missing project ID");
+  throw new Error("No projectId");
+}
+
+document.getElementById("backLink").href = "equipmentprojects.html";
+
+let formData = {};
+let dirtyFields = new Set();
+/* ------------------ LOAD DATA ------------------ */
+
+async function loadData(){
+
+  try {
+    const res = await fetch(`/api/equipment-details/get?projectId=${projectId}`);
+    const json = await res.json();
+
+    if (!json.data) return;
+
+    formData = json.data;
+
+    if (formData.modality) {
+      document.getElementById("modality").value = formData.modality;
+      triggerRender(formData.modality);
+    }
+
+  } catch (err) {
+    console.error("LOAD ERROR:", err);
+  }
+
+}
+/* ------------------ HELPERS ------------------ */
 
 function group(title){
-const g=document.createElement("div")
-g.className="group"
-g.innerHTML=`<div class="group-title">${title}</div>`
-return g
+  const g=document.createElement("div");
+  g.className="group";
+  g.innerHTML=`<div class="group-title">${title}</div>`;
+  return g;
 }
 
 function field(label,key,value,type="text"){
-const d=document.createElement("div")
+  const d=document.createElement("div");
 
-const l=document.createElement("label")
-l.textContent=label
+  const l=document.createElement("label");
+  l.textContent=label;
 
-const i=document.createElement("input")
-i.type=type
-i.value=value||""
+  const i=document.createElement("input");
+  i.type=type;
+ i.value = formData[key] || value || "";
 
-i.oninput=()=>{
-formData[key]=i.value
-dirtyFields.add(key)
+  i.oninput=()=>{
+    formData[key]=i.value;
+    dirtyFields.add(key);
+  };
+
+  d.appendChild(l);
+  d.appendChild(i);
+
+  return d;
 }
 
-d.appendChild(l)
-d.appendChild(i)
+function selectField(label,key,value,opts){
+  const d=document.createElement("div");
 
-return d
-}
+  const l=document.createElement("label");
+  l.textContent=label;
 
-function select(label,key,value,opts){
-const d=document.createElement("div")
+  const s=document.createElement("select");
 
-const l=document.createElement("label")
-l.textContent=label
+  const ph=document.createElement("option");
+  ph.value="";
+  ph.textContent="Select";
+  s.appendChild(ph);
 
-const s=document.createElement("select")
+  opts.forEach(o=>{
+    const opt=document.createElement("option");
+    opt.value=o;
+    opt.textContent=o;
+   if(o === (formData[key] || value)) opt.selected = true;
+    s.appendChild(opt);
+  });
 
-const ph=document.createElement("option")
-ph.value=""
-ph.textContent="Select"
-s.appendChild(ph)
+  s.onchange=()=>{
+    formData[key]=s.value;
+    dirtyFields.add(key);
+  };
 
-opts.forEach(o=>{
-const opt=document.createElement("option")
-opt.value=o
-opt.textContent=o
-if(o===value)opt.selected=true
-s.appendChild(opt)
-})
+  d.appendChild(l);
+  d.appendChild(s);
 
-s.onchange=()=>{
-formData[key]=s.value
-dirtyFields.add(key)
-}
-
-d.appendChild(l)
-d.appendChild(s)
-
-return d
+  return d;
 }
 
 function textarea(label,key,value){
-const d=document.createElement("div")
+  const d=document.createElement("div");
 
-const l=document.createElement("label")
-l.textContent=label
+  const l=document.createElement("label");
+  l.textContent=label;
 
-const t=document.createElement("textarea")
-t.value=value||""
+  const t=document.createElement("textarea");
+ t.value = formData[key] || value || "";
 
-t.oninput=()=>{
-formData[key]=t.value
-dirtyFields.add(key)
+  t.oninput=()=>{
+    formData[key]=t.value;
+    dirtyFields.add(key);
+  };
+
+  d.appendChild(l);
+  d.appendChild(t);
+
+  return d;
 }
 
-d.appendChild(l)
-d.appendChild(t)
+/* ------------------ RENDER SWITCH ------------------ */
 
-return d
+function triggerRender(m){
+  if (m === "CT") renderCT();
+  if (m === "MRI") renderMRI();
+  if (m === "XRAY") renderXRAY();
+  if (m === "CARM") renderCARM();
+  if (m === "PETCT") renderPETCT();
 }
 
 /* ------------------ RENDERERS ------------------ */
 
 function renderCT(){
+  const fc=document.getElementById("form-container");
+  fc.innerHTML="";
 
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
+  const g=group("CT Scanner");
 
-const g=group("CT Scanner")
+  g.appendChild(field("Manufacturer","ct_manufacturer"));
+  g.appendChild(field("Model","ct_model"));
+  g.appendChild(field("Serial Number","ct_serial"));
+  g.appendChild(field("Date Manufactured","ct_dom","", "date"));
+  g.appendChild(field("Date Installed","ct_installed","", "date"));
+  g.appendChild(field("# of Slices","ct_slices"));
+  g.appendChild(field("Tube mAs / Scan/sec","ct_tube_mas"));
+  g.appendChild(field("Tube Size (mHu)","ct_mhu"));
+  g.appendChild(field("Tube DOM","ct_tube_dom","", "date"));
+  g.appendChild(field("Tube Installation Date","ct_tube_installation_date","", "date"));
+  g.appendChild(field("SW Version","ct_sw_version"));
+  g.appendChild(field("GOC Version","ct_goc_version"));
+  g.appendChild(selectField("Upgrades","ct_upgrades","",["Yes","No"]));
+  g.appendChild(textarea("Upgrades Description","ct_upgrades_desc"));
+  g.appendChild(selectField("Injector","ct_injector","",["Yes","No"]));
+  g.appendChild(field("Injector Model","ct_injector_model"));
+  g.appendChild(selectField("Chiller","ct_chiller","",["Yes","No"]));
+  g.appendChild(selectField("System In Use","ct_in_use","",["Yes","No"]));
+  g.appendChild(field("Date Removed From Service","ct_out_of_use_date","", "date"));
 
-g.appendChild(field("Manufacturer","ct_manufacturer"))
-g.appendChild(field("Model","ct_model"))
-g.appendChild(field("Serial Number","ct_serial"))
-
-g.appendChild(field("Date Manufactured","ct_dom","", "date"))
-g.appendChild(field("Date Installed","ct_installed","", "date"))
-
-g.appendChild(field("# of Slices","ct_slices"))
-g.appendChild(field("Tube mAs / Scan/sec","ct_tube_mas"))
-
-g.appendChild(field("Tube Size (mHu)","ct_mhu"))
-g.appendChild(field("Tube DOM","ct_tube_dom","", "date"))
-
-g.appendChild(field("Tube Installation Date","ct_tube_installation_date","", "date"))
-
-g.appendChild(field("SW Version","ct_sw_version"))
-g.appendChild(field("GOC Version","ct_goc_version"))
-
-g.appendChild(select("Upgrades","ct_upgrades","",["Yes","No"]))
-
-g.appendChild(textarea("Upgrades Description","ct_upgrades_desc"))
-
-g.appendChild(select("Injector","ct_injector","",["Yes","No"]))
-
-g.appendChild(field("Injector Model","ct_injector_model"))
-
-g.appendChild(select("Chiller","ct_chiller","",["Yes","No"]))
-
-g.appendChild(select("System In Use","ct_in_use","",["Yes","No"]))
-
-g.appendChild(field("Date Removed From Service","ct_out_of_use_date","", "date"))
-
-fc.appendChild(g)
-
+  fc.appendChild(g);
 }
 
 function renderMRI(){
+  const fc=document.getElementById("form-container");
+  fc.innerHTML="";
 
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
+  const g=group("MRI System");
 
-const g=group("MRI System")
+  g.appendChild(field("Manufacturer","mri_manufacturer"));
+  g.appendChild(field("Model","mri_model"));
+  g.appendChild(field("Year of Manufacture","mri_yom"));
+  g.appendChild(field("Magnet Type","mri_magnet_type"));
+  g.appendChild(field("Bore Size (cm)","mri_bore_size_cm"));
+  g.appendChild(field("# Channels","mri_num_channels"));
+  g.appendChild(field("Gradient","mri_gradient"));
+  g.appendChild(field("SW Version","mri_sw_version"));
+  g.appendChild(textarea("Coils","mri_coils"));
+  g.appendChild(selectField("Service","mri_service","",["OEM","Biomed","3rd Party"]));
+  g.appendChild(field("Service Company","mri_service_name"));
+  g.appendChild(selectField("System In Use","mri_in_use","",["Yes","No"]));
+  g.appendChild(field("Date Removed From Service","mri_out_of_use_date","", "date"));
 
-g.appendChild(field("Manufacturer","mri_manufacturer"))
-g.appendChild(field("Model","mri_model"))
-
-g.appendChild(field("Year of Manufacture","mri_yom"))
-g.appendChild(field("Magnet Type","mri_magnet_type"))
-
-g.appendChild(field("Bore Size (cm)","mri_bore_size_cm"))
-g.appendChild(field("# Channels","mri_num_channels"))
-g.appendChild(field("Gradient","mri_gradient"))
-
-g.appendChild(field("SW Version","mri_sw_version"))
-
-g.appendChild(textarea("Coils","mri_coils"))
-
-g.appendChild(select("Service","mri_service","",["OEM","Biomed","3rd Party"]))
-
-g.appendChild(field("Service Company","mri_service_name"))
-
-g.appendChild(select("System In Use","mri_in_use","",["Yes","No"]))
-
-g.appendChild(field("Date Removed From Service","mri_out_of_use_date","", "date"))
-
-fc.appendChild(g)
-
+  fc.appendChild(g);
 }
 
 function renderXRAY(){
+  const fc=document.getElementById("form-container");
+  fc.innerHTML="";
 
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
+  const g=group("X-Ray System");
 
-const g=group("X-Ray System")
+  g.appendChild(field("Manufacturer","xray_manufacturer"));
+  g.appendChild(field("Model","xray_model"));
+  g.appendChild(selectField("Floor Mounted","xray_floor_mounted","",["Yes","No"]));
+  g.appendChild(selectField("Ceiling Mounted","xray_ceiling_mounted","",["Yes","No"]));
 
-g.appendChild(field("Manufacturer","xray_manufacturer"))
-g.appendChild(field("Model","xray_model"))
-
-g.appendChild(select("Floor Mounted","xray_floor_mounted","",["Yes","No"]))
-g.appendChild(select("Ceiling Mounted","xray_ceiling_mounted","",["Yes","No"]))
-
-fc.appendChild(g)
-
+  fc.appendChild(g);
 }
 
 function renderCARM(){
+  const fc=document.getElementById("form-container");
+  fc.innerHTML="";
 
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
+  const g=group("C-Arm System");
 
-const g=group("C-Arm System")
+  g.appendChild(field("Manufacturer","carm_manufacturer"));
+  g.appendChild(field("Model","carm_model"));
+  g.appendChild(field("Serial Number","carm_serial"));
+  g.appendChild(selectField("Monitor Type","carm_monitors","",["Single","Dual","Flat Screen"]));
+  g.appendChild(field("Image Intensifier Size","carm_image_intensifier"));
 
-g.appendChild(field("Manufacturer","carm_manufacturer"))
-g.appendChild(field("Model","carm_model"))
-
-g.appendChild(field("Serial Number","carm_serial"))
-
-g.appendChild(select("Monitor Type","carm_monitors","",["Single","Dual","Flat Screen"]))
-
-g.appendChild(field("Image Intensifier Size","carm_image_intensifier"))
-
-fc.appendChild(g)
-
+  fc.appendChild(g);
 }
 
 function renderPETCT(){
+  const fc=document.getElementById("form-container");
+  fc.innerHTML="";
 
-const fc=document.getElementById("form-container")
-fc.innerHTML=""
+  const g=group("PET / CT System");
 
-const g=group("PET / CT System")
+  g.appendChild(field("Manufacturer","pet_manufacturer"));
+  g.appendChild(field("Model","pet_model"));
+  g.appendChild(field("CT Slice Count","pet_ct_slices"));
+  g.appendChild(field("Tube DOM","pet_tube_dom","", "date"));
+  g.appendChild(field("Tube mAs / Scan/sec","pet_tube_mas"));
 
-g.appendChild(field("Manufacturer","pet_manufacturer"))
-g.appendChild(field("Model","pet_model"))
-
-g.appendChild(field("CT Slice Count","pet_ct_slices"))
-
-g.appendChild(field("Tube DOM","pet_tube_dom","", "date"))
-
-g.appendChild(field("Tube mAs / Scan/sec","pet_tube_mas"))
-
-fc.appendChild(g)
-
+  fc.appendChild(g);
 }
 
-/* ------------------ MODALITY SWITCH ------------------ */
+/* ------------------ MODALITY ------------------ */
+document.getElementById("modality").onchange = function () {
+  const m = this.value;
 
-document.getElementById("modality").onchange=function(){
+  localStorage.setItem("equipment_modality", m);
 
-const m=this.value
+  formData.modality = m;
+  dirtyFields.add("modality");
 
-if(m==="CT")renderCT()
-if(m==="MRI")renderMRI()
-if(m==="XRAY")renderXRAY()
-if(m==="CARM")renderCARM()
-if(m==="PETCT")renderPETCT()
-
-}
+  triggerRender(m);
+};
 
 /* ------------------ SAVE ------------------ */
 
 async function saveData(){
 
-if(!dirtyFields.size){
-location.href=`equipmentimages.html?projectId=${projectId}`
-return
+  const btn = document.getElementById("saveBtn");
+  btn.disabled = true;
+  btn.innerText = "Saving...";
+
+  try {
+
+    if(!formData.modality){
+      alert("Select modality");
+      btn.disabled = false;
+      btn.innerText = "Save & Submit Update";
+      return;
+    }
+
+    if(!dirtyFields.size){
+      location.href = `equipmentimages.html?projectId=${projectId}`;
+      return;
+    }
+
+    const payload = {};
+    dirtyFields.forEach(k => payload[k] = formData[k]);
+
+    const res = await fetch("/api/equipment-details/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": localStorage.getItem("espinUserEmail")
+      },
+      body: JSON.stringify({
+        projectId,
+        data: payload
+      })
+    });
+
+    if(!res.ok){
+      throw new Error("Save failed");
+    }
+
+    location.href = `equipmentimages.html?projectId=${projectId}`;
+
+  } catch (err) {
+    console.error("SAVE ERROR:", err);
+    alert("Network / server error");
+
+    btn.disabled = false;
+    btn.innerText = "Save & Submit Update";
+  }
 }
-
-const payload={}
-dirtyFields.forEach(k=>payload[k]=formData[k])
-
-await fetch("/api/equipment-details.js",{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-projectId,
-data:payload
-})
-})
-
-location.href=`equipmentimages.html?projectId=${projectId}`
-
-}
-
+loadData();
 </script>
 
 </body>

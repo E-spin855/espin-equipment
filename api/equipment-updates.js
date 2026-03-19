@@ -23,21 +23,30 @@ export default async function handler(req, res) {
      * Unread = events created after last_seen_at
      */
     const { rows } = await pool.query(
-      `
-      SELECT
-        e.event_key,
-        e.created_at
-      FROM project_events e
-      LEFT JOIN project_event_reads r
-        ON r.project_id = e.project_id
-       AND r.user_email = $1
-      WHERE e.project_id = $2
-        AND e.created_at > COALESCE(r.last_seen_at, '1970-01-01')
-      ORDER BY e.created_at ASC
-      `,
-      [userEmail, projectId]
-    );
+  `
+  SELECT
+    e.event_key,
+    e.created_at
+  FROM project_events e
 
+  LEFT JOIN project_users pu
+    ON pu.project_id = e.project_id
+
+  LEFT JOIN users u
+    ON u.id = pu.user_id
+
+  LEFT JOIN project_event_reads r
+    ON r.project_id = e.project_id
+   AND r.user_id = pu.user_id
+
+  WHERE e.project_id = $2
+    AND LOWER(u.email) = LOWER($1)
+    AND e.created_at > COALESCE(r.last_seen_at, '1970-01-01')
+
+  ORDER BY e.created_at ASC
+  `,
+  [userEmail, projectId]
+);
     res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

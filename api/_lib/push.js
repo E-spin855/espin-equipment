@@ -1,10 +1,10 @@
 import apn from "apn";
 import { kv } from "@vercel/kv";
 
-const BUNDLE_ID = process.env.APN_BUNDLE_ID || "com.espinmedical.MyApp";
+const BUNDLE_ID = process.env.APN_BUNDLE_ID || "";
 
 /* ─────────────────────────────────────────────
-   SAFE APNs PROVIDER (never crashes function)
+   SAFE APNs PROVIDER (never crashes function)com.espinmedical.equipment
 ───────────────────────────────────────────── */
 let provider = null;
 

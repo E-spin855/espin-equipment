@@ -1,7 +1,5 @@
 import { Pool } from "pg";
 import { Resend } from "resend";
-import { kv } from "@vercel/kv";
-import { sendPushToUsers, sendBadgeOnlyPush } from "../_lib/push.js";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -9,289 +7,50 @@ const pool = new Pool({
 });
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = "onboarding@resend.dev";
-
-function norm(v) {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "boolean") return v ? "1" : "0";
-  return String(v).trim();
-}
 
 export default async function handler(req, res) {
 
-  const projectId = req.body?.projectId || req.query?.projectId;
-
-  if (!projectId) {
-    return res.status(400).json({ error: "Missing projectId" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const client = await pool.connect();
 
   try {
 
-    const userEmail =
-      req.headers["x-user-email"] ||
-      req.headers["x-useremail"] ||
-      "system";
+    const { projectId, data } = req.body;
 
-    /* ===============================
-       GET (LOAD EQUIPMENT DETAILS)
-    =============================== */
+    console.log("BODY:", req.body);
 
-    if (req.method === "GET") {
-
-      const { rows } = await client.query(
-        `
-        SELECT *
-        FROM equipment_details
-        WHERE project_id = $1
-        `,
-        [projectId]
-      );
-
-      return res.status(200).json(rows[0] || {});
+    if (!projectId || !data) {
+      return res.status(400).json({ error: "Missing projectId or data" });
     }
 
-    /* ===============================
-       POST (SAVE EQUIPMENT DETAILS)
-    =============================== */
+    // ✅ SAVE JSONB
+    await client.query(`
+      INSERT INTO equipment_details (project_id, data)
+      VALUES ($1, $2)
+      ON CONFLICT (project_id)
+      DO UPDATE SET data = $2, updated_at = NOW()
+    `, [projectId, data]);
 
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    const payload = req.body?.data || {};
-
-    /* ===============================
-       ARCHIVE GUARD (ESPIN CONNECT)
-    =============================== */
-
-    const archiveCheck = await client.query(
-      `SELECT is_archived FROM projects WHERE id = $1`,
-      [projectId]
-    );
-
-    if (archiveCheck.rows?.[0]?.is_archived) {
-      return res.status(403).json({
-        error: "Project is archived and read-only"
-      });
-    }
-
-    /* ===============================
-       ENSURE DETAILS ROW EXISTS
-    =============================== */
-
-    await client.query(
-      `
-      INSERT INTO equipment_details (project_id)
-      VALUES ($1)
-      ON CONFLICT (project_id) DO NOTHING
-      `,
-      [projectId]
-    );
-
-    /* ===============================
-       BEFORE SNAPSHOT
-    =============================== */
-
-    const beforeRes = await client.query(
-      `
-      SELECT *
-      FROM equipment_details
-      WHERE project_id = $1
-      `,
-      [projectId]
-    );
-
-    const before = beforeRes.rows[0] || {};
-
-    /* ===============================
-       BUILD DYNAMIC UPDATE
-    =============================== */
-
-    const keys = Object.keys(payload);
-
-    if (!keys.length) {
-      return res.status(200).json({
-        success: true,
-        changedFields: []
-      });
-    }
-
-    const sets = [];
-    const values = [];
-    let idx = 1;
-
-    for (const key of keys) {
-
-      // Prevent SQL injection
-      if (!/^[a-z0-9_]+$/i.test(key)) continue;
-
-      sets.push(`${key} = $${idx}`);
-      values.push(payload[key]);
-      idx++;
-    }
-
-    values.push(projectId);
-
-    await client.query(
-      `
-      UPDATE equipment_details
-      SET ${sets.join(", ")},
-          updated_at = NOW()
-      WHERE project_id = $${idx}
-      `,
-      values
-    );
-
-    /* ===============================
-       DIFF CALCULATION
-    =============================== */
-
-    const changedFields = [];
-
-    for (const key of keys) {
-
-      const beforeVal = norm(before[key]);
-      const afterVal = norm(payload[key]);
-
-      if (beforeVal !== afterVal) {
-        changedFields.push(key);
-      }
-    }
-
-    /* ===============================
-       STORE DIFF FOR BADGES
-    =============================== */
-
-    if (changedFields.length) {
-
-      await kv.set(`proj:changed:${projectId}`, {
-        changedFields,
-        ts: Date.now()
-      });
-    }
-
-    /* ===============================
-       GET PROJECT INFO
-    =============================== */
-
-    const { rows } = await client.query(
-      `
-      SELECT project_name, allowed_emails
-      FROM projects
-      WHERE id = $1
-      `,
-      [projectId]
-    );
-
-    const project = rows[0];
-
-    if (!project) {
-      return res.status(404).json({ error: "Project not found" });
-    }
-
-    /* ===============================
-       EMAIL NOTIFICATION
-    =============================== */
-
-    const allowed = Array.isArray(project.allowed_emails)
-      ? project.allowed_emails
-      : [];
-
+    // 🔴 TEMP: DISABLE EMAIL FOR NOW
+    // (we isolate DB first)
+    /*
     await resend.emails.send({
-      from: `Espin Medical <${FROM_EMAIL}>`,
-      to: ["info@espinmedical.com", ...allowed],
-      subject: `Project Update: ${project.project_name}`,
-      html: "<p>Equipment details updated.</p>"
+      from: "Espin Medical <info@espinmedical.com>",
+      to: "info@espinmedical.com",
+      subject: "Equipment Details",
+      html: "<p>Test</p>"
     });
+    */
 
-    /* ===============================
-       EVENT LOG
-    =============================== */
-
-    const eventRes = await client.query(
-      `
-      INSERT INTO project_events
-        (project_id, actor_email, event_type)
-      VALUES ($1, $2, 'PROJECT_DETAILS_UPDATED')
-      RETURNING id
-      `,
-      [projectId, userEmail]
-    );
-
-    const eventId = eventRes.rows[0].id;
-
-    /* ===============================
-       BADGE COUNTERS
-    =============================== */
-
-    const ADMIN_EMAIL = "info@espinmedical.com";
-    const MASTER_KEY = `stats:total_unread:${ADMIN_EMAIL}`;
-
-    const users = await client.query(
-      `
-      SELECT LOWER(user_email) AS email
-      FROM project_users
-      WHERE project_id = $1
-      `,
-      [projectId]
-    );
-
-    const recipients = [
-      ...new Set([
-        ...users.rows.map(u => u.email),
-        ADMIN_EMAIL
-      ])
-    ];
-
-    const incrementCount = changedFields.length || 1;
-
-    for (const email of recipients) {
-
-      const e = email.toLowerCase().trim();
-
-      for (let i = 0; i < incrementCount; i++) {
-
-        await kv.incr(`project:unread:${projectId}:${e}`);
-        await kv.incr(MASTER_KEY);
-      }
-    }
-
-    /* ===============================
-       PUSH NOTIFICATIONS
-    =============================== */
-
-    await sendPushToUsers(
-      "Project Updated",
-      project.project_name,
-      {
-        type: "project_update",
-        project_id: projectId,
-        event_id: eventId,
-        recipients
-      }
-    );
-
-    for (const email of recipients) {
-      await sendBadgeOnlyPush(email);
-    }
-
-    return res.status(200).json({
-      success: true,
-      changedFields
-    });
+    return res.status(200).json({ success: true });
 
   } catch (err) {
-
-    console.error("SAVE ERROR:", err);
-
-    return res.status(500).json({
-      error: err.message
-    });
-
+    console.error("ERROR:", err);
+    return res.status(500).json({ error: err.message });
   } finally {
-
     client.release();
   }
 }

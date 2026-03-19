@@ -11,17 +11,25 @@
 })();
 
 const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
-const API_BASE = "";
 
 const params = new URLSearchParams(location.search);
-const urlProjectId = params.get("id") || params.get("projectId");
-if (urlProjectId) localStorage.setItem("activeProjectId", urlProjectId);
-const projectId = localStorage.getItem("activeProjectId");
 
-function handleBack(){
- location.href="equipment-details.html";
+let projectId =
+  params.get("projectId") ||
+  params.get("id") ||
+  localStorage.getItem("activeProjectId") ||
+  null;
+
+if (!projectId) {
+  alert("Project ID missing. Please reload the project.");
+  throw new Error("Missing projectId");
 }
 
+localStorage.setItem("activeProjectId", projectId);
+
+function handleBack(){
+  location.href = `equipment-details.html?projectId=${projectId}`;
+}
 function getPrimaryId(p){
  return String(
    p?.id ||
@@ -339,24 +347,20 @@ async function saveMeta(p){
 
 const payload = {
   projectId,
+  photoId: getPrimaryId(p),
+  photo_url: p.photo_url,
   photo_title: p.photo_title,
   photo_comment: p.photo_comment
 }
-
-const pid = getPrimaryId(p)
-
-if(pid){
-  payload.photoId = pid
-}
-
-await fetch(`${API_BASE}/api/equipment-photos/save`,{
-  method:"POST",
-  headers:{
-    "Content-Type":"application/json",
-    "x-user-email":userEmail
+await fetch(`/api/equipment-photos/save`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-user-email": userEmail,
+    "x-project-id": projectId
   },
-  body:JSON.stringify(payload)
-})
+  body: JSON.stringify(payload)
+});
 }
 const debouncedSave=((fn,d=600)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}})(saveMeta)
 
@@ -432,25 +436,29 @@ body:fd
 
 const data=await cloud.json()
 
-const res=await fetch(`${API_BASE}/api/equipment-photos/save`,{
-method:"POST",
-headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-body:JSON.stringify({
-projectId,
-photo_url:data.secure_url,
-photo_title:"",
-photo_comment:""
-})
-})
+const res = await fetch(`/api/equipment-photos/save`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-user-email": userEmail,
+    "x-project-id": projectId
+  },
+  body: JSON.stringify({
+    projectId,
+    photo_url: data.secure_url,
+    photo_title: "",
+    photo_comment: ""
+  })
+});
 
-const out=await res.json()
+const out = await res.json();
 
-const p={
-id:out?.photoId||out?.id,
-photo_url:data.secure_url,
-photo_title:"",
-photo_comment:""
-}
+const p = {
+  id: out?.photo?.id,
+  photo_url: data.secure_url,
+  photo_title: "",
+  photo_comment: ""
+};
 
 photos.unshift(p)
 
@@ -467,36 +475,60 @@ filePicker.value=""
 
 }
 
-sendBtn.onclick=async()=>{
+sendBtn.onclick = async () => {
 
+  const ids = [...selected];
+
+  if (!ids.length) {
+    alert("Select at least one image first");
+    return;
+  }
+
+ await fetch(`/api/equipment-photos/email`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-user-email": userEmail,
+    "x-project-id": projectId
+  },
+  body: JSON.stringify({
+    projectId,
+    photoIds: ids
+  })
+});
+
+selected.clear();
+document.querySelectorAll(".card-footer input").forEach(cb => cb.checked = false);
+updateBatchState();
+
+};
+
+deleteBtn.onclick = async () => {
 const ids=[...selected]
 
-await fetch(`${API_BASE}/api/equipment-photos/email`,{
-method:"POST",
-headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-body:JSON.stringify({projectId,photoIds:ids})
-})
-
-selected.clear()
-document.querySelectorAll(".card-footer input").forEach(cb=>cb.checked=false)
-updateBatchState()
-
+if(!ids.length){
+  alert("Select images first")
+  return
 }
 
-deleteBtn.onclick=async()=>{
+for (const id of [...selected]) {
 
-for(const id of [...selected]){
+  await fetch(`/api/equipment-photos/delete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail,
+      "x-project-id": projectId
+    },
+    body: JSON.stringify({
+      photoId: id,
+      projectId
+    })
+  });
 
-await fetch(`${API_BASE}/api/equipment-photos/delete`,{
-method:"POST",
-headers:{ "Content-Type":"application/json","x-user-email":userEmail },
-body:JSON.stringify({photoId:id,projectId})
-})
+  document.querySelector(`.card[data-id="${id}"]`)?.remove();
 
-document.querySelector(`.card[data-id="${id}"]`)?.remove()
-
-photos=photos.filter(p=>getPrimaryId(p)!==id)
-
+  photos = photos.filter(p => getPrimaryId(p) !== id);
 }
 
 selected.clear()
@@ -511,13 +543,13 @@ let data = [];
 try {
 
   const res = await fetch(
-    `${API_BASE}/api/equipment-photos/list?projectId=${projectId}`,
-    {
-      headers: {
-        "x-user-email": userEmail
-      }
+  `/api/equipment-photos/list?projectId=${projectId}`,
+  {
+    headers: {
+      "x-user-email": userEmail
     }
-  );
+  }
+);
 
   if (!res.ok) {
     console.error("Photo list API failed:", res.status);
