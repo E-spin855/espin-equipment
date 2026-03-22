@@ -10,7 +10,6 @@
 :root{
   --brand-blue:#1F7BC8;
 
-  /* button colors */
   --blue:#1F7BC8;
   --blue-dark:#155e9b;
   --blue-light:#2d8fe0;
@@ -24,10 +23,9 @@ html,body{
   background:#1F7BC8;
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
   color:#fff;
-
-  overflow:hidden;            /* stops scrolling */
-  overscroll-behavior:none;   /* stops iOS bounce */
-  position:fixed;             /* locks page */
+  overflow:hidden;
+  overscroll-behavior:none;
+  position:fixed;
 }
 body::after{
   content:"";
@@ -102,7 +100,6 @@ input{
 }
 .hidden{display:none!important;}
 
-/* FOOTER */
 .footer{
   position:fixed;
   bottom:0;
@@ -126,7 +123,6 @@ input{
 <div class="page">
 <div class="container">
 
-  <!-- EMAIL STEP -->
   <div id="emailStep">
     <div class="logo-area">
       <img src="/index logo.png" alt="Espin Medical">
@@ -141,7 +137,6 @@ input{
     <button id="btn1" class="btn">Continue</button>
   </div>
 
-  <!-- PIN STEP -->
   <div id="pinStep" class="hidden">
     <div class="logo-area">
       <img src="/index logo.png" alt="Espin Medical">
@@ -156,7 +151,6 @@ input{
 </div>
 </div>
 
-<!-- FOOTER -->
 <div class="footer">
   <strong>© 2026 Espin Medical.</strong> All rights reserved.<br>
   Developed and owned by Espin Medical. Unauthorized use, reproduction, or distribution is prohibited.
@@ -164,6 +158,12 @@ input{
 
 <script>
 const API_URL = "";
+
+const APP_PREFIX = "espinEquipment_";
+const AUTH_KEY = `${APP_PREFIX}auth`;
+const EMAIL_KEY = `${APP_PREFIX}userEmail`;
+const KEEP_KEY = `${APP_PREFIX}keepSignedIn`;
+const TEMP_EMAIL_KEY = `${APP_PREFIX}tempEmail`;
 
 /* DOM */
 const emailInput = document.getElementById("emailInput");
@@ -177,8 +177,8 @@ const backBtn    = document.getElementById("backBtn");
 
 /* AUTO LOGIN */
 (function(){
-  const auth = localStorage.getItem("espinAuth");
-  const keep = localStorage.getItem("espinKeepSignedIn");
+  const auth = localStorage.getItem(AUTH_KEY);
+  const keep = localStorage.getItem(KEEP_KEY);
   if (auth === "true" && keep === "true") {
     location.replace("Home.html");
   }
@@ -186,13 +186,13 @@ const backBtn    = document.getElementById("backBtn");
 
 /* RESET */
 function resetLogin(){
-  localStorage.removeItem("tempEmail");
-  localStorage.removeItem("espinAuth");
-  localStorage.removeItem("espinUserEmail");
-  localStorage.removeItem("espinKeepSignedIn");
-  pinInput.value="";
-  btn2.disabled=false;
-  btn2.textContent="Sign In";
+  localStorage.removeItem(TEMP_EMAIL_KEY);
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(EMAIL_KEY);
+  localStorage.removeItem(KEEP_KEY);
+  pinInput.value = "";
+  btn2.disabled = false;
+  btn2.textContent = "Sign In";
   pinStep.classList.add("hidden");
   emailStep.classList.remove("hidden");
 }
@@ -222,7 +222,7 @@ btn1.addEventListener("click", async ()=>{
       throw new Error(data.error || "User not authorized for login");
     }
 
-    localStorage.setItem("tempEmail",email);
+    localStorage.setItem(TEMP_EMAIL_KEY, email);
     emailStep.classList.add("hidden");
     pinStep.classList.remove("hidden");
 
@@ -236,25 +236,32 @@ btn1.addEventListener("click", async ()=>{
 /* VERIFY PIN */
 btn2.addEventListener("click", async ()=>{
   const pin = pinInput.value.trim();
-  if(pin.length!==6) return alert("Enter full PIN");
-  const email = localStorage.getItem("tempEmail");
+  if(pin.length !== 6) return alert("Enter full PIN");
+
+  const email = localStorage.getItem(TEMP_EMAIL_KEY);
   if(!email) return resetLogin();
-  btn2.disabled=true;
-  btn2.textContent="Verifying…";
+
+  btn2.disabled = true;
+  btn2.textContent = "Verifying…";
+
   try{
     const res = await fetch(`${API_URL}/api/verify-pin`,{
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ email,pin })
+      body:JSON.stringify({ email, pin })
     });
-    if(!res.ok) throw 0;
-    localStorage.setItem("espinAuth","true");
-    localStorage.setItem("espinUserEmail",email);
-    localStorage.setItem("espinKeepSignedIn", keepMeIn.checked?"true":"false");
-    localStorage.removeItem("tempEmail");
+
+    if(!res.ok) throw new Error("Invalid or expired PIN");
+
+    localStorage.setItem(AUTH_KEY, "true");
+    localStorage.setItem(EMAIL_KEY, email);
+    localStorage.setItem(KEEP_KEY, keepMeIn.checked ? "true" : "false");
+    localStorage.removeItem(TEMP_EMAIL_KEY);
+
     if (window.webkit?.messageHandlers?.loginSuccess) {
       window.webkit.messageHandlers.loginSuccess.postMessage({ email });
     }
+
     location.replace("Home.html");
   }catch{
     resetLogin();

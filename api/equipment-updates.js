@@ -1,54 +1,91 @@
-import { Pool } from "pg";
+import { kv } from "@vercel/kv";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+function clean(v) {
+  return String(v || "").toLowerCase().trim();
+}
+
+async function readCounts(keys) {
+  if (!Array.isArray(keys) || !keys.length) return [];
+  return kv.mget(...keys);
+}
 
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const userEmail = req.headers["x-user-email"];
-  const { projectId } = req.query;
+  const userEmail = clean(req.headers["x-user-email"] || req.query?.email);
+  const projectId = String(req.query?.projectId || "").trim();
 
-  if (!userEmail || !projectId) {
-    return res.status(400).json({ error: "Missing parameters" });
+  if (!userEmail) {
+    return res.status(400).json({ error: "Missing user email" });
   }
 
   try {
-    /**
-     * Return ALL unread update keys for this project
-     * Unread = events created after last_seen_at
-     */
-    const { rows } = await pool.query(
-  `
-  SELECT
-    e.event_key,
-    e.created_at
-  FROM project_events e
+    const projectPattern = projectId
+      ? `equipment:unread:project:${projectId}:${userEmail}`
+      : `equipment:unread:project:*:${userEmail}`;
 
-  LEFT JOIN project_users pu
-    ON pu.project_id = e.project_id
+    const imagePattern = projectId
+      ? `equipment:unread:images:${projectId}:*:${userEmail}`
+      : `equipment:unread:images:*:${userEmail}`;
 
-  LEFT JOIN users u
-    ON u.id = pu.user_id
+    const [projectKeys, imageKeys] = await Promise.all([
+      kv.keys(projectPattern),
+      kv.keys(imagePattern)
+    ]);
 
-  LEFT JOIN project_event_reads r
-    ON r.project_id = e.project_id
-   AND r.user_id = pu.user_id
+    const [projectValues, imageValues] = await Promise.all([
+      readCounts(projectKeys),
+      readCounts(imageKeys)
+    ]);
 
-  WHERE e.project_id = $2
-    AND LOWER(u.email) = LOWER($1)
-    AND e.created_at > COALESCE(r.last_seen_at, '1970-01-01')
+    const projects = {};
+    const images = {};
+    let total = 0;
 
-  ORDER BY e.created_at ASC
-  `,
-  [userEmail, projectId]
-);
-    res.status(200).json(rows);
+    projectKeys.forEach((key, i) => {
+      const count = Number(projectValues[i]) || 0;
+      if (count <= 0) return;
+
+      const parts = String(key).split(":");
+      const pid = parts[3];
+      if (!pid) return;
+
+      projects[pid] = count;
+      total += count;
+    });
+
+    imageKeys.forEach((key, i) => {
+      const count = Number(imageValues[i]) || 0;
+      if (count <= 0) return;
+
+      const parts = String(key).split(":");
+      const pid = parts[3];
+      const modalityId = parts[4];
+      if (!pid || !modalityId) return;
+
+      const compound = `${pid}:${modalityId}`;
+      images[compound] = count;
+      total += count;
+    });
+
+    return res.status(200).json({
+      ok: true,
+      total,
+      projects,
+      images
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("equipment-updates error:", err);
+    return res.status(500).json({ error: "Failed to load equipment updates" });
   }
 }

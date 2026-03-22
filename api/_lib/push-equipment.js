@@ -1,11 +1,9 @@
 import apn from "apn";
 import { kv } from "@vercel/kv";
 
-const BUNDLE_ID = process.env.APN_BUNDLE_ID || "com.espinmedical.MyApp";
+const BUNDLE_ID = process.env.APN_BUNDLE_ID_EQUIPMENT || "";
+const DEVICE_KEY_PREFIX = `device:ios:equipment:`;
 
-/* ─────────────────────────────────────────────
-   SAFE APNs PROVIDER (never crashes function)
-───────────────────────────────────────────── */
 let provider = null;
 
 try {
@@ -24,23 +22,19 @@ try {
       connectionRetryLimit: 3
     });
 
-    console.log("APNs initialized");
+    console.log("APNs initialized for equipment");
   } else {
-    console.error("APNs missing env vars");
+    console.error("APNs missing env vars for equipment");
   }
 } catch (e) {
   console.error("APNs init failed:", e.message);
   provider = null;
 }
 
-/* ───────────────────────────────────────────── */
 function clean(email) {
   return String(email || "").toLowerCase().trim();
 }
 
-/* ─────────────────────────────────────────────
-   BADGE VALUE (single source of truth)
-───────────────────────────────────────────── */
 async function computeUserBadge(email) {
   const e = clean(email);
   if (!e) return 0;
@@ -49,17 +43,12 @@ async function computeUserBadge(email) {
   return Number(count) || 0;
 }
 
-/* ─────────────────────────────────────────────
-   GET DEVICES
-   (kept as-is for your current structure)
-───────────────────────────────────────────── */
 async function getUserDevices() {
-  const keys = await kv.keys("device:ios:*");
+  const keys = await kv.keys(`${DEVICE_KEY_PREFIX}*`);
   if (!keys.length) return {};
 
   const users = {};
-
-  const records = await kv.mget(keys);
+  const records = await kv.mget(...keys);
 
   for (let i = 0; i < keys.length; i++) {
     const rec = records[i];
@@ -74,9 +63,6 @@ async function getUserDevices() {
   return users;
 }
 
-/* ─────────────────────────────────────────────
-   INTERNAL SEND (safe)
-───────────────────────────────────────────── */
 async function send(note, tokens, email) {
   if (!provider) {
     console.error("APNs not available — skipping push");
@@ -89,9 +75,14 @@ async function send(note, tokens, email) {
     console.log("APNs sent:", result.sent.length);
 
     for (const f of result.failed) {
-      if (f.status === "410" || f.response?.reason === "Unregistered") {
+      if (
+        String(f.status) === "410" ||
+        f.response?.reason === "Unregistered" ||
+        f.response?.reason === "BadDeviceToken" ||
+        f.response?.reason === "DeviceTokenNotForTopic"
+      ) {
         console.log("Removing dead token:", f.device);
-        await kv.del(`device:ios:${f.device}`);
+        await kv.del(`${DEVICE_KEY_PREFIX}${f.device}`);
       }
     }
   } catch (err) {
@@ -99,11 +90,8 @@ async function send(note, tokens, email) {
   }
 }
 
-/* ─────────────────────────────────────────────
-   ALERT PUSH
-───────────────────────────────────────────── */
 export async function sendPushToUsers(title, body, data = {}) {
-  const recipients = (data.recipients || []).map(clean);
+  const recipients = [...new Set((data.recipients || []).map(clean).filter(Boolean))];
   if (!recipients.length) return;
 
   const users = await getUserDevices();
@@ -128,10 +116,7 @@ export async function sendPushToUsers(title, body, data = {}) {
   }
 }
 
-/* ─────────────────────────────────────────────
-   BADGE ONLY PUSH
-───────────────────────────────────────────── */
-export async function sendBadgeOnlyPush(targetEmail = null) {
+export async function sendBadgeOnlyPush(targetEmail = null, explicitBadge = null) {
   const users = await getUserDevices();
   if (!Object.keys(users).length) return;
 
@@ -143,13 +128,17 @@ export async function sendBadgeOnlyPush(targetEmail = null) {
     const tokens = users[email];
     if (!tokens?.length) continue;
 
-    const badge = await computeUserBadge(email);
+    const badge =
+      explicitBadge == null
+        ? await computeUserBadge(email)
+        : Math.max(0, Number(explicitBadge) || 0);
 
     const note = new apn.Notification();
     note.topic = BUNDLE_ID;
     note.badge = badge;
     note.pushType = "background";
     note.priority = 5;
+    note.contentAvailable = 1;
     note.payload = { type: "badge_update" };
 
     await send(note, tokens, email);

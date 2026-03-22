@@ -1,269 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Project Images | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 <script>
+const APP_PREFIX = "espinEquipment_";
+const AUTH_KEY = `${APP_PREFIX}auth`;
+const EMAIL_KEY = `${APP_PREFIX}userEmail`;
+const PROJECT_ID_KEY = `${APP_PREFIX}activeProjectId`;
+const MODALITY_ID_KEY = `${APP_PREFIX}activeModalityId`;
+
 (() => {
-  if (localStorage.getItem("espinAuth") !== "true") {
-    location.replace("index.html");
+  const auth = localStorage.getItem(AUTH_KEY);
+  const email = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().trim();
+
+  if (auth !== "true" || !email) {
+    location.replace("Home.html");
   }
 })();
 
-const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+const userEmail = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().trim();
 
 const params = new URLSearchParams(location.search);
 
 let projectId =
   params.get("projectId") ||
   params.get("id") ||
-  localStorage.getItem("activeProjectId") ||
+  localStorage.getItem(PROJECT_ID_KEY) ||
   null;
+
+let modalityId =
+  params.get("modalityId") ||
+  (projectId ? localStorage.getItem(`${MODALITY_ID_KEY}_${projectId}`) : "") ||
+  null;
+
+projectId = projectId ? String(projectId).trim() : null;
+modalityId = modalityId ? String(modalityId).trim() : null;
 
 if (!projectId) {
   alert("Project ID missing. Please reload the project.");
   throw new Error("Missing projectId");
 }
 
-localStorage.setItem("activeProjectId", projectId);
+localStorage.setItem(PROJECT_ID_KEY, projectId);
+
+if (modalityId) {
+  localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, modalityId);
+}
 
 function handleBack(){
-  location.href = `equipment-details.html?projectId=${projectId}`;
+  clearBadgesOnExit();
+  const qp = new URLSearchParams({ projectId });
+  if (modalityId) qp.set("modalityId", modalityId);
+  location.href = `equipment-details.html?${qp.toString()}`;
 }
+
 function getPrimaryId(p){
- return String(
-   p?.id ||
-   p?.photoId ||
-   p?.photo_id ||
-   p?.uuid ||
-   p?.image_id ||
-   p?.imageId ||
-   ""
- ).trim();
+  return String(
+    p?.id ||
+    p?.photoId ||
+    p?.photo_id ||
+    p?.uuid ||
+    p?.image_id ||
+    p?.imageId ||
+    ""
+  ).trim();
+}
+
+/* ===============================
+   NEW PILL (LOCAL)
+=============================== */
+const BADGE_STORAGE_KEY = modalityId
+  ? `new_images_${projectId}_${modalityId}`
+  : `new_images_${projectId}`;
+
+let hasClearedBadges = false;
+
+function safeParseArray(v){
+  try{
+    const x = typeof v === "string" ? JSON.parse(v) : v;
+    return Array.isArray(x) ? x : [];
+  }catch{
+    return [];
+  }
+}
+
+function uniq(list){
+  return [...new Set((list || []).map(x => String(x).trim()).filter(Boolean))];
+}
+
+function getActiveBadges(){
+  const s = sessionStorage.getItem(BADGE_STORAGE_KEY);
+  const l = localStorage.getItem(BADGE_STORAGE_KEY);
+  return uniq(safeParseArray(s || l || "[]"));
+}
+
+function saveBadgesLocally(list){
+  const j = JSON.stringify(uniq(list));
+  sessionStorage.setItem(BADGE_STORAGE_KEY, j);
+  localStorage.setItem(BADGE_STORAGE_KEY, j);
+}
+
+function clearBadgesOnExit(){
+  if (hasClearedBadges) return;
+  hasClearedBadges = true;
+
+  sessionStorage.removeItem(BADGE_STORAGE_KEY);
+  localStorage.removeItem(BADGE_STORAGE_KEY);
+}
+
+function isNewForPhoto(p, badgeSet){
+  return badgeSet.has(getPrimaryId(p));
 }
 </script>
-
 <style>
 :root{
---blue:#1F7BC8;
---gray:#777;
---bg:#f6f6f6;
---danger:#d93025;
+  --blue:#1F7BC8;
+  --danger:#d93025;
 }
 
 *{box-sizing:border-box}
 
 html,body{
-margin:0;
-padding:0;
-width:100%;
-min-height:100%;
-overflow:hidden;
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-background:#fff;
+  margin:0;
+  padding:0;
+  width:100%;
+  min-height:100%;
+  overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:#fff;
 }
 
 .page{
-min-height:100vh;
-height:100vh;
-overflow-y:auto;
-display:flex;
-flex-direction:column;
-padding-top:90px;
+  min-height:100vh;
+  height:100vh;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  padding-top:90px;
 }
 
 .container{
-width:100%;
-max-width:320px;
-margin:auto;
-padding-bottom:400px;
+  width:100%;
+  max-width:320px;
+  margin:auto;
+  padding-bottom:400px;
 }
 
 .header{
-background:var(--blue);
-color:#fff;
-padding:calc(16px + env(safe-area-inset-top)) 16px 16px 16px;
-display:flex;
-align-items:center;
-justify-content:center;
-position:fixed;
-top:0;
-left:0;
-right:0;
-z-index:1000;
+  background:var(--blue);
+  color:#fff;
+  padding:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  z-index:1000;
 }
 
 .header h1{
-margin:0;
-font-size:20px;
-font-weight:800;
+  margin:0;
+  font-size:20px;
+  font-weight:800;
 }
 
 .back-arrow{
-position:absolute;
-left:16px;
-top:50%;
-transform:translateY(calc(-50% + env(safe-area-inset-top)/2));
-color:#fff;
-text-decoration:none;
-font-size:32px;
-font-weight:800;
-cursor:pointer;
+  position:absolute;
+  left:16px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#fff;
+  font-size:32px;
+  font-weight:800;
+  cursor:pointer;
 }
 
 .section-title{
-font-size:22px;
-font-weight:800;
-margin:60px 0 18px 0;
+  font-size:22px;
+  font-weight:800;
+  margin:60px 0 18px 0;
 }
 
 .upload-card{
-border:2px dashed #ccc;
-border-radius:16px;
-padding:16px;
-display:flex;
-align-items:center;
-gap:12px;
+  border:2px dashed #ccc;
+  border-radius:16px;
+  padding:16px;
+  display:flex;
+  gap:12px;
 }
 
 .upload-card button{
-flex:1;
-padding:14px;
-border-radius:12px;
-border:none;
-background:var(--blue);
-color:#fff;
-font-weight:800;
-cursor:pointer;
+  flex:1;
+  padding:14px;
+  border-radius:12px;
+  border:none;
+  background:var(--blue);
+  color:#fff;
+  font-weight:800;
+  cursor:pointer;
 }
 
 .spinner{
-width:18px;
-height:18px;
-border:3px solid #ddd;
-border-top:3px solid var(--blue);
-border-radius:50%;
-animation:spin 1s linear infinite;
-display:none;
+  width:18px;
+  height:18px;
+  border:3px solid #ddd;
+  border-top:3px solid var(--blue);
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+  display:none;
 }
 
-@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes spin{
+  to{transform:rotate(360deg)}
+}
 
 .gallery{
-display:grid;
-grid-template-columns:1fr;
-gap:18px;
+  display:grid;
+  gap:18px;
 }
 
 .card{
-width:100%;
-margin:12px 0;
-border:1px solid #ddd;
-border-radius:16px;
-overflow:hidden;
+  border:1px solid #ddd;
+  border-radius:16px;
+  overflow:hidden;
+  position:relative;
+}
+
+.new-badge{
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:#ff3b30;
+  color:#fff;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:800;
+  z-index:5;
+}
+
+.card.missing-title{
+  border:2px solid #ff3b30;
+}
+
+.card.missing-title .card-header{
+  background:#ff3b30;
 }
 
 .card-header{
-background:var(--blue);
-padding:10px;
+  background:var(--blue);
+  padding:10px;
 }
 
 .card-header input{
-width:100%;
-border:none;
-background:transparent;
-color:#fff;
-font-weight:800;
-font-size:16px;
-outline:none;
+  width:100%;
+  border:none;
+  background:transparent;
+  color:#fff;
+  font-weight:800;
+  font-size:16px;
 }
 
 .card img{
-width:100%;
-height:360px;
-object-fit:cover;
-display:block;
+  width:100%;
+  height:360px;
+  object-fit:cover;
 }
 
 .card-body{
-padding:12px;
+  padding:12px;
 }
 
 .card-body textarea{
-width:100%;
-min-height:60px;
-border-radius:10px;
-border:1px solid #ddd;
-padding:10px;
+  width:100%;
+  min-height:60px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  padding:10px;
 }
 
 .card-footer{
-padding:12px;
-border-top:1px solid #eee;
-display:flex;
-gap:8px;
-align-items:center;
+  padding:12px;
+  border-top:1px solid #eee;
+  display:flex;
+  gap:8px;
+  align-items:center;
 }
 
 .batch-bar{
-position:fixed;
-bottom:0;
-left:0;
-right:0;
-background:#fff;
-border-top:1px solid #ddd;
-padding:14px;
-z-index:9999;
-box-shadow:0 -4px 12px rgba(0,0,0,.1);
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  background:#fff;
+  border-top:1px solid #ddd;
+  padding:14px;
+  z-index:9999;
 }
 
 .batch-btn{
-width:100%;
-padding:14px;
-border-radius:12px;
-font-size:16px;
-font-weight:800;
-border:none;
-margin-bottom:10px;
-cursor:pointer;
+  width:100%;
+  padding:14px;
+  border-radius:12px;
+  font-size:16px;
+  font-weight:800;
+  border:none;
+  margin-bottom:10px;
+  cursor:pointer;
 }
 
-#sendBtn{background:var(--blue);color:#fff}
-#deleteBtn{background:var(--danger);color:#fff}
+#sendBtn{
+  background:var(--blue);
+  color:#fff;
+}
+
+#deleteBtn{
+  background:var(--danger);
+  color:#fff;
+}
+
+button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
 
 .preview-modal{
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.85);
-display:flex;
-align-items:center;
-justify-content:center;
-z-index:99999;
-opacity:0;
-pointer-events:none;
-transition:opacity .2s ease;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.85);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0;
+  pointer-events:none;
 }
 
 .preview-modal.active{
-opacity:1;
-pointer-events:auto;
+  opacity:1;
+  pointer-events:auto;
 }
 
 .preview-modal img{
-max-width:95%;
-max-height:90%;
-object-fit:contain;
-border-radius:12px;
+  max-width:95%;
+  max-height:90%;
 }
 
 .preview-close{
-position:absolute;
-top:20px;
-right:20px;
-font-size:28px;
-color:#fff;
-font-weight:800;
-cursor:pointer;
+  position:absolute;
+  top:20px;
+  right:20px;
+  color:#fff;
+  font-size:28px;
+  cursor:pointer;
 }
 </style>
 </head>
@@ -271,317 +364,318 @@ cursor:pointer;
 <body>
 <div class="page">
 
-<div class="header">
-<div onclick="handleBack()" class="back-arrow">←</div>
-<h1>Project Images</h1>
-</div>
+  <div class="header">
+    <div onclick="handleBack()" class="back-arrow">←</div>
+    <h1>Project Images</h1>
+  </div>
 
-<div class="container">
+  <div class="container">
+    <div class="section-title">Upload Image</div>
 
-<div class="section-title">Upload Image</div>
+    <div class="upload-card">
+      <input id="filePicker" type="file" accept="image/*" hidden>
+      <button id="chooseFileBtn">Choose Image</button>
+      <div id="uploadSpinner" class="spinner"></div>
+    </div>
 
-<div class="upload-card">
-<input id="filePicker" type="file" accept="image/*" hidden>
-<button id="chooseFileBtn">Choose Image</button>
-<div id="uploadSpinner" class="spinner"></div>
-</div>
+    <div id="gallery" class="gallery"></div>
+  </div>
 
-<div id="gallery" class="gallery" style="margin-top:20px;"></div>
+  <div class="batch-bar">
+    <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
+    <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
+  </div>
 
-</div>
-
-<div class="batch-bar">
-<button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
-<button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
-</div>
-
-<div id="previewModal" class="preview-modal">
-<div class="preview-close" id="previewClose">✕</div>
-<img id="previewImage">
-</div>
+  <div id="previewModal" class="preview-modal">
+    <div class="preview-close" id="previewClose">✕</div>
+    <img id="previewImage">
+  </div>
 
 <script>
+const CLOUD_NAME = "duljf51bg";
+const UPLOAD_PRESET = "espin_unsigned";
 
-const CLOUD_NAME="duljf51bg"
-const UPLOAD_PRESET="espin_unsigned"
+const filePicker = document.getElementById("filePicker");
+const chooseFileBtn = document.getElementById("chooseFileBtn");
+const uploadSpinner = document.getElementById("uploadSpinner");
+const gallery = document.getElementById("gallery");
+const sendBtn = document.getElementById("sendBtn");
+const deleteBtn = document.getElementById("deleteBtn");
 
-const filePicker=document.getElementById("filePicker")
-const chooseFileBtn=document.getElementById("chooseFileBtn")
-const uploadSpinner=document.getElementById("uploadSpinner")
-const gallery=document.getElementById("gallery")
-const sendBtn=document.getElementById("sendBtn")
-const deleteBtn=document.getElementById("deleteBtn")
+const previewModal = document.getElementById("previewModal");
+const previewImage = document.getElementById("previewImage");
+const previewClose = document.getElementById("previewClose");
 
-const previewModal=document.getElementById("previewModal")
-const previewImage=document.getElementById("previewImage")
-const previewClose=document.getElementById("previewClose")
+previewClose.onclick = () => previewModal.classList.remove("active");
+previewModal.onclick = e => {
+  if (e.target === previewModal) previewModal.classList.remove("active");
+};
 
-function openPreview(src){
-previewImage.src=src
-previewModal.classList.add("active")
-document.body.style.overflow="hidden"
-}
+let photos = [];
+let selected = new Set();
 
-function closePreview(){
-previewModal.classList.remove("active")
-previewImage.src=""
-document.body.style.overflow=""
-}
+window.addEventListener("beforeunload", clearBadgesOnExit);
+window.addEventListener("pagehide", clearBadgesOnExit);
 
-previewClose.onclick=closePreview
-previewModal.onclick=e=>{
-if(e.target===previewModal)closePreview()
-}
-
-let photos=[]
-let selected=new Set()
-let uploading=false
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    clearBadgesOnExit();
+  }
+});
 
 function updateBatchState(){
-const sel=photos.filter(p=>selected.has(getPrimaryId(p)))
-sendBtn.disabled=!(sel.length&&sel.every(p=>(p.photo_title||"").trim()))
-deleteBtn.disabled=sel.length===0
+  const sel = photos.filter(p => selected.has(getPrimaryId(p)));
+
+  sendBtn.disabled = !(sel.length && sel.every(p => (p.photo_title || "").trim()));
+  deleteBtn.disabled = sel.length === 0;
+
+  document.querySelectorAll(".card").forEach(card => {
+    const id = card.dataset.id;
+    const p = photos.find(x => getPrimaryId(x) === id);
+
+    if (selected.has(id) && !(p?.photo_title || "").trim()) {
+      card.classList.add("missing-title");
+    } else {
+      card.classList.remove("missing-title");
+    }
+  });
 }
+
+const debouncedSave = ((fn, d = 600) => {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), d);
+  };
+})(saveMeta);
 
 async function saveMeta(p){
+  if (!getPrimaryId(p)) return;
 
-const payload = {
+  await fetch(`/api/equipment-photos/save`, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-user-email":userEmail
+    },
+    body:JSON.stringify({
   projectId,
-  photoId: getPrimaryId(p),
-  photo_url: p.photo_url,
-  photo_title: p.photo_title,
-  photo_comment: p.photo_comment
-}
-await fetch(`/api/equipment-photos/save`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-user-email": userEmail,
-    "x-project-id": projectId
-  },
-  body: JSON.stringify(payload)
-});
-}
-const debouncedSave=((fn,d=600)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),d)}})(saveMeta)
-
-function appendCard(p){
-
-const pid=getPrimaryId(p)
-
-const card=document.createElement("div")
-card.className="card"
-card.dataset.id=pid
-
-card.innerHTML=`
-<div class="card-header">
-<input type="text" value="${p.photo_title||""}" placeholder="Image Title...">
-</div>
-<img src="${p.photo_url}">
-<div class="card-body">
-<textarea placeholder="Add a comment...">${p.photo_comment||""}</textarea>
-</div>
-<div class="card-footer">
-<input type="checkbox">
-<label>Select</label>
-</div>
-`
-
-const img=card.querySelector("img")
-img.style.cursor="zoom-in"
-img.onclick=()=>openPreview(p.photo_url)
-
-const title=card.querySelector("input")
-const note=card.querySelector("textarea")
-const cb=card.querySelector("input[type=checkbox]")
-
-title.oninput=()=>{
-p.photo_title=title.value
-debouncedSave(p)
-updateBatchState()
-}
-
-note.oninput=()=>{
-p.photo_comment=note.value
-debouncedSave(p)
-}
-
-cb.onchange=()=>{
-cb.checked?selected.add(pid):selected.delete(pid)
-updateBatchState()
-}
-
-gallery.append(card)
-}
-
-chooseFileBtn.onclick=()=>{if(!uploading)filePicker.click()}
-
-filePicker.onchange=async()=>{
-
-const file=filePicker.files[0]
-if(!file)return
-
-uploading=true
-uploadSpinner.style.display="block"
-
-try{
-
-const fd=new FormData()
-fd.append("file",file)
-fd.append("upload_preset",UPLOAD_PRESET)
-
-const cloud=await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,{
-method:"POST",
-body:fd
+  modalityId,
+  photoId:getPrimaryId(p),
+  photo_title:p.photo_title,
+  photo_comment:p.photo_comment
 })
+  });
+}
 
-const data=await cloud.json()
+function appendCard(p, badgeSet){
+  const pid = getPrimaryId(p);
 
-const res = await fetch(`/api/equipment-photos/save`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-user-email": userEmail,
-    "x-project-id": projectId
-  },
-  body: JSON.stringify({
-    projectId,
-    photo_url: data.secure_url,
-    photo_title: "",
-    photo_comment: ""
-  })
-});
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.id = pid;
 
-const out = await res.json();
+  const isNew = isNewForPhoto(p, badgeSet);
 
-const p = {
-  id: out?.photo?.id,
-  photo_url: data.secure_url,
-  photo_title: "",
-  photo_comment: ""
+  card.innerHTML = `
+    ${isNew ? '<div class="new-badge">NEW</div>' : ''}
+    <div class="card-header">
+      <input type="text" value="${p.photo_title || ""}" placeholder="Image Title...">
+    </div>
+    <img src="${p.photo_url}">
+    <div class="card-body">
+      <textarea placeholder="Add a comment...">${p.photo_comment || ""}</textarea>
+    </div>
+    <div class="card-footer">
+      <input type="checkbox">
+      <label>Select</label>
+    </div>
+  `;
+
+  const img = card.querySelector("img");
+  img.onclick = () => {
+    previewImage.src = p.photo_url;
+    previewModal.classList.add("active");
+  };
+
+  const title = card.querySelector("input");
+  const note = card.querySelector("textarea");
+  const cb = card.querySelector("input[type=checkbox]");
+
+  title.oninput = () => {
+    p.photo_title = title.value;
+    debouncedSave(p);
+    updateBatchState();
+  };
+
+  note.oninput = () => {
+    p.photo_comment = note.value;
+    debouncedSave(p);
+  };
+
+  cb.onchange = () => {
+    cb.checked ? selected.add(pid) : selected.delete(pid);
+    updateBatchState();
+  };
+
+  gallery.append(card);
+}
+
+chooseFileBtn.onclick = () => filePicker.click();
+
+filePicker.onchange = async () => {
+  const file = filePicker.files[0];
+  if (!file) return;
+
+  uploadSpinner.style.display = "block";
+
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", UPLOAD_PRESET);
+
+    const cloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method:"POST",
+      body:fd
+    });
+
+    const data = await cloud.json();
+
+    const res = await fetch(`/api/equipment-photos/save`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-user-email":userEmail
+      },
+      body:JSON.stringify({
+  projectId,
+  modalityId,
+  photo_url:data.secure_url,
+  photo_title:"",
+  photo_comment:""
+})
+    });
+
+    const out = await res.json();
+
+    const p = {
+      id:out?.photo?.id,
+      photo_url:data.secure_url,
+      photo_title:"",
+      photo_comment:""
+    };
+
+    photos.unshift(p);
+
+    const cur = getActiveBadges();
+    if (p.id && !cur.includes(p.id)) cur.push(p.id);
+    saveBadgesLocally(cur);
+
+    const badgeSet = new Set(getActiveBadges());
+
+    gallery.innerHTML = "";
+    photos.forEach(photo => appendCard(photo, badgeSet));
+
+    updateBatchState();
+
+  } finally {
+    uploadSpinner.style.display = "none";
+    filePicker.value = "";
+  }
 };
-
-photos.unshift(p)
-
-gallery.innerHTML=""
-photos.forEach(appendCard)
-
-updateBatchState()
-
-}finally{
-uploading=false
-uploadSpinner.style.display="none"
-filePicker.value=""
-}
-
-}
 
 sendBtn.onclick = async () => {
-
   const ids = [...selected];
+  if (!ids.length) return;
 
-  if (!ids.length) {
-    alert("Select at least one image first");
-    return;
-  }
-
- await fetch(`/api/equipment-photos/email`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-user-email": userEmail,
-    "x-project-id": projectId
-  },
-  body: JSON.stringify({
-    projectId,
-    photoIds: ids
-  })
-});
-
-selected.clear();
-document.querySelectorAll(".card-footer input").forEach(cb => cb.checked = false);
-updateBatchState();
-
-};
-
-deleteBtn.onclick = async () => {
-const ids=[...selected]
-
-if(!ids.length){
-  alert("Select images first")
-  return
-}
-
-for (const id of [...selected]) {
-
-  await fetch(`/api/equipment-photos/delete`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-email": userEmail,
-      "x-project-id": projectId
+  await fetch(`/api/equipment-photos/email`, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-user-email":userEmail
     },
-    body: JSON.stringify({
-      photoId: id,
-      projectId
+    body:JSON.stringify({
+      projectId,
+      modalityId,
+      photoIds: ids
     })
   });
 
-  document.querySelector(`.card[data-id="${id}"]`)?.remove();
+  selected.clear();
+  document.querySelectorAll(".card-footer input").forEach(cb => cb.checked = false);
+  updateBatchState();
+};
 
-  photos = photos.filter(p => getPrimaryId(p) !== id);
-}
+deleteBtn.onclick = async () => {
+  const ids = [...selected];
+  if (!ids.length) return;
 
-selected.clear()
-updateBatchState()
+  let badgeList = getActiveBadges();
 
-}
+  for (const id of ids) {
+    await fetch(`/api/equipment-photos/delete`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-user-email":userEmail
+      },
+      body:JSON.stringify({
+        photoId:id,
+        projectId,
+        modalityId
+      })
+    });
 
-;(async()=>{
-
-let data = [];
-
-try {
-
-  const res = await fetch(
-  `/api/equipment-photos/list?projectId=${projectId}`,
-  {
-    headers: {
-      "x-user-email": userEmail
-    }
-  }
-);
-
-  if (!res.ok) {
-    console.error("Photo list API failed:", res.status);
-  } else {
-    const json = await res.json();
-
-    if (Array.isArray(json)) {
-      data = json;
-    } else {
-      console.error("Photo API returned non-array:", json);
-    }
+    document.querySelector(`.card[data-id="${id}"]`)?.remove();
+    photos = photos.filter(p => getPrimaryId(p) !== id);
+    badgeList = badgeList.filter(x => x !== id);
   }
 
-} catch (err) {
-  console.error("Photo fetch error:", err);
-}
+  saveBadgesLocally(badgeList);
 
-photos=data
+  selected.clear();
+  updateBatchState();
+};
+(async () => {
+  let data = { photos: [] };
 
-photos.sort((a,b)=>{
-const da=new Date(a?.created_at||0).getTime()
-const db=new Date(b?.created_at||0).getTime()
-return db-da
-})
+  try {
+    const listUrl = new URL(`/api/equipment-photos/list`, location.origin);
+listUrl.searchParams.set("projectId", projectId);
+if (modalityId) listUrl.searchParams.set("modalityId", modalityId);
 
-gallery.innerHTML=""
-photos.forEach(appendCard)
+const res = await fetch(listUrl.toString(), {
+  headers: { "x-user-email": userEmail }
+});
 
-updateBatchState()
+    const out = await res.json();
 
-})()
+    if (!res.ok) {
+      throw new Error(out?.error || "Failed to load photos");
+    }
 
+    data = out;
+  } catch (err) {
+    console.error("load photos error:", err);
+    data = { photos: [] };
+  }
+
+  photos = Array.isArray(data?.photos) ? data.photos : [];
+
+  photos = photos.map(p => ({
+    ...p,
+    comment: p.photo_comment || ""
+  }));
+
+  photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const badgeSet = new Set(getActiveBadges());
+
+  gallery.innerHTML = "";
+  photos.forEach(p => appendCard(p, badgeSet));
+
+  updateBatchState();
+})();
 </script>
 
 </div>

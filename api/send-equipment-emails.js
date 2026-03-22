@@ -2,7 +2,6 @@ import { Pool } from "pg";
 import { Resend } from "resend";
 import { kv } from "@vercel/kv";
 
-/* ───────────────────────── DATABASE ───────────────────────── */
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -10,46 +9,103 @@ const pool = new Pool({
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM_EMAIL = "Espin Medical <info@espinmedical.com>";
+const ADMIN_EMAIL = "info@espinmedical.com";
 
-const clean = e => String(e || "").toLowerCase().trim();
+function clean(v) {
+  return String(v || "").toLowerCase().trim();
+}
 
-/* ───────────────────────── FORMATTER ───────────────────────── */
-const fmt = v => {
+function esc(v) {
+  return String(v || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmt(v) {
   if (v === true || v === "true" || v === 1) return "Yes";
   if (v === false || v === "false" || v === 0) return "No";
-  if (v === null || v === undefined || v === "") return "—";
-
-  try {
-    const d = new Date(
-      String(v).includes("T")
-        ? v
-        : String(v).replace(" ", "T") + "Z"
-    );
-
-    if (isNaN(d.getTime())) return String(v);
-
-    return d.toLocaleString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "UTC"
-    });
-  } catch {
-    return String(v);
+  if (v == null || v === "") return "—";
+  if (Array.isArray(v)) return v.map(x => String(x || "").trim()).filter(Boolean).join(", ") || "—";
+  if (typeof v === "object") {
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
   }
-};
+  return String(v);
+}
 
-/* ───────────────────────── HANDLER ───────────────────────── */
+function prettifyLabel(key) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, m => m.toUpperCase())
+    .trim();
+}
+
+function isMeaningful(v) {
+  if (v == null) return false;
+  if (typeof v === "string" && !v.trim()) return false;
+  if (Array.isArray(v) && !v.length) return false;
+  return true;
+}
+
+async function bumpUnreadForRecipients({ projectId, modalityId, actorEmail, recipients }) {
+  const actor = clean(actorEmail);
+  const targets = [...new Set((recipients || []).map(clean).filter(Boolean))].filter(e => e !== actor);
+
+  await Promise.all(
+    targets.map(async (email) => {
+      const keys = [`equipment:unread:project:${projectId}:${email}`];
+
+      if (modalityId) {
+        keys.push(`equipment:unread:images:${projectId}:${modalityId}:${email}`);
+      }
+
+      if (keys.length) {
+        await Promise.all(keys.map(key => kv.incr(key)));
+      }
+
+      const [projectKeys, imageKeys] = await Promise.all([
+        kv.keys(`equipment:unread:project:*:${email}`),
+        kv.keys(`equipment:unread:images:*:${email}`)
+      ]);
+
+      const allKeys = [...projectKeys, ...imageKeys];
+      let total = 0;
+
+      if (allKeys.length) {
+        const values = await kv.mget(...allKeys);
+        total = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
+      }
+
+      await Promise.all([
+        kv.set(`app:badge:equipment:${email}`, total),
+        kv.set(`ios:badge:counter:${email}`, total)
+      ]);
+    })
+  );
+}
+
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { projectId, changedFields: bodyFields } = req.body || {};
+  const actorEmail = clean(req.headers["x-user-email"] || req.body?.email || req.body?.actorEmail);
+  const projectId = String(req.body?.projectId || "").trim();
+  const modalityId = String(req.body?.modalityId || "").trim();
+
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
   }
@@ -57,180 +113,196 @@ export default async function handler(req, res) {
   const client = await pool.connect();
 
   try {
+    const projectRes = await client.query(
+      `
+      SELECT
+        id,
+        project_name,
+        site_address,
+        zip_code,
+        modality,
+        admin_email,
+        sales_rep_email,
+        sales_rep,
+        sales_rep_first,
+        sales_rep_last
+      FROM projects
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [projectId]
+    );
 
-    /* ───────── CHANGED FIELDS ───────── */
-    let changedFields = [];
-
-    if (Array.isArray(bodyFields) && bodyFields.length) {
-      changedFields = bodyFields;
-    } else {
-      const rec = await kv.get(`proj:changed:${projectId}`);
-      if (Array.isArray(rec?.changedFields)) {
-        changedFields = rec.changedFields;
-      }
+    const project = projectRes.rows[0];
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
     }
 
-    /* ───────── LOAD DATA ───────── */
-    const detailsRes = await client.query(
-      `SELECT * FROM project_details WHERE project_id = $1`,
+    const detailsRes = modalityId
+      ? await client.query(
+          `
+          SELECT
+            id,
+            project_id,
+            modality_id,
+            modality,
+            data,
+            created_at,
+            updated_at,
+            mri_serial,
+            xray_serial,
+            pet_serial,
+            carm_serial
+          FROM equipment_details
+          WHERE project_id = $1
+            AND modality_id = $2
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1
+          `,
+          [projectId, modalityId]
+        )
+      : await client.query(
+          `
+          SELECT
+            id,
+            project_id,
+            modality_id,
+            modality,
+            data,
+            created_at,
+            updated_at,
+            mri_serial,
+            xray_serial,
+            pet_serial,
+            carm_serial
+          FROM equipment_details
+          WHERE project_id = $1
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1
+          `,
+          [projectId]
+        );
+
+    const details = detailsRes.rows[0] || {};
+    const data = details?.data && typeof details.data === "object" && !Array.isArray(details.data)
+      ? details.data
+      : {};
+
+    const accessRes = await client.query(
+      `
+      SELECT LOWER(email) AS email
+      FROM equipment_project_access
+      WHERE project_id = $1
+      `,
       [projectId]
     );
 
-    const d = detailsRes.rows[0] || {};
+    let recipients = [
+      clean(project.admin_email),
+      ...accessRes.rows.map(r => clean(r.email))
+    ].filter(Boolean);
 
-    const projectRes = await client.query(
-      `SELECT * FROM projects WHERE id = $1`,
-      [projectId]
-    );
+    if (!recipients.includes(ADMIN_EMAIL)) {
+      recipients.push(ADMIN_EMAIL);
+    }
 
-    const p = projectRes.rows[0];
-    if (!p) return res.json({ skipped: true });
+    recipients = [...new Set(recipients)];
 
-    /* ───────── ROW RENDER ───────── */
-    const row = (label, key, value) => {
+    const changedFieldsFromBody = Array.isArray(req.body?.changedFields)
+      ? req.body.changedFields.map(v => String(v || "").trim()).filter(Boolean)
+      : [];
 
-      const updated = changedFields.includes(key);
-      const color = updated ? "#0066B2" : "#000";
-      const weight = updated ? "800" : "400";
+    const changedFieldsFromKv = (() => {
+      return null;
+    })();
 
-      return `
-<tr>
-<td style="padding:8px;border-bottom:1px solid #eee">
-<b style="color:${color}">${label}</b>
-</td>
+    const changedFields = changedFieldsFromBody.length
+      ? changedFieldsFromBody
+      : (Array.isArray(changedFieldsFromKv) ? changedFieldsFromKv : []);
 
-<td style="padding:8px;border-bottom:1px solid #eee;color:${color};font-weight:${weight}">
-${fmt(value)}
-</td>
-</tr>
-`;
-    };
+    const rows = [];
 
-    /* ───────── SECTION HELPER ───────── */
-    const section = (title, rows) => {
-      if (!rows) return "";
+    rows.push(["Project Name", project.project_name]);
+    rows.push(["Site Address", project.site_address]);
+    rows.push(["Zip Code", project.zip_code]);
+    rows.push(["Project Modality", project.modality]);
+    rows.push(["Equipment Unit Modality", details.modality]);
+    rows.push(["MRI Serial", details.mri_serial]);
+    rows.push(["X-Ray Serial", details.xray_serial]);
+    rows.push(["PET Serial", details.pet_serial]);
+    rows.push(["C-Arm Serial", details.carm_serial]);
 
-      return `
-<h3 style="background:#0066B2;color:#fff;padding:10px;margin:20px 0 0 0;font-family:Arial;font-size:15px">
-${title}
-</h3>
+    Object.entries(data).forEach(([key, value]) => {
+      rows.push([prettifyLabel(key), value, key]);
+    });
 
-<table width="100%" style="border:1px solid #eee;border-top:none;border-collapse:collapse;margin-bottom:20px">
-${rows}
-</table>
-`;
-    };
+    const htmlRows = rows
+      .filter(([, value]) => isMeaningful(value))
+      .map(([label, value, rawKey]) => {
+        const updated = rawKey && changedFields.includes(rawKey);
+        const color = updated ? "#1F7BC8" : "#111827";
+        const weight = updated ? "800" : "400";
 
-    /* ───────── BUILD ROW GROUPS ───────── */
+        return `
+          <tr>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:700;color:#111827;width:42%">
+              ${esc(label)}
+            </td>
+            <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:${color};font-weight:${weight};white-space:pre-wrap">
+              ${esc(fmt(value))}
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
 
-    let timelineRows = "";
-    let powerRows = "";
-    let magnetRows = "";
-    let removalRows = "";
-    let completionRows = "";
-    let notesRows = "";
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;color:#111827">
+        <h2 style="margin:0 0 8px 0;">Equipment Update: ${esc(project.project_name || "—")}</h2>
+        <p style="margin:0 0 18px 0;color:#4b5563;font-size:14px;">
+          Address: ${esc(project.site_address || "—")}<br>
+          Zip Code: ${esc(project.zip_code || "—")}<br>
+          Project ID: ${esc(projectId)}<br>
+          Modality ID: ${esc(modalityId || details.modality_id || "—")}
+        </p>
 
-    /* TIMELINE */
-    timelineRows += row("Project Start", "project_start", d.project_start);
-    timelineRows += row("Pathways Opening Start", "pathways_opening_start", d.pathways_opening_start);
-    timelineRows += row("Pathways Opened", "pathways_opened", d.pathways_opened);
-    timelineRows += row("Inspection Date", "inspection_date", d.inspection_date);
-    timelineRows += row("Inspection Completed", "inspection_completed", d.inspection_completed);
-
-    /* POWER */
-    powerRows += row("Power Shut Down Date", "power_shutdown", d.power_shutdown);
-    powerRows += row("Power Completed", "power_shutdown_completed", d.power_shutdown_completed);
-
-    /* MAGNET */
-    magnetRows += row("Ramp Down Date", "magnet_ramp_down", d.magnet_ramp_down);
-    magnetRows += row("Ramp Down Completed", "magnet_ramp_completed", d.magnet_ramp_completed);
-    magnetRows += row("Quench Date", "magnet_quench_date", d.magnet_quench_date);
-    magnetRows += row("Quench Completed", "magnet_quench_completed", d.magnet_quench_completed);
-
-    /* REMOVAL */
-    removalRows += row("De-Install Start Date", "deinstall_start", d.deinstall_start);
-    removalRows += row("De-Install Completed", "deinstall_completed", d.deinstall_completed);
-    removalRows += row("Rig-Out Date", "rigout_date", d.rigout_date);
-    removalRows += row("Rig-Out Completed", "rigout_completed", d.rigout_completed);
-
-    /* COMPLETION */
-    completionRows += row("Project Completion Date", "project_completion", d.project_completion);
-    completionRows += row("Project Completed", "project_completed", d.project_completed);
-
-    /* NOTES */
-    notesRows += `
-<tr>
-<td colspan="2" style="padding:15px;white-space:pre-wrap">
-${d.notes || "—"}
-</td>
-</tr>
-`;
-
-    /* ───────── EMAIL HTML ───────── */
-
-    let html = `
-<div style="font-family:Arial;max-width:650px;margin:auto">
-<h2 style="margin-bottom:6px">Project Name: ${p.project_name || "—"}</h2>
-
-<p style="margin:0;font-size:14px;color:#444">
-Address: ${p.site_address || "—"}<br>
-Zip Code: ${p.zip_code || "—"}<br>
-Modality: ${p.modality || "—"}
-</p>
-${section("Project Timeline", timelineRows)}
-${section("Power Utility", powerRows)}
-${section("MRI Magnet", magnetRows)}
-${section("Equipment Removal", removalRows)}
-${section("Project Completion", completionRows)}
-${section("Notes", notesRows)}
-
-</div>
-`;
-
-    /* ───────── RECIPIENTS ───────── */
-
-    const contactsRes = await client.query(
-      `SELECT LOWER(email) AS email
-       FROM project_contacts
-       WHERE project_id = $1 AND can_login = true`,
-      [projectId]
-    );
-
-    let recipients = contactsRes.rows.map(r => clean(r.email));
-
-    const ADMIN = "info@espinmedical.com";
-    if (!recipients.includes(ADMIN)) recipients.push(ADMIN);
-
-    recipients = Array.from(new Set(recipients.filter(Boolean)));
-
-    console.log("📧 Recipients:", recipients);
+        <table width="100%" style="border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+          ${htmlRows || `
+            <tr>
+              <td style="padding:12px;">No equipment details found.</td>
+            </tr>
+          `}
+        </table>
+      </div>
+    `;
 
     if (recipients.length) {
-
       await resend.emails.send({
         from: FROM_EMAIL,
-        to: ["info@espinmedical.com"],
+        to: [ADMIN_EMAIL],
         bcc: recipients,
-        subject: `Project Update: ${p.project_name}`,
+        subject: `Equipment Update: ${project.project_name || "Project"}`,
         html
       });
 
+      await bumpUnreadForRecipients({
+        projectId,
+        modalityId,
+        actorEmail,
+        recipients
+      });
     }
 
-    /* CLEANUP */
+    await kv.del(`equipment:changed:${projectId}`);
+    if (modalityId) {
+      await kv.del(`equipment:changed:${projectId}:${modalityId}`);
+    }
 
-    await kv.del(`proj:changed:${projectId}`);
-
-    return res.json({ success: true });
-
+    return res.status(200).json({ success: true });
   } catch (err) {
-
-    console.error("❌ send-project-emails error:", err);
-    return res.status(500).json({ error: "Failed" });
-
+    console.error("send-equipment-emails error:", err);
+    return res.status(500).json({ error: "Failed to send equipment email" });
   } finally {
-
     client.release();
-
   }
 }
