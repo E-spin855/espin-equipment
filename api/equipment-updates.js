@@ -34,21 +34,28 @@ export default async function handler(req, res) {
       ? `equipment:unread:project:${projectId}:${userEmail}`
       : `equipment:unread:project:*:${userEmail}`;
 
+    const detailsPattern = projectId
+      ? `equipment:unread:details:${projectId}:*:${userEmail}`
+      : `equipment:unread:details:*:*:${userEmail}`;
+
     const imagePattern = projectId
       ? `equipment:unread:images:${projectId}:*:${userEmail}`
-      : `equipment:unread:images:*:${userEmail}`;
+      : `equipment:unread:images:*:*:${userEmail}`;
 
-    const [projectKeys, imageKeys] = await Promise.all([
+    const [projectKeys, detailsKeys, imageKeys] = await Promise.all([
       kv.keys(projectPattern),
+      kv.keys(detailsPattern),
       kv.keys(imagePattern)
     ]);
 
-    const [projectValues, imageValues] = await Promise.all([
+    const [projectValues, detailsValues, imageValues] = await Promise.all([
       readCounts(projectKeys),
+      readCounts(detailsKeys),
       readCounts(imageKeys)
     ]);
 
     const projects = {};
+    const details = {};
     const images = {};
     let total = 0;
 
@@ -60,7 +67,21 @@ export default async function handler(req, res) {
       const pid = parts[3];
       if (!pid) return;
 
-      projects[pid] = count;
+      projects[pid] = (projects[pid] || 0) + count;
+      total += count;
+    });
+
+    detailsKeys.forEach((key, i) => {
+      const count = Number(detailsValues[i]) || 0;
+      if (count <= 0) return;
+
+      const parts = String(key).split(":");
+      const pid = parts[3];
+      const modalityId = parts[4];
+      if (!pid || !modalityId) return;
+
+      const compound = `${pid}:${modalityId}`;
+      details[compound] = (details[compound] || 0) + count;
       total += count;
     });
 
@@ -74,7 +95,7 @@ export default async function handler(req, res) {
       if (!pid || !modalityId) return;
 
       const compound = `${pid}:${modalityId}`;
-      images[compound] = count;
+      images[compound] = (images[compound] || 0) + count;
       total += count;
     });
 
@@ -82,6 +103,7 @@ export default async function handler(req, res) {
       ok: true,
       total,
       projects,
+      details,
       images
     });
   } catch (err) {

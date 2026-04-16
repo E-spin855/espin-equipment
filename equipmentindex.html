@@ -20,6 +20,9 @@
   --border:#d9e2ec;
   --shadow:0 10px 30px rgba(15,23,42,.08);
   --safe-top:env(safe-area-inset-top, 0px);
+  --danger:#c62828;
+  --danger-soft:#fff1f2;
+  --danger-soft-border:#fecdd3;
 }
 
 *{box-sizing:border-box}
@@ -36,9 +39,6 @@ body{
   min-height:100vh;
 }
 
-/* ===============================
-   TOP BAR FIX
-=============================== */
 .topbar{
   position:sticky;
   top:0;
@@ -185,6 +185,11 @@ body{
   padding:16px;
 }
 
+.card.card-has-updates{
+  border-color:#b9d9f4;
+  box-shadow:0 10px 30px rgba(31,123,200,.12);
+}
+
 .card-top{
   display:flex;
   align-items:flex-start;
@@ -197,12 +202,22 @@ body{
   margin:0;
   font-size:18px;
   font-weight:800;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
 }
 
 .card-sub{
   margin-top:4px;
   color:var(--muted);
   font-size:14px;
+}
+
+.card-top-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
 }
 
 .badge{
@@ -213,6 +228,39 @@ body{
   padding:7px 10px;
   font-size:12px;
   font-weight:800;
+}
+
+.icon-delete-btn{
+  width:40px;
+  height:40px;
+  border:1px solid var(--danger-soft-border);
+  border-radius:999px;
+  background:var(--danger-soft);
+  color:var(--danger);
+  font-size:18px;
+  font-weight:800;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  box-shadow:0 2px 8px rgba(198,40,40,.10);
+  -webkit-appearance:none;
+  appearance:none;
+}
+
+.icon-delete-btn:hover{
+  background:#ffe4e6;
+}
+
+.icon-delete-btn:active{
+  transform:scale(.97);
+}
+
+.icon-delete-btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
 }
 
 .grid{
@@ -229,6 +277,11 @@ body{
   background:#fbfdff;
 }
 
+.meta-box.meta-box-new{
+  border-color:#1F7BC8;
+  background:#eef7ff;
+}
+
 .meta-label{
   font-size:12px;
   color:var(--muted);
@@ -236,12 +289,24 @@ body{
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:.3px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.meta-label.meta-label-new{
+  color:var(--blue);
 }
 
 .meta-value{
   font-size:14px;
   font-weight:700;
   word-break:break-word;
+}
+
+.meta-value.meta-value-new{
+  color:var(--blue);
 }
 
 .card-actions{
@@ -326,7 +391,8 @@ body{
 }
 
 .cancel-btn,
-.save-btn{
+.save-btn,
+.danger-btn{
   width:100%;
   border:none;
   border-radius:14px;
@@ -346,6 +412,11 @@ body{
   color:#fff;
 }
 
+.danger-btn{
+  background:var(--danger);
+  color:#fff;
+}
+
 .loading,
 .error{
   margin-top:16px;
@@ -355,6 +426,48 @@ body{
 
 .error{ color:#c62828; }
 .loading{ color:var(--muted); }
+
+.new-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:4px 12px;
+  border-radius:999px;
+  background:var(--blue);
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.2;
+  vertical-align:middle;
+}
+
+.updated-fields{
+  margin-top:8px;
+  font-size:13px;
+  color:var(--blue);
+  font-weight:700;
+  line-height:1.45;
+}
+
+.updated-fields-label{
+  font-weight:800;
+}
+
+.debug-panel{
+  margin:12px 0 0;
+  padding:10px 12px;
+  border:1px dashed #cbd5e1;
+  border-radius:12px;
+  background:#f8fafc;
+  color:#475569;
+  font-size:12px;
+  line-height:1.45;
+  word-break:break-word;
+}
+
+.debug-panel strong{
+  color:#0f172a;
+}
 
 @media (max-width:640px){
   .grid,
@@ -369,7 +482,7 @@ body{
 
 <div class="topbar">
   <button class="back-btn" id="backBtn" type="button" aria-label="Back">&#8592;</button>
-  <div class="topbar-title">Equipment Records</div>
+  <div class="topbar-title">Project Details</div>
 </div>
 
 <div class="wrap">
@@ -384,14 +497,14 @@ body{
   </div>
 
   <div class="actions">
-    <button class="primary-btn" id="addBtn" type="button">Add Equipment Record</button>
-    <button class="outline-btn" id="newProjectBtn" type="button">Add New Project</button>
+    <button class="primary-btn" id="addBtn" type="button">Add New Modality</button>
+  
   </div>
 
   <div id="loading" class="loading">Loading records...</div>
   <div id="error" class="error" style="display:none;"></div>
   <div id="empty" class="empty" style="display:none;">
-    No equipment records yet.<br>
+    No equipment details yet.<br>
     Create the first one and then open details and images for that specific record.
   </div>
   <div id="list" class="list"></div>
@@ -399,9 +512,6 @@ body{
 
 <div class="modal" id="createModal">
   <div class="sheet">
-    <h3 class="sheet-title">Add Equipment Record</h3>
-
-    <label class="label" for="modalitySelect">Modality</label>
     <select id="modalitySelect" class="select">
       <option value="">Select modality</option>
       <option value="MRI">MRI</option>
@@ -409,8 +519,6 @@ body{
       <option value="XRAY">XRAY</option>
       <option value="CARM">CARM</option>
       <option value="PETCT">PETCT</option>
-      <option value="NM">NM</option>
-      <option value="US">US</option>
       <option value="MAMMO">MAMMO</option>
       <option value="OTHER">OTHER</option>
     </select>
@@ -418,6 +526,20 @@ body{
     <div class="sheet-actions">
       <button class="cancel-btn" id="cancelBtn" type="button">Cancel</button>
       <button class="save-btn" id="createBtn" type="button">Continue</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="deleteModal">
+  <div class="sheet">
+    <h3 class="sheet-title">Delete Equipment Record</h3>
+    <p id="deleteConfirmText" style="margin:0 0 14px 0; color:#475569; line-height:1.5;">
+      Are you sure you want to delete this equipment record?
+    </p>
+
+    <div class="sheet-actions">
+      <button class="cancel-btn" id="cancelDeleteBtn" type="button">Cancel</button>
+      <button class="danger-btn" id="confirmDeleteBtn" type="button">Delete Record</button>
     </div>
   </div>
 </div>
@@ -458,11 +580,15 @@ localStorage.setItem(PROJECT_ID_KEY, projectId);
 
 const backBtn = document.getElementById("backBtn");
 const addBtn = document.getElementById("addBtn");
-const newProjectBtn = document.getElementById("newProjectBtn");
 const createBtn = document.getElementById("createBtn");
 const cancelBtn = document.getElementById("cancelBtn");
 const createModal = document.getElementById("createModal");
 const modalitySelect = document.getElementById("modalitySelect");
+
+const deleteModal = document.getElementById("deleteModal");
+const deleteConfirmText = document.getElementById("deleteConfirmText");
+const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
+const confirmDeleteBtn = document.getElementById("confirmDeleteBtn");
 
 const projectNameEl = document.getElementById("projectName");
 const projectMetaEl = document.getElementById("projectMeta");
@@ -474,6 +600,17 @@ const listEl = document.getElementById("list");
 
 let project = null;
 let items = [];
+let pendingDeleteRowId = "";
+let deleteBusy = false;
+
+const DETAILS_BADGE_STORAGE_KEY = `equipmentDetailsChanged:${projectId}`;
+const DEBUG = false;
+
+console.log("[INDEX PAGE] storage key", DETAILS_BADGE_STORAGE_KEY);
+console.log("[INDEX PAGE] storage before load", {
+  session: sessionStorage.getItem(DETAILS_BADGE_STORAGE_KEY),
+  local: localStorage.getItem(DETAILS_BADGE_STORAGE_KEY)
+});
 
 function clean(v){
   return String(v || "").trim();
@@ -496,6 +633,277 @@ function fmtDate(v){
     day:"2-digit",
     year:"numeric"
   });
+}
+
+function normalizeKeys(list){
+  return [...new Set(
+    (list || [])
+      .map(v => String(v || "").trim())
+      .filter(Boolean)
+  )];
+}
+
+function normalizeChangedMap(obj){
+  const out = {};
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return out;
+
+  Object.keys(obj).forEach(rowId => {
+    const cleanRowId = String(rowId || "").trim();
+    if (!cleanRowId) return;
+
+    const row = obj[rowId];
+    if (!row || typeof row !== "object" || Array.isArray(row)) return;
+
+    const changedFields = normalizeKeys(row.changedFields);
+    if (!changedFields.length) return;
+
+    out[cleanRowId] = {
+      changedFields,
+      ts: Number(row.ts) || Date.now(),
+      modality: String(row.modality || "").trim()
+    };
+  });
+
+  return out;
+}
+
+function readDetailsChangedMap(){
+  try {
+    const raw =
+      sessionStorage.getItem(DETAILS_BADGE_STORAGE_KEY) ||
+      localStorage.getItem(DETAILS_BADGE_STORAGE_KEY);
+
+    if (!raw) return {};
+    return normalizeChangedMap(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+function writeDetailsChangedMap(map){
+  const normalized = normalizeChangedMap(map);
+  const json = JSON.stringify(normalized);
+  try { sessionStorage.setItem(DETAILS_BADGE_STORAGE_KEY, json); } catch {}
+  try { localStorage.setItem(DETAILS_BADGE_STORAGE_KEY, json); } catch {}
+}
+
+async function readChangedEntryFromKV(rowId){
+  const ADMIN_EMAIL = "info@espinmedical.com";
+
+  const adminKey = `equipment:changed:${projectId}:${rowId}:${ADMIN_EMAIL}`;
+  const fieldsKey = `equipment:changed:${projectId}:${rowId}:${ADMIN_EMAIL}:fields`;
+
+  try {
+    // 🔥 GET FIELDS (DRIVES BLUE)
+    const f = await fetch("/api/kv-get", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: fieldsKey })
+    });
+
+    const fj = await f.json().catch(() => ({}));
+
+    let changedFields = [];
+
+    if (fj && fj.value) {
+      const parsed = typeof fj.value === "string"
+        ? JSON.parse(fj.value)
+        : fj.value;
+
+      if (Array.isArray(parsed)) {
+        changedFields = parsed;
+      }
+    }
+
+    if (!changedFields.length) {
+      return { entry: null };
+    }
+
+    // 🔥 GET METADATA
+    const r = await fetch("/api/kv-get", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: adminKey })
+    });
+
+    const j = await r.json().catch(() => ({}));
+
+    const parsed = j?.value
+      ? (typeof j.value === "string" ? JSON.parse(j.value) : j.value)
+      : {};
+
+    return {
+      hit: true,
+      parsed,
+      entry: {
+        changedFields,
+        ts: Number(parsed.ts) || Date.now(),
+        modality: String(parsed.modality || "").trim()
+      }
+    };
+
+  } catch {
+    return { hit: false, parsed: null, entry: null };
+  }
+}
+async function clearChangedEntryInKV(rowId){
+  try {
+    const ADMIN_EMAIL = "info@espinmedical.com";
+
+    const adminKey = `equipment:changed:${projectId}:${rowId}:${ADMIN_EMAIL}`;
+    const oldKey = `equipment:changed:${projectId}:${rowId}`;
+
+    // 🔥 CLEAR BOTH KEYS IN PARALLEL (FASTER + CONSISTENT)
+    await Promise.all([
+      fetch("/api/kv-set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: adminKey, value: "" }),
+        keepalive: true
+      }),
+      fetch("/api/kv-set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: oldKey, value: "" }),
+        keepalive: true
+      })
+    ]);
+
+  } catch (e) {
+    console.warn("clearChangedEntryInKV failed:", e);
+  }
+}
+
+async function clearAllDetailsChangedMap(){
+  try {
+    const current = readDetailsChangedMap();
+
+    // 🔥 CLEAR LOCAL STORAGE FIRST
+    sessionStorage.removeItem(DETAILS_BADGE_STORAGE_KEY);
+    localStorage.removeItem(DETAILS_BADGE_STORAGE_KEY);
+
+    const ids = Object.keys(current);
+
+    if (!ids.length) return;
+
+    // 🔥 CLEAR ALL KV ENTRIES IN PARALLEL
+    await Promise.all(ids.map(rowId => clearChangedEntryInKV(rowId)));
+
+  } catch (e) {
+    console.warn("details changed clear failed:", e);
+  }
+}
+
+function prettyFieldName(key){
+  const map = {
+    ct_manufacturer: "Manufacturer",
+    ct_model: "Model",
+    ct_serial: "Serial Number",
+    ct_dom: "DOM",
+    ct_installed: "Installed Date",
+    ct_slices: "Slices",
+    ct_tube_mas: "Tube mAs",
+    ct_mhu: "MHU",
+    ct_tube_dom: "Tube DOM",
+    ct_tube_installation_date: "Tube Install Date",
+    ct_sw_version: "Software Version",
+    ct_goc_version: "GOC Version",
+    ct_upgrades: "Upgrades",
+    ct_upgrades_desc: "Upgrades Notes",
+    ct_injector: "Injector",
+    ct_injector_model: "Injector Model",
+    ct_chiller: "Chiller",
+    ct_in_use: "In Use",
+    ct_out_of_use_date: "Out Of Use Date",
+
+    mri_manufacturer: "Manufacturer",
+    mri_model: "Model",
+    mri_serial: "Serial Number",
+    mri_yom: "Year",
+    mri_magnet_type: "Magnet Type",
+    mri_bore_size_cm: "Bore Size",
+    mri_num_channels: "Channels",
+    mri_gradient: "Gradient",
+    mri_sw_version: "Software Version",
+    mri_sw_options: "Software Options",
+    mri_tim: "TIM",
+    mri_coils: "Coils",
+    mri_service: "Service",
+    mri_service_name: "Service Name",
+    mri_under_contract: "Under Contract",
+    mri_last_pm: "Last PM",
+    mri_in_use: "In Use",
+    mri_out_of_use_date: "Out Of Use Date",
+
+    xray_manufacturer: "Manufacturer",
+    xray_model: "Model",
+    xray_serial: "Serial Number",
+    xray_dom: "DOM",
+    xray_floor_mounted: "Floor Mounted",
+    xray_ceiling_mounted: "Ceiling Mounted",
+    xray_is_rf: "RF",
+    xray_in_use: "In Use",
+    xray_out_of_use_date: "Out Of Use Date",
+
+    carm_manufacturer: "Manufacturer",
+    carm_model: "Model",
+    carm_serial: "Serial Number",
+    carm_dom: "DOM",
+    carm_monitors: "Monitors",
+    carm_image_intensifier: "Image Intensifier",
+    carm_sw_version: "Software Version",
+    carm_servicing: "Servicing",
+    carm_service_name: "Service Name",
+    carm_in_use: "In Use",
+    carm_out_of_use_date: "Out Of Use Date",
+
+    pet_manufacturer: "Manufacturer",
+    pet_model: "Model",
+    pet_serial: "Serial Number",
+    pet_dom: "DOM",
+    pet_tube_dom: "Tube DOM",
+    pet_out_of_use_date: "Out Of Use Date",
+
+    nm_manufacturer: "Manufacturer",
+    nm_model: "Model",
+    nm_serial: "Serial Number",
+
+    us_manufacturer: "Manufacturer",
+    us_model: "Model",
+    us_serial: "Serial Number",
+
+    mammo_manufacturer: "Manufacturer",
+    mammo_model: "Model",
+    mammo_serial: "Serial Number",
+
+    other_manufacturer: "Manufacturer",
+    other_model: "Model",
+    other_serial: "Serial Number",
+
+    additional_identifier: "Additional Identifier",
+    notes: "Notes",
+    modality: "Modality"
+  };
+
+  if (map[key]) return map[key];
+
+  return String(key || "")
+    .replace(/^ct_|^mri_|^xray_|^carm_|^pet_|^nm_|^us_|^mammo_|^other_/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function summarizeFields(fields, max = 3){
+  const cleanFields = normalizeKeys(fields).map(prettyFieldName);
+  if (!cleanFields.length) return "";
+
+  if (cleanFields.length <= max) return cleanFields.join(", ");
+  return `${cleanFields.slice(0, max).join(", ")} +${cleanFields.length - max} more`;
+}
+
+function getFieldValue(row, fieldName) {
+  if (!row || !fieldName) return "";
+  return row[fieldName] ?? row.data?.[fieldName] ?? "";
 }
 
 function getDetailsUrl(modalityId){
@@ -523,11 +931,124 @@ function getImagesUrl(modalityId){
   return `equipmentimages.html?${qp.toString()}`;
 }
 
-function goBack(){
+async function clearIosBadgeOnly() {
+  try {
+    await fetch("/api/ios-clear-badge-equipment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
+      body: JSON.stringify({ email: userEmail }),
+      keepalive: true
+    });
+  } catch (e) {
+    console.warn("ios badge clear failed:", e);
+  }
+}
+
+async function markProjectReadAll() {
+  try {
+    await fetch("/api/equipment-project-mark-read", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail,
+        "x-clear-source": "management"
+      },
+      body: JSON.stringify({
+        projectId,
+        type: "all",
+        email: userEmail
+      }),
+      keepalive: true
+    });
+  } catch (e) {
+    console.warn("equipment mark-read failed:", e);
+  }
+}
+
+async function markDetailsRead(rowId) {
+  try {
+    await fetch("/api/equipment-project-mark-read", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail,
+        "x-clear-source": "details"
+      },
+      body: JSON.stringify({
+        projectId,
+        type: "details",
+        modalityId: rowId,
+        email: userEmail
+      }),
+      keepalive: true
+    });
+  } catch (e) {
+    console.warn("equipment details mark-read failed:", e);
+  }
+
+  const changedMap = readDetailsChangedMap();
+  if (changedMap[rowId]) {
+    delete changedMap[rowId];
+    writeDetailsChangedMap(changedMap);
+  }
+
+  await clearChangedEntryInKV(rowId);
+}
+
+async function markImagesRead(rowId) {
+  try {
+    await fetch("/api/equipment-project-mark-read", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail,
+        "x-clear-source": "images"
+      },
+      body: JSON.stringify({
+        projectId,
+        type: "images",
+        modalityId: rowId,
+        email: userEmail
+      }),
+      keepalive: true
+    });
+  } catch (e) {
+    console.warn("equipment images mark-read failed:", e);
+  }
+}
+
+async function openDetails(rowId, modality) {
+  localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, rowId);
+  localStorage.setItem(`${MODALITY_KEY}_${projectId}`, String(modality || "").toUpperCase().trim());
+
+  await markDetailsRead(rowId);
+  await clearIosBadgeOnly();
+
+  location.href = getDetailsUrl(rowId);
+}
+
+async function openImages(rowId, modality) {
+  localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, rowId);
+  localStorage.setItem(`${MODALITY_KEY}_${projectId}`, String(modality || "").toUpperCase().trim());
+
+  await markImagesRead(rowId);
+  await clearIosBadgeOnly();
+
+  location.href = getImagesUrl(rowId);
+}
+
+async function goBack(){
+  await markProjectReadAll();
+  await clearAllDetailsChangedMap();
+
   if (projectId) {
     location.href = `equipmentprojects.html?projectId=${encodeURIComponent(projectId)}`;
     return;
   }
+
   location.href = "equipmentprojects.html";
 }
 
@@ -540,18 +1061,56 @@ function closeCreateModal(){
   createModal.classList.remove("active");
 }
 
-function renderProject(){
-  projectNameEl.textContent =
-    project?.project_name ||
-    project?.name ||
-    "Equipment Records";
-
-  projectMetaEl.innerHTML = `
-    <div>${esc(project?.site_address || project?.address || "—")}</div>
-    <div>ZIP: ${esc(project?.zip_code || project?.zip || "—")}</div>
-  `;
+function openDeleteModal(rowId, title){
+  pendingDeleteRowId = String(rowId || "").trim();
+  deleteConfirmText.textContent = `Are you sure you want to delete "${title || "this equipment record"}"? This will remove its saved details and hide its images.`;
+  deleteModal.classList.add("active");
 }
 
+function closeDeleteModal(){
+  // reset state
+  pendingDeleteRowId = "";
+  deleteBusy = false;
+
+  // reset buttons
+  confirmDeleteBtn.disabled = false;
+  cancelDeleteBtn.disabled = false;
+  confirmDeleteBtn.textContent = "Delete Record";
+
+  // reset text
+  deleteConfirmText.textContent =
+    "Are you sure you want to delete this equipment record?";
+
+  // close modal
+  deleteModal.classList.remove("active");
+}
+function renderProject(){
+  projectNameEl.textContent =
+    project?.project_name || "Submitted By:";
+
+  const repName = [
+    project?.sales_rep_first,
+    project?.sales_rep_last
+  ].filter(Boolean).join(" ");
+
+  projectMetaEl.innerHTML = `
+    ${repName ? `<div><strong>Sales Rep:</strong> ${esc(repName)}</div>` : ""}
+    ${project?.sales_rep_company ? `<div><strong>Company:</strong> ${esc(project.sales_rep_company)}</div>` : ""}
+    ${project?.sales_rep_phone ? `
+      <div>
+        <strong>Phone:</strong> 
+        <a href="tel:${project.sales_rep_phone}">${esc(project.sales_rep_phone)}</a>
+        <a href="sms:${project.sales_rep_phone}" style="margin-left:8px;">💬</a>
+      </div>
+    ` : ""}
+    ${project?.sales_rep_email ? `
+      <div>
+        <strong>Email:</strong> 
+        <a href="mailto:${project.sales_rep_email}">${esc(project.sales_rep_email)}</a>
+      </div>
+    ` : ""}
+  `;
+}
 function getRowSerial(row){
   return (
     clean(row.mri_serial) ||
@@ -559,28 +1118,143 @@ function getRowSerial(row){
     clean(row.pet_serial) ||
     clean(row.carm_serial) ||
     clean(row.serial_number) ||
+    clean(row.ct_serial) ||
+    clean(row.nm_serial) ||
+    clean(row.us_serial) ||
+    clean(row.mammo_serial) ||
+    clean(row.other_serial) ||
     clean(row.data?.ct_serial) ||
     clean(row.data?.mri_serial) ||
     clean(row.data?.xray_serial) ||
     clean(row.data?.pet_serial) ||
     clean(row.data?.carm_serial) ||
     clean(row.data?.serial_number) ||
+    clean(row.data?.nm_serial) ||
+    clean(row.data?.us_serial) ||
+    clean(row.data?.mammo_serial) ||
+    clean(row.data?.other_serial) ||
     ""
   );
 }
 
 function getDisplayTitle(row){
-  const modality = clean(row.modality || "Equipment");
-  const serial = getRowSerial(row);
+  const modality = String(row.modality || "").toUpperCase().trim();
 
-  const identifier =
-    clean(row.additional_identifier) ||
-    clean(row.data?.additional_identifier);
+  const make =
+    clean(row.carm_manufacturer) ||
+    clean(row.data?.carm_manufacturer) ||
+    clean(row.mri_manufacturer) ||
+    clean(row.data?.mri_manufacturer) ||
+    clean(row.ct_manufacturer) ||
+    clean(row.data?.ct_manufacturer) ||
+    clean(row.xray_manufacturer) ||
+    clean(row.data?.xray_manufacturer) ||
+    clean(row.pet_manufacturer) ||
+    clean(row.data?.pet_manufacturer) ||
+    clean(row.nm_manufacturer) ||
+    clean(row.data?.nm_manufacturer) ||
+    clean(row.us_manufacturer) ||
+    clean(row.data?.us_manufacturer) ||
+    clean(row.mammo_manufacturer) ||
+    clean(row.data?.mammo_manufacturer) ||
+    clean(row.other_manufacturer) ||
+    clean(row.data?.other_manufacturer);
 
-  if (serial) return `${modality} — Serial ${serial}`;
-  if (identifier) return `${modality} — ID ${identifier}`;
-  return modality;
+  const model =
+    clean(row.carm_model) ||
+    clean(row.data?.carm_model) ||
+    clean(row.mri_model) ||
+    clean(row.data?.mri_model) ||
+    clean(row.ct_model) ||
+    clean(row.data?.ct_model) ||
+    clean(row.xray_model) ||
+    clean(row.data?.xray_model) ||
+    clean(row.pet_model) ||
+    clean(row.data?.pet_model) ||
+    clean(row.nm_model) ||
+    clean(row.data?.nm_model) ||
+    clean(row.us_model) ||
+    clean(row.data?.us_model) ||
+    clean(row.mammo_model) ||
+    clean(row.data?.mammo_model) ||
+    clean(row.other_model) ||
+    clean(row.data?.other_model);
+
+  const labelMap = {
+    MRI: "MRI",
+    CT: "CT",
+    XRAY: "X-ray",
+    CARM: "C-arm",
+    PETCT: "PET/CT",
+    NM: "Nuclear Medicine",
+    US: "Ultrasound",
+    MAMMO: "Mammography",
+    OTHER: "Equipment"
+  };
+
+  const niceModality = labelMap[modality] || modality || "Equipment";
+
+  const makeModel = [make, model].filter(Boolean).join(" ");
+
+  return makeModel
+    ? `${niceModality} — ${makeModel}`
+    : niceModality;
 }
+
+function getRowPreviewFields(row) {
+  const modality = String(row?.modality || "").toUpperCase().trim();
+
+  if (modality === "MRI") {
+    return [
+      { key: "mri_serial", label: "Serial Number" },
+      { key: "additional_identifier", label: "Additional Identifier" }
+    ];
+  }
+
+  if (modality === "XRAY") {
+    return [
+      { key: "xray_serial", label: "Serial Number" },
+      { key: "additional_identifier", label: "Additional Identifier" }
+    ];
+  }
+
+  if (modality === "CT") {
+    return [
+      { key: "ct_serial", label: "Serial Number" },
+      { key: "additional_identifier", label: "Additional Identifier" }
+    ];
+  }
+
+  if (modality === "CARM") {
+    return [
+      { key: "carm_serial", label: "Serial Number" },
+      { key: "additional_identifier", label: "Additional Identifier" }
+    ];
+  }
+
+  if (modality === "PETCT" || modality === "PET") {
+    return [
+      { key: "pet_serial", label: "Serial Number" },
+      { key: "additional_identifier", label: "Additional Identifier" }
+    ];
+  }
+
+  return [
+    { key: "serial_number", label: "Serial Number" },
+    { key: "additional_identifier", label: "Additional Identifier" }
+  ];
+}
+
+function getStableRowId(row){
+  return String(
+    row?.modality_id ||
+    row?.id ||
+    row?.rowid ||
+    row?.record_id ||
+    ""
+  ).trim();
+}
+
 
 function renderList(){
   listEl.innerHTML = "";
@@ -592,37 +1266,77 @@ function renderList(){
 
   if (!items.length) return;
 
+  const changedMap = readDetailsChangedMap();
+
   items.forEach(row => {
-    const rowId = String(row.id || row.modality_id || "").trim();
-    if (!rowId) return;
+  const rowId = getStableRowId(row);
+
+  console.log("🔍 ADMIN changedFields", {
+    rowId,
+    entry: changedMap[rowId]
+  });
+
+  if (!rowId) return;
+
+  const entry = changedMap[rowId] || null;
+  const changedFields = Array.isArray(entry?.changedFields) ? entry.changedFields : [];
+ const normalizeKey = (k) =>
+  String(k || "")
+    .replace(/^ct_|^mri_|^xray_|^carm_|^pet_|^nm_|^us_|^mammo_|^other_/i, "")
+    .replace(/_/g, "")
+    .toLowerCase()
+    .trim();
+
+const changedSet = new Set(
+  changedFields.map(normalizeKey)
+);
+  const hasUpdates = changedFields.length > 0;
+  const changedSummary = summarizeFields(changedFields);
+
+  console.log("🧩 PREVIEW KEYS", {
+    rowId,
+    previewKeys: getRowPreviewFields(row).map(f => f.key)
+  });
+    const previewFields = getRowPreviewFields(row).map(field => {
+      const isChanged = changedSet.has(normalizeKey(field.key));
+      const value = getFieldValue(row, field.key);
+      return {
+        label: field.label,
+        value: clean(value) || "—",
+        isChanged
+      };
+    });
+
+    const title = getDisplayTitle(row);
 
     const card = document.createElement("div");
-    card.className = "card";
-
-    const serial = getRowSerial(row) || "—";
-    const identifier =
-      clean(row.additional_identifier) ||
-      clean(row.data?.additional_identifier) ||
-      "—";
+    card.className = `card${hasUpdates ? " card-has-updates" : ""}`;
 
     card.innerHTML = `
       <div class="card-top">
         <div>
-          <div class="card-title">${esc(getDisplayTitle(row))}</div>
-          <div class="card-sub">Created ${esc(fmtDate(row.created_at))}</div>
+          <div class="card-title">
+            ${esc(title)}
+            ${hasUpdates ? '<span class="new-pill">NEW</span>' : ''}
+          </div>
+          ${hasUpdates ? `<div class="updated-fields"><span class="updated-fields-label">Updated:</span> ${esc(changedSummary)}</div>` : ""}
         </div>
-        <div class="badge">${esc(row.modality || "—")}</div>
+        <div class="card-top-right">
+          <button class="icon-delete-btn" data-delete-record="${esc(rowId)}" type="button" aria-label="Delete record" title="Delete record">🗑</button>
+          <div class="badge">${esc(row.modality || "—")}</div>
+        </div>
       </div>
 
       <div class="grid">
-        <div class="meta-box">
-          <div class="meta-label">Serial Number</div>
-          <div class="meta-value">${esc(serial)}</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-label">Additional Identifier</div>
-          <div class="meta-value">${esc(identifier)}</div>
-        </div>
+        ${previewFields.map(field => `
+          <div class="meta-box${field.isChanged ? " meta-box-new" : ""}">
+            <div class="meta-label${field.isChanged ? " meta-label-new" : ""}">
+              ${esc(field.label)}
+              ${field.isChanged ? '<span class="new-pill">NEW</span>' : ''}
+            </div>
+            <div class="meta-value${field.isChanged ? " meta-value-new" : ""}">${esc(field.value)}</div>
+          </div>
+        `).join("")}
       </div>
 
       <div class="card-actions">
@@ -632,21 +1346,47 @@ function renderList(){
     `;
 
     card.querySelector("[data-open-details]").onclick = () => {
-      localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, rowId);
-      localStorage.setItem(`${MODALITY_KEY}_${projectId}`, String(row.modality || "").toUpperCase().trim());
-      location.href = getDetailsUrl(rowId);
+      openDetails(rowId, row.modality);
     };
 
     card.querySelector("[data-open-images]").onclick = () => {
-      localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, rowId);
-      localStorage.setItem(`${MODALITY_KEY}_${projectId}`, String(row.modality || "").toUpperCase().trim());
-      location.href = getImagesUrl(rowId);
+      openImages(rowId, row.modality);
+    };
+
+    card.querySelector("[data-delete-record]").onclick = () => {
+      openDeleteModal(rowId, title);
     };
 
     listEl.appendChild(card);
   });
 }
+async function loadProjectSalesRep(){
+  try {
+    const res = await fetch("/api/admin/equipment", {
+      headers: { "x-user-email": userEmail }
+    });
 
+    const projects = await res.json().catch(()=>[]);
+
+    if (!Array.isArray(projects)) return;
+
+    const p = projects.find(x => String(x.id) === String(projectId));
+    if (!p) return;
+
+    // 🔥 overwrite project with full data
+    project = {
+      ...project,
+      sales_rep_first: p.sales_rep_first || "",
+      sales_rep_last: p.sales_rep_last || "",
+      sales_rep_company: p.sales_rep_company || "",
+      sales_rep_phone: p.sales_rep_phone || "",
+      sales_rep_email: p.sales_rep_email || ""
+    };
+
+  } catch (e) {
+    console.warn("sales rep load failed:", e);
+  }
+}
 async function loadProjectAndItems(){
   loadingEl.style.display = "block";
   errorEl.style.display = "none";
@@ -654,7 +1394,7 @@ async function loadProjectAndItems(){
   listEl.innerHTML = "";
 
   try {
-    const itemsRes = await fetch(`/api/equipment-modalities?projectId=${encodeURIComponent(projectId)}`, {
+    const itemsRes = await fetch(`/api/equipment-details/list?projectId=${encodeURIComponent(projectId)}`, {
       headers:{ "x-user-email": userEmail }
     });
 
@@ -664,8 +1404,12 @@ async function loadProjectAndItems(){
       throw new Error(itemsOut?.error || "Failed to load equipment records");
     }
 
+    if (DEBUG) {
+      console.log("[equipmentindex] itemsOut", itemsOut);
+    }
+
     project = {
-      project_name: itemsOut?.project?.project_name || "Equipment Records",
+      project_name: itemsOut?.project?.project_name || "Submitted By:",
       site_address: itemsOut?.project?.site_address || "",
       zip_code: itemsOut?.project?.zip_code || ""
     };
@@ -678,8 +1422,63 @@ async function loadProjectAndItems(){
       ? itemsOut
       : [];
 
-    renderProject();
-    renderList();
+    items.sort((a, b) => {
+      const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+      const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+
+    const existingMap = readDetailsChangedMap();
+    const mergedMap = {};
+
+    await Promise.all(items.map(async (row) => {
+      const rowId = getStableRowId(row);
+      if (!rowId) return;
+
+      const localEntry = existingMap[rowId] || null;
+if (false && localEntry && Array.isArray(localEntry.changedFields) && localEntry.changedFields.length) {
+        mergedMap[rowId] = {
+          changedFields: normalizeKeys(localEntry.changedFields),
+          ts: Number(localEntry.ts) || Date.now(),
+          modality: String(localEntry.modality || row?.modality || "").trim()
+        };
+
+        if (DEBUG) {
+          console.log("[equipmentindex] local changed hit", {
+            rowId,
+            entry: mergedMap[rowId]
+          });
+        }
+
+        return;
+      }
+
+      const kvResult = await readChangedEntryFromKV(rowId);
+
+      if (DEBUG) {
+        console.log("[equipmentindex] row debug", {
+          row,
+          rowId,
+          kvResult
+        });
+      }
+
+      const entry = kvResult?.entry || null;
+
+      if (entry && Array.isArray(entry.changedFields) && entry.changedFields.length) {
+        mergedMap[rowId] = entry;
+      }
+    }));
+
+    writeDetailsChangedMap(mergedMap);
+
+    if (DEBUG) {
+      console.log("[equipmentindex] mergedMap", mergedMap);
+    }
+
+   await loadProjectSalesRep();
+renderProject();
+renderList();
   } catch (err) {
     console.error("equipmentindex load error:", err);
     loadingEl.style.display = "none";
@@ -703,22 +1502,81 @@ function continueToDetails(){
   location.href = getCreateDetailsUrl(modality);
 }
 
+async function deleteRecord(){
+  if (deleteBusy) return;
+  if (!pendingDeleteRowId) return;
+
+  deleteBusy = true;
+  confirmDeleteBtn.disabled = true;
+  cancelDeleteBtn.disabled = true;
+  confirmDeleteBtn.textContent = "Deleting...";
+
+  try {
+    const res = await fetch("/api/equipment-modalities/equipment-delete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
+      body: JSON.stringify({
+        projectId,
+        modalityId: pendingDeleteRowId
+      })
+    });
+
+    const out = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(out?.error || out?.details || "Failed to delete record");
+    }
+
+    const removedId = pendingDeleteRowId;
+
+    items = items.filter(row => {
+      const rowId = getStableRowId(row);
+      return rowId !== removedId;
+    });
+
+    const changedMap = readDetailsChangedMap();
+    if (changedMap[removedId]) {
+      delete changedMap[removedId];
+      writeDetailsChangedMap(changedMap);
+    }
+
+    await clearChangedEntryInKV(removedId);
+
+    if (localStorage.getItem(`${MODALITY_ID_KEY}_${projectId}`) === removedId) {
+      localStorage.removeItem(`${MODALITY_ID_KEY}_${projectId}`);
+      localStorage.removeItem(`${MODALITY_KEY}_${projectId}`);
+    }
+
+    closeDeleteModal();
+    renderList();
+  } catch (err) {
+    console.error("delete record error:", err);
+    alert(err.message || "Failed to delete record");
+  } finally {
+    deleteBusy = false;
+    confirmDeleteBtn.disabled = false;
+    cancelDeleteBtn.disabled = false;
+    confirmDeleteBtn.textContent = "Delete Record";
+  }
+}
+
 backBtn.addEventListener("click", goBack);
 addBtn.addEventListener("click", openCreateModal);
 cancelBtn.addEventListener("click", closeCreateModal);
 createBtn.addEventListener("click", continueToDetails);
 
-newProjectBtn.addEventListener("click", () => {
-  localStorage.removeItem(PROJECT_ID_KEY);
-  localStorage.removeItem(MODALITY_ID_KEY);
-  localStorage.removeItem(MODALITY_KEY);
-  localStorage.removeItem(`${MODALITY_ID_KEY}_${projectId}`);
-  localStorage.removeItem(`${MODALITY_KEY}_${projectId}`);
-  location.href = "equipmentprojects.html";
-});
+cancelDeleteBtn.addEventListener("click", closeDeleteModal);
+confirmDeleteBtn.addEventListener("click", deleteRecord);
 
 createModal.addEventListener("click", (e) => {
   if (e.target === createModal) closeCreateModal();
+});
+
+deleteModal.addEventListener("click", (e) => {
+  if (e.target === deleteModal) closeDeleteModal();
 });
 
 loadProjectAndItems();

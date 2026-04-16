@@ -25,23 +25,17 @@ const userEmail = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().tr
 
 const params = new URLSearchParams(location.search);
 
-let projectId =
-  params.get("projectId") ||
-  params.get("id") ||
-  localStorage.getItem(PROJECT_ID_KEY) ||
-  null;
+const projectId = String(
+  params.get("projectId") || params.get("id") || ""
+).trim();
 
-let modalityId =
-  params.get("modalityId") ||
-  (projectId ? localStorage.getItem(`${MODALITY_ID_KEY}_${projectId}`) : "") ||
-  null;
+const modalityId = String(
+  params.get("modalityId") || ""
+).trim();
 
-projectId = projectId ? String(projectId).trim() : null;
-modalityId = modalityId ? String(modalityId).trim() : null;
-
-if (!projectId) {
-  alert("Project ID missing. Please reload the project.");
-  throw new Error("Missing projectId");
+if (!projectId || !modalityId) {
+  alert("Missing project or modality ID");
+  throw new Error("Missing IDs");
 }
 
 localStorage.setItem(PROJECT_ID_KEY, projectId);
@@ -51,12 +45,28 @@ if (modalityId) {
 }
 
 function handleBack(){
-  clearBadgesOnExit();
+  // 🔥 clear local
+  sessionStorage.removeItem(BADGE_STORAGE_KEY);
+  localStorage.removeItem(BADGE_STORAGE_KEY);
+
+  // 🔥 clear server badge (THIS is why it wasn't working)
+  fetch(`/api/kv-set`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      key: `equipment:badges_images:${projectId}:${modalityId}:${userEmail}`,
+      value: []
+    }),
+    keepalive: true
+  });
+
   const qp = new URLSearchParams({ projectId });
   if (modalityId) qp.set("modalityId", modalityId);
-  location.href = `equipment-details.html?${qp.toString()}`;
-}
 
+  location.href = `equipmentindex.html?${qp.toString()}`;
+}
 function getPrimaryId(p){
   return String(
     p?.id ||
@@ -76,7 +86,6 @@ const BADGE_STORAGE_KEY = modalityId
   ? `new_images_${projectId}_${modalityId}`
   : `new_images_${projectId}`;
 
-let hasClearedBadges = false;
 
 function safeParseArray(v){
   try{
@@ -103,14 +112,6 @@ function saveBadgesLocally(list){
   localStorage.setItem(BADGE_STORAGE_KEY, j);
 }
 
-function clearBadgesOnExit(){
-  if (hasClearedBadges) return;
-  hasClearedBadges = true;
-
-  sessionStorage.removeItem(BADGE_STORAGE_KEY);
-  localStorage.removeItem(BADGE_STORAGE_KEY);
-}
-
 function isNewForPhoto(p, badgeSet){
   return badgeSet.has(getPrimaryId(p));
 }
@@ -118,72 +119,137 @@ function isNewForPhoto(p, badgeSet){
 <style>
 :root{
   --blue:#1F7BC8;
+  --blue-dark:#1666aa;
+  --bg:#f5f8fc;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#64748b;
+  --border:#d9e2ec;
+  --shadow:0 10px 30px rgba(15,23,42,.08);
+  --safe-top:env(safe-area-inset-top, 0px);
   --danger:#d93025;
 }
-
 *{box-sizing:border-box}
 
 html,body{
   margin:0;
   padding:0;
-  width:100%;
-  min-height:100%;
-  overflow:hidden;
+  background:var(--bg);
+  color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:#fff;
+  min-height:100%;
+}
+
+body{
+  min-height:100vh;
 }
 
 .page{
   min-height:100vh;
-  height:100vh;
-  overflow-y:auto;
   display:flex;
   flex-direction:column;
-  padding-top:90px;
+  padding-top:0;
+  background:var(--bg);
+}
+.field-label{
+  font-size:11px;
+  font-weight:700;
+  color:#dbeafe;
+  margin-bottom:4px;
+  letter-spacing:.5px;
 }
 
-.container{
+.field-label-dark{
+  font-size:11px;
+  font-weight:700;
+  color:#64748b;
+  margin-bottom:6px;
+  letter-spacing:.5px;
+}
+
+.card-header{
+  background:var(--blue);
+  border:none;
+  position:relative;
+  overflow:visible;
+  border-radius:12px 12px 0 0;
+  padding:12px;
+  margin-bottom:0;
+  box-shadow:0 4px 12px rgba(31,123,200,.2);
+}
+.card-header input{
   width:100%;
-  max-width:320px;
-  margin:auto;
-  padding-bottom:400px;
+  border:none;
+  background:transparent;
+  color:#fff;
+  caret-color:#fff;
+  font-weight:800;
+  font-size:16px;
+  outline:none;
 }
-
+.card-body{
+  padding:12px;
+  border-top:2px solid #f1f5f9;
+}
 .header{
+  position:sticky;
+  top:0;
+  z-index:1000;
   background:var(--blue);
   color:#fff;
-  padding:16px;
+  height:calc(var(--safe-top) + 64px);
+  padding-top:var(--safe-top);
   display:flex;
   align-items:center;
   justify-content:center;
-  position:fixed;
-  top:0;
-  left:0;
-  right:0;
-  z-index:1000;
+  box-shadow:0 4px 18px rgba(0,0,0,.12);
 }
 
 .header h1{
   margin:0;
   font-size:20px;
   font-weight:800;
+  letter-spacing:.2px;
+  line-height:1;
 }
 
 .back-arrow{
   position:absolute;
-  left:16px;
-  top:50%;
+  left:12px;
+  top:calc(var(--safe-top) + 32px);
   transform:translateY(-50%);
+  width:44px;
+  height:44px;
+  border:none;
+  background:transparent;
   color:#fff;
-  font-size:32px;
+  font-size:34px;
+  line-height:1;
   font-weight:800;
   cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  margin:0;
+  z-index:1001;
+  -webkit-appearance:none;
+  appearance:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+.container{
+  width:100%;
+  max-width:760px;
+  margin:0 auto;
+  padding:20px 16px 180px;
 }
 
 .section-title{
   font-size:22px;
   font-weight:800;
-  margin:60px 0 18px 0;
+  margin:18px 0 18px 0;
 }
 
 .upload-card{
@@ -229,21 +295,26 @@ html,body{
   border-radius:16px;
   overflow:hidden;
   position:relative;
+  padding:12px;
 }
-
 .new-badge{
   position:absolute;
-  top:10px;
-  right:10px;
+
+  top:30px;     /* 🔥 INSIDE, not outside */
+  right:24px;
+
   background:#ff3b30;
   color:#fff;
-  padding:4px 10px;
+
+  padding:6px 12px;
   border-radius:999px;
+
   font-size:11px;
   font-weight:800;
-  z-index:5;
-}
 
+  box-shadow:0 4px 10px rgba(0,0,0,.15);
+  z-index:10;
+}
 .card.missing-title{
   border:2px solid #ff3b30;
 }
@@ -252,26 +323,13 @@ html,body{
   background:#ff3b30;
 }
 
-.card-header{
-  background:var(--blue);
-  padding:10px;
-}
-
-.card-header input{
-  width:100%;
-  border:none;
-  background:transparent;
-  color:#fff;
-  font-weight:800;
-  font-size:16px;
-}
-
 .card img{
   width:100%;
   height:360px;
   object-fit:cover;
+  margin-top:8px;
+  border-radius:10px;
 }
-
 .card-body{
   padding:12px;
 }
@@ -349,7 +407,13 @@ button:disabled{
   max-width:95%;
   max-height:90%;
 }
-
+.field-label{
+  font-size:10px;
+  font-weight:700;
+  color:var(--blue);
+  margin-bottom:4px;
+  letter-spacing:.6px;
+}
 .preview-close{
   position:absolute;
   top:20px;
@@ -365,7 +429,7 @@ button:disabled{
 <div class="page">
 
   <div class="header">
-    <div onclick="handleBack()" class="back-arrow">←</div>
+    <button type="button" onclick="handleBack()" class="back-arrow">←</button>
     <h1>Project Images</h1>
   </div>
 
@@ -413,16 +477,6 @@ previewModal.onclick = e => {
 
 let photos = [];
 let selected = new Set();
-
-window.addEventListener("beforeunload", clearBadgesOnExit);
-window.addEventListener("pagehide", clearBadgesOnExit);
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") {
-    clearBadgesOnExit();
-  }
-});
-
 function updateBatchState(){
   const sel = photos.filter(p => selected.has(getPrimaryId(p)));
 
@@ -434,37 +488,10 @@ function updateBatchState(){
     const p = photos.find(x => getPrimaryId(x) === id);
 
     if (selected.has(id) && !(p?.photo_title || "").trim()) {
-      card.classList.add("missing-title");
+      card.classList.add("missing-title"); // 🔴 SHOW RED
     } else {
       card.classList.remove("missing-title");
     }
-  });
-}
-
-const debouncedSave = ((fn, d = 600) => {
-  let t;
-  return (...a) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...a), d);
-  };
-})(saveMeta);
-
-async function saveMeta(p){
-  if (!getPrimaryId(p)) return;
-
-  await fetch(`/api/equipment-photos/save`, {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "x-user-email":userEmail
-    },
-    body:JSON.stringify({
-  projectId,
-  modalityId,
-  photoId:getPrimaryId(p),
-  photo_title:p.photo_title,
-  photo_comment:p.photo_comment
-})
   });
 }
 
@@ -475,17 +502,26 @@ function appendCard(p, badgeSet){
   card.className = "card";
   card.dataset.id = pid;
 
-  const isNew = isNewForPhoto(p, badgeSet);
+  const isNew = badgeSet.has(pid);
 
   card.innerHTML = `
     ${isNew ? '<div class="new-badge">NEW</div>' : ''}
+
+    <!-- IMAGE TITLE -->
     <div class="card-header">
-      <input type="text" value="${p.photo_title || ""}" placeholder="Image Title...">
+      <div class="field-label">IMAGE TITLE</div>
+      <input type="text" value="${p.photo_title || ""}" placeholder="Enter image title (Required)">
     </div>
+
+    <!-- IMAGE -->
     <img src="${p.photo_url}">
+
+    <!-- NOTES -->
     <div class="card-body">
-      <textarea placeholder="Add a comment...">${p.photo_comment || ""}</textarea>
+      <div class="field-label-dark">NOTES</div>
+      <textarea placeholder="Add notes...">${p.photo_comment || ""}</textarea>
     </div>
+
     <div class="card-footer">
       <input type="checkbox">
       <label>Select</label>
@@ -493,34 +529,80 @@ function appendCard(p, badgeSet){
   `;
 
   const img = card.querySelector("img");
+  const title = card.querySelector("input");
+  const note = card.querySelector("textarea");
+  const cb = card.querySelector("input[type=checkbox]");
+
   img.onclick = () => {
     previewImage.src = p.photo_url;
     previewModal.classList.add("active");
   };
 
-  const title = card.querySelector("input");
-  const note = card.querySelector("textarea");
-  const cb = card.querySelector("input[type=checkbox]");
-
-  title.oninput = () => {
+  // ===== TITLE =====
+  title.oninput = async () => {
     p.photo_title = title.value;
-    debouncedSave(p);
+
+    // 🔥 RED FRAME
+    if ((p.photo_title || "").trim()) {
+      card.classList.remove("missing-title");
+    } 
+    // 🔥 REMOVE NEW BADGE ON INTERACTION
+    const cur = getActiveBadges();
+    const idx = cur.indexOf(pid);
+    if (idx !== -1) {
+      cur.splice(idx, 1);
+      saveBadgesLocally(cur);
+    }
+
+    await fetch(`/api/equipment-photos/photo-update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
+      body: JSON.stringify({
+        photoId: p.id,
+        photo_title: p.photo_title
+      })
+    });
+
     updateBatchState();
   };
 
-  note.oninput = () => {
+  // ===== NOTE =====
+  note.oninput = async () => {
     p.photo_comment = note.value;
-    debouncedSave(p);
+
+    await fetch(`/api/equipment-photos/photo-update`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
+      body: JSON.stringify({
+        photoId: p.id,
+        photo_comment: p.photo_comment
+      })
+    });
   };
 
+  // ===== CHECKBOX =====
   cb.onchange = () => {
     cb.checked ? selected.add(pid) : selected.delete(pid);
+
+    // 🔥 REMOVE NEW BADGE ON SELECT
+    const cur = getActiveBadges();
+    const idx = cur.indexOf(pid);
+    if (idx !== -1) {
+      cur.splice(idx, 1);
+      saveBadgesLocally(cur);
+    }
+
     updateBatchState();
   };
 
   gallery.append(card);
 }
-
 chooseFileBtn.onclick = () => filePicker.click();
 
 filePicker.onchange = async () => {
@@ -530,151 +612,268 @@ filePicker.onchange = async () => {
   uploadSpinner.style.display = "block";
 
   try {
+    const safeProjectId = String(projectId || "").trim();
+    const safeModalityId = String(modalityId || "").trim();
+
+    if (!safeProjectId) throw new Error("Missing projectId");
+    if (!safeModalityId) throw new Error("Missing modalityId");
+
     const fd = new FormData();
     fd.append("file", file);
     fd.append("upload_preset", UPLOAD_PRESET);
 
     const cloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-      method:"POST",
-      body:fd
+      method: "POST",
+      body: fd
     });
 
-    const data = await cloud.json();
+    const cloudData = await cloud.json(); // ✅ THIS WAS MISSING
 
-    const res = await fetch(`/api/equipment-photos/save`, {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "x-user-email":userEmail
+    if (!cloud.ok || !cloudData?.secure_url) {
+      throw new Error("Cloud upload failed");
+    }
+
+    console.log("FINAL PAYLOAD:", {
+      projectId: safeProjectId,
+      modalityId: safeModalityId,
+      url: cloudData.secure_url
+    });
+
+    const res = await fetch(`/api/equipment-photos/photo-save`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
       },
-      body:JSON.stringify({
-  projectId,
-  modalityId,
-  photo_url:data.secure_url,
-  photo_title:"",
-  photo_comment:""
-})
+      body: JSON.stringify({
+        projectId: safeProjectId,
+        modalityId: safeModalityId,
+        url: cloudData.secure_url
+      })
     });
 
-    const out = await res.json();
+    const out = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("SAVE ERROR:", out);
+      throw new Error(out?.error || "Photo save failed");
+    }
 
     const p = {
-      id:out?.photo?.id,
-      photo_url:data.secure_url,
-      photo_title:"",
-      photo_comment:""
+      id: out.id,
+      project_id: safeProjectId,
+      modality_id: safeModalityId,
+      photo_url: cloudData.secure_url,
+      photo_title: "",
+      photo_comment: ""
     };
 
-    photos.unshift(p);
+   photos.unshift(p);
 
-    const cur = getActiveBadges();
-    if (p.id && !cur.includes(p.id)) cur.push(p.id);
-    saveBadgesLocally(cur);
-
-    const badgeSet = new Set(getActiveBadges());
-
-    gallery.innerHTML = "";
-    photos.forEach(photo => appendCard(photo, badgeSet));
-
+gallery.innerHTML = "";
+photos.forEach(photo => appendCard(photo, new Set(getActiveBadges())));
     updateBatchState();
 
+  } catch (err) {
+    console.error("UPLOAD ERROR:", err);
+    alert(err.message);
   } finally {
     uploadSpinner.style.display = "none";
     filePicker.value = "";
   }
 };
-
+/* SEND */
 sendBtn.onclick = async () => {
-  const ids = [...selected];
-  if (!ids.length) return;
+  const selectedPhotos = photos.filter(p => selected.has(getPrimaryId(p)));
 
-  await fetch(`/api/equipment-photos/email`, {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "x-user-email":userEmail
-    },
-    body:JSON.stringify({
-      projectId,
-      modalityId,
-      photoIds: ids
-    })
-  });
+  let hasError = false;
 
-  selected.clear();
-  document.querySelectorAll(".card-footer input").forEach(cb => cb.checked = false);
-  updateBatchState();
-};
+ selectedPhotos.forEach(p => {
+  const id = getPrimaryId(p);
+  const card = gallery.querySelector(`.card[data-id="${id}"]`);
 
-deleteBtn.onclick = async () => {
-  const ids = [...selected];
-  if (!ids.length) return;
+  console.log("CARD FOUND:", id, card); // 👈 ADD HERE
 
-  let badgeList = getActiveBadges();
+  if (!card) return;
 
-  for (const id of ids) {
-    await fetch(`/api/equipment-photos/delete`, {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "x-user-email":userEmail
+  if (!(p.photo_title || "").trim()) {
+    card.classList.add("missing-title");
+    hasError = true;
+  } else {
+    card.classList.remove("missing-title");
+  }
+});
+
+  if (hasError) return;
+
+  const originalText = "Send Selected Images";
+
+  sendBtn.style.pointerEvents = "none";
+  sendBtn.style.opacity = ".45";
+  sendBtn.innerText = "Sending...";
+
+  try {
+    const ids = [...selected];
+    if (!ids.length) throw new Error("No images selected");
+
+    for (const id of ids) {
+      await fetch(`/api/equipment-photos/photo-update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
+        body: JSON.stringify({
+          photoId: id,
+          queued_for_email: true
+        })
+      });
+    }
+
+    await fetch(`/api/equipment-photos/photo-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
       },
-      body:JSON.stringify({
-        photoId:id,
+      body: JSON.stringify({
         projectId,
-        modalityId
+        modalityId,
+        photoIds: ids
       })
     });
 
-    document.querySelector(`.card[data-id="${id}"]`)?.remove();
-    photos = photos.filter(p => getPrimaryId(p) !== id);
-    badgeList = badgeList.filter(x => x !== id);
+    selected.clear();
+    document.querySelectorAll(".card-footer input[type=checkbox]")
+      .forEach(cb => (cb.checked = false));
+
+    sendBtn.innerText = "Sent";
+
+    setTimeout(() => {
+      sendBtn.innerText = originalText;
+      sendBtn.style.pointerEvents = "auto";
+      updateBatchState();
+    }, 1200);
+
+  } catch (e) {
+    console.error("Send failed:", e);
+    sendBtn.innerText = originalText;
+    sendBtn.style.pointerEvents = "auto";
   }
-
-  saveBadgesLocally(badgeList);
-
-  selected.clear();
-  updateBatchState();
 };
-(async () => {
-  let data = { photos: [] };
+/* DELETE */
+deleteBtn.onclick = async () => {
+  if (!selected.size) return;
+
+  const originalText = "Delete Selected Images";
+
+  deleteBtn.disabled = true;
+  deleteBtn.innerText = "Deleting...";
 
   try {
-    const listUrl = new URL(`/api/equipment-photos/list`, location.origin);
-listUrl.searchParams.set("projectId", projectId);
-if (modalityId) listUrl.searchParams.set("modalityId", modalityId);
+    const ids = [...selected];
+    const badgeList = getActiveBadges();
 
-const res = await fetch(listUrl.toString(), {
-  headers: { "x-user-email": userEmail }
-});
+   for (const id of ids) {
+  await fetch(`/api/equipment-photos/photo-delete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail
+    },
+    body: JSON.stringify({
+      photoId: id,
+      projectId,
+      modalityId
+    })
+  });
 
-    const out = await res.json();
+  // remove from DOM
+  document.querySelector(`.card[data-id="${id}"]`)?.remove();
 
-    if (!res.ok) {
-      throw new Error(out?.error || "Failed to load photos");
+  // remove from memory
+  photos = photos.filter(p => getPrimaryId(p) !== id);
+
+  // remove from badges
+  const idx = badgeList.indexOf(id);
+  if (idx !== -1) badgeList.splice(idx, 1);
+}
+    saveBadgesLocally(badgeList);
+
+    selected.clear();
+    updateBatchState();
+
+    // SUCCESS
+    deleteBtn.innerText = "Deleted";
+
+    setTimeout(() => {
+      deleteBtn.innerText = originalText;
+      updateBatchState();
+    }, 1200);
+
+  } catch (e) {
+    console.error("Delete failed:", e);
+    alert("Delete failed. Try again.");
+
+    deleteBtn.innerText = originalText;
+    deleteBtn.disabled = false;
+  }
+};
+
+(async () => {
+  try {
+    const listUrl = new URL(`/api/equipment-photos/photo-list`, location.origin);
+    if (modalityId) listUrl.searchParams.set("modalityId", modalityId);
+
+    const [listRes, badgeRes] = await Promise.all([
+      fetch(listUrl.toString(), {
+        headers: { "x-user-email": userEmail }
+      }),
+      fetch(`/api/kv-get`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          key: `equipment:badges_images:${projectId}:${modalityId}:${userEmail}`
+        })
+      })
+    ]);
+
+    const out = await listRes.json().catch(() => []);
+    const badgeJson = await badgeRes.json().catch(() => ({}));
+
+    if (!listRes.ok) throw new Error(out?.error || "Failed");
+
+    photos = Array.isArray(out) ? out : [];
+
+    let serverBadges = [];
+
+    if (badgeJson?.value) {
+      try {
+        const parsed = typeof badgeJson.value === "string"
+          ? JSON.parse(badgeJson.value)
+          : badgeJson.value;
+
+        if (Array.isArray(parsed)) {
+          serverBadges = parsed.map(String);
+        }
+      } catch {}
     }
 
-    data = out;
+    // keep local in sync (used for removal on interaction)
+    saveBadgesLocally(serverBadges);
+
+    const badgeSet = new Set(serverBadges);
+
+    gallery.innerHTML = "";
+    photos.forEach(p => appendCard(p, badgeSet));
+
+    updateBatchState();
+
   } catch (err) {
-    console.error("load photos error:", err);
-    data = { photos: [] };
+    console.error("LOAD ERROR:", err);
   }
-
-  photos = Array.isArray(data?.photos) ? data.photos : [];
-
-  photos = photos.map(p => ({
-    ...p,
-    comment: p.photo_comment || ""
-  }));
-
-  photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-  const badgeSet = new Set(getActiveBadges());
-
-  gallery.innerHTML = "";
-  photos.forEach(p => appendCard(p, badgeSet));
-
-  updateBatchState();
 })();
 </script>
 

@@ -1,107 +1,184 @@
 import apn from "apn";
 import { kv } from "@vercel/kv";
 
-const BUNDLE_ID = process.env.APN_BUNDLE_ID_EQUIPMENT || "";
-const DEVICE_KEY_PREFIX = `device:ios:equipment:`;
+const APP_ID = "equipment";
+const BUNDLE_ID = String(process.env.APN_BUNDLE_ID_EQUIPMENT || "").trim();
+const APN_KEY_ID = String(process.env.APN_KEY_ID_EQUIPMENT || "").trim();
+const APPLE_TEAM_ID = String(process.env.APPLE_TEAM_ID || "").trim();
+const IS_PRODUCTION =
+  String(process.env.APN_PRODUCTION_EQUIPMENT || "false").toLowerCase() === "true";
 
-let provider = null;
-
-try {
-  if (
-    process.env.APN_KEY_P8 &&
-    process.env.APN_KEY_ID &&
-    process.env.APPLE_TEAM_ID
-  ) {
-    provider = new apn.Provider({
-      token: {
-        key: process.env.APN_KEY_P8.replace(/\\n/g, "\n"),
-        keyId: process.env.APN_KEY_ID,
-        teamId: process.env.APPLE_TEAM_ID
-      },
-      production: false,
-      connectionRetryLimit: 3
-    });
-
-    console.log("APNs initialized for equipment");
-  } else {
-    console.error("APNs missing env vars for equipment");
-  }
-} catch (e) {
-  console.error("APNs init failed:", e.message);
-  provider = null;
-}
+const DEVICE_KEY_PREFIX = `device:ios:${APP_ID}:`;
+const BADGE_KEY_PREFIX = `ios:badge:counter:${APP_ID}:`;
 
 function clean(email) {
   return String(email || "").toLowerCase().trim();
 }
 
+function uniq(arr) {
+  return [...new Set((arr || []).filter(Boolean))];
+}
+
+/* ✅ FIXED P8 HANDLING (NO REBUILDING) */
+function getRawP8() {
+  let raw = process.env.APN_KEY_P8_EQUIPMENT;
+  if (!raw) return "";
+
+  return raw
+    .replace(/^"(.*)"$/, "$1")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+}
+
+const APN_KEY_P8 = getRawP8();
+const keyLines = APN_KEY_P8 ? APN_KEY_P8.split("\n") : [];
+
+let provider = null;
+
+/* ✅ SINGLE CLEAN INIT (NO DUPLICATES) */
+try {
+  console.log("[APNs] key diagnostics", {
+    topic: BUNDLE_ID,
+    production: IS_PRODUCTION,
+    keyId: APN_KEY_ID,
+    teamId: APPLE_TEAM_ID,
+    keyLength: APN_KEY_P8.length,
+    lineCount: keyLines.length,
+    firstLine: keyLines[0] || "",
+    lastLine: keyLines[keyLines.length - 1] || ""
+  });
+
+  const missing = [];
+  if (!APN_KEY_P8) missing.push("APN_KEY_P8_EQUIPMENT");
+  if (!APN_KEY_ID) missing.push("APN_KEY_ID_EQUIPMENT");
+  if (!APPLE_TEAM_ID) missing.push("APPLE_TEAM_ID");
+  if (!BUNDLE_ID) missing.push("APN_BUNDLE_ID_EQUIPMENT");
+
+  if (missing.length) {
+    console.error("[APNs] missing env vars:", missing.join(", "));
+  } else {
+    provider = new apn.Provider({
+      token: {
+        key: APN_KEY_P8,
+        keyId: APN_KEY_ID,
+        teamId: APPLE_TEAM_ID
+      },
+      production: IS_PRODUCTION,
+      connectionRetryLimit: 3
+    });
+
+    console.log("✅ APN PROVIDER CREATED", {
+      topic: BUNDLE_ID,
+      production: IS_PRODUCTION
+    });
+  }
+} catch (e) {
+  console.error("❌ APNs init failed:", e?.message || e);
+  provider = null;
+}
+
+/* ---------------- BADGE ---------------- */
+
 async function computeUserBadge(email) {
   const e = clean(email);
   if (!e) return 0;
 
-  const count = await kv.get(`ios:badge:counter:${e}`);
-  return Number(count) || 0;
+  try {
+    const count = await kv.get(`${BADGE_KEY_PREFIX}${e}`);
+    return Math.max(0, Number(count) || 0);
+  } catch {
+    return 0;
+  }
 }
+
+function normalizeBadge(explicitBadge) {
+  return Math.max(0, Number(explicitBadge) || 0);
+}
+
+/* ---------------- DEVICES ---------------- */
 
 async function getUserDevices() {
-  const keys = await kv.keys(`${DEVICE_KEY_PREFIX}*`);
-  if (!keys.length) return {};
+  try {
+    const keys = await kv.keys(`${DEVICE_KEY_PREFIX}*`);
+    if (!keys.length) return {};
 
-  const users = {};
-  const records = await kv.mget(...keys);
+    const records = await kv.mget(...keys);
+    const users = {};
 
-  for (let i = 0; i < keys.length; i++) {
-    const rec = records[i];
-    if (!rec?.deviceToken || !rec?.email) continue;
+    for (let i = 0; i < keys.length; i++) {
+      const rec = records[i];
+      if (!rec?.deviceToken || !rec?.email) continue;
 
-    const email = clean(rec.email);
+      const email = clean(rec.email);
+      const token = String(rec.deviceToken || "").trim();
 
-    if (!users[email]) users[email] = [];
-    users[email].push(rec.deviceToken);
+      if (!users[email]) users[email] = [];
+      users[email].push(token);
+    }
+
+    for (const email of Object.keys(users)) {
+      users[email] = uniq(users[email]);
+    }
+
+    return users;
+  } catch {
+    return {};
   }
-
-  return users;
 }
+
+async function removeDeadToken(token) {
+  try {
+    await kv.del(`${DEVICE_KEY_PREFIX}${token}`);
+  } catch {}
+}
+
+/* ---------------- SEND ---------------- */
 
 async function send(note, tokens, email) {
   if (!provider) {
-    console.error("APNs not available — skipping push");
+    console.error("❌ APN provider missing");
     return;
   }
 
+  const deduped = uniq(tokens);
+  if (!deduped.length) return;
+
   try {
-    const result = await provider.send(note, tokens);
+    const result = await provider.send(note, deduped);
 
-    console.log("APNs sent:", result.sent.length);
+    for (const f of result.failed || []) {
+      const reason =
+        f?.response?.reason ||
+        f?.error?.message ||
+        "";
 
-    for (const f of result.failed) {
-      if (
-        String(f.status) === "410" ||
-        f.response?.reason === "Unregistered" ||
-        f.response?.reason === "BadDeviceToken" ||
-        f.response?.reason === "DeviceTokenNotForTopic"
-      ) {
-        console.log("Removing dead token:", f.device);
-        await kv.del(`${DEVICE_KEY_PREFIX}${f.device}`);
+      if (reason === "Unregistered" || reason === "BadDeviceToken") {
+        await removeDeadToken(f?.device);
       }
     }
   } catch (err) {
-    console.error("APNs error for", email, err.message);
+    console.error("❌ APN send error:", err?.message || err);
   }
 }
 
+/* ---------------- MAIN PUSH ---------------- */
+
 export async function sendPushToUsers(title, body, data = {}) {
-  const recipients = [...new Set((data.recipients || []).map(clean).filter(Boolean))];
+  const recipients = (data.recipients || []).map(clean).filter(Boolean);
   if (!recipients.length) return;
 
   const users = await getUserDevices();
-  if (!Object.keys(users).length) return;
 
-  for (const email of recipients) {
+  for (const email of uniq(recipients)) {
     const tokens = users[email];
     if (!tokens?.length) continue;
 
-    const badge = await computeUserBadge(email);
+    const badge =
+      data.badge == null
+        ? await computeUserBadge(email)
+        : normalizeBadge(data.badge);
 
     const note = new apn.Notification();
     note.topic = BUNDLE_ID;
@@ -110,36 +187,37 @@ export async function sendPushToUsers(title, body, data = {}) {
     note.badge = badge;
     note.pushType = "alert";
     note.priority = 10;
-    note.payload = data;
+    note.payload = { app: APP_ID, ...data, badge };
 
     await send(note, tokens, email);
   }
 }
 
+/* ---------------- BADGE ONLY ---------------- */
+
 export async function sendBadgeOnlyPush(targetEmail = null, explicitBadge = null) {
   const users = await getUserDevices();
-  if (!Object.keys(users).length) return;
+  const emails = targetEmail ? [clean(targetEmail)] : Object.keys(users);
 
-  const emails = targetEmail
-    ? [clean(targetEmail)]
-    : Object.keys(users);
-
-  for (const email of emails) {
+  for (const email of uniq(emails)) {
     const tokens = users[email];
     if (!tokens?.length) continue;
 
     const badge =
       explicitBadge == null
         ? await computeUserBadge(email)
-        : Math.max(0, Number(explicitBadge) || 0);
+        : normalizeBadge(explicitBadge);
 
     const note = new apn.Notification();
     note.topic = BUNDLE_ID;
     note.badge = badge;
-    note.pushType = "background";
-    note.priority = 5;
-    note.contentAvailable = 1;
-    note.payload = { type: "badge_update" };
+    note.sound = "default";
+    note.pushType = "alert";
+    note.priority = 10;
+    note.alert = {
+      title: "Espin Equipment",
+      body: badge > 0 ? "Update available" : "All caught up"
+    };
 
     await send(note, tokens, email);
   }

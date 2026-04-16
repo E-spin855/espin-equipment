@@ -1,86 +1,113 @@
 import { kv } from "@vercel/kv";
-import { sendBadgeOnlyPush } from "./_lib/push.js";
 
-function clean(email) {
-  return String(email || "").toLowerCase().trim();
+function clean(v) {
+  return String(v || "").toLowerCase().trim();
 }
 
-async function recomputeUserBadge(email) {
-  const [dataKeys, imageKeys] = await Promise.all([
-    kv.keys(`project:unread:*:${email}`),
-    kv.keys(`project:unread_images:*:${email}`)
-  ]);
-
-  const keys = [...dataKeys, ...imageKeys];
-
-  if (!keys.length) return 0;
-
+async function sumKeys(keys) {
+  if (!Array.isArray(keys) || !keys.length) return 0;
   const values = await kv.mget(...keys);
   return values.reduce((sum, v) => sum + (Number(v) || 0), 0);
 }
 
+async function recomputeTotal(userEmail) {
+  const email = clean(userEmail);
+
+  const [projectKeys, detailsKeys, imageKeys] = await Promise.all([
+    kv.keys(`equipment:unread:project:*:${email}`),
+    kv.keys(`equipment:unread:details:*:*:${email}`),
+    kv.keys(`equipment:unread:images:*:*:${email}`)
+  ]);
+
+  const [projectTotal, detailsTotal, imageTotal] = await Promise.all([
+    sumKeys(projectKeys),
+    sumKeys(detailsKeys),
+    sumKeys(imageKeys)
+  ]);
+
+  const total = projectTotal + detailsTotal + imageTotal;
+
+  await Promise.all([
+    kv.set(`app:badge:equipment:${email}`, total),
+    kv.set(`ios:badge:counter:equipment:${email}`, total)
+  ]);
+
+  return {
+    total,
+    projectTotal,
+    detailsTotal,
+    imageTotal
+  };
+}
+
 export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-user-email, x-useremail, x-user_email"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const userEmail = clean(req.headers["x-user-email"]);
-  const source = (req.headers["x-clear-source"] || "").toLowerCase();
-
-  const body =
-    typeof req.body === "string"
-      ? JSON.parse(req.body)
-      : req.body || {};
-
-  const projectId = body.projectId;
-  const type = body.type; // "tasks" | "images"
-
-  console.log("MARK-READ", { userEmail, projectId, type, source });
-
-  /* ───────── HARD BLOCKS (SINGLE SOURCE ONLY) ───────── */
-
-  if (source !== "management") {
-    console.log("BLOCKED: not management");
-    return res.json({ ok: true });
-  }
-
-  if (!userEmail || !projectId) {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
-
-  if (type !== "tasks" && type !== "images") {
-    console.log("BLOCKED: invalid type");
-    return res.json({ ok: true });
-  }
-
   try {
-    /* ───────── CLEAR ONLY UNREAD COUNTERS (NEW pills untouched) ───────── */
+    const userEmail = clean(
+      req.headers["x-user-email"] ||
+      req.headers["x-useremail"] ||
+      req.headers["x-user_email"] ||
+      req.body?.email
+    );
 
-    if (type === "tasks") {
-      await kv.del(`project:unread:${projectId}:${userEmail}`);
+    const projectId = String(req.body?.projectId || "").trim();
+    const type = String(req.body?.type || "all").toLowerCase().trim();
+
+    if (!userEmail || !projectId) {
+      return res.status(400).json({ error: "Missing email or projectId" });
     }
 
-    if (type === "images") {
-      await kv.del(`project:unread_images:${projectId}:${userEmail}`);
+    let projectKeys = [];
+    let detailsKeys = [];
+    let imageKeys = [];
+
+    if (type === "project" || type === "all") {
+      projectKeys = await kv.keys(`equipment:unread:project:${projectId}:${userEmail}`);
     }
 
-    /* ───────── RECOMPUTE GLOBAL BADGE TOTAL ───────── */
+    if (type === "details" || type === "all") {
+      detailsKeys = await kv.keys(`equipment:unread:details:${projectId}:*:${userEmail}`);
+    }
 
-    const total = await recomputeUserBadge(userEmail);
+    if (type === "images" || type === "all") {
+      imageKeys = await kv.keys(`equipment:unread:images:${projectId}:*:${userEmail}`);
+    }
 
-    await Promise.all([
-      kv.set(`app:badge:${userEmail}`, total),
-      kv.set(`ios:badge:counter:${userEmail}`, total)
-    ]);
+    const keysToDelete = [...projectKeys, ...detailsKeys, ...imageKeys];
 
-    /* ───────── PUSH BADGE UPDATE (EXPLICIT VALUE) ───────── */
+    if (keysToDelete.length) {
+      await kv.del(...keysToDelete);
+    }
 
-    await sendBadgeOnlyPush(userEmail, total);
+    const totals = await recomputeTotal(userEmail);
 
-    return res.json({ ok: true, badge: total });
-
+    return res.status(200).json({
+      ok: true,
+      projectId,
+      type,
+      cleared: keysToDelete.length,
+      deletedKeys: keysToDelete,
+      ...totals
+    });
   } catch (e) {
-    console.error("mark-read error:", e);
-    return res.status(500).json({ error: e.message });
+    console.error("equipment-project-mark-read error:", e);
+    return res.status(500).json({
+      ok: false,
+      error: e.message || "Failed to mark equipment project read"
+    });
   }
 }

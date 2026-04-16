@@ -38,18 +38,24 @@ export default async function handler(req, res) {
     const result = await client.query(
       `
       SELECT
-        pm.id,
+        pm.id AS project_modality_id,
         pm.project_id,
-        pm.modality,
+        pm.modality AS pm_modality,
         pm.label,
         pm.sort_order,
-        pm.created_at,
-        pm.updated_at,
+        pm.created_at AS pm_created_at,
+        pm.updated_at AS pm_updated_at,
+
+        ed.id AS equipment_details_id,
+        ed.modality_id AS equipment_modality_id,
+        ed.modality AS ed_modality,
         ed.data,
+        ed.updated_at AS ed_updated_at,
         ed.mri_serial,
         ed.xray_serial,
         ed.pet_serial,
         ed.carm_serial
+
       FROM project_modalities pm
       LEFT JOIN equipment_details ed
         ON ed.modality_id = pm.id
@@ -65,19 +71,28 @@ export default async function handler(req, res) {
     const modalities = result.rows.map((row) => {
       const data = safeObject(row.data);
 
+      const stableModalityId =
+        row.equipment_modality_id ||
+        row.project_modality_id ||
+        "";
+
       return {
-        id: row.id,
+        id: stableModalityId,
+        modality_id: stableModalityId,
+        project_modality_id: row.project_modality_id || "",
+        equipment_details_id: row.equipment_details_id || "",
         project_id: row.project_id,
-        modality: row.modality || data.modality || "",
+        modality: row.ed_modality || row.pm_modality || data.modality || "",
         label: row.label || "",
         sort_order: row.sort_order ?? null,
-        created_at: row.created_at || null,
-        updated_at: row.updated_at || null,
+        created_at: row.pm_created_at || null,
+        updated_at: row.ed_updated_at || row.pm_updated_at || null,
         data,
-        mri_serial: row.mri_serial || "",
-        xray_serial: row.xray_serial || "",
-        pet_serial: row.pet_serial || "",
-        carm_serial: row.carm_serial || "",
+        mri_serial: row.mri_serial || data.mri_serial || "",
+        xray_serial: row.xray_serial || data.xray_serial || "",
+        pet_serial: row.pet_serial || data.pet_serial || "",
+        carm_serial: row.carm_serial || data.carm_serial || "",
+        ct_serial: data.ct_serial || "",
         serial_number:
           row.mri_serial ||
           row.xray_serial ||

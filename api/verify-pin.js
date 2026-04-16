@@ -1,18 +1,20 @@
 import { kv } from "@vercel/kv";
 
+const TEST_MODE = true; // 🔥 TOGGLE
+
 export default async function handler(req, res) {
+  // ✅ STRICT, WKWebView-SAFE CORS
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    "https://espin-medical-app.vercel.app"
+  );
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-Requested-With"
+  );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
- const origin = req.headers.origin;
-
-// CORS
-res.setHeader("Access-Control-Allow-Origin", "*");
-res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-res.setHeader(
-  "Access-Control-Allow-Headers",
-  "Content-Type, X-Requested-With"
-);
-res.setHeader("Access-Control-Allow-Credentials", "true");
-  // ✅ Handle preflight BEFORE anything else
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
@@ -31,16 +33,26 @@ res.setHeader("Access-Control-Allow-Credentials", "true");
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedPin = String(pin).trim();
 
-    if (normalizedPin.length !== 6) {
-      return res.status(401).json({ error: "Invalid PIN" });
-    }
+    // ===============================
+    // TEST MODE BYPASS
+    // ===============================
+    if (TEST_MODE) {
+      if (normalizedPin !== "123456") {
+        return res.status(401).json({ error: "Invalid PIN" });
+      }
 
-    // Apple review / master override
-    if (normalizedPin === "123456") {
       return res.status(200).json({
         success: true,
-        email: normalizedEmail
+        email: normalizedEmail,
+        test: true
       });
+    }
+
+    // ===============================
+    // NORMAL FLOW
+    // ===============================
+    if (normalizedPin.length !== 6) {
+      return res.status(401).json({ error: "Invalid PIN" });
     }
 
     const key = `pin:${normalizedEmail}`;
@@ -50,10 +62,11 @@ res.setHeader("Access-Control-Allow-Credentials", "true");
       return res.status(401).json({ error: "PIN expired or not found" });
     }
 
-    if (String(storedPin).trim() !== normalizedPin) {
+    if (String(storedPin) !== normalizedPin) {
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
+    // ✅ Single-use PIN
     await kv.del(key);
 
     return res.status(200).json({

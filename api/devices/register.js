@@ -5,7 +5,6 @@ function clean(email) {
 }
 
 export default async function handler(req, res) {
-  /* CORS */
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-User-Email");
@@ -15,30 +14,51 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const body = req.body || {};
-    const email = clean(body.email || req.headers["x-user-email"]);
-    const deviceToken = body.deviceToken;
+    console.log("🔥 BODY:", req.body);
+    console.log("🔥 HEADER EMAIL:", req.headers["x-user-email"]);
+    console.log("🔥 KV URL:", process.env.KV_REST_API_URL);
 
-    if (!email || !deviceToken) {
-      console.log("REGISTER FAIL:", { email, deviceToken });
-      return res.status(400).json({ error: "Missing email or deviceToken" });
+    const body = req.body || {};
+
+    const email = clean(body.email || req.headers["x-user-email"]);
+    const deviceToken = String(body.deviceToken || "").trim();
+    const platform = String(body.platform || "").toLowerCase();
+
+    if (!email || !deviceToken || !platform) {
+      console.log("❌ REGISTER FAIL:", { email, deviceToken, platform });
+      return res.status(400).json({ error: "Missing email, deviceToken, or platform" });
     }
 
-    const key = `device:ios:${deviceToken}`;
+    const prefix =
+      platform === "android"
+        ? "device:android:"
+        : "device:ios:";
+
+    const key = prefix + deviceToken;
+
+    console.log("🔥 KV KEY:", key);
 
     await kv.set(key, {
       email,
       deviceToken,
-      platform: "ios",
+      platform,
       updatedAt: Date.now()
     });
 
-    console.log("REGISTER HIT:", email, deviceToken.substring(0, 10));
+    // 🔥 THIS IS THE ONLY LINE THAT MATTERS
+    const verify = await kv.get(key);
+    console.log("🔥 KV VERIFY:", verify);
+
+    console.log("✅ REGISTER HIT:", {
+      email,
+      platform,
+      token: deviceToken.slice(0, 12)
+    });
 
     return res.status(200).json({ success: true });
 
   } catch (err) {
-    console.error("REGISTER ERROR:", err);
+    console.error("💥 REGISTER ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }

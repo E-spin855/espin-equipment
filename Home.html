@@ -185,14 +185,144 @@ Projects
 </a>
 </div>
 
+<!-- TERMS MODAL -->
+<div id="termsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:99999; align-items:center; justify-content:center; padding:20px;">
+  <div style="width:100%; max-width:560px; background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.25); overflow:hidden;">
+    
+    <div style="padding:18px 20px; border-bottom:1px solid #e5e7eb;">
+      <h2 style="margin:0; font-size:22px; color:#0066B2;">User Agreement & Privacy Notice</h2>
+    </div>
+
+    <div style="padding:20px; max-height:55vh; overflow:auto; line-height:1.55; color:#111;">
+      <ul style="padding-left:20px;">
+        <li>You grant Dynamic Team Consulting LLC dba Espin Medical rights to use and share submitted content</li>
+        <li>You confirm you own rights to submitted data and images</li>
+        <li>You will not copy or misuse the app</li>
+        <li>Governed by Washington State law</li>
+      </ul>
+
+    <p>
+  <a href="https://espinmedical.com/user-agreement" target="_blank" rel="noopener noreferrer">
+    View User Agreement
+  </a>
+</p>
+
+<p>
+  <a href="https://espinmedical.com/privacy-policy" target="_blank" rel="noopener noreferrer">
+    View Privacy Policy
+  </a>
+</p>
+
+</div> <!-- ✅ CLOSE SCROLL AREA -->
+
+<div style="padding:16px;">
+      <label style="display:flex; gap:10px; margin-bottom:12px;">
+        <input type="checkbox" id="termsAgreeCheckbox">
+        I agree to the terms
+      </label>
+
+      <button id="termsAcceptBtn" disabled style="width:100%; padding:14px; border-radius:12px; background:#ccc; color:#fff;">
+        Accept and Continue
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <script>
-document.getElementById("logoutBtn").onclick=()=>{
+const TERMS_VERSION = "v1";
+
+function getUserEmail() {
+  return (localStorage.getItem("espinEquipment_userEmail") || "").trim().toLowerCase();
+}
+
+function getTermsKey() {
+  const email = getUserEmail();
+  return `espin_terms_${TERMS_VERSION}_${email}`;
+}
+
+function showTermsModal() {
+  const modal = document.getElementById("termsModal");
+  const checkbox = document.getElementById("termsAgreeCheckbox");
+  const btn = document.getElementById("termsAcceptBtn");
+
+  modal.style.display = "flex";
+  document.body.style.overflow = "hidden";
+
+  checkbox.checked = false;
+  btn.disabled = true;
+  btn.style.background = "#ccc";
+
+  checkbox.onchange = () => {
+    btn.disabled = !checkbox.checked;
+    btn.style.background = checkbox.checked ? "#0066B2" : "#ccc";
+  };
+
+  btn.onclick = () => {
+    if (!checkbox.checked) return;
+
+    localStorage.setItem(getTermsKey(), "true");
+
+    modal.style.display = "none";
+    document.body.style.overflow = "";
+  };
+}
+
+window.addEventListener("load", () => {
+  const key = getTermsKey();
+  if (localStorage.getItem(key) !== "true") {
+    showTermsModal();
+  }
+
+  // ✅ FIX LINK OPENING (iOS + Android + browser)
+  document.querySelectorAll('a[target="_blank"]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+
+      const url = this.href;
+
+      try {
+        if (window.webkit?.messageHandlers?.openExternal) {
+          window.webkit.messageHandlers.openExternal.postMessage(url);
+        } else {
+          window.open(url, "_blank");
+        }
+      } catch (err) {
+        window.location.href = url;
+      }
+    });
+  });
+});
+
+// ✅ LOGOUT (unchanged)
+document.getElementById("logoutBtn").onclick = async () => {
+  const userEmail = (localStorage.getItem(EMAIL_KEY) || "").trim().toLowerCase();
+
+  try {
+    if (userEmail) {
+      await fetch("/api/devices/equipment-unregister", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail }),
+        keepalive: true
+      });
+    }
+  } catch (err) {
+    console.error("Logout unregister failed:", err);
+  }
+
+  try {
+    if (window.webkit?.messageHandlers?.clearBadge) {
+      window.webkit.messageHandlers.clearBadge.postMessage({});
+    }
+  } catch (err) {}
+
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(EMAIL_KEY);
   localStorage.removeItem(KEEP_KEY);
-  location.replace("equipmentindex.html");
+
+  location.replace("index.html");
 };
 </script>
-
 </body>
 </html>
