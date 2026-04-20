@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     // TEST MODE PIN (BYPASS)
     // ===============================
     if (TEST_MODE) {
-      pin = "123456";
+      pin = "123455";
 
       await kv.set(`pin:${normalizedEmail}`, pin, { ex: 600 });
 
