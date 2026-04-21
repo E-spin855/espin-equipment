@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const TEST_MODE = true; // 🔥 TOGGLE
+const TEST_MODE = false; // 🔥 TOGGLE
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -21,7 +21,40 @@ export default async function handler(req, res) {
     if (!email) return res.status(400).json({ error: "Missing email" });
 
     const normalizedEmail = email.trim().toLowerCase();
+const ip =
+  req.headers["x-real-ip"] ||
+  req.headers["x-vercel-forwarded-for"] ||
+  req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
+  "unknown";
 
+console.log("🔥 PIN REQUEST:", {
+  email: normalizedEmail,
+  ip,
+  userAgent: req.headers["user-agent"] || "unknown",
+  time: new Date().toISOString()
+});
+// ===============================
+// 🔐 PIN PROTECTION (FIXED)
+// ===============================
+
+// ⛔ 60s cooldown per email
+const cooldownKey = `pin:cooldown:${normalizedEmail}`;
+const cooldown = await kv.get(cooldownKey);
+
+if (cooldown) {
+  return res.status(200).json({ success: true }); // silent block
+}
+
+// ⛔ max 5 attempts per 15 min
+const attemptsKey = `pin:attempts:${normalizedEmail}`;
+const attempts = (await kv.get(attemptsKey)) || 0;
+
+if (attempts >= 5) {
+  return res.status(200).json({ success: true }); // silent block
+}
+
+// ✅ set cooldown immediately
+await kv.set(cooldownKey, Date.now(), { ex: 300 }); // 5 min
     // ===============================
     // REGISTER DEVICE
     // ===============================
@@ -64,7 +97,7 @@ export default async function handler(req, res) {
     // TEST MODE PIN (BYPASS)
     // ===============================
     if (TEST_MODE) {
-      pin = "123455";
+      pin = "123456";
 
       await kv.set(`pin:${normalizedEmail}`, pin, { ex: 600 });
 
@@ -85,22 +118,25 @@ export default async function handler(req, res) {
       pin = Math.floor(100000 + Math.random() * 900000).toString();
       await kv.set(pinKey, pin, { ex: 600 });
     }
+    // ===============================
+// SEND EMAIL
+// ===============================
 
-    // ===============================
-    // SEND EMAIL
-    // ===============================
-    const { error } = await resend.emails.send({
-      from: "Espin Medical <info@espinmedical.com>",
-      to: normalizedEmail,
-      subject: "Your Espin Medical Login PIN",
-      html: `
-        <div style="font-family: sans-serif; text-align: center; padding: 20px;">
-          <h2>Login Verification</h2>
-          <div style="font-size: 32px; font-weight: bold; color: #0066B2;">${pin}</div>
-          <p>This code expires in 10 minutes.</p>
-        </div>
-      `
-    });
+// ✅ increment attempts ONLY when actually sending PIN
+await kv.set(attemptsKey, attempts + 1, { ex: 900 });
+
+const { error } = await resend.emails.send({
+  from: "Espin Medical <info@espinmedical.com>",
+  to: normalizedEmail,
+  subject: "Your Espin Medical Login PIN",
+  html: `
+    <div style="font-family: sans-serif; text-align: center; padding: 20px;">
+      <h2>Login Verification</h2>
+      <div style="font-size: 32px; font-weight: bold; color: #0066B2;">${pin}</div>
+      <p>This code expires in 10 minutes.</p>
+    </div>
+  `
+});
 
     if (error) throw error;
 
