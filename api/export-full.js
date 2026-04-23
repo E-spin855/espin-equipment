@@ -113,19 +113,18 @@ export default async function handler(req, res) {
     // 🔹 IMAGES (FIXED 🔥)
     // ===============================
     const imagesRes = await client.query(
-      `
-      SELECT 
-        COALESCE(photo_url, url) AS photo_url,
-        photo_title,
-        photo_comment,
-        created_at
-      FROM equipment_photos
-      WHERE project_id = $1
-      ORDER BY created_at DESC
-      `,
-      [projectId]
-    );
-
+  `
+  SELECT 
+    photo_url,
+    photo_title,
+    photo_comment,
+    created_at
+  FROM equipment_photos
+  WHERE project_id = $1
+  ORDER BY created_at DESC
+  `,
+  [projectId]
+);
     const imagesSheet = imagesRes.rows.map((r) => ({
       "Image URL": r.photo_url || "",
       "Image Title": r.photo_title || "",
