@@ -21,18 +21,22 @@ export default async function handler(req, res) {
 
   try {
     const { rows } = await pool.query(
-  `
-  SELECT p.*
-  FROM equipment_photos p
-  LEFT JOIN equipment_photo_visibility v
-    ON p.id = v.photo_id
-   AND LOWER(TRIM(v.email)) = LOWER(TRIM($2))
-  WHERE p.modality_id = $1
-    AND (v.hidden IS NULL OR v.hidden = false)
-  ORDER BY p.created_at DESC
-  `,
-  [modalityId, email]
-);
+      `
+      SELECT p.*
+      FROM equipment_photos p
+      WHERE p.modality_id = $1
+      AND NOT EXISTS (
+        SELECT 1
+        FROM equipment_photo_visibility v
+        WHERE v.photo_id = p.id
+          AND v.email = $2
+          AND v.hidden = true
+      )
+      ORDER BY p.created_at DESC
+      `,
+      [modalityId, email]
+    );
+
     return res.status(200).json(rows);
   } catch (err) {
     console.error("PHOTO LIST ERROR:", err);
