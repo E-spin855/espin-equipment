@@ -27,7 +27,9 @@ export default async function handler(req, res) {
   }
 
   const projectId = clean(req.query.projectId);
-  const userEmail = cleanEmail(req.headers["x-user-email"]);
+ const userEmail = cleanEmail(
+  req.headers["x-user-email"] || req.query.email
+);
 
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
@@ -42,16 +44,18 @@ export default async function handler(req, res) {
   try {
     // 🔒 VERIFY ACCESS (CRITICAL)
     const accessCheck = await client.query(
-      `
-      SELECT id
-FROM projects
-WHERE id = $1
-AND LOWER(TRIM(sales_rep_email)) = $2
-LIMIT 1
-      `,
-      [projectId, userEmail]
-    );
-
+  `
+  SELECT id
+  FROM projects
+  WHERE id = $1
+  AND (
+    LOWER(TRIM(sales_rep_email)) = $2
+    OR $2 = 'info@espinmedical.com'
+  )
+  LIMIT 1
+  `,
+  [projectId, userEmail]
+);
     if (!accessCheck.rowCount) {
       return res.status(403).json({ error: "Access denied" });
     }
