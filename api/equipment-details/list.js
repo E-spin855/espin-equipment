@@ -12,6 +12,10 @@ function clean(v) {
   return String(v || "").trim();
 }
 
+function cleanEmail(v) {
+  return String(v || "").toLowerCase().trim();
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -23,14 +27,35 @@ export default async function handler(req, res) {
   }
 
   const projectId = clean(req.query.projectId);
+  const userEmail = cleanEmail(req.headers["x-user-email"]);
 
   if (!projectId) {
     return res.status(400).json({ error: "Missing projectId" });
   }
 
+  if (!userEmail) {
+    return res.status(400).json({ error: "Missing user email" });
+  }
+
   const client = await pool.connect();
 
   try {
+    // 🔒 VERIFY ACCESS (CRITICAL)
+    const accessCheck = await client.query(
+      `
+      SELECT id
+FROM projects
+WHERE id = $1
+AND LOWER(TRIM(sales_rep_email)) = $2
+LIMIT 1
+      `,
+      [projectId, userEmail]
+    );
+
+    if (!accessCheck.rowCount) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     // ✅ PROJECT DATA
     const projectRes = await client.query(
       `
@@ -51,7 +76,7 @@ export default async function handler(req, res) {
 
     const project = projectRes.rows[0] || {};
 
-    // ✅ EQUIPMENT DATA
+    // ✅ EQUIPMENT DATA (NOW SAFE)
     const { rows } = await client.query(
       `
       SELECT
