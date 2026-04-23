@@ -89,18 +89,20 @@ export default async function handler(req, res) {
     // IMAGES (FILTER OUT USER-HIDDEN)
     // ===============================
     const imagesRes = await client.query(
-      `
-      SELECT p.id, p.photo_url, p.photo_title, p.photo_comment, p.created_at
-      FROM equipment_photos p
-      LEFT JOIN equipment_photo_hidden h
-        ON p.id = h.photo_id
-       AND LOWER(TRIM(h.user_email)) = LOWER(TRIM($2))
-      WHERE p.project_id = $1
-        AND h.photo_id IS NULL
-      ORDER BY p.created_at DESC
-      `,
-      [projectId, userEmail]
-    );
+  `
+  SELECT 
+    p.photo_url,
+    p.photo_title
+  FROM equipment_photos p
+  LEFT JOIN equipment_photo_visibility v
+    ON p.id = v.photo_id
+   AND LOWER(TRIM(v.email)) = LOWER(TRIM($2))
+  WHERE p.project_id = $1
+    AND (v.hidden IS NULL OR v.hidden = false)
+  ORDER BY p.created_at DESC
+  `,
+  [projectId, req.query.email || ""]
+);
 
     // ===============================
     // CREATE ZIP STREAM
