@@ -9,6 +9,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+const ADMIN_EMAIL = "info@espinmedical.com";
+
 function clean(v) {
   return String(v || "").trim();
 }
@@ -41,9 +43,9 @@ export default async function handler(req, res) {
   const client = await pool.connect();
 
   try {
-    const ADMIN_EMAIL = "info@espinmedical.com";
-
-    // 🔒 ACCESS
+    // ===============================
+    // 🔒 ACCESS (EQUIPMENT SAFE)
+    // ===============================
     let hasAccess = false;
 
     if (userEmail === ADMIN_EMAIL) {
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
       const accessCheck = await client.query(
         `
         SELECT id
-        FROM projects
+        FROM equipment_projects
         WHERE id = $1
         AND LOWER(TRIM(sales_rep_email)) = $2
         LIMIT 1
@@ -67,9 +69,11 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // ✅ PROJECT NAME
+    // ===============================
+    // 📌 PROJECT NAME
+    // ===============================
     const projectRes = await client.query(
-      `SELECT project_name FROM projects WHERE id = $1 LIMIT 1`,
+      `SELECT project_name FROM equipment_projects WHERE id = $1 LIMIT 1`,
       [projectId]
     );
 
@@ -90,6 +94,7 @@ export default async function handler(req, res) {
 
     const equipmentSheet = equipmentRes.rows.map((r) => {
       const d = r.data || {};
+
       return {
         Modality: r.modality || "",
         Manufacturer: d.manufacturer || "",
@@ -105,11 +110,15 @@ export default async function handler(req, res) {
     });
 
     // ===============================
-    // 🔹 IMAGES
+    // 🔹 IMAGES (FIXED 🔥)
     // ===============================
     const imagesRes = await client.query(
       `
-      SELECT photo_url, photo_title, photo_comment, created_at
+      SELECT 
+        COALESCE(photo_url, url) AS photo_url,
+        photo_title,
+        photo_comment,
+        created_at
       FROM equipment_photos
       WHERE project_id = $1
       ORDER BY created_at DESC
@@ -121,7 +130,9 @@ export default async function handler(req, res) {
       "Image URL": r.photo_url || "",
       "Image Title": r.photo_title || "",
       "Image Notes": r.photo_comment || "",
-      "Uploaded": r.created_at || ""
+      "Uploaded": r.created_at
+        ? new Date(r.created_at).toISOString()
+        : ""
     }));
 
     // ===============================
@@ -129,8 +140,13 @@ export default async function handler(req, res) {
     // ===============================
     const workbook = XLSX.utils.book_new();
 
-    const ws1 = XLSX.utils.json_to_sheet(equipmentSheet);
-    const ws2 = XLSX.utils.json_to_sheet(imagesSheet);
+    const ws1 = XLSX.utils.json_to_sheet(
+      equipmentSheet.length ? equipmentSheet : [{ Info: "No equipment data" }]
+    );
+
+    const ws2 = XLSX.utils.json_to_sheet(
+      imagesSheet.length ? imagesSheet : [{ Info: "No images found" }]
+    );
 
     XLSX.utils.book_append_sheet(workbook, ws1, "Equipment");
     XLSX.utils.book_append_sheet(workbook, ws2, "Images");
