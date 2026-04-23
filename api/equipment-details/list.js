@@ -43,18 +43,20 @@ export default async function handler(req, res) {
 
   try {
     // 🔒 VERIFY ACCESS (CRITICAL)
-    const accessCheck = await client.query(
+   const ADMIN_EMAIL = "info@espinmedical.com";
+
+const accessCheck = await client.query(
   `
   SELECT id
   FROM projects
   WHERE id = $1
   AND (
     LOWER(TRIM(sales_rep_email)) = $2
-    OR $2 = 'info@espinmedical.com'
+    OR LOWER(TRIM($2)) = LOWER(TRIM($3))
   )
   LIMIT 1
   `,
-  [projectId, userEmail]
+  [projectId, userEmail, ADMIN_EMAIL]
 );
     if (!accessCheck.rowCount) {
       return res.status(403).json({ error: "Access denied" });
