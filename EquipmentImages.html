@@ -778,35 +778,53 @@ deleteBtn.onclick = async () => {
     const ids = [...selected];
     const badgeList = getActiveBadges();
 
-  for (const id of ids) {
-  const realId = photos.find(p => getPrimaryId(p) === id)?.id;
+    for (const id of ids) {
+      const realId = photos.find(p => getPrimaryId(p) === id)?.id;
 
-  await fetch(`/api/equipment-photos/photo-delete`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-email": userEmail
-    },
-    body: JSON.stringify({
-      photoId: realId
-    })
-  });
-}
-  // remove from DOM
-  document.querySelector(`.card[data-id="${id}"]`)?.remove();
+      console.log("DELETE:", { id, realId, userEmail });
 
-  // remove from memory
-  photos = photos.filter(p => getPrimaryId(p) !== id);
+      await fetch(`/api/equipment-photos/photo-delete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
+        body: JSON.stringify({
+          photoId: realId
+        })
+      });
 
-  // remove from badges
-  const idx = badgeList.indexOf(id);
-  if (idx !== -1) badgeList.splice(idx, 1);
-}
+      // remove from DOM
+      document.querySelector(`.card[data-id="${id}"]`)?.remove();
+
+      // remove from memory
+      photos = photos.filter(p => getPrimaryId(p) !== id);
+
+      // remove from badges
+      const idx = badgeList.indexOf(id);
+      if (idx !== -1) badgeList.splice(idx, 1);
+    }
+
     saveBadgesLocally(badgeList);
 
     selected.clear();
     updateBatchState();
 
+    deleteBtn.innerText = "Deleted";
+
+    setTimeout(() => {
+      deleteBtn.innerText = originalText;
+      deleteBtn.disabled = false;
+    }, 1200);
+
+  } catch (e) {
+    console.error("Delete failed:", e);
+    alert("Delete failed. Try again.");
+
+    deleteBtn.innerText = originalText;
+    deleteBtn.disabled = false;
+  }
+};
     // SUCCESS
     deleteBtn.innerText = "Deleted";
 
