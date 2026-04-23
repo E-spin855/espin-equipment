@@ -2,7 +2,7 @@
 // PATH: /api/export-excel.js
 
 import { Pool } from "pg";
-import * as XLSX from "xlsx";
+import XLSX from "xlsx"; // ✅ FIXED
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
