@@ -30,51 +30,45 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const projectId = clean(req.query.projectId);
-  const userEmail = cleanEmail(
-    req.headers["x-user-email"] || req.query.email || ""
-  );
+ const projectId = clean(req.query.projectId);
 
+const userEmail = cleanEmail(
+  req.headers["x-user-email"] || req.query.email || ""
+);
+
+if (!projectId) return res.status(400).json({ error: "Missing projectId" });
+if (!userEmail) return res.status(400).json({ error: "Missing user email" });
+
+const client = await pool.connect();
+
+try {
   const ADMIN_EMAIL = "info@espinmedical.com";
 
-  if (!projectId) return res.status(400).json({ error: "Missing projectId" });
-  if (!userEmail) return res.status(400).json({ error: "Missing user email" });
+  // 🔒 ACCESS CONTROL
+  let hasAccess = false;
 
-  const client = await pool.connect();
+  if (userEmail === ADMIN_EMAIL) {
+    // ✅ ADMIN → full access
+    hasAccess = true;
+  } else {
+    // ✅ REP → must match project
+    const accessCheck = await client.query(
+      `
+      SELECT id
+      FROM projects
+      WHERE id = $1
+      AND LOWER(TRIM(sales_rep_email)) = $2
+      LIMIT 1
+      `,
+      [projectId, userEmail]
+    );
 
-  try {
-    // 🔒 ADMIN OR OWNER ACCESS
-    let access;
+    hasAccess = accessCheck.rowCount > 0;
+  }
 
-    if (userEmail === ADMIN_EMAIL) {
-      // 🔥 ADMIN → skip rep check
-      access = await client.query(
-        `
-        SELECT id, project_name
-        FROM projects
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [projectId]
-      );
-    } else {
-      // 🔒 REP → must match
-      access = await client.query(
-        `
-        SELECT id, project_name
-        FROM projects
-        WHERE id = $1
-        AND LOWER(TRIM(sales_rep_email)) = $2
-        LIMIT 1
-        `,
-        [projectId, userEmail]
-      );
-    }
-
-    if (!access.rowCount) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
+  if (!hasAccess) {
+    return res.status(403).json({ error: "Access denied" });
+  }
     const projectName = access.rows[0].project_name || "Project";
 
     // ✅ GET EQUIPMENT DATA
