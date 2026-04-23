@@ -42,24 +42,20 @@ try {
   const ADMIN_EMAIL = "info@espinmedical.com";
 
   // 🔒 ACCESS CHECK
-  const accessCheck = await client.query(
-    `
-    SELECT id
-    FROM projects
-    WHERE id = $1
-    AND (
-      LOWER(TRIM(sales_rep_email)) = $2
-      OR LOWER(TRIM($2)) = LOWER(TRIM($3))
-    )
-    LIMIT 1
-    `,
-    [projectId, userEmail, ADMIN_EMAIL]
-  );
+ const accessCheck = await client.query(
+  `
+  SELECT id
+  FROM projects
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [projectId]
+);
 
-  if (!accessCheck.rowCount) {
-    return res.status(403).json({ error: "Access denied" });
-  }
-
+// 🔥 ADMIN ONLY (safe fallback)
+if (userEmail !== "info@espinmedical.com") {
+  return res.status(403).json({ error: "Access denied" });
+}
   // ✅ PROJECT DATA
   const projectRes = await client.query(
     `

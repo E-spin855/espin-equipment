@@ -40,20 +40,21 @@ export default async function handler(req, res) {
 try {
   const ADMIN_EMAIL = "info@espinmedical.com"; // 👈 ADD HERE
 
-  // 🔒 VERIFY ACCESS
-  const access = await client.query(
-    `
-    SELECT id, project_name
-    FROM projects
-    WHERE id = $1
-    AND (
-      LOWER(TRIM(sales_rep_email)) = $2
-      OR LOWER(TRIM($2)) = LOWER(TRIM($3))
-    )
-    LIMIT 1
-    `,
-    [projectId, userEmail, ADMIN_EMAIL]
-  );
+ // 🔒 VERIFY ACCESS (SAFE)
+const access = await client.query(
+  `
+  SELECT id, project_name
+  FROM projects
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [projectId]
+);
+
+// 🔥 ADMIN ONLY (temporary safe fix)
+if (userEmail !== "info@espinmedical.com") {
+  return res.status(403).json({ error: "Access denied" });
+}
 
     if (!access.rowCount) {
       return res.status(403).json({ error: "Access denied" });
