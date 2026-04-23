@@ -114,3 +114,4 @@ if (userEmail !== "info@espinmedical.com") {
 } finally {
   client.release();
 }
+}
