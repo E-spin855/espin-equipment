@@ -25,8 +25,15 @@ export default async function handler(req, res) {
 const projectId = clean(req.query.projectId);
 
 const userEmail = String(
-  req.headers["x-user-email"] || req.query.email || ""
-).toLowerCase().trim();
+  req.headers["x-user-email"] ||
+  req.query.email ||
+  ""
+)
+.replace(/\s+/g, "")   // 🔥 removes hidden spaces/newlines
+.toLowerCase()
+.trim();
+
+const ADMIN_EMAIL = "info@espinmedical.com";
 
 if (!projectId) {
   return res.status(400).json({ error: "Missing projectId" });
@@ -40,23 +47,31 @@ const client = await pool.connect();
 try {
   const ADMIN_EMAIL = "info@espinmedical.com";
 
-  // 🔥 ADMIN ALWAYS ALLOWED
-  if (userEmail !== ADMIN_EMAIL) {
-    const accessCheck = await client.query(
-      `
-      SELECT id
-      FROM projects
-      WHERE id = $1
-      AND LOWER(TRIM(sales_rep_email)) = $2
-      LIMIT 1
-      `,
-      [projectId, userEmail]
-    );
+// 🔒 ACCESS CONTROL
+let hasAccess = false;
 
-    if (!accessCheck.rowCount) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-  }
+if (userEmail === ADMIN_EMAIL) {
+  // ✅ ADMIN → full access
+  hasAccess = true;
+} else {
+  // ✅ REP → must match project
+  const accessCheck = await client.query(
+    `
+    SELECT id
+    FROM projects
+    WHERE id = $1
+    AND LOWER(TRIM(sales_rep_email)) = $2
+    LIMIT 1
+    `,
+    [projectId, userEmail]
+  );
+
+  hasAccess = accessCheck.rowCount > 0;
+}
+
+if (!hasAccess) {
+  return res.status(403).json({ error: "Access denied" });
+}
 
 // 🔥 ADMIN ONLY (safe fallback)
 if (userEmail !== "info@espinmedical.com") {

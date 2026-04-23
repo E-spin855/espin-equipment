@@ -2,7 +2,7 @@
 // PATH: /api/export-excel.js
 
 import { Pool } from "pg";
-import XLSX from "xlsx"; // ✅ FIXED
+import XLSX from "xlsx";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -14,7 +14,10 @@ function clean(v) {
 }
 
 function cleanEmail(v) {
-  return String(v || "").toLowerCase().trim();
+  return String(v || "")
+    .replace(/\s+/g, "")   // 🔥 remove hidden chars
+    .toLowerCase()
+    .trim();
 }
 
 export default async function handler(req, res) {
@@ -28,33 +31,45 @@ export default async function handler(req, res) {
   }
 
   const projectId = clean(req.query.projectId);
- const userEmail = cleanEmail(
-  req.headers["x-user-email"] || req.query.email
-);
+  const userEmail = cleanEmail(
+    req.headers["x-user-email"] || req.query.email || ""
+  );
+
+  const ADMIN_EMAIL = "info@espinmedical.com";
 
   if (!projectId) return res.status(400).json({ error: "Missing projectId" });
   if (!userEmail) return res.status(400).json({ error: "Missing user email" });
 
- const client = await pool.connect();
+  const client = await pool.connect();
 
-try {
-  const ADMIN_EMAIL = "info@espinmedical.com"; // 👈 ADD HERE
+  try {
+    // 🔒 ADMIN OR OWNER ACCESS
+    let access;
 
- // 🔒 VERIFY ACCESS (SAFE)
-const access = await client.query(
-  `
-  SELECT id, project_name
-  FROM projects
-  WHERE id = $1
-  LIMIT 1
-  `,
-  [projectId]
-);
-
-// 🔥 ADMIN ONLY (temporary safe fix)
-if (userEmail !== "info@espinmedical.com") {
-  return res.status(403).json({ error: "Access denied" });
-}
+    if (userEmail === ADMIN_EMAIL) {
+      // 🔥 ADMIN → skip rep check
+      access = await client.query(
+        `
+        SELECT id, project_name
+        FROM projects
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [projectId]
+      );
+    } else {
+      // 🔒 REP → must match
+      access = await client.query(
+        `
+        SELECT id, project_name
+        FROM projects
+        WHERE id = $1
+        AND LOWER(TRIM(sales_rep_email)) = $2
+        LIMIT 1
+        `,
+        [projectId, userEmail]
+      );
+    }
 
     if (!access.rowCount) {
       return res.status(403).json({ error: "Access denied" });
@@ -73,7 +88,7 @@ if (userEmail !== "info@espinmedical.com") {
       [projectId]
     );
 
-    // 🔄 FLATTEN DATA
+    // 🔄 FLATTEN
     const flat = rows.map((r) => {
       const d = r.data || {};
       return {
@@ -90,7 +105,7 @@ if (userEmail !== "info@espinmedical.com") {
       };
     });
 
-    // 📊 CREATE SHEET
+    // 📊 EXCEL
     const worksheet = XLSX.utils.json_to_sheet(flat);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Equipment");
@@ -100,7 +115,6 @@ if (userEmail !== "info@espinmedical.com") {
       bookType: "xlsx"
     });
 
-    // 📥 RESPONSE
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=${projectName.replace(/\s+/g, "_")}_equipment.xlsx`
