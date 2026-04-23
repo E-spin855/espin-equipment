@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     // TEST MODE BYPASS
     // ===============================
     if (TEST_MODE) {
-      if (normalizedPin !== "123455") {
+      if (normalizedPin !== "123454") {
         return res.status(401).json({ error: "Invalid PIN" });
       }
 
