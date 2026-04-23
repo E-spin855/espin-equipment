@@ -69,7 +69,18 @@ try {
   if (!hasAccess) {
     return res.status(403).json({ error: "Access denied" });
   }
-    const projectName = access.rows[0].project_name || "Project";
+    // ✅ GET PROJECT NAME
+const projectRes = await client.query(
+  `
+  SELECT project_name
+  FROM projects
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [projectId]
+);
+
+const projectName = projectRes.rows[0]?.project_name || "Project";
 
     // ✅ GET EQUIPMENT DATA
     const { rows } = await client.query(
