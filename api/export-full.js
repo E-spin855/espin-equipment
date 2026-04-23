@@ -133,7 +133,15 @@ export default async function handler(req, res) {
         ? new Date(r.created_at).toISOString()
         : ""
     }));
+console.log("PROJECT ID:", projectId);
 
+const debugImages = await client.query(
+  `SELECT project_id, photo_url FROM equipment_photos LIMIT 10`
+);
+
+console.log("ALL IMAGES SAMPLE:", debugImages.rows);
+
+console.log("FILTERED IMAGES:", imagesRes.rows);
     // ===============================
     // 📊 WORKBOOK
     // ===============================
