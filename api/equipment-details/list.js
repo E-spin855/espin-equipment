@@ -37,20 +37,26 @@ if (!userEmail) {
 }
 
 const client = await pool.connect();
-
 try {
   const ADMIN_EMAIL = "info@espinmedical.com";
 
-  // 🔒 ACCESS CHECK
- const accessCheck = await client.query(
-  `
-  SELECT id
-  FROM projects
-  WHERE id = $1
-  LIMIT 1
-  `,
-  [projectId]
-);
+  // 🔥 ADMIN ALWAYS ALLOWED
+  if (userEmail !== ADMIN_EMAIL) {
+    const accessCheck = await client.query(
+      `
+      SELECT id
+      FROM projects
+      WHERE id = $1
+      AND LOWER(TRIM(sales_rep_email)) = $2
+      LIMIT 1
+      `,
+      [projectId, userEmail]
+    );
+
+    if (!accessCheck.rowCount) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+  }
 
 // 🔥 ADMIN ONLY (safe fallback)
 if (userEmail !== "info@espinmedical.com") {
