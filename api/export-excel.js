@@ -28,25 +28,32 @@ export default async function handler(req, res) {
   }
 
   const projectId = clean(req.query.projectId);
-  const userEmail = cleanEmail(req.headers["x-user-email"]);
+ const userEmail = cleanEmail(
+  req.headers["x-user-email"] || req.query.email
+);
 
   if (!projectId) return res.status(400).json({ error: "Missing projectId" });
   if (!userEmail) return res.status(400).json({ error: "Missing user email" });
 
-  const client = await pool.connect();
+ const client = await pool.connect();
 
-  try {
-    // 🔒 VERIFY ACCESS
-    const access = await client.query(
-      `
-      SELECT id, project_name
-      FROM projects
-      WHERE id = $1
-      AND LOWER(TRIM(sales_rep_email)) = $2
-      LIMIT 1
-      `,
-      [projectId, userEmail]
-    );
+try {
+  const ADMIN_EMAIL = "info@espinmedical.com"; // 👈 ADD HERE
+
+  // 🔒 VERIFY ACCESS
+  const access = await client.query(
+    `
+    SELECT id, project_name
+    FROM projects
+    WHERE id = $1
+    AND (
+      LOWER(TRIM(sales_rep_email)) = $2
+      OR LOWER(TRIM($2)) = LOWER(TRIM($3))
+    )
+    LIMIT 1
+    `,
+    [projectId, userEmail, ADMIN_EMAIL]
+  );
 
     if (!access.rowCount) {
       return res.status(403).json({ error: "Access denied" });
