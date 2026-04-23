@@ -45,16 +45,12 @@ if (modalityId) {
 }
 
 function handleBack(){
-  // 🔥 clear local
   sessionStorage.removeItem(BADGE_STORAGE_KEY);
   localStorage.removeItem(BADGE_STORAGE_KEY);
 
-  // 🔥 clear server badge (THIS is why it wasn't working)
   fetch(`/api/kv-set`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       key: `equipment:badges_images:${projectId}:${modalityId}:${userEmail}`,
       value: []
@@ -66,6 +62,10 @@ function handleBack(){
   if (modalityId) qp.set("modalityId", modalityId);
 
   location.href = `equipmentindex.html?${qp.toString()}`;
+}
+function downloadFullExport() {
+  const url = `/api/export-excel?projectId=${projectId}&email=${encodeURIComponent(userEmail)}&includeImages=true`;
+  window.open(url, "_blank");
 }
 function getPrimaryId(p){
   return String(
@@ -445,11 +445,15 @@ button:disabled{
     <div id="gallery" class="gallery"></div>
   </div>
 
-  <div class="batch-bar">
-    <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
-    <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
-  </div>
+ <div class="batch-bar">
+  <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
+  <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
 
+  <!-- 🔥 NEW BUTTON -->
+  <button onclick="downloadFullExport()" class="batch-btn">
+    Download Equipment + Images
+  </button>
+</div>
   <div id="previewModal" class="preview-modal">
     <div class="preview-close" id="previewClose">✕</div>
     <img id="previewImage">
