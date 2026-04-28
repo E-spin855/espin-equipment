@@ -1,6 +1,6 @@
 import { kv } from "@vercel/kv";
 
-const TEST_MODE = true; // 🔥 TOGGLE
+const TEST_MODE = false; // 🔥 TOGGLE
 
 export default async function handler(req, res) {
   // ✅ STRICT, WKWebView-SAFE CORS

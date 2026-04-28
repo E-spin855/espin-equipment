@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const TEST_MODE = true; // 🔥 TOGGLE
+const TEST_MODE = false; // 🔥 TOGGLE
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
