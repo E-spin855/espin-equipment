@@ -1,5 +1,5 @@
 // File: add.js
-// Path: /api/project-access/add.js
+// Path: /api/equipment-access/add.js
 
 import { Pool } from "pg";
 
