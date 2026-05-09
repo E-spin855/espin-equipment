@@ -64,13 +64,13 @@ export default async function handler(req, res) {
 
       await pool.query(
         `
-        INSERT INTO project_access (
-          project_id,
-          user_email,
-          role
-        )
+        INSERT INTO equipment_project_access (
+  project_id,
+  email,
+  role
+)
         VALUES ($1,$2,$3)
-        ON CONFLICT (project_id, user_email)
+        ON CONFLICT (project_id, email)
         DO UPDATE SET
           role = EXCLUDED.role
         `,
