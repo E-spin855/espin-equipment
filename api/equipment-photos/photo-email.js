@@ -43,8 +43,50 @@ function safeJson(body) {
 }
 
 /* RECIPIENTS */
-async function getRecipients() {
-  return ["info@espinmedical.com"];
+async function getRecipients(client, projectId) {
+  const ADMIN_EMAIL = "info@espinmedical.com";
+
+  const { rows } = await client.query(
+    `
+    SELECT
+      status,
+      sales_rep_email
+    FROM equipment_projects
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [projectId]
+  );
+
+  const project = rows[0] || {};
+
+  const status = clean(project.status);
+  const repEmail = clean(project.sales_rep_email);
+
+  let recipients = [];
+
+  if (status === "pending_rep_review") {
+
+    if (repEmail) {
+      recipients.push(repEmail);
+    }
+
+    recipients.push(ADMIN_EMAIL);
+
+  } else if (status === "final_send") {
+
+    recipients.push(ADMIN_EMAIL);
+
+  } else {
+
+    if (repEmail) {
+      recipients.push(repEmail);
+    }
+
+    recipients.push(ADMIN_EMAIL);
+  }
+
+  return [...new Set(recipients.filter(Boolean))];
 }
 
 /* BADGE */
@@ -209,7 +251,7 @@ export default async function handler(req, res) {
       </div>
     `;
 
-    const recipients = await getRecipients();
+    const recipients = await getRecipients(client, projectId);
 
     await resend.emails.send({
       from: FROM_EMAIL,
@@ -218,35 +260,42 @@ export default async function handler(req, res) {
       html
     });
 // 🔥 CREATE NEW PILL FOR ADMIN (CRITICAL FIX)
-const key = `equipment:badges_images:${projectId}:${modalityId}:${ADMIN_EMAIL}`;
+for (const email of recipients) {
 
-const existing = await kv.get(key);
+  const key =
+    `equipment:badges_images:${projectId}:${modalityId}:${email}`;
 
-let current = [];
+  const existing = await kv.get(key);
 
-if (existing) {
-  try {
-    const parsed = typeof existing === "string"
-      ? JSON.parse(existing)
-      : existing;
+  let current = [];
 
-    if (Array.isArray(parsed)) current = parsed;
-  } catch {}
+  if (existing) {
+    try {
+      const parsed =
+        typeof existing === "string"
+          ? JSON.parse(existing)
+          : existing;
+
+      if (Array.isArray(parsed)) {
+        current = parsed;
+      }
+    } catch {}
+  }
+
+  const merged = [
+    ...new Set([
+      ...current.map(String),
+      ...photoIds.map(String)
+    ])
+  ];
+
+  await kv.set(key, merged);
+
+  console.log("🔥 IMAGE BADGE SET", {
+    key,
+    merged
+  });
 }
-
-const merged = [
-  ...new Set([
-    ...current.map(String),
-    ...photoIds.map(String)
-  ])
-];
-
-await kv.set(key, merged);
-
-console.log("🔥 ADMIN NEW BADGE SET", {
-  key,
-  merged
-});
     for (const email of recipients) {
       await kv.incr(`equipment:unread:images:${projectId}:${modalityId}:${email}`);
       const badge = await recomputeBadge(email);

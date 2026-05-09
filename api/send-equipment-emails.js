@@ -114,9 +114,65 @@ export default async function handler(req, res) {
       ? req.body.changedFields.map(v => String(v || "").trim()).filter(Boolean)
       : [];
 
-    const recipients = await getRecipients(client, projectId);
     const ADMIN_EMAIL = "info@espinmedical.com";
-    if (!recipients.includes(ADMIN_EMAIL)) recipients.push(ADMIN_EMAIL);
+
+let recipients = [];
+
+// 🔥 LOAD PROJECT STATUS + REP
+const { rows: projectMetaRows } = await client.query(
+  `
+  SELECT
+    status,
+    sales_rep_email
+  FROM equipment_projects
+  WHERE id = $1
+  LIMIT 1
+  `,
+  [projectId]
+);
+
+const projectMeta = projectMetaRows[0] || {};
+
+const status = clean(projectMeta.status);
+const repEmail = clean(projectMeta.sales_rep_email);
+
+// 🔥 STAGE 1
+// Hospital submission
+// For NOW → rep + admin both get it
+
+if (status === "pending_rep_review") {
+
+  if (repEmail) {
+    recipients.push(repEmail);
+  }
+
+  recipients.push(ADMIN_EMAIL);
+
+}
+
+// 🔥 STAGE 2
+// Rep FINAL SEND
+// Only admin gets it
+
+else if (status === "final_send") {
+
+  recipients.push(ADMIN_EMAIL);
+
+}
+
+// 🔥 FALLBACK
+else {
+
+  if (repEmail) {
+    recipients.push(repEmail);
+  }
+
+  recipients.push(ADMIN_EMAIL);
+
+}
+
+// 🔥 CLEAN DUPLICATES
+recipients = [...new Set(recipients)];
 // ✅ NEW SMART ROW MAPPING
     // This looks in details.field, details.data.field, and handles ct_ prefixes
   // ===== MODALITY =====
