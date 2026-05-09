@@ -56,19 +56,28 @@ export default async function handler(req, res) {
         .trim()
         .toLowerCase();
 
-      const role = String(user.role || "viewer")
+      let role = String(user.role || "viewer")
         .trim()
         .toLowerCase();
 
       if (!email) continue;
 
+      // 🔥 ALLOWED ROLES ONLY
+      if (
+        role !== "admin" &&
+        role !== "rep" &&
+        role !== "hospital"
+      ) {
+        role = "viewer";
+      }
+
       await pool.query(
         `
         INSERT INTO equipment_project_access (
-  project_id,
-  email,
-  role
-)
+          project_id,
+          email,
+          role
+        )
         VALUES ($1,$2,$3)
         ON CONFLICT (project_id, email)
         DO UPDATE SET
@@ -95,12 +104,12 @@ export default async function handler(req, res) {
   } catch (err) {
 
     console.error(
-      "PROJECT ACCESS ADD ERROR:",
+      "EQUIPMENT ACCESS ADD ERROR:",
       err
     );
 
     return res.status(500).json({
-      error: "Internal server error"
+      error: err.message || "Internal server error"
     });
   }
 }
