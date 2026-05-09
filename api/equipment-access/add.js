@@ -49,6 +49,7 @@ export default async function handler(req, res) {
     }
 
     const added = [];
+    const skipped = [];
 
     for (const user of users) {
 
@@ -60,45 +61,79 @@ export default async function handler(req, res) {
         .trim()
         .toLowerCase();
 
-      if (!email) continue;
+      // 🔥 STRICT EMAIL VALIDATION
+      const validEmail =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-      // 🔥 ALLOWED ROLES ONLY
-      if (
-        role !== "admin" &&
-        role !== "rep" &&
-        role !== "hospital"
-      ) {
+      if (!validEmail) {
+
+        skipped.push({
+          email,
+          role,
+          reason: "Invalid email"
+        });
+
+        continue;
+      }
+
+      // 🔥 ALLOWED ROLES
+      const allowedRoles = [
+        "admin",
+        "rep",
+        "hospital",
+        "viewer"
+      ];
+
+      if (!allowedRoles.includes(role)) {
         role = "viewer";
       }
 
-      await pool.query(
-        `
-        INSERT INTO equipment_project_access (
-          project_id,
-          email,
-          role
-        )
-        VALUES ($1,$2,$3)
-        ON CONFLICT (project_id, email)
-        DO UPDATE SET
-          role = EXCLUDED.role
-        `,
-        [
-          projectId,
-          email,
-          role
-        ]
-      );
+      try {
 
-      added.push({
-        email,
-        role
-      });
+        await pool.query(
+          `
+          INSERT INTO equipment_project_access (
+            project_id,
+            email,
+            role
+          )
+          VALUES ($1,$2,$3)
+          ON CONFLICT (project_id, email)
+          DO UPDATE SET
+            role = EXCLUDED.role
+          `,
+          [
+            projectId,
+            email,
+            role
+          ]
+        );
+
+        added.push({
+          email,
+          role
+        });
+
+      } catch (dbErr) {
+
+        console.error(
+          "ACCESS INSERT ERROR:",
+          dbErr
+        );
+
+        skipped.push({
+          email,
+          role,
+          reason: dbErr.message || "DB insert failed"
+        });
+      }
     }
 
     return res.status(200).json({
       success: true,
-      added
+      projectId,
+      added,
+      skipped
     });
 
   } catch (err) {
