@@ -32,21 +32,24 @@ export default async function handler(req, res) {
        🟦 GET PROJECTS
     ========================= */
     if (req.method === "GET") {
-     const { rows } = await client.query(
-  `
-  SELECT *
-  FROM equipment_projects
-  WHERE
-    LOWER(sales_rep_email) = LOWER($1)
-    OR LOWER($1) = 'info@espinmedical.com'
-  ORDER BY created_at DESC
-  `,
-  [userEmail]
-);
 
-      return res.status(200).json(rows);
-    }
+  const { rows } = await client.query(
+    `
+    SELECT DISTINCT ep.*
+    FROM equipment_projects ep
+    LEFT JOIN equipment_project_access epa
+      ON ep.id = epa.project_id
+    WHERE
+      LOWER(epa.email) = LOWER($1)
+      OR LOWER(ep.sales_rep_email) = LOWER($1)
+      OR LOWER($1) = 'info@espinmedical.com'
+    ORDER BY ep.created_at DESC
+    `,
+    [userEmail]
+  );
 
+  return res.status(200).json(rows);
+}
     /* =========================
        🔥 SAFE BODY PARSE
     ========================= */
