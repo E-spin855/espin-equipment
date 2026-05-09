@@ -54,7 +54,7 @@ if (attempts >= 5) {
 }
 
 // ✅ set cooldown immediately
-await kv.set(cooldownKey, Date.now(), { ex: 300 }); // 5 min
+// cooldown moved below successful send
     // ===============================
     // REGISTER DEVICE
     // ===============================
@@ -138,9 +138,15 @@ const { error } = await resend.emails.send({
   `
 });
 
-    if (error) throw error;
+   if (error) throw error;
 
-    return res.status(200).json({ success: true });
+// ✅ ONLY cooldown after successful send
+await kv.set(cooldownKey, Date.now(), { ex: 300 });
+
+// ✅ increment attempts ONLY after success
+await kv.set(attemptsKey, attempts + 1, { ex: 900 });
+
+return res.status(200).json({ success: true });
 
   } catch (err) {
     console.error("PIN Error:", err);
