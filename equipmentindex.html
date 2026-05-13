@@ -1086,16 +1086,33 @@ function closeDeleteModal(){
 }
 function renderProject(){
   projectNameEl.textContent =
-    project?.project_name || "Submitted By:";
+    project?.project_name || "Project Details";
 
   const repName = [
     project?.sales_rep_first,
     project?.sales_rep_last
   ].filter(Boolean).join(" ");
 
+  const companyOrFacility = clean(project?.sales_rep_company);
+  const companyLower = companyOrFacility.toLowerCase();
+
+  const isFacility =
+    companyLower.includes("hospital") ||
+    companyLower.includes("medical") ||
+    companyLower.includes("imaging") ||
+    companyLower.includes("institute") ||
+    companyLower.includes("clinic") ||
+    companyLower.includes("center");
+
+  const orgLabel = isFacility ? "Facility" : "Company";
+
   projectMetaEl.innerHTML = `
-    ${repName ? `<div><strong>Sales Rep:</strong> ${esc(repName)}</div>` : ""}
-    ${project?.sales_rep_company ? `<div><strong>Company:</strong> ${esc(project.sales_rep_company)}</div>` : ""}
+    ${repName ? `<div><strong>Name:</strong> ${esc(repName)}</div>` : ""}
+
+    ${companyOrFacility ? `
+      <div><strong>${orgLabel}:</strong> ${esc(companyOrFacility)}</div>
+    ` : ""}
+
     ${project?.sales_rep_phone ? `
       <div>
         <strong>Phone:</strong> 
@@ -1103,6 +1120,7 @@ function renderProject(){
         <a href="sms:${project.sales_rep_phone}" style="margin-left:8px;">💬</a>
       </div>
     ` : ""}
+
     ${project?.sales_rep_email ? `
       <div>
         <strong>Email:</strong> 

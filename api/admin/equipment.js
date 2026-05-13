@@ -32,24 +32,15 @@ export default async function handler(req, res) {
        🟦 GET PROJECTS
     ========================= */
     if (req.method === "GET") {
+      const { rows } = await client.query(`
+        SELECT *
+        FROM equipment_projects
+        ORDER BY created_at DESC
+      `);
 
-  const { rows } = await client.query(
-    `
-    SELECT DISTINCT ep.*
-    FROM equipment_projects ep
-    LEFT JOIN equipment_project_access epa
-      ON ep.id = epa.project_id
-    WHERE
-      LOWER(epa.email) = LOWER($1)
-      OR LOWER(ep.sales_rep_email) = LOWER($1)
-      OR LOWER($1) = 'info@espinmedical.com'
-    ORDER BY ep.created_at DESC
-    `,
-    [userEmail]
-  );
+      return res.status(200).json(rows);
+    }
 
-  return res.status(200).json(rows);
-}
     /* =========================
        🔥 SAFE BODY PARSE
     ========================= */
@@ -122,34 +113,32 @@ export default async function handler(req, res) {
     ========================= */
     if (req.method === "POST") {
       const result = await client.query(
-  `INSERT INTO equipment_projects (
-    project_name,
-    site_address,
-    city,
-    state,
-    zip_code,
-    sales_rep_first,
-    sales_rep_last,
-    sales_rep_company,
-    sales_rep_phone,
-    sales_rep_email,
-    status
-  ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-  RETURNING id`,
-  [
-    project_name,
-    site_address,
-    city,
-    state,
-    zip_code,
-    sales_rep_first,
-    sales_rep_last,
-    sales_rep_company,
-    sales_rep_phone,
-    sales_rep_email,
-    "pending_rep_review"
-  ]
-);
+        `INSERT INTO equipment_projects (
+          project_name,
+          site_address,
+          city,
+          state,
+          zip_code,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_company,
+          sales_rep_phone,
+          sales_rep_email
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id`,
+        [
+          project_name,
+          site_address,
+          city,
+          state,
+          zip_code,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_company,
+          sales_rep_phone,
+          sales_rep_email
+        ]
+      );
 
       return res.status(200).json({ id: result.rows[0].id });
     }
