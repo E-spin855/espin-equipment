@@ -1078,7 +1078,170 @@ setTimeout(() => applyChangedFieldStyling(), 50);
     changedFields
   };
 }
+function normalizeAxisTradeInRecord(result) {
+  const modality = String(result.effectiveModality || formData.modality || currentModality || "").toUpperCase().trim();
 
+  const fieldMap = {
+    CT: {
+      make: "ct_manufacturer",
+      model: "ct_model",
+      serial_number: "ct_serial",
+      dom: "ct_dom",
+      installed_date: "ct_installed",
+      in_use_status: "ct_in_use",
+      out_of_use_date: "ct_out_of_use_date",
+      availability_timeframe: "ct_availability_timeframe",
+      removal_pathways: "ct_removal_pathways",
+      loading_dock: "ct_loading_dock",
+      hard_drive_removed: "ct_hard_drive_removed",
+      software_version: "ct_sw_version",
+      upgrade_notes: "ct_upgrades_desc"
+    },
+    MRI: {
+      make: "mri_manufacturer",
+      model: "mri_model",
+      serial_number: "mri_serial",
+      dom: "mri_yom",
+      installed_date: "",
+      in_use_status: "mri_in_use",
+      out_of_use_date: "mri_out_of_use_date",
+      availability_timeframe: "mri_availability_timeframe",
+      removal_pathways: "mri_removal_pathways",
+      loading_dock: "",
+      hard_drive_removed: "mri_hard_drive_removed",
+      software_version: "mri_sw_version",
+      upgrade_notes: "mri_coils"
+    },
+    MAMMO: {
+      make: "mamo_manufacturer",
+      model: "mamo_model",
+      serial_number: "mamo_serial",
+      dom: "mamo_dom",
+      installed_date: "",
+      in_use_status: "mamo_in_use",
+      out_of_use_date: "mamo_out_of_use_date",
+      availability_timeframe: "mamo_availability_timeframe",
+      removal_pathways: "mamo_removal_pathways",
+      loading_dock: "mamo_loading_dock",
+      hard_drive_removed: "mamo_hard_drive_removed",
+      software_version: "",
+      upgrade_notes: ""
+    },
+    XRAY: {
+      make: "xray_manufacturer",
+      model: "xray_model",
+      serial_number: "xray_serial",
+      dom: "",
+      installed_date: "",
+      in_use_status: "xray_in_use",
+      out_of_use_date: "xray_out_of_use_date",
+      availability_timeframe: "xray_availability_timeframe",
+      removal_pathways: "xray_removal_pathways",
+      loading_dock: "xray_loading_dock",
+      hard_drive_removed: "",
+      software_version: "",
+      upgrade_notes: ""
+    },
+    CARM: {
+      make: "carm_manufacturer",
+      model: "carm_model",
+      serial_number: "carm_serial",
+      dom: "",
+      installed_date: "",
+      in_use_status: "carm_in_use",
+      out_of_use_date: "carm_out_of_use_date",
+      availability_timeframe: "carm_availability_timeframe",
+      removal_pathways: "",
+      loading_dock: "",
+      hard_drive_removed: "carm_hard_drive_removed",
+      software_version: "",
+      upgrade_notes: ""
+    },
+    PETCT: {
+      make: "pet_manufacturer",
+      model: "pet_model",
+      serial_number: "pet_serial",
+      dom: "pet_tube_dom",
+      installed_date: "",
+      in_use_status: "pet_in_use",
+      out_of_use_date: "pet_out_of_use_date",
+      availability_timeframe: "pet_availability_timeframe",
+      removal_pathways: "pet_removal_pathways",
+      loading_dock: "pet_loading_dock",
+      hard_drive_removed: "pet_hard_drive_removed",
+      software_version: "",
+      upgrade_notes: ""
+    }
+  };
+
+  const map = fieldMap[modality] || {};
+  const get = (key) => key ? String(formData[key] || "").trim() : "";
+
+  return {
+    id: `tradein_${projectId}_${modalityId || modality}_${Date.now()}`,
+    axis_source: "Espin Trade-In Field Update",
+    project_id: projectId,
+    modality_id: modalityId || "",
+    modality,
+    hospital_asset_id: String(formData.additional_identifier || "").trim(),
+    make: get(map.make),
+    model: get(map.model),
+    serial_number: get(map.serial_number),
+    dom: get(map.dom),
+    installed_date: get(map.installed_date),
+    in_use_status: get(map.in_use_status),
+    out_of_use_date: get(map.out_of_use_date),
+    availability_timeframe: get(map.availability_timeframe),
+    removal_pathways: get(map.removal_pathways),
+    loading_dock: get(map.loading_dock),
+    hard_drive_removed: get(map.hard_drive_removed),
+    software_version: get(map.software_version),
+    upgrade_notes: get(map.upgrade_notes),
+    changed_fields: result.changedFields || [],
+    last_tradein_update_by: userEmail,
+    last_tradein_update_at: new Date().toISOString(),
+    crm_status: "New Trade-In Field Update",
+    rep_notes: "Equipment data synced from Espin Trade-In."
+  };
+}
+
+function syncTradeInToAxisDemo(result) {
+  const key = "axis_tradein_sync_records_v1";
+  const newRecord = normalizeAxisTradeInRecord(result);
+
+  let records = [];
+
+  try {
+    records = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(records)) records = [];
+  } catch {
+    records = [];
+  }
+
+  const matchIndex = records.findIndex(r =>
+    String(r.project_id || "") === String(newRecord.project_id || "") &&
+    String(r.modality_id || "") === String(newRecord.modality_id || "") &&
+    String(r.serial_number || "") === String(newRecord.serial_number || "")
+  );
+
+  if (matchIndex >= 0) {
+    records[matchIndex] = {
+      ...records[matchIndex],
+      ...newRecord,
+      id: records[matchIndex].id,
+      last_tradein_update_at: newRecord.last_tradein_update_at
+    };
+  } else {
+    records.unshift(newRecord);
+  }
+
+  localStorage.setItem(key, JSON.stringify(records));
+  localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(newRecord));
+
+  console.log("AXIS DEMO SYNC RECORD:", newRecord);
+
+  return newRecord;
+}
 async function saveData(){
   setButtonState("save");
 
@@ -1107,9 +1270,11 @@ async function sendEquipmentOnly(){
   saveBtn.disabled = true;
 
   try {
-    const result = await saveDetailsOnly();
+  const result = await saveDetailsOnly();
 
-    const res = await fetch("/api/send-equipment-emails", {
+  syncTradeInToAxisDemo(result);
+
+  const res = await fetch("/api/send-equipment-emails", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
