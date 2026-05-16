@@ -1676,9 +1676,9 @@ if (
   actionHtml = `
     <div class="btns" style="margin-top:16px;">
       <button class="green"
-  onclick="sendToEspin('tradein', rec)">
-        Initiate Trade-In
-      </button>
+  onclick="sendSelectedToTradeIn()">
+  Initiate Trade-In
+</button>
 
       <button class="pink"
         onclick="openDecisionModal()">
@@ -1752,19 +1752,20 @@ queue.forEach(q => {
     };
   }
 });
-  state.records.forEach(rec => {
-    const alerts = getAlerts(rec);
+ state.records.forEach(rec => {
+  if (rec.lifecycle_completed) return;
+  if (rec.submitted_to) return;
+  if (rec.alert_enabled === "no") return;
 
-// keep completed records visible
-if (rec.alert_enabled === "no") return;
+  const alerts = getAlerts(rec);
 
-    const shouldPush =
-      alerts.length &&
-      !(rec.next_action_date && rec.next_action_date > todayISO());
+  const shouldPush =
+    alerts.length &&
+    !(rec.next_action_date && rec.next_action_date > todayISO());
 
-const currentAlert = JSON.stringify(getAlerts(rec));
+  const currentAlert = JSON.stringify(alerts);
 
-if (shouldPush && rec.last_alert !== currentAlert) {
+  if (shouldPush && rec.last_alert !== currentAlert) {
 
   // 🔥 FIX — normalize BEFORE push
   rec.site =
@@ -1932,6 +1933,35 @@ assigned_rep_email: rec.assigned_rep_email || email
     return false;
   }
 }
+async function sendSelectedToTradeIn() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  const success = await sendToEspin("tradein", rec);
+
+  if (!success) return;
+
+  rec.submitted_to = "tradein";
+  rec.submitted_at = new Date().toISOString();
+  rec.rep_status = "completed";
+  rec.lifecycle_completed = true;
+  rec.completed_at = new Date().toISOString();
+  rec.completed_by = rec.assigned_rep_name || "OEM Rep";
+
+  const idx = state.records.findIndex(r => r.id === rec.id);
+
+  if (idx >= 0) {
+    state.records[idx] = rec;
+  }
+
+  syncFeedStatus(rec);
+  saveRecords();
+  render();
+}
 async function sendToConnectWithDecision(rec, magnet_event, disposal_required) {
   const banner = $("resultBanner");
   banner.style.display = "block";
@@ -2076,28 +2106,23 @@ function init() {
 
   loadRecords();
 
+  importTradeInSyncRecords();
+
   render();
 
   // 🔥 REAL-TIME CROSS-TAB SYNC
   window.addEventListener("storage", (e) => {
 
     if (
-  e.key === STORAGE_KEY ||
-  e.key === "espin_rep_queue" ||
-  e.key === "axis_manager_sync_ping_v1"
-) {
+      e.key === STORAGE_KEY ||
+      e.key === "espin_rep_queue" ||
+      e.key === "axis_tradein_sync_records_v1" ||
+      e.key === "axis_manager_sync_ping_v1"
+    ) {
 
-      try {
+      loadRecords();
 
-        state.records = JSON.parse(
-          localStorage.getItem(STORAGE_KEY) || "[]"
-        );
-
-      } catch {
-
-        state.records = [];
-
-      }
+      importTradeInSyncRecords();
 
       render();
 
@@ -2145,6 +2170,321 @@ function init() {
 
   });
 
+}
+function evaluateAndPush(rec) {
+
+  if (!rec) return;
+
+  if (rec.lifecycle_completed) return;
+
+  if (rec.submitted_to) return;
+
+  if (rec.alert_enabled === "no") return;
+
+  const alerts = getAlerts(rec);
+
+  if (!alerts.length) return;
+
+  if (
+    rec.next_action_date &&
+    rec.next_action_date > todayISO()
+  ) {
+    return;
+  }
+
+  rec.site =
+    rec.site ||
+    rec.site_address ||
+    `${rec.city || ""} ${rec.state || ""}`.trim() ||
+    rec.oem_project_id ||
+    "Unknown";
+
+  pushToRepFeed(rec);
+
+  rec.last_alert = JSON.stringify(alerts);
+  rec.last_pushed_at = new Date().toISOString();
+
+}
+function importTradeInSyncRecords() {
+  const syncKey = "axis_tradein_sync_records_v1";
+
+  let synced = [];
+
+  try {
+    synced = JSON.parse(localStorage.getItem(syncKey) || "[]");
+    if (!Array.isArray(synced)) synced = [];
+  } catch {
+    synced = [];
+  }
+
+  if (!synced.length) return;
+
+  synced.forEach(item => {
+    const serial = String(item.serial_number || "").trim();
+    const projectId = String(item.project_id || "").trim();
+    const modalityId = String(item.modality_id || "").trim();
+
+    const existing = state.records.find(r =>
+      (
+        serial &&
+        String(r.serial_number || "").trim() === serial
+      ) ||
+      (
+        projectId &&
+        modalityId &&
+        String(r.tradein_project_id || "").trim() === projectId &&
+        String(r.tradein_modality_id || "").trim() === modalityId
+      )
+    );
+
+    const imported = {
+      id:
+        existing?.id ||
+        `axis_tradein_${projectId || Date.now()}_${modalityId || serial || Math.random().toString(36).slice(2,8)}`,
+
+      source: "Espin Trade-In Sync",
+
+      tradein_sync_received: true,
+      tradein_project_id: projectId,
+      tradein_modality_id: modalityId,
+      axis_source: item.axis_source || "Espin Trade-In Field Update",
+
+      oem_project_id:
+        item.hospital_asset_id ||
+        item.oem_project_id ||
+        item.project_id ||
+        existing?.oem_project_id ||
+        "",
+
+      make: item.make || existing?.make || "",
+      model: item.model || existing?.model || "",
+      modality: normalizeModality(item.modality || existing?.modality || ""),
+      serial_number: serial || existing?.serial_number || "",
+      dom: item.dom || existing?.dom || "",
+
+      site:
+        item.site ||
+        item.project_name ||
+        existing?.site ||
+        "Trade-In Field Update",
+
+      site_address:
+        item.site_address ||
+        existing?.site_address ||
+        "",
+
+      city: item.city || existing?.city || "",
+      state: item.state || existing?.state || "",
+      zip_code: item.zip_code || existing?.zip_code || "",
+
+      sales_rep_first:
+        existing?.sales_rep_first ||
+        item.sales_rep_first ||
+        "Trade-In",
+
+      sales_rep_last:
+        existing?.sales_rep_last ||
+        item.sales_rep_last ||
+        "Rep",
+
+      sales_rep_company:
+        existing?.sales_rep_company ||
+        item.sales_rep_company ||
+        item.distributor_name ||
+        "Fuji Authorized Distributor",
+
+      sales_rep_phone:
+        existing?.sales_rep_phone ||
+        item.sales_rep_phone ||
+        "",
+
+            sales_rep_email:
+        existing?.sales_rep_email ||
+        item.sales_rep_email ||
+        item.last_tradein_update_by ||
+        "",
+
+           assigned_rep_name:
+        existing?.assigned_rep_name ||
+        item.assigned_rep_name ||
+        `${item.sales_rep_first || ""} ${item.sales_rep_last || ""}`.trim() ||
+        `${existing?.sales_rep_first || ""} ${existing?.sales_rep_last || ""}`.trim() ||
+        "Trade-In Rep",
+
+      assigned_rep_email:
+        existing?.assigned_rep_email ||
+        item.assigned_rep_email ||
+        item.sales_rep_email ||
+        item.last_tradein_update_by ||
+        existing?.sales_rep_email ||
+        "",
+
+      assigned_rep_phone:
+        existing?.assigned_rep_phone ||
+        item.assigned_rep_phone ||
+        item.sales_rep_phone ||
+        existing?.sales_rep_phone ||
+        "",
+      contact_name:
+        existing?.contact_name ||
+        item.contact_name ||
+        "Hospital Contact",
+
+      contact_title:
+        existing?.contact_title ||
+        item.contact_title ||
+        "Hospital Contact",
+
+      contact_phone:
+        existing?.contact_phone ||
+        item.contact_phone ||
+        "",
+
+      contact_email:
+        existing?.contact_email ||
+        item.contact_email ||
+        "",
+
+      alert_enabled:
+        existing?.alert_enabled ||
+        "yes",
+
+      threshold_years:
+        existing?.threshold_years ||
+        "",
+
+      alert_override:
+        existing?.alert_override ||
+        "service",
+
+      next_action_date:
+        existing?.next_action_date ||
+        "",
+
+      proactive_signal:
+        existing?.proactive_signal ||
+        "yes",
+
+      proactive_type:
+        existing?.proactive_type ||
+        "trade_in_field_update",
+
+      proactive_date:
+        existing?.proactive_date ||
+        todayISO(),
+
+      proactive_reason:
+        existing?.proactive_reason ||
+        "Trade-In app field data was updated and synced back into AXIS for rep review.",
+
+      proactive_enabled:
+        existing?.proactive_enabled ||
+        "yes",
+
+      utilization:
+        existing?.utilization ||
+        0,
+
+      condition:
+        existing?.condition ||
+        "",
+
+      service_cost_trend:
+        existing?.service_cost_trend ||
+        "",
+
+      planning_offset:
+        existing?.planning_offset ?? "",
+
+      upgrade_offset:
+        existing?.upgrade_offset ?? "",
+
+      replacement_offset:
+        existing?.replacement_offset ?? "",
+
+      disposal_offset:
+        existing?.disposal_offset ?? "",
+
+      submitted_to:
+        existing?.submitted_to ||
+        "",
+
+      submitted_at:
+        existing?.submitted_at ||
+        "",
+
+      _pushed_to_feed:
+        existing?._pushed_to_feed ||
+        false,
+
+      rep_status:
+        existing?.rep_status ||
+        "needed",
+
+      rep_action:
+        existing?.rep_action ||
+        "",
+
+      rep_notes:
+        existing?.rep_notes ||
+        "Equipment data synced from Espin Trade-In.",
+
+      rep_last_action_at:
+        existing?.rep_last_action_at ||
+        "",
+
+      rep_hidden:
+        existing?.rep_hidden ||
+        false,
+
+      rep_deleted:
+        existing?.rep_deleted ||
+        false,
+
+      rep_follow_up_date:
+        existing?.rep_follow_up_date ||
+        "",
+
+      lifecycle_completed:
+        existing?.lifecycle_completed ||
+        false,
+
+      completed_at:
+        existing?.completed_at ||
+        "",
+
+      completed_by:
+        existing?.completed_by ||
+        "",
+
+      tradein_changed_fields: item.changed_fields || [],
+      tradein_last_update_by: item.last_tradein_update_by || "",
+      tradein_last_update_at: item.last_tradein_update_at || "",
+      tradein_availability_timeframe: item.availability_timeframe || "",
+      tradein_in_use_status: item.in_use_status || "",
+      tradein_out_of_use_date: item.out_of_use_date || "",
+      tradein_loading_dock: item.loading_dock || "",
+      tradein_hard_drive_removed: item.hard_drive_removed || "",
+      tradein_removal_pathways: item.removal_pathways || "",
+      tradein_software_version: item.software_version || "",
+      tradein_upgrade_notes: item.upgrade_notes || ""
+    };
+
+    if (existing) {
+      Object.assign(existing, imported);
+    } else {
+      state.records.unshift(imported);
+    }
+  });
+
+  state.records.forEach(evaluateAndPush);
+
+  saveRecords();
+
+  localStorage.setItem(
+    "axis_manager_sync_ping_v1",
+    String(Date.now())
+  );
 }
 function selectRow(id) {
 
