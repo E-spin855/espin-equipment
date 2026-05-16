@@ -267,17 +267,28 @@
        <input id="csvInput" type="file" accept=".csv,.xlsx,.xls" />
       </div>
       <div class="btns" style="margin-bottom:16px;">
-        <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
-      </div>
+  <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+</div>
 
-      <div class="footer-note">
+<div class="row">
+  <label for="axisShareToggle">Trade-In Sync</label>
 
+  <select id="axisShareToggle">
+    <option value="on">On — receive Trade-In sync updates</option>
+    <option value="off">Off — do not receive Trade-In sync updates</option>
+  </select>
+</div>
+
+<div class="footer-note" id="axisShareStatus">
+  Trade-In sync is currently on.
+</div>
+
+<div class="footer-note">
   This view displays lifecycle opportunities assigned to your account.
 
   <br><br>
 
   Follow-up actions, scheduling, and escalation activity are managed through the OEM lifecycle workflow.
-
 </div>
     </div>
   </div>
@@ -472,6 +483,7 @@
 
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
+const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 
 const state = {
   records: [],
@@ -573,6 +585,11 @@ function loadRecords() {
   }
 }
 function importTradeInSyncRecords() {
+  const shareEnabled =
+    localStorage.getItem(AXIS_SHARE_KEY) !== "off";
+
+  if (!shareEnabled) return;
+
   const syncKey = "axis_tradein_sync_records_v1";
 
   let synced = [];
@@ -673,8 +690,8 @@ function importTradeInSyncRecords() {
         "",
 
       alert_override:
-        existing?.alert_override ||
-        "",
+  existing?.alert_override ||
+  "service",
 
       next_action_date:
         existing?.next_action_date ||
@@ -2283,11 +2300,30 @@ render();
 
   }, 2500);
 }
+function updateAxisShareStatus() {
+  const enabled =
+    localStorage.getItem(AXIS_SHARE_KEY) !== "off";
+
+  const toggle = $("axisShareToggle");
+  const status = $("axisShareStatus");
+
+  if (toggle) {
+    toggle.value = enabled ? "on" : "off";
+  }
+
+  if (status) {
+    status.innerHTML = enabled
+      ? "Trade-In sync is currently <strong style='color:#41ff9c;'>ON</strong>. Updates from Trade-In will appear in AXIS."
+      : "Trade-In sync is currently <strong style='color:#ff6b6b;'>OFF</strong>. Trade-In updates will not be imported.";
+  }
+}
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
   loadRecords();
 
   importTradeInSyncRecords();
+
+  updateAxisShareStatus();
 
   // 🔥 ONLY push if not already pushed
   state.records.forEach(rec => {
@@ -2295,14 +2331,37 @@ function init() {
       evaluateAndPush(rec);
     }
   });
+window.addEventListener("storage", (e) => {
+  if (
+    e.key === STORAGE_KEY ||
+    e.key === "espin_rep_queue" ||
+    e.key === "axis_tradein_sync_records_v1" ||
+    e.key === "axis_manager_sync_ping_v1" ||
+    e.key === AXIS_SHARE_KEY
+  ) {
+    loadRecords();
+    importTradeInSyncRecords();
+    updateAxisShareStatus();
+    render();
+  }
+});
 
-  window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE_KEY || e.key === "espin_rep_queue") {
-      loadRecords();
-      render();
-    }
-  });
+$("axisShareToggle").addEventListener("change", () => {
+  const value = $("axisShareToggle").value;
 
+  localStorage.setItem(
+    AXIS_SHARE_KEY,
+    value === "off" ? "off" : "on"
+  );
+
+  updateAxisShareStatus();
+
+  if (value === "on") {
+    importTradeInSyncRecords();
+  }
+
+  render();
+});
 window.addEventListener("rep_feed_update", () => {
   render();
 });
@@ -2312,7 +2371,9 @@ window.addEventListener("rep_feed_update", () => {
 
   $("clearBtn").addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem("espin_rep_queue");
+localStorage.removeItem("espin_rep_queue");
+localStorage.removeItem("axis_tradein_sync_records_v1");
+localStorage.removeItem("axis_manager_sync_ping_v1");
 
     state.records = [];
     state.selectedId = null;
