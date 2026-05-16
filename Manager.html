@@ -315,11 +315,11 @@
   AXIS does not determine whether equipment should be replaced, traded in, disposed of, valued, purchased, removed, serviced, or clinically relied upon. Final decisions remain with the OEM, customer, and their authorized stakeholders.
 </div>
     <div class="stats">
-      <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">Ready Now</div><div class="v" id="statReady">0</div></div>
-      <div class="stat"><div class="k">Postponed</div><div class="v" id="statPostponed">0</div></div>
-      <div class="stat"><div class="k">Submitted</div><div class="v" id="statSubmitted">0</div></div>
-    </div>
+  <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
+  <div class="stat"><div class="k">Ready Now</div><div class="v" id="statReady">0</div></div>
+  <div class="stat"><div class="k">Manager Escalations</div><div class="v" id="statEscalated">0</div></div>
+  <div class="stat"><div class="k">Submitted</div><div class="v" id="statSubmitted">0</div></div>
+</div>
 
     <div class="grid">
       <div class="panel">
@@ -441,6 +441,67 @@ function getDaysSince(date) {
     (now - start) / (1000 * 60 * 60 * 24)
   );
 }
+function getManagerEscalation(rec) {
+  if (!rec) {
+    return {
+      level: "none",
+      label: "No escalation",
+      color: "#41ff9c",
+      days: 0
+    };
+  }
+
+  if (rec.lifecycle_completed || rec.submitted_to) {
+    return {
+      level: "none",
+      label: "Closed",
+      color: "#41ff9c",
+      days: 0
+    };
+  }
+
+  if (rec.next_action_date && rec.next_action_date > todayISO()) {
+    return {
+      level: "none",
+      label: "Follow-up scheduled",
+      color: "#d94dff",
+      days: 0
+    };
+  }
+
+  const trackingDate =
+    rec.rep_last_action_at ||
+    rec.site_visit_updated_at ||
+    rec.last_pushed_at ||
+    rec.assigned_at;
+
+  const days = getDaysSince(trackingDate);
+
+  if (days >= 14) {
+    return {
+      level: "critical",
+      label: "Manager escalation required",
+      color: "#ff4d4d",
+      days
+    };
+  }
+
+  if (days >= 7) {
+    return {
+      level: "warning",
+      label: "Manager follow-up needed",
+      color: "#ffd84d",
+      days
+    };
+  }
+
+  return {
+    level: "none",
+    label: "On track",
+    color: "#41ff9c",
+    days
+  };
+}
 function uuid() {
   return "id_" + Math.random().toString(36).slice(2, 10);
 }
@@ -493,29 +554,31 @@ function renderStats() {
   const total = state.records.length;
 
   let ready = 0;
-  let postponed = 0;
+  let escalated = 0;
   let submitted = 0;
 
   state.records.forEach(r => {
-    if (r.submitted_to) {
+    if (r.submitted_to || r.lifecycle_completed) {
       submitted++;
       return;
     }
 
-    if (r.next_action_date && r.next_action_date > todayISO()) {
-      postponed++;
-      return;
+    const alerts = getAlerts(r);
+
+    if (alerts.length && !alerts.some(a => a.type === "postponed")) {
+      ready++;
     }
 
-    const alerts = getAlerts(r);
-if (alerts.length && !alerts.some(a => a.type === "postponed")) {
-  ready++;
-}
+    const escalation = getManagerEscalation(r);
+
+    if (escalation.level !== "none") {
+      escalated++;
+    }
   });
 
   $("statTotal").textContent = total;
   $("statReady").textContent = ready;
-  $("statPostponed").textContent = postponed;
+  $("statEscalated").textContent = escalated;
   $("statSubmitted").textContent = submitted;
 }
 function renderRepMenu() {
@@ -783,16 +846,28 @@ const sorted = [...filteredRecords].sort((a, b) => {
 
 <td>
   ${
-    rec.lifecycle_completed
-      ? `<span class="alert-badge alert-completed">COMPLETED</span>`
-      : !alerts.length
-      ? '<span class="mini">No Action</span>'
-      : alerts.map(a =>
-          `<span class="alert-badge alert-${a.type}">${a.label}</span>`
-        ).join("")
+    (() => {
+      const escalation = getManagerEscalation(rec);
+
+      const alertHtml = rec.lifecycle_completed
+        ? `<span class="alert-badge alert-completed">COMPLETED</span>`
+        : !alerts.length
+        ? '<span class="mini">No Action</span>'
+        : alerts.map(a =>
+            `<span class="alert-badge alert-${a.type}">${a.label}</span>`
+          ).join("");
+
+      const escalationHtml =
+        escalation.level === "critical"
+          ? `<span class="alert-badge alert-disposal">MANAGER ESCALATION</span>`
+          : escalation.level === "warning"
+          ? `<span class="alert-badge alert-upgrade">MANAGER FOLLOW-UP</span>`
+          : "";
+
+      return alertHtml + escalationHtml;
+    })()
   }
 </td>
-
 <td>
   ${
     (() => {
@@ -1196,6 +1271,52 @@ grid.innerHTML = `
     }
   </div>
 
+  <div class="mini" style="margin-top:6px;">
+    ${
+      rec.rep_last_action_at
+        ? `Last rep action: ${
+            new Date(rec.rep_last_action_at).toLocaleDateString()
+          }`
+        : `No rep activity yet`
+    }
+  </div>
+</div>
+
+<div class="detail-card">
+  <div class="k">Manager Escalation</div>
+
+  <div class="v">
+    ${
+      (() => {
+        const e = getManagerEscalation(rec);
+
+        return `
+          <span style="
+            color:${e.color};
+            font-weight:900;
+            font-size:18px;
+          ">
+            ${e.label}
+          </span>
+        `;
+      })()
+    }
+  </div>
+
+  <div class="mini" style="margin-top:8px;">
+    ${
+      (() => {
+        const e = getManagerEscalation(rec);
+
+        if (e.level === "none") {
+          return "No manager escalation currently required";
+        }
+
+        return `No meaningful rep update for ${e.days} days`;
+      })()
+    }
+  </div>
+</div>
    <div class="mini" style="margin-top:6px;">
     ${
       rec.rep_last_action_at
