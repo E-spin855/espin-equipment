@@ -1,12 +1,14 @@
 # Third-Party License Texts
 
-This file preserves full third-party open-source license texts for licenses identified in production dependency reports.
+This file preserves third-party open-source license texts for licenses identified in production dependency reports.
 
 This project itself remains private/proprietary and is not licensed under these third-party licenses.
 
+Package-specific dependency names, versions, license identifiers, repository links, and copyright metadata are tracked separately in `licenses.json`.
+
 ## MIT License
 
-Copyright (c) <copyright holders listed in individual dependency packages>
+Copyright (c) copyright holders listed in individual dependency packages and `licenses.json`
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,17 +30,222 @@ THE SOFTWARE.
 
 ## Apache License 2.0
 
-Full license text:
-https://www.apache.org/licenses/LICENSE-2.0
+Apache-2.0 dependencies are tracked in `licenses.json`.
 
-Apache-2.0 dependencies are tracked in licenses.json.
+The full Apache License 2.0 text follows.
 
-Important notice:
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+## Apache NOTICE Handling
+
 Where an Apache-2.0 dependency includes an upstream NOTICE file, applicable NOTICE contents should be preserved in the third-party notices supplied with the distributed application.
+
+No direct modification of Apache-licensed third-party package source files is currently recorded in this project.
 
 ## ISC License
 
-Copyright (c) <copyright holders listed in individual dependency packages>
+Copyright (c) copyright holders listed in individual dependency packages and `licenses.json`
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -54,7 +261,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## BSD 3-Clause License
 
-Copyright (c) <copyright holders listed in individual dependency packages>
+Copyright (c) copyright holders listed in individual dependency packages and `licenses.json`
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -85,7 +292,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ## BSD 2-Clause License
 
-Copyright (c) <copyright holders listed in individual dependency packages>
+Copyright (c) copyright holders listed in individual dependency packages and `licenses.json`
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -112,14 +319,191 @@ POSSIBILITY OF SUCH DAMAGE.
 
 ## BlueOak Model License 1.0.0
 
-Full license text:
-https://blueoakcouncil.org/license/1.0.0
+BlueOak-1.0.0 dependencies are tracked in `licenses.json`.
 
-BlueOak-1.0.0 dependencies are tracked in licenses.json.
+The full BlueOak Model License 1.0.0 text follows.
+
+<!doctype html>
+<html lang=EN>
+  <head>
+    <meta charset=UTF-8>
+    <meta name=viewport content="width=device-width, initial-scale=1">
+    <link type="application/atom+xml" rel="alternate" href="https://blueoakcouncil.org/atom.xml" title="Blue Oak Council" />
+    <title>Blue Oak Model License 1.0.0</title>
+    <link rel=stylesheet href=/normalize.css>
+    <link rel=stylesheet href=/styles.css>
+    <link rel=stylesheet href=/print.css media=print>
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Blue Oak Model License 1.0.0">
+    <meta name="twitter:description" content="">
+    <meta name="twitter:image" content="https://blueoakcouncil.org/logo-on-white.png">
+
+    <!-- OpenGraph -->
+    <meta name="og:type" content="website">
+    <meta name="og:title" content="Blue Oak Model License 1.0.0">
+    <meta name="og:description" content="">
+    <meta name="og:image" content="https://blueoakcouncil.org/logo-on-white.png">
+    <meta name="og:site" content="Blue Oak Council">
+  </head>
+  <body>
+<header>
+  <a class=logo href=/><img src=/logo.svg alt=logo></a>
+  <h1>Blue Oak Council</h1>
+</header>
+
+<nav>
+  <ul><li><a href=/>Home</a></li><li><a href=/list>License List</a></li><li><a href=/license/1.0.0>Model License</a></li><li><a href=mailto:feedback@blueoakcouncil.org>Feedback</a></li><li><a href="/about">About</a></li><li><a href="/donate">Donate</a></li></ul>
+</nav>
+
+
+<main>
+  <p>Blue Oak Council’s model license demonstrates all the techniques that licenses can use to make software free and simple for everyone to use and build on, in everyday language that everyone can understand.</p>
+  <h1>Blue Oak Model License 1.0.0</h1>
+  <p>Jump To: <a href="#html">HTML</a>, <a href="#markdown">Markdown</a>, <a href="#permission">Permission</a></p>
+  <p>Download: <a href="1.0.0.md" download="LICENSE.md"><code>LICENSE.md</code></a></p>
+  <p><a href="/license-faq">Review answers to frequently asked questions.</a></p>
+  <h2 id="html">HTML</h2>
+  
+  <blockquote><h1 id="blue-oak-model-license">Blue Oak Model License</h1>
+
+<p>Version 1.0.0</p>
+
+<h2 id="purpose">Purpose</h2>
+
+<p>This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.</p>
+
+<h2 id="acceptance">Acceptance</h2>
+
+<p>In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.</p>
+
+<h2 id="copyright">Copyright</h2>
+
+<p>Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor’s
+copyright in it.</p>
+
+<h2 id="notices">Notices</h2>
+
+<p>You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+<a href="https://blueoakcouncil.org/license/1.0.0">https://blueoakcouncil.org/license/1.0.0</a>.</p>
+
+<h2 id="excuse">Excuse</h2>
+
+<p>If anyone notifies you in writing that you have not
+complied with <a href="#notices">Notices</a>, you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.</p>
+
+<h2 id="patent">Patent</h2>
+
+<p>Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.</p>
+
+<h2 id="reliability">Reliability</h2>
+
+<p>No contributor can revoke this license.</p>
+
+<h2 id="no-liability">No Liability</h2>
+
+<p><strong><em>As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.</em></strong></p>
+</blockquote>
+  <h2 id="markdown">Markdown</h2>
+  <pre># Blue Oak Model License
+
+Version 1.0.0
+
+## Purpose
+
+This license gives everyone as much permission to work with
+this software as possible, while protecting contributors
+from liability.
+
+## Acceptance
+
+In order to receive this license, you must agree to its
+rules.  The rules of this license are both obligations
+under that agreement and conditions to your license.
+You must not do anything with this software that triggers
+a rule that you cannot or will not follow.
+
+## Copyright
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe that contributor&apos;s
+copyright in it.
+
+## Notices
+
+You must ensure that everyone who gets a copy of
+any part of this software from you, with or without
+changes, also gets the text of this license or a link to
+&lt;https://blueoakcouncil.org/license/1.0.0&gt;.
+
+## Excuse
+
+If anyone notifies you in writing that you have not
+complied with [Notices](#notices), you can keep your
+license by taking all practical steps to comply within 30
+days after the notice.  If you do not do so, your license
+ends immediately.
+
+## Patent
+
+Each contributor licenses you to do everything with this
+software that would otherwise infringe any patent claims
+they can license or become able to license.
+
+## Reliability
+
+No contributor can revoke this license.
+
+## No Liability
+
+***As far as the law allows, this software comes as is,
+without any warranty or condition, and no contributor
+will be liable to anyone for any damages related to this
+software or this license, under any kind of legal claim.***
+</pre>
+  <h2 id="permission">Permission</h2>
+  
+  <p>Each contributor licenses you to do everything with this form that would otherwise infringe that contributor’s copyright in it.</p>
+
+<p>This license does not allow you to infringe Blue Oak Council’s <a href="https://blueoakcouncil.org/trademarks">trademarks</a>.  If you make changes to the form, you must call your changed version something other than “Blue Oak”.</p>
+
+<p><strong><em>As far as the law allows, the form comes as is, without any warranty at all, and no contributor will be liable to anyone for any damages related to the form or its use, for any kind of legal claim.</em></strong></p>
+
+
+</main>
+<footer>
+  <ol>
+    <li><a href="/trademarks">Trademarks</a></li>
+    <li><a href="/terms">Terms</a></li>
+    <li><a href="/privacy">Privacy</a></li>
+  </ol>
+  <p>&copy; Blue Oak Council, Inc.</li>
+</footer>
+  </body>
+</html>
+
 
 ## 0BSD License
 
-Copyright (C) <copyright holders listed in individual dependency packages>
+Copyright (C) copyright holders listed in individual dependency packages and `licenses.json`
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted.
@@ -131,3 +515,14 @@ SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
 OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+## Dependency Evidence
+
+The package-by-package dependency license report is retained separately in:
+
+- `licenses.json`
+
+This file should be kept together with:
+
+- `licenses.json`
+- `THIRD_PARTY_NOTICES.md`
