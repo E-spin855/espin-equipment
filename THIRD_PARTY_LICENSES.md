@@ -323,150 +323,33 @@ BlueOak-1.0.0 dependencies are tracked in `licenses.json`.
 
 The full BlueOak Model License 1.0.0 text follows.
 
-<!doctype html>
-<html lang=EN>
-  <head>
-    <meta charset=UTF-8>
-    <meta name=viewport content="width=device-width, initial-scale=1">
-    <link type="application/atom+xml" rel="alternate" href="https://blueoakcouncil.org/atom.xml" title="Blue Oak Council" />
-    <title>Blue Oak Model License 1.0.0</title>
-    <link rel=stylesheet href=/normalize.css>
-    <link rel=stylesheet href=/styles.css>
-    <link rel=stylesheet href=/print.css media=print>
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Blue Oak Model License 1.0.0">
-    <meta name="twitter:description" content="">
-    <meta name="twitter:image" content="https://blueoakcouncil.org/logo-on-white.png">
-
-    <!-- OpenGraph -->
-    <meta name="og:type" content="website">
-    <meta name="og:title" content="Blue Oak Model License 1.0.0">
-    <meta name="og:description" content="">
-    <meta name="og:image" content="https://blueoakcouncil.org/logo-on-white.png">
-    <meta name="og:site" content="Blue Oak Council">
-  </head>
-  <body>
-<header>
-  <a class=logo href=/><img src=/logo.svg alt=logo></a>
-  <h1>Blue Oak Council</h1>
-</header>
-
-<nav>
-  <ul><li><a href=/>Home</a></li><li><a href=/list>License List</a></li><li><a href=/license/1.0.0>Model License</a></li><li><a href=mailto:feedback@blueoakcouncil.org>Feedback</a></li><li><a href="/about">About</a></li><li><a href="/donate">Donate</a></li></ul>
-</nav>
-
-
-<main>
-  <p>Blue Oak Council’s model license demonstrates all the techniques that licenses can use to make software free and simple for everyone to use and build on, in everyday language that everyone can understand.</p>
-  <h1>Blue Oak Model License 1.0.0</h1>
-  <p>Jump To: <a href="#html">HTML</a>, <a href="#markdown">Markdown</a>, <a href="#permission">Permission</a></p>
-  <p>Download: <a href="1.0.0.md" download="LICENSE.md"><code>LICENSE.md</code></a></p>
-  <p><a href="/license-faq">Review answers to frequently asked questions.</a></p>
-  <h2 id="html">HTML</h2>
-  
-  <blockquote><h1 id="blue-oak-model-license">Blue Oak Model License</h1>
-
-<p>Version 1.0.0</p>
-
-<h2 id="purpose">Purpose</h2>
-
-<p>This license gives everyone as much permission to work with
-this software as possible, while protecting contributors
-from liability.</p>
-
-<h2 id="acceptance">Acceptance</h2>
-
-<p>In order to receive this license, you must agree to its
-rules.  The rules of this license are both obligations
-under that agreement and conditions to your license.
-You must not do anything with this software that triggers
-a rule that you cannot or will not follow.</p>
-
-<h2 id="copyright">Copyright</h2>
-
-<p>Each contributor licenses you to do everything with this
-software that would otherwise infringe that contributor’s
-copyright in it.</p>
-
-<h2 id="notices">Notices</h2>
-
-<p>You must ensure that everyone who gets a copy of
-any part of this software from you, with or without
-changes, also gets the text of this license or a link to
-<a href="https://blueoakcouncil.org/license/1.0.0">https://blueoakcouncil.org/license/1.0.0</a>.</p>
-
-<h2 id="excuse">Excuse</h2>
-
-<p>If anyone notifies you in writing that you have not
-complied with <a href="#notices">Notices</a>, you can keep your
-license by taking all practical steps to comply within 30
-days after the notice.  If you do not do so, your license
-ends immediately.</p>
-
-<h2 id="patent">Patent</h2>
-
-<p>Each contributor licenses you to do everything with this
-software that would otherwise infringe any patent claims
-they can license or become able to license.</p>
-
-<h2 id="reliability">Reliability</h2>
-
-<p>No contributor can revoke this license.</p>
-
-<h2 id="no-liability">No Liability</h2>
-
-<p><strong><em>As far as the law allows, this software comes as is,
-without any warranty or condition, and no contributor
-will be liable to anyone for any damages related to this
-software or this license, under any kind of legal claim.</em></strong></p>
-</blockquote>
-  <h2 id="markdown">Markdown</h2>
-  <pre># Blue Oak Model License
+# Blue Oak Model License
 
 Version 1.0.0
 
 ## Purpose
 
-This license gives everyone as much permission to work with
-this software as possible, while protecting contributors
-from liability.
+This license gives everyone as much permission to work with this software as possible, while protecting contributors from liability.
 
 ## Acceptance
 
-In order to receive this license, you must agree to its
-rules.  The rules of this license are both obligations
-under that agreement and conditions to your license.
-You must not do anything with this software that triggers
-a rule that you cannot or will not follow.
+In order to receive this license, you must agree to its rules. The rules of this license are both obligations under that agreement and conditions to your license. You must not do anything with this software that triggers a rule that you cannot or will not follow.
 
 ## Copyright
 
-Each contributor licenses you to do everything with this
-software that would otherwise infringe that contributor&apos;s
-copyright in it.
+Each contributor licenses you to do everything with this software that would otherwise infringe that contributor's copyright in it.
 
 ## Notices
 
-You must ensure that everyone who gets a copy of
-any part of this software from you, with or without
-changes, also gets the text of this license or a link to
-&lt;https://blueoakcouncil.org/license/1.0.0&gt;.
+You must ensure that everyone who gets a copy of any part of this software from you, with or without changes, also gets the text of this license or a link to https://blueoakcouncil.org/license/1.0.0.
 
 ## Excuse
 
-If anyone notifies you in writing that you have not
-complied with [Notices](#notices), you can keep your
-license by taking all practical steps to comply within 30
-days after the notice.  If you do not do so, your license
-ends immediately.
+If anyone notifies you in writing that you have not complied with Notices, you can keep your license by taking all practical steps to comply within 30 days after the notice. If you do not do so, your license ends immediately.
 
 ## Patent
 
-Each contributor licenses you to do everything with this
-software that would otherwise infringe any patent claims
-they can license or become able to license.
+Each contributor licenses you to do everything with this software that would otherwise infringe any patent claims they can license or become able to license.
 
 ## Reliability
 
@@ -474,32 +357,7 @@ No contributor can revoke this license.
 
 ## No Liability
 
-***As far as the law allows, this software comes as is,
-without any warranty or condition, and no contributor
-will be liable to anyone for any damages related to this
-software or this license, under any kind of legal claim.***
-</pre>
-  <h2 id="permission">Permission</h2>
-  
-  <p>Each contributor licenses you to do everything with this form that would otherwise infringe that contributor’s copyright in it.</p>
-
-<p>This license does not allow you to infringe Blue Oak Council’s <a href="https://blueoakcouncil.org/trademarks">trademarks</a>.  If you make changes to the form, you must call your changed version something other than “Blue Oak”.</p>
-
-<p><strong><em>As far as the law allows, the form comes as is, without any warranty at all, and no contributor will be liable to anyone for any damages related to the form or its use, for any kind of legal claim.</em></strong></p>
-
-
-</main>
-<footer>
-  <ol>
-    <li><a href="/trademarks">Trademarks</a></li>
-    <li><a href="/terms">Terms</a></li>
-    <li><a href="/privacy">Privacy</a></li>
-  </ol>
-  <p>&copy; Blue Oak Council, Inc.</li>
-</footer>
-  </body>
-</html>
-
+As far as the law allows, this software comes as is, without any warranty or condition, and no contributor will be liable to anyone for any damages related to this software or this license, under any kind of legal claim.
 
 ## 0BSD License
 
