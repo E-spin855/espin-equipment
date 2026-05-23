@@ -684,10 +684,19 @@ function renderStats() {
       return;
     }
 
-    if (r.next_action_date && r.next_action_date > todayISO()) {
-      postponed++;
-      return;
-    }
+    const hasRealFollowUp =
+  r.rep_action === "follow_up" ||
+  r.rep_status === "follow_up_scheduled" ||
+  r.manager_response_action === "needs_follow_up";
+
+if (
+  hasRealFollowUp &&
+  r.next_action_date &&
+  r.next_action_date > todayISO()
+) {
+  postponed++;
+  return;
+}
 
     const alerts = getAlerts(r);
 
@@ -928,12 +937,18 @@ const sorted = [...filteredRecords].sort((a, b) => {
     const score = (rec) => {
       if (rec.submitted_to) return 0;
 
-      if (
-        rec.next_action_date &&
-        rec.next_action_date > todayISO()
-      ) {
-        return 1;
-      }
+    const hasRealFollowUp =
+  rec.rep_action === "follow_up" ||
+  rec.rep_status === "follow_up_scheduled" ||
+  rec.manager_response_action === "needs_follow_up";
+
+if (
+  hasRealFollowUp &&
+  rec.next_action_date &&
+  rec.next_action_date > todayISO()
+) {
+  return 1;
+}
 
       const alerts = getAlerts(rec);
 
@@ -2370,9 +2385,18 @@ if (rec.lifecycle_completed) {
 
   if (rec.alert_enabled === "no") return [];
 
-  if (rec.next_action_date && rec.next_action_date > todayISO()) {
-    return [{ type: "postponed", label: "Follow-Up Scheduled" }];
-  }
+ const hasRealFollowUp =
+  rec.rep_action === "follow_up" ||
+  rec.rep_status === "follow_up_scheduled" ||
+  rec.manager_response_action === "needs_follow_up";
+
+if (
+  hasRealFollowUp &&
+  rec.next_action_date &&
+  rec.next_action_date > todayISO()
+) {
+  return [{ type: "postponed", label: "Follow-Up Scheduled" }];
+}
 
   const validOverrides = ["disposal","replacement","upgrade","planning","service"];
 
