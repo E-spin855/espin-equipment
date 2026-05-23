@@ -417,6 +417,30 @@
     box-shadow:0 0 8px rgba(124,58,237,.35);
   }
 }
+.manager-response-box{
+  margin-top:14px;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid rgba(255,216,77,.35);
+  background:rgba(255,216,77,.07);
+}
+
+.manager-response-box select,
+.manager-response-box textarea,
+.manager-response-box input{
+  margin-top:8px;
+}
+
+.manager-response-saved{
+  margin-top:10px;
+  padding:10px;
+  border-radius:12px;
+  border:1px solid rgba(65,255,156,.28);
+  background:rgba(65,255,156,.08);
+  color:#b8ffd7;
+  font-size:13px;
+  line-height:1.45;
+}
  </style>
 </head>
 <body>
@@ -1297,6 +1321,10 @@ quote_seen: existing.quote_seen || false,
 manager_unseen_update: existing.manager_unseen_update || newRec.manager_unseen_update || false,
 manager_flash_at: existing.manager_flash_at || newRec.manager_flash_at || "",
 manager_flash_type: existing.manager_flash_type || newRec.manager_flash_type || "",
+manager_response_action: existing.manager_response_action || newRec.manager_response_action || "",
+manager_response_date: existing.manager_response_date || newRec.manager_response_date || "",
+manager_response_notes: existing.manager_response_notes || newRec.manager_response_notes || "",
+manager_response_at: existing.manager_response_at || newRec.manager_response_at || "",
             }
           : newRec
       );
@@ -1781,11 +1809,214 @@ ${
       `
   }
 </div>
+
+<div class="detail-card">
+  <div class="k">Manager Response To Rep Action</div>
+
+  <div class="v" style="font-size:14px;line-height:1.5;">
+    ${
+      rec.rep_action
+        ? `
+          Rep action recorded:
+          <strong style="color:#43b0ff;">
+            ${rec.rep_action.replace(/_/g, " ").toUpperCase()}
+          </strong>
+        `
+        : `
+          <span style="color:#9db6d2;">
+            No rep action recorded yet.
+          </span>
+        `
+    }
+  </div>
+
+  <div class="manager-response-box">
+    <label>Manager Response</label>
+    <select id="managerResponseAction">
+      <option value="">Select response</option>
+      <option value="approved">Approved / Continue</option>
+      <option value="needs_follow_up">Needs Follow-Up</option>
+      <option value="escalate">Escalate Opportunity</option>
+      <option value="request_quote">Request Quote</option>
+      <option value="request_update">Request Rep Update</option>
+      <option value="manager_reviewed">Reviewed - No Action Needed</option>
+      <option value="pause">Pause / Hold</option>
+      <option value="close_out">Close Out</option>
+    </select>
+
+    <label style="margin-top:12px;">Manager Follow-Up Date</label>
+    <input id="managerResponseDate" type="date" />
+
+    <label style="margin-top:12px;">Manager Notes</label>
+    <textarea
+      id="managerResponseNotes"
+      placeholder="Manager notes to rep..."
+    ></textarea>
+
+    <button
+      class="green"
+      style="margin-top:12px;"
+      onclick="saveManagerResponse()"
+    >
+      Save Manager Response
+    </button>
+
+    ${
+      rec.manager_response_action
+        ? `
+          <div class="manager-response-saved">
+            <strong>Saved Manager Response:</strong>
+            ${rec.manager_response_action.replace(/_/g, " ").toUpperCase()}
+            <br>
+            ${
+              rec.manager_response_date
+                ? `Follow-up: ${new Date(rec.manager_response_date).toLocaleDateString()}<br>`
+                : ""
+            }
+            ${
+              rec.manager_response_notes
+                ? `Notes: ${rec.manager_response_notes}<br>`
+                : ""
+            }
+            ${
+              rec.manager_response_at
+                ? `Saved: ${new Date(rec.manager_response_at).toLocaleString()}`
+                : ""
+            }
+          </div>
+        `
+        : ""
+    }
+  </div>
+</div>
 `;
-  
-// 🔥 allow re-send after short lock OR always allow (your choice)
+setTimeout(() => {
+  const actionEl = document.getElementById("managerResponseAction");
+  const dateEl = document.getElementById("managerResponseDate");
+  const notesEl = document.getElementById("managerResponseNotes");
+
+  if (actionEl) actionEl.value = rec.manager_response_action || "";
+  if (dateEl) dateEl.value = rec.manager_response_date || "";
+  if (notesEl) notesEl.value = rec.manager_response_notes || "";
+}, 0);
 
 }
+
+// 🔥 MANAGER RESPONSE SAVE
+function saveManagerResponse() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  const responseAction =
+    document.getElementById("managerResponseAction")?.value || "";
+
+  const responseDate =
+    document.getElementById("managerResponseDate")?.value || "";
+
+  const responseNotes =
+    document.getElementById("managerResponseNotes")?.value || "";
+
+  if (!responseAction) {
+    alert("Select manager response");
+    return;
+  }
+
+  rec.manager_response_action = responseAction;
+  rec.manager_response_date = responseDate;
+  rec.manager_response_notes = responseNotes;
+  rec.manager_response_at = new Date().toISOString();
+
+  rec.manager_unseen_update = false;
+  rec.manager_flash_at = "";
+  rec.manager_flash_type = "";
+
+  if (responseAction === "needs_follow_up" && responseDate) {
+    rec.next_action_date = responseDate;
+  }
+
+  if (responseAction === "close_out") {
+    rec.lifecycle_completed = true;
+    rec.rep_status = "completed";
+    rec.completed_at = new Date().toISOString();
+    rec.completed_by = "Manager";
+  }
+
+  syncManagerResponseToStorage(rec);
+
+  const banner = document.getElementById("resultBanner");
+  if (banner) {
+    banner.style.display = "block";
+    banner.textContent = "✅ Manager response saved";
+
+    setTimeout(() => {
+      banner.style.display = "none";
+    }, 2500);
+  }
+
+  render();
+} 
+function syncManagerResponseToStorage(updatedRec) {
+  let main = [];
+
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    main = [];
+  }
+
+  main = main.map(item => {
+    const sameRecord =
+      item.id === updatedRec.id ||
+      (
+        item.oem_project_id === updatedRec.oem_project_id &&
+        item.serial_number === updatedRec.serial_number
+      );
+
+    if (!sameRecord) return item;
+
+    return {
+      ...item,
+      ...updatedRec
+    };
+  });
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
+
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+  } catch {
+    queue = [];
+  }
+
+  queue = queue.map(item => {
+    const sameRecord =
+      item.id === updatedRec.id ||
+      item.key === `${updatedRec.oem_project_id}_${updatedRec.serial_number}` ||
+      (
+        item.oem_project_id === updatedRec.oem_project_id &&
+        item.serial_number === updatedRec.serial_number
+      );
+
+    if (!sameRecord) return item;
+
+    return {
+      ...item,
+      ...updatedRec
+    };
+  });
+
+  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  state.records = main;
+}
+// 🔥 allow re-send after short lock OR always allow (your choice)
 function markQuoteSeen(id) {
   const rec = state.records.find(r => r.id === id);
   if (!rec) return;
