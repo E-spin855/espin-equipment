@@ -2165,44 +2165,77 @@ function init() {
 
   render();
 
-  // 🔥 AUTO REFRESH MANAGER VIEW EVERY 5 SECONDS
-  setInterval(() => {
+ // 🔥 AUTO REFRESH MANAGER VIEW EVERY 5 SECONDS
+// Only refresh when data actually changed, and never while manager is typing.
+let lastStorageSnapshot = localStorage.getItem(STORAGE_KEY) || "[]";
+
+setInterval(() => {
+  const active = document.activeElement;
+
+  const managerIsTyping =
+    active &&
+    (
+      active.id === "managerResponseAction" ||
+      active.id === "managerResponseDate" ||
+      active.id === "managerResponseNotes"
+    );
+
+  if (managerIsTyping) return;
+
+  const currentSnapshot =
+    localStorage.getItem(STORAGE_KEY) || "[]";
+
+  if (currentSnapshot === lastStorageSnapshot) {
+    return;
+  }
+
+  lastStorageSnapshot = currentSnapshot;
+
+  try {
+    state.records = JSON.parse(currentSnapshot) || [];
+  } catch {
+    state.records = [];
+  }
+
+  render();
+}, 5000);
+ // 🔥 REAL-TIME CROSS-TAB SYNC
+window.addEventListener("storage", (e) => {
+
+  if (
+    e.key === STORAGE_KEY ||
+    e.key === "espin_rep_queue"
+  ) {
+
+    const active = document.activeElement;
+
+    const managerIsTyping =
+      active &&
+      (
+        active.id === "managerResponseAction" ||
+        active.id === "managerResponseDate" ||
+        active.id === "managerResponseNotes"
+      );
+
     try {
+
       state.records = JSON.parse(
         localStorage.getItem(STORAGE_KEY) || "[]"
       );
+
     } catch {
+
       state.records = [];
+
     }
 
-    render();
-  }, 5000);
-  // 🔥 REAL-TIME CROSS-TAB SYNC
-  window.addEventListener("storage", (e) => {
-
-    if (
-      e.key === STORAGE_KEY ||
-      e.key === "espin_rep_queue"
-    ) {
-
-      try {
-
-        state.records = JSON.parse(
-          localStorage.getItem(STORAGE_KEY) || "[]"
-        );
-
-      } catch {
-
-        state.records = [];
-
-      }
-
+    if (!managerIsTyping) {
       render();
-
     }
 
-  });
+  }
 
+});
   $("clearBtn").addEventListener("click", () => {
 
     localStorage.removeItem(STORAGE_KEY);
