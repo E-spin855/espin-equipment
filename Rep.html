@@ -521,6 +521,16 @@ td:nth-child(11){
   font-size:13px;
   line-height:1.45;
 }
+.new-project-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  min-width:220px;
+}
+
+.new-project-actions button{
+  white-space:nowrap;
+}
  </style>
 </head>
 <body>
@@ -618,6 +628,31 @@ td:nth-child(11){
     </div>
   </div>
 </div>
+<div class="panel" id="newProjectsPanel" style="margin-bottom:18px;display:none;">
+  <div class="panel-head">
+    <h2>New Sales Projects</h2>
+    <span class="mini">Pre-lifecycle opportunities</span>
+  </div>
+
+  <div class="panel-body table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer / Facility</th>
+          <th>New System / Project Name</th>
+          <th>Projected Revenue</th>
+          <th>Expected Close</th>
+          <th>Trade-In Equipment</th>
+          <th>Trade-In Credit</th>
+          <th>Status</th>
+          <th>Next Action</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="newProjectsTableBody"></tbody>
+    </table>
+  </div>
+</div>
         <div class="panel" style="margin-bottom:18px;">
           <div class="panel-head">
             <h2>Lifecycle Records</h2>
@@ -663,6 +698,7 @@ td:nth-child(11){
   <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
   <button type="button" class="green" id="tradeDeskBtn">Send to Trade-In Desk</button>
   <button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
+<button type="button" class="red" id="deleteNewProjectBtn">Delete Lost Project</button>
 </div>
 
 <div class="row" style="margin-top:12px;max-width:320px;">
@@ -1024,6 +1060,78 @@ function getPressureBadge(label) {
   if (label === "LOST") return '<span class="pill postponed">LOST</span>';
   return '<span class="pill local">LOW</span>';
 }
+function renderNewProjectsTable() {
+  const panel = $("newProjectsPanel");
+  const tbody = $("newProjectsTableBody");
+
+  const newProjects = state.records.filter(r =>
+    r.project_type === "new_sales_project"
+  );
+
+  if (!newProjects.length) {
+    panel.style.display = "none";
+    tbody.innerHTML = "";
+    return;
+  }
+
+  panel.style.display = "block";
+
+  tbody.innerHTML = newProjects.map(rec => {
+    const tradeInEquipment =
+      `${rec.tradein_equipment_make || ""} ${rec.tradein_equipment_model || ""}`.trim() || "-";
+
+    return `
+      <tr data-id="${rec.id}" onclick="selectRow('${rec.id}')">
+        <td>${rec.site || ""}</td>
+        <td>${rec.model || ""}</td>
+        <td>$${Number(rec.quote_amount || 0).toLocaleString()}</td>
+        <td>${rec.quote_expected_close_date || "-"}</td>
+        <td>${tradeInEquipment}</td>
+        <td>$${Number(rec.tradein_credit || rec.quote_trade_in_credit || 0).toLocaleString()}</td>
+
+        <td>
+          ${
+            rec.quote_status === "lost"
+              ? '<span class="pill postponed">LOST</span>'
+              : '<span class="pill local">OPEN</span>'
+          }
+        </td>
+
+        <td>
+          ${
+            rec.quote_status === "lost"
+              ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
+              : rec.tradein_sync_received
+              ? '<span class="next-action-label next-action-quote">Finalize Quote</span>'
+              : '<span class="next-action-label next-action-proactive">Send to Trade-In App</span>'
+          }
+        </td>
+
+       <td>
+  <div class="new-project-actions">
+    <button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}'); submitRecord('tradein_app');">
+  Trade-In App
+</button>
+
+<button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}'); setTimeout(() => openQuoteModal(), 0);">
+  Quote
+</button>
+
+    ${
+      rec.quote_status === "lost"
+        ? `
+          <button class="red" onclick="event.stopPropagation(); selectRow('${rec.id}'); deleteLostNewProject();">
+            Delete
+          </button>
+        `
+        : ""
+    }
+  </div>
+</td>
+      </tr>
+    `;
+  }).join("");
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1065,12 +1173,16 @@ function renderTable() {
     return '<span class="pill local">LOW</span>';
   };
 
-  let visibleRecords = state.selectedRep
-    ? state.records.filter(r => {
-        const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
-        return rep === state.selectedRep;
-      })
-    : state.records;
+  let visibleRecords = state.records.filter(r =>
+  r.project_type !== "new_sales_project"
+);
+
+if (state.selectedRep) {
+  visibleRecords = visibleRecords.filter(r => {
+    const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
+    return rep === state.selectedRep;
+  });
+}
 
   const sorted = [...visibleRecords].sort((a, b) => {
     const score = (rec) => {
@@ -1107,14 +1219,19 @@ function renderTable() {
 
     return `
       <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
-        <td>${rec.oem_project_id || ""}</td>
-        <td>${rec.make || ""}</td>
-        <td>${rec.model || ""}</td>
-        <td>${rec.modality || ""}</td>
-        <td>${rec.serial_number || ""}</td>
-        <td>${rec.dom || ""}</td>
-        <td>${ageFromDom(rec.dom) ?? "-"}</td>
+  <td>${rec.project_type === "new_sales_project" ? "New Sales Project" : rec.oem_project_id || ""}</td>
 
+  <td>${rec.project_type === "new_sales_project" ? rec.model || "" : rec.make || ""}</td>
+
+  <td>${rec.project_type === "new_sales_project" ? "New Equipment Opportunity" : rec.model || ""}</td>
+
+  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_modality || "-" : rec.modality || ""}</td>
+
+  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_serial_number || "-" : rec.serial_number || ""}</td>
+
+  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_dom || "-" : rec.dom || ""}</td>
+
+  <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
         <td>
           ${
             rec.quote_amount
@@ -1136,7 +1253,13 @@ function renderTable() {
               if (rec.lifecycle_completed) {
                 return `<span class="pill submitted">COMPLETED</span>`;
               }
+if (rec.project_type === "new_sales_project") {
+  if (rec.quote_status === "lost") {
+    return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
+  }
 
+  return `<span class="pill local">NEW PROJECT OPEN</span>`;
+}
               if (rec.quote_amount) {
                 const status = String(rec.quote_status || "draft").toUpperCase();
 
@@ -1167,7 +1290,17 @@ function renderTable() {
               if (rec.lifecycle_completed) {
                 return `<span class="next-action-label next-action-completed">Completed</span>`;
               }
+if (rec.project_type === "new_sales_project") {
+  if (rec.quote_status === "lost") {
+    return `<span class="next-action-label next-action-disposition">Delete or Archive</span>`;
+  }
 
+  if (rec.tradein_sync_received) {
+    return `<span class="next-action-label next-action-quote">Finalize Quote</span>`;
+  }
+
+  return `<span class="next-action-label next-action-proactive">Send to Trade-In App</span>`;
+}
               if (rec.quote_amount) {
                 return `<span class="next-action-label next-action-quote">Quote Created</span>`;
               }
@@ -2219,6 +2352,24 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
   </div>
 
 `;
+const isNewProject = rec.project_type === "new_sales_project";
+
+$("tradeBtn").style.display = isNewProject ? "none" : "inline-flex";
+$("tradeDeskBtn").style.display = isNewProject ? "none" : "inline-flex";
+$("connectBtn").style.display = isNewProject ? "none" : "inline-flex";
+
+$("quoteBtn").style.display = "inline-flex";
+$("exportQuotePdfBtn").style.display = "inline-flex";
+$("sendQuoteBtn").style.display = "inline-flex";
+
+const deleteNewProjectBtn = $("deleteNewProjectBtn");
+
+if (deleteNewProjectBtn) {
+  deleteNewProjectBtn.style.display =
+    isNewProject && rec.quote_status === "lost"
+      ? "inline-flex"
+      : "none";
+}
   // 🔥 PAYLOAD
   $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
 
@@ -2241,6 +2392,13 @@ $("connectBtn").disabled =
 $("quoteBtn").disabled = completed;
 $("exportQuotePdfBtn").disabled = completed || !rec.quote_amount;
 $("sendQuoteBtn").disabled = completed || !rec.quote_amount;
+
+if (deleteNewProjectBtn) {
+  deleteNewProjectBtn.style.display =
+    rec.project_type === "new_sales_project" && rec.quote_status === "lost"
+      ? "inline-flex"
+      : "none";
+}
 document.querySelector(
   'button[onclick="saveRepAction()"]'
 ).disabled = completed;
@@ -2674,6 +2832,7 @@ tradein_upgrade_notes: item.upgrade_notes || "",
 }
 function markActioned() {
   const rec = state.records.find(r => r.id === state.selectedId);
+const isNewProject = rec?.project_type === "new_sales_project";
   if (!rec) return;
 
   rec.rep_status = "acted";
@@ -2973,10 +3132,11 @@ function buildManagerEscalation(rec) {
 }
   function render() {
   renderStats();
+  renderRepMenu();
   renderFollowUpAlertCenter();
+  renderNewProjectsTable();
   renderTable();
   renderDetail();
-  renderRepMenu();
 }
 // 🔥 REP FEED (REAL — AUTO DRIVEN)
 function renderRepFeed() {
@@ -3375,28 +3535,15 @@ async function submitRecord(kind) {
   const rec = state.records.find(r => r.id === state.selectedId);
   if (!rec) return;
 
-  if (kind === "tradein_desk" && !rec.tradein_sync_received) {
-    alert("Trade-In details must sync back to AXIS before sending to Trade-In Desk.");
-    return;
-  }
-
-  const success = await sendToEspin("tradein", rec);
+  const success = await sendToEspin(kind, rec);
   if (!success) return;
 
-  const updated = {
-    ...rec,
-    submitted_to: kind,
-    submitted_at: new Date().toISOString(),
-    manager_unseen_update: true,
-    manager_flash_at: new Date().toISOString(),
-    manager_flash_type:
-      kind === "tradein_app"
-        ? "tradein_app_sent"
-        : "tradein_desk_sent"
-  };
+  rec.submitted_to = kind;
+  rec.submitted_at = new Date().toISOString();
 
-  upsertRecord(updated);
-  syncFeedStatus(updated);
+  syncFeedStatus(rec);
+  saveRecords();
+  render();
 }
 function downloadSpreadsheet() {
   if (!state.records.length) {
@@ -3937,6 +4084,7 @@ function saveNewProject() {
 }
 function openQuoteModal() {
   const rec = state.records.find(r => r.id === state.selectedId);
+const isNewProject = rec?.project_type === "new_sales_project";
 
   if (!rec) {
     alert("Open a record first");
@@ -3944,6 +4092,9 @@ function openQuoteModal() {
   }
 
   $("quoteAmount").value = rec.quote_amount || "";
+$("quoteAmount").previousElementSibling.textContent = isNewProject
+  ? "Projected Revenue / New Equipment Cost"
+  : "Quote Amount";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
   $("quoteTradeInCredit").value =
   rec.quote_trade_in_credit ||
@@ -4153,19 +4304,42 @@ if (status === "won") {
       : "quote_follow_up_set";
 
   if (status === "won") {
-    rec.lifecycle_completed = true;
-    rec.completed_at = new Date().toISOString();
+  if (rec.project_type === "new_sales_project") {
+    rec.project_type = "lifecycle_project";
+    rec.source = "Converted From New AXIS Project";
+    rec.lifecycle_converted_at = new Date().toISOString();
+
+    rec.make = rec.tradein_equipment_make || rec.make || "Converted Project";
+    rec.model = rec.tradein_equipment_model || rec.model || "";
+    rec.modality = rec.tradein_equipment_modality || rec.modality || "OTHER";
+    rec.serial_number = rec.tradein_equipment_serial_number || rec.serial_number || "";
+    rec.dom = rec.tradein_equipment_dom || rec.dom || "";
+  }
+
+  rec.lifecycle_completed = true;
+  rec.completed_at = new Date().toISOString();
     rec.completed_by =
       `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
 
     rec.project_management_ready = true;
     rec.project_management_status = "Pending PM Review";
     rec.project_management_created_at = new Date().toISOString();
-  } else {
-    rec.project_management_ready = false;
-    rec.project_management_status = "";
-    rec.project_management_created_at = "";
+ } else if (status === "lost") {
+  rec.lifecycle_completed = false;
+  rec.project_management_ready = false;
+  rec.project_management_status = "";
+  rec.project_management_created_at = "";
+
+  if (rec.project_type === "new_sales_project") {
+    rec.rep_status = "lost";
+    rec.manager_flash_type = "new_project_lost";
   }
+
+} else {
+  rec.project_management_ready = false;
+  rec.project_management_status = "";
+  rec.project_management_created_at = "";
+}
 
   syncFeedStatus(rec);
   saveRecords();
@@ -4522,6 +4696,31 @@ render();
     banner.style.display = "none";
   }, 2500);
 }
+function deleteLostNewProject() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  if (rec.project_type !== "new_sales_project" || rec.quote_status !== "lost") {
+    alert("Only lost new projects can be deleted.");
+    return;
+  }
+
+  if (!confirm("Delete this lost new project?")) return;
+
+  state.records = state.records.filter(r => r.id !== rec.id);
+
+  let queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+  queue = queue.filter(item => item.key !== `${rec.oem_project_id}_${rec.serial_number}`);
+  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+
+  state.selectedId = null;
+  saveRecords();
+  render();
+}
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
   loadRecords();
@@ -4593,10 +4792,11 @@ $("axisShareToggle").addEventListener("change", () => {
 
   render();
 });
- $("quoteBtn").addEventListener("click", () => openQuoteModal());
+$("quoteBtn").addEventListener("click", () => openQuoteModal());
 $("addNewProjectBtn").addEventListener("click", () => openNewProjectModal());
 $("tradeBtn").addEventListener("click", () => submitRecord("tradein_app"));
 $("tradeDeskBtn").addEventListener("click", () => submitRecord("tradein_desk"));
+$("deleteNewProjectBtn").addEventListener("click", () => deleteLostNewProject());
 $("connectBtn").addEventListener("click", () => openDecisionModal());
 $("sendQuoteBtn").addEventListener("click", () => sendQuoteToCustomer());
 $("exportQuotePdfBtn").addEventListener("click", () => exportQuotePDF());
