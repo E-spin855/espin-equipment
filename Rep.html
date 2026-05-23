@@ -605,17 +605,17 @@ td:nth-child(11){
 
   <!-- RIGHT SIDE -->
   <div>
+<!-- 🔥 REP FEED (NEW) -->
+<div class="panel" style="margin-bottom:18px;">
+  <div class="panel-head">
+    <h2>OEM Reps</h2>
+    <span class="mini">Select rep to view assigned hospitals</span>
+  </div>
+  <div class="panel-body" id="repFeed" style="max-height:260px; overflow:auto;">
+    <div class="mini">No alerts yet</div>
+  </div>
+</div>
 
-    <!-- 🔥 REP FEED (NEW) -->
-    <div class="panel" style="margin-bottom:18px;">
-      <div class="panel-head">
-        <h2>OEM Reps</h2>
-        <span class="mini">Select rep to view assigned hospitals</span>
-      </div>
-      <div class="panel-body" id="repFeed" style="max-height:260px; overflow:auto;">
-        <div class="mini">No alerts yet</div>
-      </div>
-    </div>
 <div class="panel" style="margin-bottom:18px;">
   <div class="panel-head">
     <h2>Follow-Up Alert Center</h2>
@@ -628,6 +628,7 @@ td:nth-child(11){
     </div>
   </div>
 </div>
+
 <div class="panel" id="newProjectsPanel" style="margin-bottom:18px;display:none;">
   <div class="panel-head">
     <h2>New Sales Projects</h2>
@@ -638,19 +639,32 @@ td:nth-child(11){
     <table>
       <thead>
         <tr>
-          <th>Customer / Facility</th>
-          <th>New System / Project Name</th>
-          <th>Projected Revenue</th>
-          <th>Expected Close</th>
-          <th>Trade-In Equipment</th>
-          <th>Trade-In Credit</th>
-          <th>Status</th>
-          <th>Next Action</th>
-          <th>Actions</th>
+         <th>Project ID</th>
+<th>Customer / Facility</th>
+<th>New System / Project Name</th>
+<th>Projected Revenue</th>
+<th>Expected Close</th>
+<th>Assigned Rep</th>
+<th>Associated Trade-In Equipment</th>
+<th>Trade-In Credit</th>
+<th>Status</th>
+<th>Next Action</th>
+<th>Actions</th>
         </tr>
       </thead>
       <tbody id="newProjectsTableBody"></tbody>
     </table>
+  </div>
+
+  <div id="newProjectDetailArea" class="hidden">
+    <div class="panel-head">
+      <h2>Selected New Project</h2>
+      <span class="mini">New install opportunity only</span>
+    </div>
+
+    <div class="panel-body">
+      <div class="detail-grid" id="newProjectDetailGrid"></div>
+    </div>
   </div>
 </div>
         <div class="panel" style="margin-bottom:18px;">
@@ -680,18 +694,17 @@ td:nth-child(11){
               <tbody id="tableBody"></tbody>
             </table>
           </div>
-        </div>
+<div class="panel hidden" id="lifecycleDetailPanel">
+  <div class="panel-head">
+    <h2>Selected Record</h2>
+    <span class="mini">Trigger → Trade-In details → Quote finalization</span>
+  </div>
 
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Selected Record</h2>
-            <span class="mini">Trigger → Trade-In details → Quote finalization</span>
-          </div>
-          <div class="panel-body">
-            <div id="emptyState" class="mini">Select a record in the table above.</div>
-            <div id="detailArea" class="hidden">
-              <div class="detail-grid" id="detailGrid"></div>
-              <div class="btns" style="margin-top:2px;">
+  <div class="panel-body">
+    <div id="emptyState" class="mini">Select a record in the table above.</div>
+    <div id="detailArea" class="hidden">
+      <div class="detail-grid" id="detailGrid"></div>
+      <div class="btns" style="margin-top:2px;">
   <button type="button" class="green" id="quoteBtn">Create Quote</button>
   <button type="button" class="green" id="exportQuotePdfBtn">Save Quote PDF</button>
   <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
@@ -1060,6 +1073,44 @@ function getPressureBadge(label) {
   if (label === "LOST") return '<span class="pill postponed">LOST</span>';
   return '<span class="pill local">LOW</span>';
 }
+function submitAssociatedTradeIn(kind) {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Select a new project first.");
+    return;
+  }
+
+  if (rec.project_type !== "new_sales_project") {
+    alert("This action is only for new sales projects.");
+    return;
+  }
+
+  if (!rec.tradein_sync_received) {
+    alert("No associated trade-in equipment has been synced yet.");
+    return;
+  }
+
+  rec.associated_tradein_submitted_to = kind;
+  rec.associated_tradein_submitted_at = new Date().toISOString();
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type =
+    kind === "tradein_desk"
+      ? "associated_tradein_sent_to_desk"
+      : "associated_tradein_sent_to_disposal";
+
+  syncFeedStatus(rec);
+  saveRecords();
+  render();
+
+  alert(
+    kind === "tradein_desk"
+      ? "Associated trade-in sent to desk."
+      : "Associated trade-in sent to disposal."
+  );
+}
 function renderNewProjectsTable() {
   const panel = $("newProjectsPanel");
   const tbody = $("newProjectsTableBody");
@@ -1071,28 +1122,50 @@ function renderNewProjectsTable() {
   if (!newProjects.length) {
     panel.style.display = "none";
     tbody.innerHTML = "";
+    $("newProjectDetailArea")?.classList.add("hidden");
     return;
   }
 
   panel.style.display = "block";
 
   tbody.innerHTML = newProjects.map(rec => {
+    const selectedClass = rec.id === state.selectedId ? "selected" : "";
+
+    const projectId = rec.oem_project_id || rec.id || "-";
+    const customer = rec.site || "-";
+    const projectName = rec.model || "-";
+    const projectedRevenue = Number(rec.quote_amount || 0);
+    const expectedClose = rec.quote_expected_close_date || "-";
+
+    const assignedRep =
+      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() || "-";
+
     const tradeInEquipment =
       `${rec.tradein_equipment_make || ""} ${rec.tradein_equipment_model || ""}`.trim() || "-";
 
+    const tradeInCredit = Number(
+      rec.tradein_credit ||
+      rec.quote_trade_in_credit ||
+      0
+    );
+
     return `
-      <tr data-id="${rec.id}" onclick="selectRow('${rec.id}')">
-        <td>${rec.site || ""}</td>
-        <td>${rec.model || ""}</td>
-        <td>$${Number(rec.quote_amount || 0).toLocaleString()}</td>
-        <td>${rec.quote_expected_close_date || "-"}</td>
+      <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
+        <td>${projectId}</td>
+        <td>${customer}</td>
+        <td>${projectName}</td>
+        <td>$${projectedRevenue.toLocaleString()}</td>
+        <td>${expectedClose}</td>
+        <td>${assignedRep}</td>
         <td>${tradeInEquipment}</td>
-        <td>$${Number(rec.tradein_credit || rec.quote_trade_in_credit || 0).toLocaleString()}</td>
+        <td>$${tradeInCredit.toLocaleString()}</td>
 
         <td>
           ${
             rec.quote_status === "lost"
               ? '<span class="pill postponed">LOST</span>'
+              : rec.quote_status === "won"
+              ? '<span class="pill submitted">WON</span>'
               : '<span class="pill local">OPEN</span>'
           }
         </td>
@@ -1102,32 +1175,16 @@ function renderNewProjectsTable() {
             rec.quote_status === "lost"
               ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
               : rec.tradein_sync_received
-              ? '<span class="next-action-label next-action-quote">Finalize Quote</span>'
+              ? '<span class="next-action-label next-action-quote">Finalize Quote / Submit Trade-In</span>'
               : '<span class="next-action-label next-action-proactive">Send to Trade-In App</span>'
           }
         </td>
 
-       <td>
-  <div class="new-project-actions">
-    <button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}'); submitRecord('tradein_app');">
-  Trade-In App
-</button>
-
-<button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}'); setTimeout(() => openQuoteModal(), 0);">
-  Quote
-</button>
-
-    ${
-      rec.quote_status === "lost"
-        ? `
-          <button class="red" onclick="event.stopPropagation(); selectRow('${rec.id}'); deleteLostNewProject();">
-            Delete
+        <td>
+          <button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}');">
+            Open
           </button>
-        `
-        : ""
-    }
-  </div>
-</td>
+        </td>
       </tr>
     `;
   }).join("");
@@ -1843,39 +1900,261 @@ function getInitialTriggerExplanation(rec) {
     repTalkTrack: `AXIS identified this equipment as needing review based on the rules configured by the OEM.`
   };
 }
-function renderDetail() {
+function renderNewProjectDetail(rec) {
+  const detail = $("newProjectDetailArea");
+  const grid = $("newProjectDetailGrid");
 
-  const rec = state.records.find(
-    r => r.id === state.selectedId
+  detail.classList.remove("hidden");
+
+  $("detailArea")?.classList.add("hidden");
+  $("emptyState")?.classList.add("hidden");
+
+  const tradeInCredit = Number(
+    rec.tradein_credit ||
+    rec.quote_trade_in_credit ||
+    0
   );
 
-  const completed =
-    rec?.lifecycle_completed === true;
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const netQuote = Number(
+    rec.quote_net_amount ||
+    Math.max(0, quoteAmount - tradeInCredit)
+  );
+  const profit = netQuote - estimatedCost;
+  const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
+
+  grid.innerHTML = `
+    <div class="detail-card">
+      <div class="k">Customer / Facility</div>
+      <div class="v">${rec.site || "-"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">New System / Project Name</div>
+      <div class="v">${rec.model || "-"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Projected Revenue</div>
+      <div class="v">$${quoteAmount.toLocaleString()}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Expected Close Date</div>
+      <div class="v">${rec.quote_expected_close_date || "-"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Assigned Rep</div>
+      <div class="v">${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Project Status</div>
+      <div class="v">${(rec.quote_status || "open").toUpperCase()}</div>
+    </div>
+
+    ${
+      rec.tradein_sync_received
+        ? `
+          <div class="detail-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
+            <div class="k">Associated Trade-In Equipment</div>
+            <div class="v">${rec.tradein_equipment_make || "-"} ${rec.tradein_equipment_model || ""}</div>
+
+            <div class="mini" style="margin-top:8px;line-height:1.45;">
+              Modality: <strong>${rec.tradein_equipment_modality || "-"}</strong><br>
+              Serial: <strong>${rec.tradein_equipment_serial_number || "-"}</strong><br>
+              DOM: <strong>${rec.tradein_equipment_dom || "-"}</strong><br>
+              Trade-In Credit:
+              <strong>$${tradeInCredit.toLocaleString()}</strong>
+            </div>
+          </div>
+        `
+        : `
+          <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
+            <div class="k">Associated Trade-In Equipment</div>
+            <div class="v">Not synced yet</div>
+            <div class="mini" style="margin-top:8px;">
+              Use the New Sales Projects table to send this project to the Trade-In App.
+            </div>
+          </div>
+        `
+    }
+
+    <div class="detail-card">
+      <div class="k">Financial Opportunity</div>
+      <div class="v">
+        ${
+          rec.quote_created_at || rec.quote_status
+            ? `
+              <div style="font-weight:900;color:#41ff9c;font-size:18px;">
+                $${quoteAmount.toLocaleString()} Gross Project Value
+              </div>
+
+              <div class="mini" style="margin-top:6px;line-height:1.5;">
+                Trade-In Credit: -$${tradeInCredit.toLocaleString()}<br>
+                Net Project Value: $${netQuote.toLocaleString()}<br>
+                Estimated Cost: $${estimatedCost.toLocaleString()}<br>
+                Estimated Profit:
+                <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">
+                  $${profit.toLocaleString()}
+                </strong><br>
+                Margin: ${margin}%
+              </div>
+            `
+            : `
+              <span style="color:#ffd84d;font-weight:800;">
+                Quote not created yet
+              </span>
+
+              <div class="mini" style="margin-top:8px;line-height:1.45;">
+                This new project has been created, but the rep has not finalized quote details yet.
+              </div>
+            `
+        }
+      </div>
+    </div>
+
+    <div class="detail-card" style="border:1px solid rgba(0,229,255,.32);background:rgba(0,229,255,.07);">
+      <div class="k">Smart Timeline</div>
+      <div class="v" style="font-size:14px;line-height:1.45;">
+        <div class="timeline">
+          ${buildSmartTimeline(rec)}
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
+      <div class="k">Manager Response</div>
+      <div class="v" style="font-size:14px;line-height:1.5;">
+        ${
+          rec.manager_response_action
+            ? `
+              <div style="color:#ffd84d;font-weight:900;font-size:16px;">
+                ${rec.manager_response_action.replace(/_/g, " ").toUpperCase()}
+              </div>
+
+              ${
+                rec.manager_response_date
+                  ? `
+                    <div class="mini" style="margin-top:8px;">
+                      Manager follow-up date:
+                      <strong>${new Date(rec.manager_response_date).toLocaleDateString()}</strong>
+                    </div>
+                  `
+                  : ""
+              }
+
+              ${
+                rec.manager_response_notes
+                  ? `
+                    <div style="
+                      margin-top:10px;
+                      padding:10px;
+                      border-radius:12px;
+                      border:1px solid rgba(255,216,77,.28);
+                      background:rgba(255,216,77,.08);
+                      color:#fff4cc;
+                      font-size:13px;
+                      line-height:1.45;
+                    ">
+                      <strong>Manager Notes:</strong><br>
+                      ${rec.manager_response_notes}
+                    </div>
+                  `
+                  : ""
+              }
+            `
+            : `<span style="color:#9db6d2;">No manager response yet.</span>`
+        }
+      </div>
+    </div>
+
+    <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
+      <div class="k">Project Outcome</div>
+
+      <div class="v" style="margin-bottom:12px;">
+        ${(rec.quote_status || "open").toUpperCase()}
+      </div>
+
+      <div class="btns">
+        <button type="button" class="green" onclick="openQuoteModal()">
+          Create / Update Quote
+        </button>
+
+        <button type="button" class="green" onclick="submitRecord('tradein_app')">
+          Send to Trade-In App
+        </button>
+
+        ${
+          rec.tradein_sync_received
+            ? `
+              <button type="button" class="green" onclick="submitAssociatedTradeIn('tradein_desk')">
+                Send Associated Trade-In to Desk
+              </button>
+
+              <button type="button" class="pink" onclick="submitAssociatedTradeIn('disposal')">
+                Send Associated Trade-In to Disposal
+              </button>
+            `
+            : ""
+        }
+
+        <button type="button" class="green" onclick="markNewProjectWon('${rec.id}')">
+          Mark Won
+        </button>
+
+        <button type="button" class="red" onclick="markNewProjectLost('${rec.id}')">
+          Mark Lost
+        </button>
+
+        ${
+          rec.quote_status === "lost"
+            ? `
+              <button type="button" class="red" onclick="deleteLostNewProject()">
+                Delete Lost Project
+              </button>
+            `
+            : ""
+        }
+      </div>
+    </div>
+  `;
+
+  $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
+}
+function renderDetail() {
+  const rec = state.records.find(r => r.id === state.selectedId);
 
   const empty = $("emptyState");
   const detail = $("detailArea");
+  const lifecycleDetailPanel = $("lifecycleDetailPanel");
+
   if (!rec) {
-    empty.classList.remove("hidden");
-    detail.classList.add("hidden");
+    lifecycleDetailPanel.classList.add("hidden");
+    $("newProjectDetailArea")?.classList.add("hidden");
     return;
   }
-if (!rec) {
-  empty.classList.remove("hidden");
-  detail.classList.add("hidden");
-  return;
-}
 
-document.getElementById("repAction").value =
-  rec.rep_action || "";
+  if (rec.project_type === "new_sales_project") {
+    lifecycleDetailPanel.classList.add("hidden");
+    renderNewProjectDetail(rec);
+    return;
+  }
 
-document.getElementById("repOutcomeNotes").value =
-  rec.rep_notes || "";
+  $("newProjectDetailArea")?.classList.add("hidden");
+  lifecycleDetailPanel.classList.remove("hidden");
 
-document.getElementById("repFollowUpDate").value =
-  rec.rep_follow_up_date || rec.next_action_date || "";
-  // 🔥 SHOW DETAIL AREA (THIS WAS MISSING)
+  const completed = rec.lifecycle_completed === true;
+
   empty.classList.add("hidden");
   detail.classList.remove("hidden");
+
+  document.getElementById("repAction").value = rec.rep_action || "";
+  document.getElementById("repOutcomeNotes").value = rec.rep_notes || "";
+  document.getElementById("repFollowUpDate").value =
+    rec.rep_follow_up_date || rec.next_action_date || "";
 const grid = $("detailGrid");
 
 grid.innerHTML = `
@@ -3368,9 +3647,7 @@ async function sendToEspin(type, rec) {
       }
 
       if (!projectRes.ok || !projectData?.id) {
-        throw new Error(
-  `${projectData?.error || "Project creation failed"} ${projectData?.message || ""} ${projectData?.code || ""}`
-);
+        throw new Error(projectData?.error || projectData?.message || "Project creation failed");
       }
 
       if (!isNewProject) {
@@ -3575,7 +3852,12 @@ alert_enabled: r.alert_enabled || "",
 
   
 function selectRow(id) {
-  state.selectedId = id;
+  if (state.selectedId === id) {
+    state.selectedId = null;
+  } else {
+    state.selectedId = id;
+  }
+
   render();
 }
 function getProactiveSignal(rec) {
@@ -4109,6 +4391,8 @@ function closeQuoteModal() {
   $("quoteModal").style.display = "none";
 }
 function updateQuotePreview() {
+const rec = state.records.find(r => r.id === state.selectedId);
+if (!rec) return;
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
   const tradeInCredit = Number(
