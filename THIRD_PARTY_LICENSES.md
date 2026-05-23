@@ -28,8 +28,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-## Apache License 2.0
+## jsPDF
 
+Package: jspdf  
+Version: 2.5.1  
+License: MIT  
+Repository: https://github.com/parallax/jsPDF  
+Source used: https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js  
+
+jsPDF is used to generate quote PDFs in the browser.
+
+## Apache License 2.0
 Apache-2.0 dependencies are tracked in `licenses.json`.
 
 The full Apache License 2.0 text follows.
