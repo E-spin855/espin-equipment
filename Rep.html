@@ -566,6 +566,9 @@ td:nth-child(11){
       <div class="btns" style="margin-bottom:16px;">
         <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
       </div>
+<button type="button" class="green" id="addNewProjectBtn">
+  Add New Project
+</button>
 <div class="row">
   <label for="axisShareToggle">Share With AXIS</label>
 
@@ -647,18 +650,19 @@ td:nth-child(11){
         <div class="panel">
           <div class="panel-head">
             <h2>Selected Record</h2>
-            <span class="mini">Minimal payload only</span>
+            <span class="mini">Trigger → Trade-In details → Quote finalization</span>
           </div>
           <div class="panel-body">
             <div id="emptyState" class="mini">Select a record in the table above.</div>
             <div id="detailArea" class="hidden">
               <div class="detail-grid" id="detailGrid"></div>
               <div class="btns" style="margin-top:2px;">
-<button type="button" class="green" id="quoteBtn">Create Quote</button>
-<button type="button" class="green" id="exportQuotePdfBtn">Save Quote PDF</button>
-<button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
-<button type="button" class="green" id="tradeBtn">Send to Siemens Trade-In</button>
-<button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
+  <button type="button" class="green" id="quoteBtn">Create Quote</button>
+  <button type="button" class="green" id="exportQuotePdfBtn">Save Quote PDF</button>
+  <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
+  <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
+  <button type="button" class="green" id="tradeDeskBtn">Send to Trade-In Desk</button>
+  <button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
 </div>
 
 <div class="row" style="margin-top:12px;max-width:320px;">
@@ -1028,15 +1032,6 @@ function renderTable() {
     return;
   }
 
-  const getOriginalAlerts = (rec) => {
-    return getAlerts({
-      ...rec,
-      quote_amount: "",
-      quote_status: "",
-      lifecycle_completed: false
-    });
-  };
-
   const getQuotePriority = (rec) => {
     const status = String(rec.quote_status || "").toLowerCase();
     const priority = String(rec.quote_priority || "").toLowerCase();
@@ -1067,15 +1062,12 @@ function renderTable() {
     if (level === "LOW") return '<span class="pill local">LOW</span>';
     if (level === "WON") return '<span class="pill submitted">WON</span>';
     if (level === "LOST") return '<span class="pill postponed">LOST</span>';
-
     return '<span class="pill local">LOW</span>';
   };
 
   let visibleRecords = state.selectedRep
     ? state.records.filter(r => {
-        const rep =
-          `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
-
+        const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
         return rep === state.selectedRep;
       })
     : state.records;
@@ -1088,13 +1080,11 @@ function renderTable() {
 
       if (rec.quote_amount) {
         const quotePriority = getQuotePriority(rec);
-
         if (quotePriority === "HIGH") return 120;
         if (quotePriority === "MED") return 90;
         if (quotePriority === "LOW") return 60;
         if (quotePriority === "WON") return 20;
         if (quotePriority === "LOST") return 10;
-
         return 70;
       }
 
@@ -1113,8 +1103,7 @@ function renderTable() {
   });
 
   tbody.innerHTML = sorted.map(rec => {
-    const selectedClass =
-      rec.id === state.selectedId ? "selected" : "";
+    const selectedClass = rec.id === state.selectedId ? "selected" : "";
 
     return `
       <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
@@ -1128,116 +1117,88 @@ function renderTable() {
 
         <td>
           ${
+            rec.quote_amount
+              ? getPressureBadge(getQuotePriority(rec))
+              : (() => {
+                  const p = getPressureScore(rec);
+                  if (p >= 6) return '<span class="pill ready">HIGH</span>';
+                  if (p >= 3) return '<span class="pill pending">MED</span>';
+                  return '<span class="pill local">LOW</span>';
+                })()
+          }
+        </td>
+
+        <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
+
+        <td>
+          ${
             (() => {
-              if (rec.quote_amount) {
-                return getPressureBadge(getQuotePriority(rec));
+              if (rec.lifecycle_completed) {
+                return `<span class="pill submitted">COMPLETED</span>`;
               }
 
-              const p = getPressureScore(rec);
+              if (rec.quote_amount) {
+                const status = String(rec.quote_status || "draft").toUpperCase();
 
-              if (p >= 6) return '<span class="pill ready">HIGH</span>';
-              if (p >= 3) return '<span class="pill pending">MED</span>';
-              return '<span class="pill local">LOW</span>';
+                return `
+                  <div class="quote-status-wrap">
+                    <span class="quote-main-badge">Quote ${status}</span>
+                    ${getQuoteFollowUpAlertBadge(rec)}
+                  </div>
+                `;
+              }
+
+              const alerts = getAlerts(rec);
+
+              if (!alerts.length) {
+                return `<span class="mini">No Action</span>`;
+              }
+
+              return alerts.map(a =>
+                `<span class="alert-badge alert-${a.type}">${a.label}</span>`
+              ).join("");
             })()
           }
         </td>
 
         <td>
-  ${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}
-</td>
+          ${
+            (() => {
+              if (rec.lifecycle_completed) {
+                return `<span class="next-action-label next-action-completed">Completed</span>`;
+              }
+
+              if (rec.quote_amount) {
+                return `<span class="next-action-label next-action-quote">Quote Created</span>`;
+              }
+
+              const alerts = getAlerts(rec);
+
+              if (!alerts.length) {
+                return "-";
+              }
+
+              const type = alerts[0].type;
+
+              if (type === "disposal") return `<span class="next-action-label next-action-disposition">Disposition Review</span>`;
+              if (type === "replacement") return `<span class="next-action-label next-action-replacement">Replacement Planning</span>`;
+              if (type === "upgrade") return `<span class="next-action-label next-action-upgrade">Upgrade Review</span>`;
+              if (type === "planning") return `<span class="next-action-label next-action-planning">Budget Planning</span>`;
+              if (type === "proactive") return `<span class="next-action-label next-action-proactive">Early Customer Outreach</span>`;
+              if (type === "service") return `<span class="next-action-label next-action-service">Service Review</span>`;
+
+              return `<span class="next-action-label next-action-service">${alerts[0].label}</span>`;
+            })()
+          }
+        </td>
 
         <td>
-  ${
-    (() => {
-      if (rec.lifecycle_completed) {
-        return `<span class="pill submitted">COMPLETED</span>`;
-      }
-
-      if (rec.quote_amount) {
-        const status = String(rec.quote_status || "draft").toUpperCase();
-
-        const cls =
-          rec.quote_status === "won"
-            ? "submitted"
-            : rec.quote_status === "lost"
-            ? "postponed"
-            : "pending";
-
-     return `
-  <div class="quote-status-wrap">
-    <span class="quote-main-badge">
-      Quote ${status}
-    </span>
-    ${getQuoteFollowUpAlertBadge(rec)}
-  </div>
-`;
-      }
-
-     const alerts = getAlerts(rec);
-
-if (!alerts.length) {
-  return `<span class="mini">No Action</span>`;
-}
-
-return alerts.map(a =>
-  `<span class="alert-badge alert-${a.type}">${a.label}</span>`
-).join("");
-    })()
-  }
-</td>
-
-<td>
-  ${
-    (() => {
-      if (rec.lifecycle_completed) {
-        return `<span class="next-action-label next-action-completed">Completed</span>`;
-      }
-
-     if (rec.quote_amount) {
-  return `<span class="next-action-label next-action-quote">Quote Created</span>`;
-}
-
-      const alerts = getAlerts(rec);
-
-      if (!alerts.length) {
-        return "-";
-      }
-
-      const type = alerts[0].type;
-
-      if (type === "disposal") {
-        return `<span class="next-action-label next-action-disposition">Disposition Review</span>`;
-      }
-
-      if (type === "replacement") {
-        return `<span class="next-action-label next-action-replacement">Replacement Planning</span>`;
-      }
-
-      if (type === "upgrade") {
-        return `<span class="next-action-label next-action-upgrade">Upgrade Review</span>`;
-      }
-
-      if (type === "planning") {
-        return `<span class="next-action-label next-action-planning">Budget Planning</span>`;
-      }
-
-           if (type === "proactive") {
-  return `<span class="next-action-label next-action-proactive">Early Customer Outreach</span>`;
-}
-
-if (type === "service") {
-  return `<span class="next-action-label next-action-service">Service Review</span>`;
-}
-
-      if (type === "proactive") {
-        return `<span class="next-action-label next-action-service">Early Customer Outreach</span>`;
-      }
-
-      return `<span class="next-action-label next-action-service">${alerts[0].label}</span>`;
-    })()
-  }
-</td>
-        <td>${rec.source || ""}</td>
+          ${
+            rec.project_type === "new_sales_project"
+              ? '<span class="pill local">NEW PROJECT</span>'
+              : rec.source || ""
+          }
+        </td>
 
         <td>
           <button onclick="event.stopPropagation(); selectRow('${rec.id}')">
@@ -1931,6 +1892,33 @@ ${
     `;
   })()
 }
+${
+  rec.tradein_sync_received
+    ? `
+      <div class="detail-card" style="
+        border:1px solid rgba(65,255,156,.35);
+        background:rgba(65,255,156,.07);
+      ">
+        <div class="k">Synced Trade-In Equipment</div>
+        <div class="v">
+          ${rec.tradein_equipment_make || rec.make || "-"}
+          ${rec.tradein_equipment_model || rec.model || ""}
+        </div>
+
+        <div class="mini" style="margin-top:8px;line-height:1.45;">
+          Modality: <strong>${rec.tradein_equipment_modality || rec.modality || "-"}</strong>
+          <br>
+          Serial: <strong>${rec.tradein_equipment_serial_number || rec.serial_number || "-"}</strong>
+          <br>
+          DOM: <strong>${rec.tradein_equipment_dom || rec.dom || "-"}</strong>
+          <br>
+          Trade-In Credit:
+          <strong>$${Number(rec.tradein_credit || rec.quote_trade_in_credit || 0).toLocaleString()}</strong>
+        </div>
+      </div>
+    `
+    : ""
+}
     <div class="detail-card">
     <div class="k">Financial Opportunity</div>
 
@@ -1973,9 +1961,13 @@ ${
             </div>
 
             <div class="mini" style="margin-top:6px;line-height:1.5;">
-              Trade-In Credit: -$${tradeInCredit.toLocaleString()}
-              <br>
-              Net Quote: $${netQuote.toLocaleString()}
+             Trade-In Credit: -$${tradeInCredit.toLocaleString()}
+<br>
+Trade-In Sync Value: $${Number(rec.tradein_estimated_value || 0).toLocaleString()}
+<br>
+Net Quote: $${netQuote.toLocaleString()}
+<br>
+Adjusted Project Value: $${netQuote.toLocaleString()}
             </div>
 
             <div style="margin-top:10px;color:#cdf3ff;font-weight:800;">
@@ -2235,7 +2227,13 @@ ${
 // 🔥 BUTTON STATE (CLEAN — NO BREAKS)
 $("tradeBtn").disabled =
   completed ||
-  rec.submitted_to === "tradein";
+  rec.submitted_to === "tradein_app" ||
+  rec.submitted_to === "tradein_desk";
+
+$("tradeDeskBtn").disabled =
+  completed ||
+  !rec.tradein_sync_received ||
+  rec.submitted_to === "tradein_desk";
 
 $("connectBtn").disabled =
   completed ||
@@ -2455,15 +2453,29 @@ function importTradeInSyncRecords() {
 
     const existing = state.records.find(r =>
       (
-        serial &&
-        String(r.serial_number || "").trim() === serial
+        item.axis_record_id &&
+        String(r.id || "").trim() === String(item.axis_record_id || "").trim()
       ) ||
       (
-        projectId &&
-        modalityId &&
-        String(r.tradein_project_id || "").trim() === projectId &&
-        String(r.tradein_modality_id || "").trim() === modalityId
+        item.axis_project_id &&
+        String(r.oem_project_id || "").trim() === String(item.axis_project_id || "").trim()
+      ) ||
+      (
+        item.axis_serial_number &&
+        String(r.serial_number || "").trim() === String(item.axis_serial_number || "").trim()
+      ) ||
+      (
+        serial &&
+        String(r.serial_number || "").trim() === serial
       )
+    );
+
+    const tradeInValue = Number(
+      item.trade_in_value ||
+      item.trade_in_credit ||
+      item.estimated_trade_in_value ||
+      item.tradein_estimated_value ||
+      0
     );
 
     const fullRepName =
@@ -2488,15 +2500,19 @@ function importTradeInSyncRecords() {
       tradein_modality_id: modalityId,
 
       oem_project_id:
+        existing?.oem_project_id ||
+        item.axis_project_id ||
         item.hospital_asset_id ||
         item.oem_project_id ||
         item.project_id ||
-        existing?.oem_project_id ||
         "",
 
       make: item.make || existing?.make || "",
       model: item.model || existing?.model || "",
-      modality: normalizeModality(item.modality || existing?.modality || ""),
+      modality:
+  existing?.project_type === "new_sales_project"
+    ? existing.modality
+    : normalizeModality(item.modality || existing?.modality || ""),
       serial_number: serial || existing?.serial_number || "",
       dom: item.dom || existing?.dom || "",
 
@@ -2568,15 +2584,15 @@ function importTradeInSyncRecords() {
       proactive_signal: "yes",
       proactive_type: "trade_in_field_update",
       proactive_date: todayISO(),
-      proactive_reason:
-        "Trade-In app field data was updated and synced back into AXIS for rep review.",
+     proactive_reason:
+  "Trade-In details were synced back from the Trade-In app. Rep should review trade-in value, finalize quote numbers, and decide whether to submit to Siemens/Espin Trade-In Desk.",
       proactive_enabled: "yes",
 
       rep_status: existing?.rep_status || "needed",
       rep_action: existing?.rep_action || "",
       rep_notes:
         existing?.rep_notes ||
-        "Equipment data synced from Trade-In app.",
+        "Equipment data synced from Espin Trade-In.",
       rep_last_action_at: existing?.rep_last_action_at || "",
       rep_hidden: existing?.rep_hidden || false,
       rep_deleted: existing?.rep_deleted || false,
@@ -2589,17 +2605,55 @@ function importTradeInSyncRecords() {
       submitted_to: existing?.submitted_to || "",
       submitted_at: existing?.submitted_at || "",
 
+      quote_trade_in_credit:
+        tradeInValue ||
+        existing?.quote_trade_in_credit ||
+        "",
+
+      quote_net_amount:
+        existing?.quote_amount
+          ? Math.max(0, Number(existing.quote_amount || 0) - Number(tradeInValue || existing.quote_trade_in_credit || 0))
+          : existing?.quote_net_amount || "",
+
+      quote_profit:
+        existing?.quote_amount
+          ? Math.max(0, Number(existing.quote_amount || 0) - Number(tradeInValue || existing.quote_trade_in_credit || 0)) - Number(existing.quote_estimated_cost || 0)
+          : existing?.quote_profit || "",
+
+      quote_margin:
+        existing?.quote_amount
+          ? (() => {
+              const net = Math.max(0, Number(existing.quote_amount || 0) - Number(tradeInValue || existing.quote_trade_in_credit || 0));
+              const profit = net - Number(existing.quote_estimated_cost || 0);
+              return net > 0 ? Math.round((profit / net) * 100) : 0;
+            })()
+          : existing?.quote_margin || "",
+
       tradein_changed_fields: item.changed_fields || [],
-      tradein_last_update_by: item.last_tradein_update_by || "",
-      tradein_last_update_at: item.last_tradein_update_at || "",
-      tradein_availability_timeframe: item.availability_timeframe || "",
-      tradein_in_use_status: item.in_use_status || "",
-      tradein_out_of_use_date: item.out_of_use_date || "",
-      tradein_loading_dock: item.loading_dock || "",
-      tradein_hard_drive_removed: item.hard_drive_removed || "",
-      tradein_removal_pathways: item.removal_pathways || "",
-      tradein_software_version: item.software_version || "",
-      tradein_upgrade_notes: item.upgrade_notes || ""
+tradein_last_update_by: item.last_tradein_update_by || "",
+tradein_last_update_at: item.last_tradein_update_at || "",
+tradein_estimated_value: tradeInValue || "",
+tradein_credit: item.tradein_credit || item.tradein_estimated_value || tradeInValue || "",
+tradein_synced_to_axis_at:
+  item.last_tradein_update_at ||
+  new Date().toISOString(),
+tradein_equipment_make: item.make || "",
+tradein_equipment_model: item.model || "",
+tradein_equipment_modality: normalizeModality(item.modality || ""),
+tradein_equipment_serial_number: serial || "",
+tradein_equipment_dom: item.dom || "",
+tradein_availability_timeframe: item.availability_timeframe || "",
+tradein_in_use_status: item.in_use_status || "",
+tradein_out_of_use_date: item.out_of_use_date || "",
+tradein_loading_dock: item.loading_dock || "",
+tradein_hard_drive_removed: item.hard_drive_removed || "",
+tradein_removal_pathways: item.removal_pathways || "",
+tradein_software_version: item.software_version || "",
+tradein_upgrade_notes: item.upgrade_notes || "",
+
+      manager_unseen_update: true,
+      manager_flash_at: new Date().toISOString(),
+      manager_flash_type: "tradein_sync"
     };
 
     if (existing) {
@@ -2775,14 +2829,84 @@ function renderFollowUpAlertCenter() {
 }
 
 function buildSmartTimeline(rec) {
-  const initial = getInitialTriggerInfo(rec);
+  if (rec.project_type === "new_sales_project") {
+    const items = [];
 
+    items.push({
+      date: rec.new_project_created_at || "Current",
+      label: "New AXIS project created"
+    });
+
+    if (rec.tradein_sync_received) {
+      items.push({
+        date: rec.tradein_synced_to_axis_at || rec.tradein_last_update_at || "Current",
+        label: "Trade-In details synced back to AXIS"
+      });
+    }
+
+    if (rec.quote_created_at) {
+      items.push({
+        date: rec.quote_created_at,
+        label: "Quote created"
+      });
+    }
+
+    if (rec.quote_follow_up_alert_date) {
+      items.push({
+        date: rec.quote_follow_up_alert_date,
+        label: "Quote follow-up alert scheduled"
+      });
+    }
+
+    if (rec.rep_follow_up_date || rec.next_action_date) {
+      items.push({
+        date: rec.rep_follow_up_date || rec.next_action_date,
+        label: "Rep follow-up scheduled"
+      });
+    }
+
+    if (rec.rep_last_action_at) {
+      items.push({
+        date: rec.rep_last_action_at,
+        label: "Rep action updated"
+      });
+    }
+
+    if (rec.lifecycle_completed) {
+      items.push({
+        date: rec.completed_at || "Completed",
+        label: "Project completed"
+      });
+    }
+
+    return items.map(item => `
+      <div class="timeline-item">
+        <div class="timeline-date">
+          ${
+            item.date && item.date !== "Current" && item.date !== "Completed"
+              ? new Date(item.date).toLocaleDateString()
+              : item.date
+          }
+        </div>
+        <div>${item.label}</div>
+      </div>
+    `).join("");
+  }
+
+  const initial = getInitialTriggerInfo(rec);
   const items = [];
 
   items.push({
     date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
     label: `AXIS flagged ${initial.label}`
   });
+
+  if (rec.tradein_sync_received) {
+    items.push({
+      date: rec.tradein_synced_to_axis_at || rec.tradein_last_update_at || "Current",
+      label: "Trade-In details synced back to AXIS"
+    });
+  }
 
   if (rec.quote_created_at) {
     items.push({
@@ -2832,7 +2956,6 @@ function buildSmartTimeline(rec) {
     </div>
   `).join("");
 }
-
 function buildManagerEscalation(rec) {
   if (!isQuoteFollowUpOverdue(rec)) return "";
 
@@ -3056,7 +3179,12 @@ async function sendToEspin(type, rec) {
             sales_rep_last: rec.sales_rep_last || "",
             sales_rep_company: rec.sales_rep_company || "",
             sales_rep_phone: rec.sales_rep_phone || "",
-            sales_rep_email: rec.sales_rep_email || email
+            sales_rep_email: rec.sales_rep_email || email,
+axis_record_id: rec.id,
+axis_project_id: rec.oem_project_id,
+axis_serial_number: rec.serial_number,
+axis_source: "existing_axis_equipment",
+sync_mode: "update_existing_axis_record",
           })
         }
       );
@@ -3174,16 +3302,28 @@ async function submitRecord(kind) {
   const rec = state.records.find(r => r.id === state.selectedId);
   if (!rec) return;
 
-  const success = await sendToEspin(kind, rec);
+  if (kind === "tradein_desk" && !rec.tradein_sync_received) {
+    alert("Trade-In details must sync back to AXIS before sending to Trade-In Desk.");
+    return;
+  }
+
+  const success = await sendToEspin("tradein", rec);
   if (!success) return;
 
   const updated = {
     ...rec,
     submitted_to: kind,
-    submitted_at: new Date().toISOString()
+    submitted_at: new Date().toISOString(),
+    manager_unseen_update: true,
+    manager_flash_at: new Date().toISOString(),
+    manager_flash_type:
+      kind === "tradein_app"
+        ? "tradein_app_sent"
+        : "tradein_desk_sent"
   };
 
   upsertRecord(updated);
+  syncFeedStatus(updated);
 }
 function downloadSpreadsheet() {
   if (!state.records.length) {
@@ -3255,7 +3395,7 @@ function getProactiveSignal(rec) {
   };
 }
 function getAlerts(rec) {
-if (rec.lifecycle_completed) {
+if (rec.lifecycle_completed || rec.project_type === "new_sales_project") {
   return [];
 }
   const age = ageFromDom(rec.dom);
@@ -3470,6 +3610,31 @@ async function confirmDecision() {
 
   if (!success) return;
 }
+function openNewProjectModal() {
+  $("newProjectCustomer").value = "";
+  $("newProjectStreet").value = "";
+  $("newProjectCity").value = "";
+  $("newProjectState").value = "";
+  $("newProjectZip").value = "";
+
+  $("newProjectContactName").value = "";
+  $("newProjectContactTitle").value = "";
+  $("newProjectContactPhone").value = "";
+  $("newProjectContactEmail").value = "";
+
+  $("newProjectName").value = "";
+  $("newProjectValue").value = "";
+  $("newProjectCloseDate").value = "";
+
+  $("newProjectRepFirst").value = "";
+  $("newProjectRepLast").value = "";
+
+  $("newProjectModal").style.display = "flex";
+}
+
+function closeNewProjectModal() {
+  $("newProjectModal").style.display = "none";
+}
 function saveRepAction() {
 
   const rec = state.records.find(
@@ -3575,6 +3740,128 @@ render();
     banner.style.display = "none";
   }, 2500);
 }
+function saveNewProject() {
+  const customer = $("newProjectCustomer").value.trim();
+  const street = $("newProjectStreet").value.trim();
+  const city = $("newProjectCity").value.trim();
+  const stateValue = $("newProjectState").value.trim();
+  const zip = $("newProjectZip").value.trim();
+
+  const contactName = $("newProjectContactName").value.trim();
+  const contactTitle = $("newProjectContactTitle").value.trim();
+  const contactPhone = $("newProjectContactPhone").value.trim();
+  const contactEmail = $("newProjectContactEmail").value.trim();
+
+  const projectName = $("newProjectName").value.trim();
+  const projectValue = Number($("newProjectValue").value || 0);
+  const closeDate = $("newProjectCloseDate").value;
+
+  const repFirst = $("newProjectRepFirst").value.trim();
+  const repLast = $("newProjectRepLast").value.trim();
+
+  if (!customer || !projectName || !projectValue || !closeDate || !repFirst || !repLast) {
+    alert("Fill out customer, project name, project value, close date, and assigned rep.");
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const rec = {
+    id: uuid(),
+    source: "New AXIS Project",
+    project_type: "new_sales_project",
+    new_project_badge: true,
+    new_project_created_at: now,
+
+    oem_project_id: `NEW-${Date.now()}`,
+
+    site: customer,
+    site_address: street,
+    city,
+    state: stateValue,
+    zip_code: zip,
+
+    contact_name: contactName,
+    contact_title: contactTitle,
+    contact_phone: contactPhone,
+    contact_email: contactEmail,
+
+    make: "New Project",
+    model: projectName,
+    modality: "PROJECT",
+    serial_number: "",
+    dom: "",
+
+    sales_rep_first: repFirst,
+    sales_rep_last: repLast,
+
+    quote_amount: projectValue,
+    quote_estimated_cost: "",
+    quote_trade_in_credit: "",
+    quote_net_amount: projectValue,
+    quote_profit: "",
+    quote_margin: "",
+    quote_status: "",
+    quote_priority: "high",
+    quote_expected_close_date: closeDate,
+    quote_expiration_date: "",
+    quote_recipient_email: contactEmail,
+    quote_cc_email: "",
+    quote_delivery_status: "",
+    quote_pdf_saved_at: "",
+    quote_sent_at: "",
+    quote_sent_to: "",
+    quote_sent_cc: "",
+    quote_follow_up_alert_date: "",
+    quote_follow_up_alert_note: "",
+    quote_install_required: "yes",
+    quote_removal_required: "no",
+    quote_loss_reason: "",
+    quote_notes: "",
+    quote_created_at: "",
+    quote_updated_at: "",
+
+    tradein_sync_received: false,
+    tradein_credit: "",
+    tradein_estimated_value: "",
+    tradein_synced_to_axis_at: "",
+
+    rep_status: "new_project",
+    rep_action: "new_project_created",
+    rep_notes: "New AXIS sales project created.",
+    rep_last_action_at: "",
+    rep_hidden: false,
+    rep_deleted: false,
+    rep_follow_up_date: "",
+    next_action_date: "",
+
+    lifecycle_completed: false,
+    completed_at: "",
+    completed_by: "",
+    submitted_to: "",
+    submitted_at: "",
+
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: "new_project_created",
+
+    project_management_ready: false,
+    project_management_status: "",
+    project_management_created_at: "",
+
+    manager_response_action: "",
+    manager_response_date: "",
+    manager_response_notes: "",
+    manager_response_at: ""
+  };
+
+  state.records.unshift(rec);
+  saveRecords();
+  syncFeedStatus(rec);
+  closeNewProjectModal();
+  state.selectedId = rec.id;
+  render();
+}
 function openQuoteModal() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -3585,7 +3872,11 @@ function openQuoteModal() {
 
   $("quoteAmount").value = rec.quote_amount || "";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
-  $("quoteTradeInCredit").value = rec.quote_trade_in_credit || "";
+  $("quoteTradeInCredit").value =
+  rec.quote_trade_in_credit ||
+  rec.tradein_credit ||
+  rec.tradein_estimated_value ||
+  "";
   $("quoteStatus").value = rec.quote_status || "draft";
   $("quotePriority").value = rec.quote_priority || "medium";
   $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
@@ -3614,7 +3905,12 @@ function closeQuoteModal() {
 function updateQuotePreview() {
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCredit = Number($("quoteTradeInCredit").value || 0);
+  const tradeInCredit = Number(
+  $("quoteTradeInCredit").value ||
+  rec.tradein_credit ||
+  rec.tradein_estimated_value ||
+  0
+);
 
   const netQuote = Math.max(0, amount - tradeInCredit);
   const profit = netQuote - cost;
@@ -3920,7 +4216,12 @@ function buildQuotePDF(rec, shouldSave = true) {
 
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
-  const tradeInCredit = Number(rec.quote_trade_in_credit || 0);
+  const tradeInCredit = Number(
+  rec.quote_trade_in_credit ||
+  rec.tradein_credit ||
+  rec.tradein_estimated_value ||
+  0
+);
   const netQuote = Number(
     rec.quote_net_amount ||
     Math.max(0, quoteAmount - tradeInCredit)
@@ -4219,8 +4520,10 @@ $("axisShareToggle").addEventListener("change", () => {
 
   render();
 });
-  $("quoteBtn").addEventListener("click", () => openQuoteModal());
-$("tradeBtn").addEventListener("click", () => submitRecord("tradein"));
+ $("quoteBtn").addEventListener("click", () => openQuoteModal());
+$("addNewProjectBtn").addEventListener("click", () => openNewProjectModal());
+$("tradeBtn").addEventListener("click", () => submitRecord("tradein_app"));
+$("tradeDeskBtn").addEventListener("click", () => submitRecord("tradein_desk"));
 $("connectBtn").addEventListener("click", () => openDecisionModal());
 $("sendQuoteBtn").addEventListener("click", () => sendQuoteToCustomer());
 $("exportQuotePdfBtn").addEventListener("click", () => exportQuotePDF());
@@ -4262,7 +4565,63 @@ localStorage.removeItem("axis_manager_sync_ping_v1");
 
 document.addEventListener("DOMContentLoaded", init);
 </script>
+<div class="modal" id="newProjectModal">
+  <div class="modal-box">
+    <h3>Add New AXIS Project</h3>
 
+    <label>Customer / Facility</label>
+    <input id="newProjectCustomer" type="text" placeholder="Example: Valley Imaging Center" />
+
+    <label>Street Address</label>
+    <input id="newProjectStreet" type="text" placeholder="Example: 123 Main St" />
+
+    <label>City</label>
+    <input id="newProjectCity" type="text" />
+
+    <label>State</label>
+    <input id="newProjectState" type="text" />
+
+    <label>Zip Code</label>
+    <input id="newProjectZip" type="text" />
+
+    <label>Hospital Contact</label>
+    <input id="newProjectContactName" type="text" />
+
+    <label>Title</label>
+    <input id="newProjectContactTitle" type="text" />
+
+    <label>Phone</label>
+    <input id="newProjectContactPhone" type="text" />
+
+    <label>Email</label>
+    <input id="newProjectContactEmail" type="email" />
+
+    <label>New System / Project Name</label>
+    <input id="newProjectName" type="text" placeholder="Example: New MRI Replacement Project" />
+
+    <label>Projected Revenue / New Equipment Cost</label>
+    <input id="newProjectValue" type="number" min="0" placeholder="Example: 950000" />
+
+    <label>Expected Close Date</label>
+    <input id="newProjectCloseDate" type="date" />
+
+    <label>Assigned Rep First Name</label>
+    <input id="newProjectRepFirst" type="text" />
+
+    <label>Assigned Rep Last Name</label>
+    <input id="newProjectRepLast" type="text" />
+
+    <button class="primary" onclick="saveNewProject()">Create New Project</button>
+
+    <button
+      class="primary"
+      style="background:#eee;color:#333;margin-top:10px;"
+      onclick="closeNewProjectModal()"
+    >
+      Cancel
+    </button>
+  </div>
+</div>
 <div class="modal" id="decisionModal">
   <div class="modal-box">
     <h3>Project Setup</h3>
