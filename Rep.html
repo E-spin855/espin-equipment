@@ -3273,10 +3273,19 @@ if (rec.lifecycle_completed) {
   // 🔴 DISABLED
   if (rec.alert_enabled === "no") return [];
 
-   // 🔥 PRIORITY 1 — SNOOZE
-  if (rec.next_action_date && rec.next_action_date > todayISO()) {
-    return [{ type: "postponed", label: "Follow-Up Scheduled" }];
-  }
+  // 🔥 PRIORITY 1 — FOLLOW-UP ONLY AFTER REP ACTION
+const hasRepScheduledFollowUp =
+  rec.rep_action === "follow_up" ||
+  rec.rep_status === "follow_up_scheduled" ||
+  rec.rep_hidden === true;
+
+if (
+  hasRepScheduledFollowUp &&
+  rec.next_action_date &&
+  rec.next_action_date > todayISO()
+) {
+  return [{ type: "postponed", label: "Follow-Up Scheduled" }];
+}
 
   // 🔥 PRIORITY 2 — PROACTIVE SIGNAL
   const proactive = getProactiveSignal(rec);
@@ -3499,8 +3508,10 @@ function saveRepAction() {
 
   rec.rep_follow_up_date = followUpDate || "";
 
-  rec.next_action_date =
-    followUpDate || rec.next_action_date || "";
+ rec.next_action_date =
+  action === "follow_up"
+    ? followUpDate
+    : "";
 
   if (action === "completed") {
 
