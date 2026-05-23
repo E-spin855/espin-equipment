@@ -1180,31 +1180,37 @@ function normalizeAxisTradeInRecord(result) {
   const get = (key) => key ? String(formData[key] || "").trim() : "";
 
   return {
-    id: `tradein_${projectId}_${modalityId || modality}_${Date.now()}`,
-    axis_source: "Espin Trade-In Field Update",
-    project_id: projectId,
-    modality_id: modalityId || "",
-    modality,
-    hospital_asset_id: String(formData.additional_identifier || "").trim(),
-    make: get(map.make),
-    model: get(map.model),
-    serial_number: get(map.serial_number),
-    dom: get(map.dom),
-    installed_date: get(map.installed_date),
-    in_use_status: get(map.in_use_status),
-    out_of_use_date: get(map.out_of_use_date),
-    availability_timeframe: get(map.availability_timeframe),
-    removal_pathways: get(map.removal_pathways),
-    loading_dock: get(map.loading_dock),
-    hard_drive_removed: get(map.hard_drive_removed),
-    software_version: get(map.software_version),
-    upgrade_notes: get(map.upgrade_notes),
-    changed_fields: result.changedFields || [],
-    last_tradein_update_by: userEmail,
-    last_tradein_update_at: new Date().toISOString(),
-    crm_status: "New Trade-In Field Update",
-    rep_notes: "Equipment data synced from Espin Trade-In."
-  };
+  id: `tradein_${projectId}_${modalityId || modality}_${Date.now()}`,
+
+  axis_record_id: localStorage.getItem("axis_record_id") || "",
+  axis_project_id: localStorage.getItem("axis_project_id") || projectId,
+  axis_serial_number: localStorage.getItem("axis_serial_number") || get(map.serial_number),
+  axis_source: localStorage.getItem("axis_source") || "existing_axis_equipment",
+  sync_mode: localStorage.getItem("sync_mode") || "update_existing_axis_record",
+
+  project_id: projectId,
+  modality_id: modalityId || "",
+  modality,
+  hospital_asset_id: String(formData.additional_identifier || "").trim(),
+  make: get(map.make),
+  model: get(map.model),
+  serial_number: get(map.serial_number),
+  dom: get(map.dom),
+  installed_date: get(map.installed_date),
+  in_use_status: get(map.in_use_status),
+  out_of_use_date: get(map.out_of_use_date),
+  availability_timeframe: get(map.availability_timeframe),
+  removal_pathways: get(map.removal_pathways),
+  loading_dock: get(map.loading_dock),
+  hard_drive_removed: get(map.hard_drive_removed),
+  software_version: get(map.software_version),
+  upgrade_notes: get(map.upgrade_notes),
+  changed_fields: result.changedFields || [],
+  last_tradein_update_by: userEmail,
+  last_tradein_update_at: new Date().toISOString(),
+  crm_status: "New Trade-In Field Update",
+  rep_notes: "Equipment data synced from Espin Trade-In."
+};
 }
 
 function syncTradeInToAxisDemo(result) {
@@ -1220,12 +1226,23 @@ function syncTradeInToAxisDemo(result) {
     records = [];
   }
 
-  const matchIndex = records.findIndex(r =>
+ const matchIndex = records.findIndex(r =>
+  (
+    newRecord.axis_record_id &&
+    String(r.axis_record_id || "") === String(newRecord.axis_record_id)
+  ) ||
+  (
+    newRecord.axis_project_id &&
+    newRecord.axis_serial_number &&
+    String(r.axis_project_id || "") === String(newRecord.axis_project_id) &&
+    String(r.axis_serial_number || "") === String(newRecord.axis_serial_number)
+  ) ||
+  (
     String(r.project_id || "") === String(newRecord.project_id || "") &&
     String(r.modality_id || "") === String(newRecord.modality_id || "") &&
     String(r.serial_number || "") === String(newRecord.serial_number || "")
-  );
-
+  )
+);
   if (matchIndex >= 0) {
     records[matchIndex] = {
       ...records[matchIndex],
