@@ -3150,6 +3150,18 @@ if (modality === "PET") {
 
 return base;
 }
+function fetchWithTimeout(url, options = {}, timeout = 12000) {
+  const controller = new AbortController();
+
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeout);
+
+  return fetch(url, {
+    ...options,
+    signal: controller.signal
+  }).finally(() => clearTimeout(timer));
+}
 async function sendToEspin(type, rec) {
   const banner = $("resultBanner");
   banner.style.display = "block";
@@ -3162,7 +3174,7 @@ async function sendToEspin(type, rec) {
       const isNewProject =
         rec.project_type === "new_sales_project";
 
-      const projectRes = await fetch(
+      const projectRes = await fetchWithTimeout(
         "https://espin-equipment.vercel.app/api/admin/equipment",
         {
           method: "POST",
