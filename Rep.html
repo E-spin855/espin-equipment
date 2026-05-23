@@ -3409,7 +3409,9 @@ function buildManagerEscalation(rec) {
     </div>
   `;
 }
-  function render() {
+ function render() {
+  importTradeInSyncRecords();
+
   renderStats();
   renderRepMenu();
   renderFollowUpAlertCenter();
@@ -3649,7 +3651,19 @@ async function sendToEspin(type, rec) {
       if (!projectRes.ok || !projectData?.id) {
         throw new Error(projectData?.error || projectData?.message || "Project creation failed");
       }
-
+localStorage.setItem("axis_record_id", rec.id || "");
+localStorage.setItem("axis_project_id", rec.oem_project_id || "");
+localStorage.setItem("axis_serial_number", rec.serial_number || "");
+localStorage.setItem(
+  "axis_source",
+  isNewProject ? "new_axis_project" : "existing_axis_equipment"
+);
+localStorage.setItem(
+  "sync_mode",
+  isNewProject
+    ? "sync_tradein_to_new_axis_project"
+    : "update_existing_axis_record"
+);
       if (!isNewProject) {
         const detailsRes = await fetch(
           "https://espin-equipment.vercel.app/api/equipment-details/equipment-save",
@@ -3676,6 +3690,7 @@ async function sendToEspin(type, rec) {
 
       rec.submitted_to = "tradein_app";
       rec.tradein_project_id = projectData.id;
+rec.tradein_modality_id = "";
       rec.tradein_sent_to_app_at = new Date().toISOString();
 
       syncFeedStatus(rec);
