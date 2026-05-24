@@ -1290,17 +1290,19 @@ if (state.selectedRep) {
 
   <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
         <td>
-          ${
-            rec.quote_amount
-              ? getPressureBadge(getQuotePriority(rec))
-              : (() => {
-                  const p = getPressureScore(rec);
-                  if (p >= 6) return '<span class="pill ready">HIGH</span>';
-                  if (p >= 3) return '<span class="pill pending">MED</span>';
-                  return '<span class="pill local">LOW</span>';
-                })()
-          }
-        </td>
+  ${
+    rec.tradein_sync_received
+      ? "-"
+      : rec.quote_amount
+      ? getPressureBadge(getQuotePriority(rec))
+      : (() => {
+          const p = getPressureScore(rec);
+          if (p >= 6) return '<span class="pill ready">HIGH</span>';
+          if (p >= 3) return '<span class="pill pending">MED</span>';
+          return '<span class="pill local">LOW</span>';
+        })()
+  }
+</td>
 
         <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
@@ -1347,7 +1349,7 @@ if (rec.project_type === "new_sales_project") {
               if (rec.lifecycle_completed) {
                 return `<span class="next-action-label next-action-completed">Completed</span>`;
               }
-if (rec.project_type === "new_sales_project") {
+if (rec.project_type === "new_sales_project" || rec.tradein_sync_received) {
   if (rec.quote_status === "lost") {
     return `<span class="next-action-label next-action-disposition">Delete or Archive</span>`;
   }
@@ -4745,7 +4747,7 @@ if (status === "won") {
   rec.project_management_status = "";
   rec.project_management_created_at = "";
 
-  if (rec.project_type === "new_sales_project") {
+  if (rec.project_type === "new_sales_project" || rec.tradein_sync_received) {
     rec.rep_status = "lost";
     rec.manager_flash_type = "new_project_lost";
   }
