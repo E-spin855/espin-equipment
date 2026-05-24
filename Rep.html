@@ -799,7 +799,16 @@ function normalizeModality(v) {
   if (m === "CATH LAB" || m === "CATH") return "CATH";
   return m || "OTHER";
 }
-
+function getRecordGroupKey(rec) {
+  return String(
+    rec.axis_project_id ||
+    rec.oem_project_id ||
+    rec.tradein_project_id ||
+    rec.project_id ||
+    rec.id ||
+    ""
+  ).trim();
+}
 function ageFromDom(dom) {
   const year = Number(dom);
   if (!year || isNaN(year)) return null;
@@ -2933,30 +2942,34 @@ function importTradeInSyncRecords() {
     const projectId = String(item.project_id || "").trim();
     const modalityId = String(item.modality_id || "").trim();
 
-    const existing = state.records.find(r =>
-      (
-        item.axis_record_id &&
-        String(r.id || "").trim() === String(item.axis_record_id || "").trim()
-      ) ||
-      (
-        item.axis_project_id &&
-        String(r.oem_project_id || "").trim() === String(item.axis_project_id || "").trim()
-      ) ||
-      (
-        item.axis_serial_number &&
-        String(r.serial_number || "").trim() === String(item.axis_serial_number || "").trim()
-      ) ||
-      (
-        serial &&
-        r.project_type !== "new_sales_project" &&
-        String(r.serial_number || "").trim() === serial
-      )
-    );
+   const isNewProjectSync =
+  item.axis_source === "new_axis_project" ||
+  item.sync_mode === "sync_tradein_to_new_axis_project";
 
-    const isNewProject =
-      existing?.project_type === "new_sales_project" ||
-      item.axis_source === "new_axis_project" ||
-      item.sync_mode === "sync_tradein_to_new_axis_project";
+const existing = state.records.find(r =>
+  (
+    isNewProjectSync &&
+    r.project_type === "new_sales_project" &&
+    String(r.oem_project_id || "").trim() ===
+      String(item.axis_project_id || item.project_id || "").trim()
+  ) ||
+  (
+    !isNewProjectSync &&
+    r.project_type !== "new_sales_project" &&
+    String(r.oem_project_id || "").trim() ===
+      String(item.axis_project_id || item.project_id || "").trim()
+  ) ||
+  (
+    !isNewProjectSync &&
+    serial &&
+    r.project_type !== "new_sales_project" &&
+    String(r.serial_number || "").trim() === serial
+  )
+);
+
+const isNewProject =
+  existing?.project_type === "new_sales_project" ||
+  isNewProjectSync;
 
     const tradeInValue = Number(
       item.trade_in_value ||
@@ -2998,22 +3011,25 @@ function importTradeInSyncRecords() {
         item.project_id ||
         "",
 
-    make:
-  item.make || existing?.tradein_equipment_make || existing?.make || "",
+   make: isNewProject
+  ? existing?.make || "New Project"
+  : item.make || existing?.make || "",
 
-model:
-  item.model || existing?.tradein_equipment_model || existing?.model || "",
+model: isNewProject
+  ? existing?.model || item.project_name || "New Project"
+  : item.model || existing?.model || "",
 
-modality:
-  normalizeModality(
-    item.modality || existing?.tradein_equipment_modality || existing?.modality || ""
-  ),
+modality: isNewProject
+  ? existing?.modality || "PROJECT"
+  : normalizeModality(item.modality || existing?.modality || ""),
 
-serial_number:
-  serial || item.serial_number || existing?.tradein_equipment_serial_number || existing?.serial_number || "",
+serial_number: isNewProject
+  ? existing?.serial_number || ""
+  : serial || existing?.serial_number || "",
 
-dom:
-  item.dom || existing?.tradein_equipment_dom || existing?.dom || "",
+dom: isNewProject
+  ? existing?.dom || ""
+  : item.dom || existing?.dom || "",
       site:
         existing?.site ||
         item.site ||
