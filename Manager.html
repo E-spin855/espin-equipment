@@ -2057,76 +2057,76 @@ function markQuoteSeen(id) {
   render();
 }
 function render() {
-
   if (!repMode) {
-
     try {
-
-      state.records = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "[]"
-      );
-
+      state.records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     } catch {
-
       state.records = [];
-
     }
-
   }
-const queue = JSON.parse(
-  localStorage.getItem("espin_rep_queue") || "[]"
-);
 
-queue.forEach(q => {
+  let queue = [];
 
-  const idx = state.records.findIndex(r =>
-    r.oem_project_id === q.oem_project_id &&
-    r.serial_number === q.serial_number
-  );
-
-  if (idx >= 0) {
-    state.records[idx] = {
-  ...state.records[idx],
-  ...q,
-  quote_seen: state.records[idx].quote_seen || q.quote_seen || false
-};
+  try {
+    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
   }
-});
+
+  queue.forEach(q => {
+    const idx = state.records.findIndex(r =>
+      (
+        q.id &&
+        r.id === q.id
+      ) ||
+      (
+        q.oem_project_id &&
+        String(r.oem_project_id || "") === String(q.oem_project_id || "") &&
+        String(r.serial_number || "") === String(q.serial_number || "")
+      )
+    );
+
+    if (idx >= 0) {
+      state.records[idx] = {
+        ...state.records[idx],
+        ...q
+      };
+    }
+  });
+
   state.records.forEach(rec => {
     const alerts = getAlerts(rec);
 
-// keep completed records visible
-if (rec.alert_enabled === "no") return;
+    if (rec.alert_enabled === "no") return;
 
     const shouldPush =
       alerts.length &&
       !(rec.next_action_date && rec.next_action_date > todayISO());
 
-const currentAlert = JSON.stringify(getAlerts(rec));
+    const currentAlert = JSON.stringify(alerts);
 
-if (shouldPush && rec.last_alert !== currentAlert) {
+    if (shouldPush && rec.last_alert !== currentAlert) {
+      rec.site =
+        rec.site ||
+        rec.site_address ||
+        `${rec.city || ""} ${rec.state || ""}`.trim() ||
+        rec.oem_project_id ||
+        "Unknown";
 
-  // 🔥 FIX — normalize BEFORE push
-  rec.site =
-    rec.site ||
-    rec.site_address ||
-    `${rec.city || ""} ${rec.state || ""}`.trim() ||
-    rec.oem_project_id ||
-    "Unknown";
+      pushToRepFeed(rec);
 
-  pushToRepFeed(rec);
-
-  rec.last_alert = currentAlert;
-  rec.last_pushed_at = new Date().toISOString();
-}
+      rec.last_alert = currentAlert;
+      rec.last_pushed_at = new Date().toISOString();
+    }
   });
 
   saveRecords();
 
   renderStats();
-renderRepMenu();
-renderTable();
-renderDetail();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
 }
 function downloadSpreadsheet() {
   if (!state.records.length) {
@@ -2182,7 +2182,12 @@ function init() {
 
  // 🔥 AUTO REFRESH MANAGER VIEW EVERY 5 SECONDS
 // Only refresh when data actually changed, and never while manager is typing.
-let lastStorageSnapshot = localStorage.getItem(STORAGE_KEY) || "[]";
+let lastStorageSnapshot =
+  (localStorage.getItem(STORAGE_KEY) || "[]") +
+  "|" +
+  (localStorage.getItem("espin_rep_queue") || "[]") +
+  "|" +
+  (localStorage.getItem("axis_manager_sync_ping_v1") || "");
 
 setInterval(() => {
   const active = document.activeElement;
@@ -2197,8 +2202,12 @@ setInterval(() => {
 
   if (managerIsTyping) return;
 
-  const currentSnapshot =
-    localStorage.getItem(STORAGE_KEY) || "[]";
+ const currentSnapshot =
+  (localStorage.getItem(STORAGE_KEY) || "[]") +
+  "|" +
+  (localStorage.getItem("espin_rep_queue") || "[]") +
+  "|" +
+  (localStorage.getItem("axis_manager_sync_ping_v1") || "");
 
   if (currentSnapshot === lastStorageSnapshot) {
     return;
@@ -2207,10 +2216,10 @@ setInterval(() => {
   lastStorageSnapshot = currentSnapshot;
 
   try {
-    state.records = JSON.parse(currentSnapshot) || [];
-  } catch {
-    state.records = [];
-  }
+  state.records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+} catch {
+  state.records = [];
+}
 
   render();
 }, 5000);
@@ -2219,7 +2228,8 @@ window.addEventListener("storage", (e) => {
 
   if (
     e.key === STORAGE_KEY ||
-    e.key === "espin_rep_queue"
+e.key === "espin_rep_queue" ||
+e.key === "axis_manager_sync_ping_v1"
   ) {
 
     const active = document.activeElement;
@@ -2293,64 +2303,24 @@ window.addEventListener("storage", (e) => {
 
 }
 function selectRow(id) {
-
   const sourceRecords = repMode
     ? JSON.parse(localStorage.getItem("espin_rep_queue") || "[]")
     : state.records;
 
   const rec = sourceRecords.find(r => r.id === id);
-
   if (!rec) return;
 
-  const latest = state.records.find(r =>
-    r.oem_project_id === rec.oem_project_id &&
-    r.serial_number === rec.serial_number
-  );
+  state.selectedId = rec.id;
 
-  const target = latest || rec;
+  if (rec.quote_amount || rec.manager_unseen_update) {
+    rec.quote_seen = true;
+    rec.manager_unseen_update = false;
+    rec.manager_flash_at = "";
+    rec.manager_flash_type = "";
 
-  let main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-
-  main = main.map(r =>
-    r.oem_project_id === target.oem_project_id &&
-    r.serial_number === target.serial_number
-      ? {
-          ...r,
-          quote_seen: true,
-          manager_unseen_update: false,
-          manager_flash_at: "",
-          manager_flash_type: ""
-        }
-      : r
-  );
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
-
-  let queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
-
-  queue = queue.map(q =>
-    q.oem_project_id === target.oem_project_id &&
-    q.serial_number === target.serial_number
-      ? {
-          ...q,
-          quote_seen: true,
-          manager_unseen_update: false,
-          manager_flash_at: "",
-          manager_flash_type: ""
-        }
-      : q
-  );
-
-  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
-
-  state.records = main;
-
-  const updated = main.find(r =>
-    r.oem_project_id === target.oem_project_id &&
-    r.serial_number === target.serial_number
-  );
-
-  state.selectedId = updated?.id || target.id || id;
+    syncFeedStatus(rec);
+    return;
+  }
 
   render();
 }
@@ -2487,12 +2457,15 @@ function pushToRepFeed(rec) {
 // 🔥 ADD THIS RIGHT HERE
 function syncRepRecord(updatedRec) {
   let main = JSON.parse(
-    localStorage.getItem("espin_lifecycle_demo_records_v1") || "[]"
+    localStorage.getItem(STORAGE_KEY) || "[]"
   );
 
   const idx = main.findIndex(r =>
-    r.oem_project_id === updatedRec.oem_project_id &&
-    r.serial_number === updatedRec.serial_number
+    r.id === updatedRec.id ||
+    (
+      String(r.oem_project_id || "") === String(updatedRec.oem_project_id || "") &&
+      String(r.serial_number || "") === String(updatedRec.serial_number || "")
+    )
   );
 
   if (idx >= 0) {
@@ -2500,12 +2473,11 @@ function syncRepRecord(updatedRec) {
       ...main[idx],
       ...updatedRec
     };
-
-    localStorage.setItem(
-      "espin_lifecycle_demo_records_v1",
-      JSON.stringify(main)
-    );
+  } else {
+    main.unshift(updatedRec);
   }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
 }
 function syncFeedStatus(rec) {
   let queue = JSON.parse(
@@ -2515,9 +2487,9 @@ function syncFeedStatus(rec) {
   const key = `${rec.oem_project_id}_${rec.serial_number}`;
 
   queue = queue.map(item => {
-
     const sameRecord =
       item.key === key ||
+      item.id === rec.id ||
       (
         item.oem_project_id === rec.oem_project_id &&
         item.serial_number === rec.serial_number
@@ -2527,66 +2499,37 @@ function syncFeedStatus(rec) {
 
     return {
       ...item,
-      ...rec,
-
-      rep_status: rec.rep_status || "new",
-lifecycle_completed:
-  rec.lifecycle_completed || false,
-
-completed_at:
-  rec.completed_at || "",
-
-completed_by:
-  rec.completed_by || "",
-      rep_action: rec.rep_action || "",
-rep_notes: rec.rep_notes || "",
-rep_last_action_at: rec.rep_last_action_at || "",
-
-      next_action_date:
-        rec.next_action_date || "",
-
-      submitted_to:
-        rec.submitted_to || "",
-
-manager_visible:
-  rec.manager_visible !== false,
-
-manager_flash_at:
-  rec.manager_flash_at || "",
-
-manager_flash_type:
-  rec.manager_flash_type || ""   
+      ...rec
     };
   });
 
-    localStorage.setItem(
+  localStorage.setItem(
     "espin_rep_queue",
     JSON.stringify(queue)
   );
 
   syncRepRecord(rec);
 
- window.dispatchEvent(
-  new Event("rep_feed_update")
-);
+  localStorage.setItem(
+    "axis_manager_sync_ping_v1",
+    String(Date.now())
+  );
 
-if (!repMode) {
+  window.dispatchEvent(
+    new Event("rep_feed_update")
+  );
 
-  try {
-
-    state.records = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) || "[]"
-    );
-
-  } catch {
-
-    state.records = [];
-
+  if (!repMode) {
+    try {
+      state.records = JSON.parse(
+        localStorage.getItem(STORAGE_KEY) || "[]"
+      );
+    } catch {
+      state.records = [];
+    }
   }
 
-}
-
-render();
+  render();
 }
 // 🔥 AXIS ADD: ACTION SCORE
 function getActionScore(rec) {
