@@ -1338,43 +1338,48 @@ if (state.selectedRep) {
 
         <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
-        <td>
-          ${
-            (() => {
-              if (rec.lifecycle_completed) {
-                return `<span class="pill submitted">COMPLETED</span>`;
-              }
-if (rec.project_type === "new_sales_project") {
-  if (rec.quote_status === "lost") {
-    return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
+       <td>
+  ${
+    (() => {
+      if (rec.lifecycle_completed) {
+        return `<span class="pill submitted">COMPLETED</span>`;
+      }
+
+      if (rec.tradein_sync_received) {
+        return `<span class="pill submitted">NEW TRADE-IN INFO RECEIVED</span>`;
+      }
+
+      if (rec.project_type === "new_sales_project") {
+        if (rec.quote_status === "lost") {
+          return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
+        }
+
+        return `<span class="pill local">NEW PROJECT OPEN</span>`;
+      }
+
+      if (rec.quote_amount) {
+        const status = String(rec.quote_status || "draft").toUpperCase();
+
+        return `
+          <div class="quote-status-wrap">
+            <span class="quote-main-badge">Quote ${status}</span>
+            ${getQuoteFollowUpAlertBadge(rec)}
+          </div>
+        `;
+      }
+
+      const alerts = getAlerts(rec);
+
+      if (!alerts.length) {
+        return `<span class="mini">No Action</span>`;
+      }
+
+      return alerts.map(a =>
+        `<span class="alert-badge alert-${a.type}">${a.label}</span>`
+      ).join("");
+    })()
   }
-
-  return `<span class="pill local">NEW PROJECT OPEN</span>`;
-}
-              if (rec.quote_amount) {
-                const status = String(rec.quote_status || "draft").toUpperCase();
-
-                return `
-                  <div class="quote-status-wrap">
-                    <span class="quote-main-badge">Quote ${status}</span>
-                    ${getQuoteFollowUpAlertBadge(rec)}
-                  </div>
-                `;
-              }
-
-              const alerts = getAlerts(rec);
-
-              if (!alerts.length) {
-                return `<span class="mini">No Action</span>`;
-              }
-
-              return alerts.map(a =>
-                `<span class="alert-badge alert-${a.type}">${a.label}</span>`
-              ).join("");
-            })()
-          }
-        </td>
-
+</td>
         <td>
           ${
             (() => {
