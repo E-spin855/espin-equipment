@@ -441,6 +441,19 @@
   font-size:13px;
   line-height:1.45;
 }
+tr.manager-row-flash{
+  animation:managerRowFlash 1.1s ease-in-out infinite !important;
+  outline:2px solid rgba(255,79,216,.95) !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(255,79,216,.75),
+    0 0 28px rgba(255,79,216,.75) !important;
+}
+
+@keyframes managerRowFlash{
+  0%{background:rgba(255,79,216,.16);}
+  50%{background:rgba(0,229,255,.20);}
+  100%{background:rgba(255,79,216,.16);}
+}
  </style>
 </head>
 <body>
@@ -965,8 +978,10 @@ if (
   });
 
   tbody.innerHTML = sorted.map(rec => {
-   const selectedClass =
-  rec.id === state.selectedId ? "selected" : "";
+ const selectedClass = [
+  rec.id === state.selectedId ? "selected" : "",
+  rec.manager_unseen_update ? "manager-row-flash" : ""
+].join(" ");
     const alerts = getAlerts(rec);
 
     return `
@@ -2217,17 +2232,24 @@ function selectRow(id) {
   const rec = sourceRecords.find(r => r.id === id);
   if (!rec) return;
 
-  state.selectedId = rec.id;
+  rec.quote_seen = true;
+  rec.manager_unseen_update = false;
+  rec.manager_flash_at = "";
+  rec.manager_flash_type = "";
 
-  if (rec.quote_amount || rec.manager_unseen_update) {
-    rec.quote_seen = true;
-    rec.manager_unseen_update = false;
-    rec.manager_flash_at = "";
-    rec.manager_flash_type = "";
+  syncFeedStatus(rec);
 
-    syncFeedStatus(rec);
-    return;
-  }
+  const latest = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+  const updated = latest.find(r =>
+    r.id === rec.id ||
+    (
+      r.oem_project_id === rec.oem_project_id &&
+      r.serial_number === rec.serial_number
+    )
+  );
+
+  state.selectedId = updated?.id || rec.id;
 
   render();
 }
