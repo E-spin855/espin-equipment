@@ -543,7 +543,69 @@ function downloadEquipment() {
 
   window.open(url, "_blank");
 }
+async function loadData(){
+  try {
+    if (isCreateMode && !modalityId) {
+      formData = {};
+      dirtyFields = new Set();
 
+      if (currentModality) {
+        formData.modality = currentModality;
+        document.getElementById("modality").value = currentModality;
+        triggerRender(currentModality);
+      } else {
+        document.getElementById("modality").value = "";
+        document.getElementById("form-container").innerHTML = "";
+      }
+
+      return;
+    }
+
+    const qs = new URLSearchParams();
+    qs.set("projectId", projectId);
+
+    if (modalityId) qs.set("modalityId", modalityId);
+    if (currentModality) qs.set("modality", currentModality);
+
+    const res = await fetch(`/api/equipment-details?${qs.toString()}`, {
+      headers: { "x-user-email": userEmail }
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    formData =
+      json && json.data && typeof json.data === "object"
+        ? json.data
+        : {};
+
+    dirtyFields = new Set();
+
+    if (json?.modalityId) {
+      modalityId = String(json.modalityId).trim();
+      localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, modalityId);
+    }
+
+    if (json?.modality) {
+      currentModality = String(json.modality).toUpperCase().trim();
+    } else if (formData.modality) {
+      currentModality = String(formData.modality).toUpperCase().trim();
+    }
+
+    if (currentModality) {
+      formData.modality = currentModality;
+      document.getElementById("modality").value = currentModality;
+      localStorage.setItem(`${MODALITY_KEY}_${projectId}`, currentModality);
+      triggerRender(currentModality);
+      return;
+    }
+
+    document.getElementById("modality").value = "";
+    document.getElementById("form-container").innerHTML = "";
+
+  } catch (err) {
+    console.error("LOAD ERROR:", err);
+  }
+}
 function group(title){
   const g = document.createElement("div");
   g.className = "group";
