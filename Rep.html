@@ -2917,7 +2917,6 @@ manager_response_at: rec.manager_response_at || ""
 
   window.dispatchEvent(new Event("rep_feed_update"));
 }
-/* 🔥 ADD RIGHT HERE */
 function importTradeInSyncRecords() {
   const shareEnabled =
     localStorage.getItem(AXIS_SHARE_KEY) !== "off";
@@ -2942,34 +2941,41 @@ function importTradeInSyncRecords() {
     const projectId = String(item.project_id || "").trim();
     const modalityId = String(item.modality_id || "").trim();
 
-   const isNewProjectSync =
-  item.axis_source === "new_axis_project" ||
-  item.sync_mode === "sync_tradein_to_new_axis_project";
+    const isNewProjectSync =
+      item.axis_source === "new_axis_project" ||
+      item.sync_mode === "sync_tradein_to_new_axis_project";
 
-const existing = state.records.find(r =>
-  (
-    isNewProjectSync &&
-    r.project_type === "new_sales_project" &&
-    String(r.oem_project_id || "").trim() ===
-      String(item.axis_project_id || item.project_id || "").trim()
-  ) ||
-  (
-    !isNewProjectSync &&
-    r.project_type !== "new_sales_project" &&
-    String(r.oem_project_id || "").trim() ===
-      String(item.axis_project_id || item.project_id || "").trim()
-  ) ||
-  (
-    !isNewProjectSync &&
-    serial &&
-    r.project_type !== "new_sales_project" &&
-    String(r.serial_number || "").trim() === serial
-  )
-);
+    const existing = isNewProjectSync
+      ? state.records.find(r =>
+          r.project_type === "new_sales_project" &&
+          item.axis_record_id &&
+          String(r.id || "").trim() === String(item.axis_record_id || "").trim()
+        )
+      : state.records.find(r =>
+          (
+            item.axis_record_id &&
+            String(r.id || "").trim() === String(item.axis_record_id || "").trim()
+          ) ||
+          (
+            item.axis_project_id &&
+            r.project_type !== "new_sales_project" &&
+            String(r.oem_project_id || "").trim() === String(item.axis_project_id || "").trim()
+          ) ||
+          (
+            item.axis_serial_number &&
+            r.project_type !== "new_sales_project" &&
+            String(r.serial_number || "").trim() === String(item.axis_serial_number || "").trim()
+          ) ||
+          (
+            serial &&
+            r.project_type !== "new_sales_project" &&
+            String(r.serial_number || "").trim() === serial
+          )
+        );
 
-const isNewProject =
-  existing?.project_type === "new_sales_project" ||
-  isNewProjectSync;
+    const isNewProject =
+      existing?.project_type === "new_sales_project" ||
+      isNewProjectSync;
 
     const tradeInValue = Number(
       item.trade_in_value ||
@@ -3011,25 +3017,26 @@ const isNewProject =
         item.project_id ||
         "",
 
-   make: isNewProject
-  ? existing?.make || "New Project"
-  : item.make || existing?.make || "",
+      make: isNewProject
+        ? existing?.make || "New Project"
+        : item.make || existing?.make || "",
 
-model: isNewProject
-  ? existing?.model || item.project_name || "New Project"
-  : item.model || existing?.model || "",
+      model: isNewProject
+        ? existing?.model || item.project_name || "New Project"
+        : item.model || existing?.model || "",
 
-modality: isNewProject
-  ? existing?.modality || "PROJECT"
-  : normalizeModality(item.modality || existing?.modality || ""),
+      modality: isNewProject
+        ? existing?.modality || "PROJECT"
+        : normalizeModality(item.modality || existing?.modality || ""),
 
-serial_number: isNewProject
-  ? existing?.serial_number || ""
-  : serial || existing?.serial_number || "",
+      serial_number: isNewProject
+        ? existing?.serial_number || ""
+        : serial || existing?.serial_number || "",
 
-dom: isNewProject
-  ? existing?.dom || ""
-  : item.dom || existing?.dom || "",
+      dom: isNewProject
+        ? existing?.dom || ""
+        : item.dom || existing?.dom || "",
+
       site:
         existing?.site ||
         item.site ||
@@ -3093,20 +3100,27 @@ dom: isNewProject
 
       alert_enabled: existing?.alert_enabled || "yes",
       threshold_years: existing?.threshold_years || "",
-      alert_override: existing?.alert_override || "service",
+      alert_override: isNewProject
+        ? existing?.alert_override || ""
+        : existing?.alert_override || "service",
 
-      proactive_signal: "yes",
+      proactive_signal: isNewProject ? existing?.proactive_signal || "" : "yes",
+
       proactive_type: isNewProject
-        ? "new_project_trade_in_sync"
+        ? existing?.proactive_type || "new_project_trade_in_sync"
         : "trade_in_field_update",
 
-      proactive_date: todayISO(),
+      proactive_date: isNewProject
+        ? existing?.proactive_date || todayISO()
+        : todayISO(),
 
       proactive_reason: isNewProject
         ? "Associated trade-in equipment was synced back from the Trade-In app for this new sales project."
         : "Trade-In details were synced back from the Trade-In app. Rep should review trade-in value, finalize quote numbers, and decide whether to submit to Siemens/Espin Trade-In Desk.",
 
-      proactive_enabled: "yes",
+      proactive_enabled: isNewProject
+        ? existing?.proactive_enabled || "no"
+        : "yes",
 
       rep_status: existing?.rep_status || (isNewProject ? "new_project" : "needed"),
       rep_action: existing?.rep_action || "",
@@ -3205,29 +3219,19 @@ dom: isNewProject
         new Date().toISOString(),
 
       tradein_equipment_make:
-        isNewProject
-          ? item.make || existing?.tradein_equipment_make || ""
-          : existing?.tradein_equipment_make || item.make || "",
+        item.make || existing?.tradein_equipment_make || "",
 
       tradein_equipment_model:
-        isNewProject
-          ? item.model || existing?.tradein_equipment_model || ""
-          : existing?.tradein_equipment_model || item.model || "",
+        item.model || existing?.tradein_equipment_model || "",
 
       tradein_equipment_modality:
-        isNewProject
-          ? normalizeModality(item.modality || existing?.tradein_equipment_modality || "")
-          : existing?.tradein_equipment_modality || normalizeModality(item.modality || ""),
+        normalizeModality(item.modality || existing?.tradein_equipment_modality || ""),
 
       tradein_equipment_serial_number:
-        isNewProject
-          ? serial || existing?.tradein_equipment_serial_number || ""
-          : existing?.tradein_equipment_serial_number || serial || "",
+        serial || existing?.tradein_equipment_serial_number || "",
 
       tradein_equipment_dom:
-        isNewProject
-          ? item.dom || existing?.tradein_equipment_dom || ""
-          : existing?.tradein_equipment_dom || item.dom || "",
+        item.dom || existing?.tradein_equipment_dom || "",
 
       tradein_availability_timeframe: item.availability_timeframe || existing?.tradein_availability_timeframe || "",
       tradein_in_use_status: item.in_use_status || existing?.tradein_in_use_status || "",
@@ -3247,8 +3251,11 @@ dom: isNewProject
 
     if (existing) {
       Object.assign(existing, imported);
-      evaluateAndPush(existing);
-    } else {
+
+      if (!isNewProject) {
+        evaluateAndPush(existing);
+      }
+    } else if (!isNewProject) {
       state.records.unshift(imported);
       evaluateAndPush(imported);
     }
@@ -3804,12 +3811,43 @@ async function sendToEspin(type, rec) {
         throw new Error(projectData?.error || projectData?.message || "Project creation failed");
       }
 localStorage.setItem("axis_record_id", rec.id || "");
-localStorage.setItem("axis_project_id", rec.oem_project_id || "");
+localStorage.setItem("axis_parent_record_id", rec.id || "");
+
+localStorage.setItem("axis_project_id", rec.oem_project_id || rec.id || "");
 localStorage.setItem("axis_serial_number", rec.serial_number || "");
+
+localStorage.setItem("axis_parent_project_type", rec.project_type || "");
+localStorage.setItem("axis_parent_project_name", rec.model || rec.site || "");
+
+localStorage.setItem(
+  "axis_source",
+  rec.project_type === "new_sales_project"
+    ? "new_axis_project"
+    : "existing_axis_equipment"
+);
+
+localStorage.setItem(
+  "sync_mode",
+  rec.project_type === "new_sales_project"
+    ? "sync_tradein_to_new_axis_project"
+    : "update_existing_axis_record"
+);
+
+localStorage.setItem(
+  "axis_parent_project_type",
+  isNewProject ? "new_sales_project" : "lifecycle_equipment"
+);
+
+localStorage.setItem(
+  "axis_parent_project_name",
+  rec.model || rec.site || rec.oem_project_id || ""
+);
+
 localStorage.setItem(
   "axis_source",
   isNewProject ? "new_axis_project" : "existing_axis_equipment"
 );
+
 localStorage.setItem(
   "sync_mode",
   isNewProject
