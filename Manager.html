@@ -2150,69 +2150,10 @@ service_cost_trend: r.service_cost_trend || "",
   XLSX.writeFile(workbook, "espin_lifecycle_export.xlsx");
 }
 function init() {
-
   loadRecords();
-
   render();
 
- // 🔥 AUTO REFRESH MANAGER VIEW EVERY 5 SECONDS
-// Only refresh when data actually changed, and never while manager is typing.
-let lastStorageSnapshot =
-  (localStorage.getItem(STORAGE_KEY) || "[]") +
-  "|" +
-  (localStorage.getItem("espin_rep_queue") || "[]") +
-  "|" +
-  (localStorage.getItem("axis_manager_sync_ping_v1") || "");
-
-setInterval(() => {
-  const active = document.activeElement;
-
-  const managerIsTyping =
-    active &&
-    (
-      active.id === "managerResponseAction" ||
-      active.id === "managerResponseDate" ||
-      active.id === "managerResponseNotes"
-    );
-
-  if (managerIsTyping) return;
-
-  render();
-
-}, 1500);
-
- const currentSnapshot =
-  (localStorage.getItem(STORAGE_KEY) || "[]") +
-  "|" +
-  (localStorage.getItem("espin_rep_queue") || "[]") +
-  "|" +
-  (localStorage.getItem("axis_manager_sync_ping_v1") || "");
-
-  if (currentSnapshot === lastStorageSnapshot) {
-    return;
-  }
-
-  lastStorageSnapshot = currentSnapshot;
-
-  try {
-  state.records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-} catch {
-  state.records = [];
-}
-
-  render();
-}, 5000);
-// 🔥 REAL-TIME CROSS-TAB SYNC
-window.addEventListener("storage", (e) => {
-  if (
-    e.key === STORAGE_KEY ||
-    e.key === "espin_rep_queue" ||
-    e.key === "axis_manager_sync_ping_v1"
-  ) {
-    render();
-  }
-});
-
+  setInterval(() => {
     const active = document.activeElement;
 
     const managerIsTyping =
@@ -2223,29 +2164,29 @@ window.addEventListener("storage", (e) => {
         active.id === "managerResponseNotes"
       );
 
-    try {
-
-      state.records = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "[]"
-      );
-
-    } catch {
-
-      state.records = [];
-
-    }
-
     if (!managerIsTyping) {
       render();
     }
+  }, 1500);
 
-  }
+  window.addEventListener("storage", (e) => {
+    if (
+      e.key === STORAGE_KEY ||
+      e.key === "espin_rep_queue" ||
+      e.key === "axis_manager_sync_ping_v1"
+    ) {
+      render();
+    }
+  });
 
-});
+  window.addEventListener("rep_feed_update", () => {
+    render();
+  });
+
   $("clearBtn").addEventListener("click", () => {
-
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem("espin_rep_queue");
+    localStorage.removeItem("axis_manager_sync_ping_v1");
 
     state.records = [];
     state.selectedId = null;
@@ -2254,34 +2195,19 @@ window.addEventListener("storage", (e) => {
     $("csvInput").value = "";
 
     render();
-
   });
 
   document.getElementById("csvInput").addEventListener("change", function (e) {
-
     const file = e.target.files[0];
 
-    console.log("XLSX LOADED:", typeof XLSX);
-
-    if (!file) {
-      console.log("❌ NO FILE SELECTED");
-      return;
-    }
-
-    console.log("🔥 FILE SELECTED:", file.name);
+    if (!file) return;
 
     try {
-
       handleCSVUpload(file);
-
     } catch (err) {
-
-      console.error("❌ HANDLE UPLOAD FAILED:", err);
-
+      console.error("HANDLE UPLOAD FAILED:", err);
     }
-
   });
-
 }
 function selectRow(id) {
   const sourceRecords = repMode
