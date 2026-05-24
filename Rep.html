@@ -3771,8 +3771,7 @@ async function sendToEspin(type, rec) {
     const email = "info@espinmedical.com";
 
     if (type === "tradein_app") {
-      const isNewProject =
-        rec.project_type === "new_sales_project";
+      const isNewProject = rec.project_type === "new_sales_project";
 
       const projectRes = await fetchWithTimeout(
         "https://espin-equipment.vercel.app/api/admin/equipment",
@@ -3782,19 +3781,19 @@ async function sendToEspin(type, rec) {
             "Content-Type": "application/json",
             "x-user-email": email
           },
-         body: JSON.stringify({
-  project_name: rec.site || rec.model || "AXIS Project",
-  project_identifier: rec.oem_project_id || rec.id || `AXIS-${Date.now()}`,
-  site_address: rec.site_address || "",
-  city: rec.city || "",
-  state: rec.state || "",
-  zip_code: rec.zip_code || "",
-  sales_rep_first: rec.sales_rep_first || "",
-  sales_rep_last: rec.sales_rep_last || "",
-  sales_rep_company: rec.sales_rep_company || "",
-  sales_rep_phone: rec.sales_rep_phone || "",
-  sales_rep_email: "info@espinmedical.com"
-})
+          body: JSON.stringify({
+            project_name: rec.site || rec.model || "AXIS Project",
+            project_identifier: rec.oem_project_id || rec.id || `AXIS-${Date.now()}`,
+            site_address: rec.site_address || "",
+            city: rec.city || "",
+            state: rec.state || "",
+            zip_code: rec.zip_code || "",
+            sales_rep_first: rec.sales_rep_first || "",
+            sales_rep_last: rec.sales_rep_last || "",
+            sales_rep_company: rec.sales_rep_company || "",
+            sales_rep_phone: rec.sales_rep_phone || "",
+            sales_rep_email: "info@espinmedical.com"
+          })
         }
       );
 
@@ -3810,50 +3809,30 @@ async function sendToEspin(type, rec) {
       if (!projectRes.ok || !projectData?.id) {
         throw new Error(projectData?.error || projectData?.message || "Project creation failed");
       }
-localStorage.setItem("axis_record_id", rec.id || "");
-localStorage.setItem("axis_parent_record_id", rec.id || "");
 
-localStorage.setItem("axis_project_id", rec.oem_project_id || rec.id || "");
-localStorage.setItem("axis_serial_number", rec.serial_number || "");
+      localStorage.setItem("axis_record_id", rec.id || "");
+      localStorage.setItem("axis_parent_record_id", rec.id || "");
+      localStorage.setItem("axis_project_id", rec.oem_project_id || rec.id || "");
+      localStorage.setItem("axis_serial_number", rec.serial_number || "");
+      localStorage.setItem(
+        "axis_parent_project_type",
+        isNewProject ? "new_sales_project" : "lifecycle_equipment"
+      );
+      localStorage.setItem(
+        "axis_parent_project_name",
+        rec.model || rec.site || rec.oem_project_id || ""
+      );
+      localStorage.setItem(
+        "axis_source",
+        isNewProject ? "new_axis_project" : "existing_axis_equipment"
+      );
+      localStorage.setItem(
+        "sync_mode",
+        isNewProject
+          ? "sync_tradein_to_new_axis_project"
+          : "update_existing_axis_record"
+      );
 
-localStorage.setItem("axis_parent_project_type", rec.project_type || "");
-localStorage.setItem("axis_parent_project_name", rec.model || rec.site || "");
-
-localStorage.setItem(
-  "axis_source",
-  rec.project_type === "new_sales_project"
-    ? "new_axis_project"
-    : "existing_axis_equipment"
-);
-
-localStorage.setItem(
-  "sync_mode",
-  rec.project_type === "new_sales_project"
-    ? "sync_tradein_to_new_axis_project"
-    : "update_existing_axis_record"
-);
-
-localStorage.setItem(
-  "axis_parent_project_type",
-  isNewProject ? "new_sales_project" : "lifecycle_equipment"
-);
-
-localStorage.setItem(
-  "axis_parent_project_name",
-  rec.model || rec.site || rec.oem_project_id || ""
-);
-
-localStorage.setItem(
-  "axis_source",
-  isNewProject ? "new_axis_project" : "existing_axis_equipment"
-);
-
-localStorage.setItem(
-  "sync_mode",
-  isNewProject
-    ? "sync_tradein_to_new_axis_project"
-    : "update_existing_axis_record"
-);
       if (!isNewProject) {
         const detailsRes = await fetch(
           "https://espin-equipment.vercel.app/api/equipment-details/equipment-save",
@@ -3878,9 +3857,38 @@ localStorage.setItem(
         }
       }
 
+      const tradeUrl = new URL("https://espin-equipment.vercel.app/EquipmentDetails.html");
+
+      tradeUrl.searchParams.set("projectId", projectData.id);
+      tradeUrl.searchParams.set("source", "axis");
+      tradeUrl.searchParams.set("axis_record_id", rec.id || "");
+      tradeUrl.searchParams.set("axis_parent_record_id", rec.id || "");
+      tradeUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
+      tradeUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
+      tradeUrl.searchParams.set(
+        "axis_parent_project_type",
+        isNewProject ? "new_sales_project" : "lifecycle_equipment"
+      );
+      tradeUrl.searchParams.set(
+        "axis_parent_project_name",
+        rec.model || rec.site || rec.oem_project_id || ""
+      );
+      tradeUrl.searchParams.set(
+        "axis_source",
+        isNewProject ? "new_axis_project" : "existing_axis_equipment"
+      );
+      tradeUrl.searchParams.set(
+        "sync_mode",
+        isNewProject
+          ? "sync_tradein_to_new_axis_project"
+          : "update_existing_axis_record"
+      );
+
+      window.open(tradeUrl.toString(), "_blank");
+
       rec.submitted_to = "tradein_app";
       rec.tradein_project_id = projectData.id;
-rec.tradein_modality_id = "";
+      rec.tradein_modality_id = "";
       rec.tradein_sent_to_app_at = new Date().toISOString();
 
       syncFeedStatus(rec);
