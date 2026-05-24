@@ -264,12 +264,18 @@ input[type="month"]{
 
   <div id="form-container"></div>
 
-  <div class="button-row">
-    <button id="saveBtn" onclick="saveData()">Save and Continue to Images</button>
-   <button id="sendEquipmentBtn" class="send-btn" onclick="sendEquipmentOnly()">
-  Send Equipment Update Only
-</button>
-  </div>
+ <div class="button-row">
+  <button id="saveBtn" onclick="saveData()">Save and Continue to Images</button>
+
+  <button id="sendEquipmentBtn" class="send-btn" onclick="sendEquipmentOnly()">
+    Send Equipment Update Only
+  </button>
+
+  <button id="downloadEquipmentBtn" class="secondary" onclick="downloadEquipment()" style="display:none;">
+    Download Excel
+  </button>
+</div>
+
 <div id="formError" style="
   color:red;
   font-weight:700;
@@ -299,7 +305,7 @@ if (auth !== "true" || !userEmail) {
 const params = new URLSearchParams(location.search);
 
 const AXIS_DEMO_SYNC_ENABLED = true;
-
+const ADMIN_DOWNLOAD_EXCEL_ENABLED = false;
 const projectId =
   params.get("projectId") ||
   params.get("id") ||
@@ -513,61 +519,29 @@ async function clearChangedFieldsForAdmin(){
 
   } catch {}
 }
-async function loadData(){
-  try {
-    if (isCreateMode && !modalityId) {
-      formData = {};
-      dirtyFields = new Set();
+function initDownloadButton() {
+  const btn = document.getElementById("downloadEquipmentBtn");
+  if (!btn) return;
 
-      if (currentModality) {
-        formData.modality = currentModality;
-        document.getElementById("modality").value = currentModality;
-        triggerRender(currentModality);
-      } else {
-        document.getElementById("modality").value = "";
-        document.getElementById("form-container").innerHTML = "";
-      }
-      return;
-    }
+  btn.style.display = ADMIN_DOWNLOAD_EXCEL_ENABLED ? "block" : "none";
+}
 
-    const qs = new URLSearchParams();
-    qs.set("projectId", projectId);
-    if (modalityId) qs.set("modalityId", modalityId);
-    if (currentModality) qs.set("modality", currentModality);
+function downloadEquipment() {
+  const email = localStorage.getItem("espinEquipment_userEmail");
 
-    const res = await fetch(`/api/equipment-details?${qs.toString()}`, {
-      headers: { "x-user-email": userEmail }
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    formData = (json && json.data && typeof json.data === "object") ? json.data : {};
-    dirtyFields = new Set();
-
-    if (json?.modalityId) {
-      modalityId = String(json.modalityId).trim();
-      localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, modalityId);
-    }
-
-    if (json?.modality) {
-      currentModality = String(json.modality).toUpperCase().trim();
-    } else if (formData.modality) {
-      currentModality = String(formData.modality).toUpperCase().trim();
-    }
-
-    if (currentModality) {
-      formData.modality = currentModality;
-      document.getElementById("modality").value = currentModality;
-      localStorage.setItem(`${MODALITY_KEY}_${projectId}`, currentModality);
-      triggerRender(currentModality);
-      return;
-    }
-
-    document.getElementById("modality").value = "";
-    document.getElementById("form-container").innerHTML = "";
-  } catch (err) {
-    console.error("LOAD ERROR:", err);
+  if (!ADMIN_DOWNLOAD_EXCEL_ENABLED) {
+    alert("Download disabled");
+    return;
   }
+
+  if (!projectId) {
+    alert("Missing project");
+    return;
+  }
+
+  const url = `/api/export-excel?projectId=${projectId}&email=${encodeURIComponent(email)}`;
+
+  window.open(url, "_blank");
 }
 
 function group(title){
@@ -1356,6 +1330,7 @@ setTimeout(() => {
     alert(err?.message || "Network / server error");
   }
 }
+initDownloadButton();
 loadData().then(() => {
   setTimeout(() => applyChangedFieldStyling(), 100);
 });

@@ -11,7 +11,7 @@ const AUTH_KEY = `${APP_PREFIX}auth`;
 const EMAIL_KEY = `${APP_PREFIX}userEmail`;
 const PROJECT_ID_KEY = `${APP_PREFIX}activeProjectId`;
 const MODALITY_ID_KEY = `${APP_PREFIX}activeModalityId`;
-
+const ADMIN_DOWNLOAD_PACKAGE_ENABLED = false;
 (() => {
   const auth = localStorage.getItem(AUTH_KEY);
   const email = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().trim();
@@ -43,7 +43,15 @@ localStorage.setItem(PROJECT_ID_KEY, projectId);
 if (modalityId) {
   localStorage.setItem(`${MODALITY_ID_KEY}_${projectId}`, modalityId);
 }
+function downloadFullPackage() {
+  if (!ADMIN_DOWNLOAD_PACKAGE_ENABLED) {
+    alert("Download disabled");
+    return;
+  }
 
+  const url = `/api/export-package?projectId=${projectId}&email=${encodeURIComponent(userEmail)}`;
+  window.open(url, "_blank");
+}
 function handleBack(){
   // 🔥 clear local
   sessionStorage.removeItem(BADGE_STORAGE_KEY);
@@ -445,11 +453,14 @@ button:disabled{
     <div id="gallery" class="gallery"></div>
   </div>
 
-  <div class="batch-bar">
-    <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
-    <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
-  </div>
+ <div class="batch-bar">
+  <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
+  <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
 
+  <button id="downloadPackageBtn" onclick="downloadFullPackage()" class="batch-btn" style="display:none;">
+    Download Equipment + Images
+  </button>
+</div>
   <div id="previewModal" class="preview-modal">
     <div class="preview-close" id="previewClose">✕</div>
     <img id="previewImage">
@@ -465,7 +476,11 @@ const uploadSpinner = document.getElementById("uploadSpinner");
 const gallery = document.getElementById("gallery");
 const sendBtn = document.getElementById("sendBtn");
 const deleteBtn = document.getElementById("deleteBtn");
+const downloadPackageBtn = document.getElementById("downloadPackageBtn");
 
+if (downloadPackageBtn) {
+  downloadPackageBtn.style.display = ADMIN_DOWNLOAD_PACKAGE_ENABLED ? "block" : "none";
+}
 const previewModal = document.getElementById("previewModal");
 const previewImage = document.getElementById("previewImage");
 const previewClose = document.getElementById("previewClose");
