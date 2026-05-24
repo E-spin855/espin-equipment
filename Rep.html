@@ -1968,6 +1968,23 @@ function renderNewProjectDetail(rec) {
               DOM: <strong>${rec.tradein_equipment_dom || "-"}</strong><br>
               Trade-In Credit:
               <strong>$${tradeInCredit.toLocaleString()}</strong>
+<br><br>
+<label style="display:block;margin-top:10px;">Trade-In Desk Value</label>
+<input
+  id="newProjectTradeInCreditInput"
+  type="number"
+  value="${rec.tradein_credit || rec.quote_trade_in_credit || ""}"
+  placeholder="Enter trade-in value"
+/>
+
+<button
+  type="button"
+  class="green"
+  style="margin-top:10px;"
+  onclick="saveNewProjectTradeInCredit('${rec.id}')"
+>
+  Save Trade-In Value
+</button>
             </div>
           </div>
         `
@@ -2123,6 +2140,32 @@ function renderNewProjectDetail(rec) {
   `;
 
   $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
+}
+function saveNewProjectTradeInCredit(id) {
+  const rec = state.records.find(r => r.id === id);
+  if (!rec) return;
+
+  const value = Number($("newProjectTradeInCreditInput").value || 0);
+
+  rec.tradein_credit = value;
+  rec.quote_trade_in_credit = value;
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const net = Math.max(0, quoteAmount - value);
+  const profit = net - estimatedCost;
+
+  rec.quote_net_amount = net;
+  rec.quote_profit = profit;
+  rec.quote_margin = net > 0 ? Math.round((profit / net) * 100) : 0;
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "new_project_tradein_value_updated";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
 }
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
