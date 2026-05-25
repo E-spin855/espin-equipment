@@ -651,7 +651,7 @@ td:nth-child(11){
 <div class="panel" id="unmatchedTradeInPanel" style="margin-bottom:18px;display:none;">
   <div class="panel-head">
     <h2>Unmatched Trade-In Leads</h2>
-    <span class="mini">Trade-In records ready to attach to an existing AXIS lifecycle project or new sales project</span>
+    <span class="mini">Trade-In records ready to attach to a new AXIS sales project</span>
   </div>
 
   <div class="panel-body table-wrap">
@@ -3811,6 +3811,132 @@ function buildManagerEscalation(rec) {
       Manager should review this opportunity before it stalls.
     </div>
   `;
+}
+function attachUnmatchedTradeInToProject(leadId) {
+  let unmatched = [];
+
+  try {
+    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
+    if (!Array.isArray(unmatched)) unmatched = [];
+  } catch {
+    unmatched = [];
+  }
+
+  const lead = unmatched.find(item =>
+    String(item.id || "") === String(leadId || "")
+  );
+
+  if (!lead) {
+    alert("Unmatched trade-in lead not found.");
+    return;
+  }
+
+  const select = document.getElementById(`attachTradeInSelect_${leadId}`);
+  const projectId = select?.value || "";
+
+  if (!projectId) {
+    alert("Select a new AXIS project first.");
+    return;
+  }
+
+  const project = state.records.find(r =>
+    String(r.id || "") === String(projectId || "")
+  );
+
+  if (!project) {
+    alert("Selected project not found.");
+    return;
+  }
+
+  if (project.project_type !== "new_sales_project") {
+    alert("Unmatched trade-ins can only be attached to new sales projects.");
+    return;
+  }
+
+  if (
+    project.lifecycle_completed ||
+    project.quote_status === "won" ||
+    project.quote_status === "lost"
+  ) {
+    alert("This new project is closed and cannot receive a trade-in.");
+    return;
+  }
+
+  const tradeInValue = Number(
+    lead.trade_in_value ||
+    lead.trade_in_credit ||
+    lead.tradein_credit ||
+    lead.estimated_trade_in_value ||
+    lead.tradein_estimated_value ||
+    0
+  );
+
+  project.tradein_sync_received = true;
+  project.tradein_seen_by_rep = false;
+
+  project.tradein_project_id = lead.project_id || "";
+  project.tradein_modality_id = lead.modality_id || "";
+
+  project.tradein_equipment_make = lead.make || "";
+  project.tradein_equipment_model = lead.model || "";
+  project.tradein_equipment_modality = normalizeModality(lead.modality || "");
+  project.tradein_equipment_serial_number = lead.serial_number || "";
+  project.tradein_equipment_dom = lead.dom || "";
+
+  project.tradein_credit = tradeInValue;
+  project.tradein_estimated_value = tradeInValue;
+  project.quote_trade_in_credit = tradeInValue;
+
+  const quoteAmount = Number(project.quote_amount || 0);
+  const estimatedCost = Number(project.quote_estimated_cost || 0);
+  const netQuote = Math.max(0, quoteAmount - tradeInValue);
+  const profit = netQuote - estimatedCost;
+
+  project.quote_net_amount = netQuote;
+  project.quote_profit = profit;
+  project.quote_margin = netQuote > 0
+    ? Math.round((profit / netQuote) * 100)
+    : 0;
+
+  project.tradein_synced_to_axis_at =
+    lead.last_tradein_update_at || new Date().toISOString();
+
+  project.tradein_last_update_by = lead.last_tradein_update_by || "";
+  project.tradein_last_update_at = lead.last_tradein_update_at || "";
+
+  project.image_sync_received = lead.image_sync_received || false;
+  project.image_count = lead.image_count || 0;
+  project.images = lead.images || [];
+
+  project.last_image_update_by = lead.last_image_update_by || "";
+  project.last_image_update_at = lead.last_image_update_at || "";
+
+  project.manager_unseen_update = true;
+  project.manager_flash_at = new Date().toISOString();
+  project.manager_flash_type = "unmatched_tradein_attached_to_new_project";
+
+  unmatched = unmatched.map(item => {
+    if (String(item.id || "") !== String(leadId || "")) return item;
+
+    return {
+      ...item,
+      linked_new_project_id: project.id,
+      linked_axis_project_id: "",
+      linked_at: new Date().toISOString(),
+      status: "attached_to_new_project"
+    };
+  });
+
+  localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
+
+  saveRecords();
+  syncFeedStatus(project);
+
+  state.selectedId = project.id;
+
+  render();
+
+  alert("Unmatched trade-in attached to new AXIS project.");
 }
 function renderUnmatchedTradeInLeads() {
   const panel = $("unmatchedTradeInPanel");
