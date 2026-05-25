@@ -1307,18 +1307,20 @@ function renderTable() {
   };
 
   let visibleRecords = state.records.filter(r =>
-  r.project_type !== "new_sales_project"
-);
+    r.project_type !== "new_sales_project"
+  );
 
-if (state.selectedRep) {
-  visibleRecords = visibleRecords.filter(r => {
-    const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
-    return rep === state.selectedRep;
-  });
-}
+  if (state.selectedRep) {
+    visibleRecords = visibleRecords.filter(r => {
+      const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
+      return rep === state.selectedRep;
+    });
+  }
 
   const sorted = [...visibleRecords].sort((a, b) => {
     const score = (rec) => {
+      if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 999;
+
       if (rec.lifecycle_completed) return 0;
       if (rec.submitted_to) return 0;
       if (rec.next_action_date && rec.next_action_date > todayISO()) return 1;
@@ -1348,120 +1350,133 @@ if (state.selectedRep) {
   });
 
   tbody.innerHTML = sorted.map(rec => {
-   const selectedClass = [
-  rec.id === state.selectedId ? "selected" : "",
-  rec.manager_response_action && !rec.manager_response_seen_by_rep ? "manager-response-flash" : ""
-].filter(Boolean).join(" ");
+    const hasUnseenManagerResponse =
+      rec.manager_response_action && !rec.manager_response_seen_by_rep;
+
+    const selectedClass = [
+      rec.id === state.selectedId ? "selected" : "",
+      hasUnseenManagerResponse ? "manager-response-flash" : ""
+    ].filter(Boolean).join(" ");
 
     return `
       <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
-  <td>${rec.project_type === "new_sales_project" ? "New Sales Project" : rec.oem_project_id || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? "New Sales Project" : rec.oem_project_id || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? rec.model || "" : rec.make || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? rec.model || "" : rec.make || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? "New Equipment Opportunity" : rec.model || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? "New Equipment Opportunity" : rec.model || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_modality || "-" : rec.modality || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_modality || "-" : rec.modality || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_serial_number || "-" : rec.serial_number || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_serial_number || "-" : rec.serial_number || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_dom || "-" : rec.dom || ""}</td>
+        <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_dom || "-" : rec.dom || ""}</td>
 
-  <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
+        <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
+
         <td>
-  ${
-    rec.project_type === "new_sales_project" || rec.tradein_sync_received
-      ? "-"
-      : rec.quote_amount
-      ? getPressureBadge(getQuotePriority(rec))
-      : (() => {
-          const p = getPressureScore(rec);
-          if (p >= 6) return '<span class="pill ready">HIGH</span>';
-          if (p >= 3) return '<span class="pill pending">MED</span>';
-          return '<span class="pill local">LOW</span>';
-        })()
-  }
-</td>
+          ${
+            rec.project_type === "new_sales_project" || rec.tradein_sync_received
+              ? "-"
+              : rec.quote_amount
+              ? getPressureBadge(getQuotePriority(rec))
+              : (() => {
+                  const p = getPressureScore(rec);
+                  if (p >= 6) return '<span class="pill ready">HIGH</span>';
+                  if (p >= 3) return '<span class="pill pending">MED</span>';
+                  return '<span class="pill local">LOW</span>';
+                })()
+          }
+        </td>
 
         <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
-       <td>
-  ${
-    (() => {
-      if (rec.lifecycle_completed) {
-        return `<span class="pill submitted">COMPLETED</span>`;
-      }
-if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
-  return `
-    <span class="pill pending tradein-flash">
-      MANAGER UPDATE
-    </span>
-  `;
-}
-    if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-  return `
-    <span class="pill submitted tradein-flash">
-      NEW TRADE-IN INFO RECEIVED
-    </span>
-  `;
-}
-
-if (rec.tradein_sync_received && rec.tradein_seen_by_rep) {
-  return `
-    <span class="pill pending">
-      TRADE-IN IN PROGRESS
-    </span>
-  `;
-}
-
-      if (rec.project_type === "new_sales_project") {
-        if (rec.quote_status === "lost") {
-          return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
-        }
-
-        return `<span class="pill local">NEW PROJECT OPEN</span>`;
-      }
-
-      if (rec.quote_amount) {
-        const status = String(rec.quote_status || "draft").toUpperCase();
-
-        return `
-          <div class="quote-status-wrap">
-            <span class="quote-main-badge">Quote ${status}</span>
-            ${getQuoteFollowUpAlertBadge(rec)}
-          </div>
-        `;
-      }
-
-      const alerts = getAlerts(rec);
-
-      if (!alerts.length) {
-        return `<span class="mini">No Action</span>`;
-      }
-
-      return alerts.map(a =>
-        `<span class="alert-badge alert-${a.type}">${a.label}</span>`
-      ).join("");
-    })()
-  }
-</td>
         <td>
           ${
             (() => {
+              if (hasUnseenManagerResponse) {
+                return `
+                  <span class="pill pending tradein-flash">
+                    MANAGER UPDATE
+                  </span>
+                `;
+              }
+
+              if (rec.lifecycle_completed) {
+                return `<span class="pill submitted">COMPLETED</span>`;
+              }
+
+              if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+                return `
+                  <span class="pill submitted tradein-flash">
+                    NEW TRADE-IN INFO RECEIVED
+                  </span>
+                `;
+              }
+
+              if (rec.tradein_sync_received && rec.tradein_seen_by_rep) {
+                return `
+                  <span class="pill pending">
+                    TRADE-IN IN PROGRESS
+                  </span>
+                `;
+              }
+
+              if (rec.project_type === "new_sales_project") {
+                if (rec.quote_status === "lost") {
+                  return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
+                }
+
+                return `<span class="pill local">NEW PROJECT OPEN</span>`;
+              }
+
+              if (rec.quote_amount) {
+                const status = String(rec.quote_status || "draft").toUpperCase();
+
+                return `
+                  <div class="quote-status-wrap">
+                    <span class="quote-main-badge">Quote ${status}</span>
+                    ${getQuoteFollowUpAlertBadge(rec)}
+                  </div>
+                `;
+              }
+
+              const alerts = getAlerts(rec);
+
+              if (!alerts.length) {
+                return `<span class="mini">No Action</span>`;
+              }
+
+              return alerts.map(a =>
+                `<span class="alert-badge alert-${a.type}">${a.label}</span>`
+              ).join("");
+            })()
+          }
+        </td>
+
+        <td>
+          ${
+            (() => {
+              if (hasUnseenManagerResponse) {
+                return `<span class="next-action-label next-action-quote">Open Manager Update</span>`;
+              }
+
               if (rec.lifecycle_completed) {
                 return `<span class="next-action-label next-action-completed">Completed</span>`;
               }
-if (rec.project_type === "new_sales_project" || rec.tradein_sync_received) {
-  if (rec.quote_status === "lost") {
-    return `<span class="next-action-label next-action-disposition">Delete or Archive</span>`;
-  }
 
-  if (rec.tradein_sync_received) {
-    return `<span class="next-action-label next-action-quote">Finalize Quote</span>`;
-  }
+              if (rec.project_type === "new_sales_project" || rec.tradein_sync_received) {
+                if (rec.quote_status === "lost") {
+                  return `<span class="next-action-label next-action-disposition">Delete or Archive</span>`;
+                }
 
-  return `<span class="next-action-label next-action-proactive">Send to Trade-In App</span>`;
-}
+                if (rec.tradein_sync_received) {
+                  return `<span class="next-action-label next-action-quote">Finalize Quote</span>`;
+                }
+
+                return `<span class="next-action-label next-action-proactive">Send to Trade-In App</span>`;
+              }
+
               if (rec.quote_amount) {
                 return `<span class="next-action-label next-action-quote">Quote Created</span>`;
               }
@@ -3996,7 +4011,10 @@ lead.linked_at = new Date().toISOString();
   importTradeInSyncRecords();
 
   renderStats();
-  renderRepMenu();
+
+  // ✅ REP SIDE MUST SHOW REP ALERT FEED, NOT REP MENU
+  renderRepFeed();
+
   renderFollowUpAlertCenter();
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
@@ -4014,7 +4032,17 @@ queue = queue.filter(item => {
     `${r.oem_project_id}_${r.serial_number}` === item.key
   );
 if (rec) {
-  item.status = rec.rep_status; // 🔥 FORCE TRUE SOURCE OF STATE
+  item.status = rec.rep_status;
+
+  // ✅ FORCE MANAGER RESPONSE FLAGS FROM MAIN RECORD
+  item.manager_response_action = rec.manager_response_action || "";
+  item.manager_response_date = rec.manager_response_date || "";
+  item.manager_response_notes = rec.manager_response_notes || "";
+  item.manager_response_at = rec.manager_response_at || "";
+  item.manager_response_seen_by_rep =
+    rec.manager_response_seen_by_rep !== undefined
+      ? rec.manager_response_seen_by_rep
+      : true;
 }
   if (!rec) return false;
 if (rec.lifecycle_completed) {
@@ -4050,7 +4078,9 @@ container.innerHTML = queue.map(item => `
       <div style="font-weight:700;">
   ${item.project}
   <span class="pill ${
-  item.status === "completed"
+  item.manager_response_action && !item.manager_response_seen_by_rep
+    ? "pending tradein-flash"
+    : item.status === "completed"
     ? "submitted"
     : item.status === "acted"
     ? "submitted"
@@ -4058,7 +4088,9 @@ container.innerHTML = queue.map(item => `
 }" style="margin-left:8px;">
 
   ${
-    item.status === "completed"
+    item.manager_response_action && !item.manager_response_seen_by_rep
+      ? "MANAGER UPDATE"
+      : item.status === "completed"
       ? "Completed"
       : item.status === "acted"
       ? "Actioned"
@@ -5722,7 +5754,7 @@ setInterval(() => {
     renderStats();
     renderFollowUpAlertCenter();
     renderTable();
-    renderRepMenu();
+    renderRepFeed();
 
     if (!document.activeElement || document.activeElement.tagName === "BODY") {
       renderDetail();
