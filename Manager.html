@@ -608,7 +608,11 @@ const $ = (id) => document.getElementById(id);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const nowYear = () => new Date().getFullYear();
 function hasManagerUnseenUpdate(rec) {
-  return rec.manager_unseen_update === true || rec.manager_unseen_update === "true";
+  return (
+    !repMode &&
+    rec.manager_unseen_update === true &&
+    rec.manager_flash_type !== "manager_response"
+  );
 }
 function getDaysSince(date) {
   if (!date) return 999;
@@ -1024,8 +1028,7 @@ if (
 
           return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
         })()
-      : hasManagerUnseenUpdate(rec)
-      ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
+     `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
       : !alerts.length
       ? '<span class="mini">No Action</span>'
       : alerts.map(a => `
@@ -2176,9 +2179,21 @@ function render() {
 
     if (idx >= 0) {
       main[idx] = {
-        ...main[idx],
-        ...q
-      };
+  ...main[idx],
+  ...q,
+  manager_unseen_update:
+    q.manager_flash_type === "manager_response"
+      ? false
+      : q.manager_unseen_update,
+  manager_flash_at:
+    q.manager_flash_type === "manager_response"
+      ? ""
+      : q.manager_flash_at,
+  manager_flash_type:
+    q.manager_flash_type === "manager_response"
+      ? ""
+      : q.manager_flash_type
+};
    } else {
   return;
 }
@@ -2307,20 +2322,77 @@ function selectRow(id) {
   const rec = sourceRecords.find(r => r.id === id);
   if (!rec) return;
 
-  // ✅ Manager opened it, so manager flash must stop
+  const key = `${rec.oem_project_id}_${rec.serial_number}`;
+
   rec.manager_unseen_update = false;
   rec.manager_flash_at = "";
   rec.manager_flash_type = "";
-
-  // ✅ Quote badge can stop flashing too
   rec.quote_seen = true;
 
-  // ✅ Save cleared flash state into both stores
-  syncFeedStatus(rec);
+  let main = [];
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
+  }
 
-  const latest = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  main = main.map(item => {
+    const sameRecord =
+      item.id === rec.id ||
+      item.key === key ||
+      (
+        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
+      );
 
-  const updated = latest.find(r =>
+    if (!sameRecord) return item;
+
+    return {
+      ...item,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      quote_seen: true
+    };
+  });
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
+
+  let queue = [];
+  try {
+    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  queue = queue.map(item => {
+    const sameRecord =
+      item.id === rec.id ||
+      item.key === key ||
+      (
+        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
+      );
+
+    if (!sameRecord) return item;
+
+    return {
+      ...item,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      quote_seen: true
+    };
+  });
+
+  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  state.records = main;
+
+  const updated = main.find(r =>
     r.id === rec.id ||
     (
       String(r.oem_project_id || "") === String(rec.oem_project_id || "") &&
