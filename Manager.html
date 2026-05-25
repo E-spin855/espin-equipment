@@ -1047,55 +1047,38 @@ if (
 </td>
 <td>
   ${
-    (() => {
+    rec.lifecycle_completed
+      ? `<span class="alert-badge alert-completed">COMPLETED</span>`
+      : rec.quote_status === "lost"
+      ? `<span class="pill postponed">QUOTE LOST</span>`
+      : rec.quote_status === "won"
+      ? `<span class="pill submitted">QUOTE WON</span>`
+      : rec.quote_amount
+      ? (() => {
+          const qs = String(rec.quote_status || "draft").toLowerCase();
 
-     if (rec.lifecycle_completed) {
-  return "Completed";
-}
+          if (qs === "draft") {
+            return `
+              <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
+                QUOTE DRAFT
+              </span>
+            `;
+          }
 
-if (rec.quote_status === "lost") {
-  return "Quote Lost";
-}
+          if (qs === "sent") return `<span class="pill quote-sent">QUOTE SENT</span>`;
+          if (qs === "follow_up") return `<span class="pill quote-follow-up">QUOTE FOLLOW UP</span>`;
 
-if (rec.quote_status === "won") {
-  return "Quote Won";
-}
-
-if (rec.quote_amount) {
-  const qs = String(rec.quote_status || "draft").toLowerCase();
-
-  const quoteClass =
-  qs === "draft"
-    ? (rec.quote_seen ? "quote-draft-seen" : "quote-draft")
-    : qs === "sent"
-    ? "quote-sent"
-    : qs === "follow_up"
-    ? "quote-follow-up"
-    : "pending";
-
-return `
-  <span class="pill ${quoteClass}">
-    QUOTE ${qs.replace("_", " ").toUpperCase()}
-  </span>
-`;
-}
-if (!alerts.length) return "-";
-
-      return alerts.map(a => {
-
-        if (a.type === "completed") return "Completed";
-        if (a.type === "disposal") return "Disposition Review";
-        if (a.type === "replacement") return "Plan Replacement";
-        if (a.type === "upgrade") return "Evaluate Upgrade";
-        if (a.type === "planning") return "Budget Planning";
-        if (a.type === "service") return "Service Review";
-        if (a.type === "postponed") return "Follow-up Scheduled";
-
-        return a.label;
-
-      }).join(", ");
-
-    })()
+          return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
+        })()
+      : hasManagerUnseenUpdate(rec)
+      ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
+      : !alerts.length
+      ? '<span class="mini">No Action</span>'
+      : alerts.map(a => `
+          <span class="alert-badge alert-${a.type}">
+            ${a.label}
+          </span>
+        `).join("")
   }
 </td>
 <td>${rec.source || ""}</td>
@@ -2157,6 +2140,7 @@ function markQuoteSeen(id) {
 
   render();
 }
+<script>
 function render() {
   let main = [];
 
@@ -2182,29 +2166,28 @@ function render() {
     const idx = main.findIndex(r =>
       r.id === q.id ||
       r.key === qKey ||
-      const qKey = getRecordKey(q);getRecordKey(r) === qKey
+      getRecordKey(r) === qKey
     );
 
     if (idx >= 0) {
       main[idx] = {
-  ...main[idx],
-  ...q,
-  manager_unseen_update:
-    q.manager_flash_type === "manager_response"
-      ? false
-      : q.manager_unseen_update,
-  manager_flash_at:
-    q.manager_flash_type === "manager_response"
-      ? ""
-      : q.manager_flash_at,
-  manager_flash_type:
-    q.manager_flash_type === "manager_response"
-      ? ""
-      : q.manager_flash_type
-};
-   } else {
-  return;
-}
+        ...main[idx],
+        ...q,
+        key: qKey,
+        manager_unseen_update:
+          q.manager_flash_type === "manager_response"
+            ? false
+            : q.manager_unseen_update,
+        manager_flash_at:
+          q.manager_flash_type === "manager_response"
+            ? ""
+            : q.manager_flash_at,
+        manager_flash_type:
+          q.manager_flash_type === "manager_response"
+            ? ""
+            : q.manager_flash_type
+      };
+    }
   });
 
   state.records = main;
@@ -2216,6 +2199,7 @@ function render() {
   renderTable();
   renderDetail();
 }
+</script>
 function downloadSpreadsheet() {
   if (!state.records.length) {
     alert("No records to download");
@@ -2498,7 +2482,8 @@ function pushToRepFeed(rec) {
     localStorage.getItem("espin_rep_queue") || "[]"
   );
 
-  const key = `${rec.oem_project_id}_${rec.serial_number}`;
+  const key = getRecordKey(rec);
+rec.key = key;
 
   const existingIndex = queue.findIndex(q => q.key === key);
 
