@@ -3827,10 +3827,10 @@ function renderUnmatchedTradeInLeads() {
     unmatched = [];
   }
 
- unmatched = unmatched.filter(item =>
-  !item.linked_new_project_id &&
-  !item.linked_axis_project_id
-);
+  unmatched = unmatched.filter(item =>
+    !item.linked_new_project_id &&
+    !item.linked_axis_project_id
+  );
 
   if (!unmatched.length) {
     panel.style.display = "none";
@@ -3838,11 +3838,13 @@ function renderUnmatchedTradeInLeads() {
     return;
   }
 
+  // ✅ ONLY NEW SALES PROJECTS CAN RECEIVE UNMATCHED TRADE-IN LEADS
   const attachableProjects = state.records.filter(r =>
-  !r.lifecycle_completed &&
-  r.quote_status !== "lost" &&
-  r.quote_status !== "won"
-);
+    r.project_type === "new_sales_project" &&
+    !r.lifecycle_completed &&
+    r.quote_status !== "lost" &&
+    r.quote_status !== "won"
+  );
 
   panel.style.display = "block";
 
@@ -3867,7 +3869,7 @@ function renderUnmatchedTradeInLeads() {
         <td>${item.modality || "-"}</td>
         <td>${item.serial_number || "-"}</td>
         <td>$${value.toLocaleString()}</td>
-        <td><span class="pill ready">Needs AXIS Review</span></td>
+        <td><span class="pill ready">Needs New Project Review</span></td>
         <td>
           ${
             attachableProjects.length
@@ -3877,10 +3879,10 @@ function renderUnmatchedTradeInLeads() {
                   onclick="event.stopPropagation();"
                   style="min-width:220px;margin-bottom:8px;"
                 >
-                  <option value="">Select AXIS project</option>
+                  <option value="">Select new AXIS project</option>
                   ${attachableProjects.map(p => `
                     <option value="${p.id}">
-                      ${p.project_type === "new_sales_project" ? "NEW PROJECT" : "LIFECYCLE"} — ${(p.site || "Unknown")} — ${(p.make || "")} ${(p.model || "")} ${p.serial_number ? "SN: " + p.serial_number : ""}
+                      NEW PROJECT — ${(p.site || "Unknown")} — ${(p.model || "")}
                     </option>
                   `).join("")}
                 </select>
@@ -3893,119 +3895,12 @@ function renderUnmatchedTradeInLeads() {
                   Attach
                 </button>
               `
-              : `<span class="mini">No open AXIS projects available</span>`
+              : `<span class="mini">No open new projects available</span>`
           }
         </td>
       </tr>
     `;
   }).join("");
-}
-function attachUnmatchedTradeInToProject(leadId) {
-  let unmatched = [];
-
-  try {
-    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
-    if (!Array.isArray(unmatched)) unmatched = [];
-  } catch {
-    unmatched = [];
-  }
-
-  const lead = unmatched.find(item =>
-    String(item.id || "") === String(leadId || "")
-  );
-
-  if (!lead) {
-    alert("Trade-in lead not found.");
-    return;
-  }
-
-  const select = document.getElementById(`attachTradeInSelect_${leadId}`);
-  const projectId = select ? select.value : "";
-
-  if (!projectId) {
-    alert("Select an AXIS project first.");
-    return;
-  }
-
-  const project = state.records.find(r =>
-    String(r.id || "") === String(projectId || "")
-  );
-
-  if (!project) {
-    alert("AXIS project not found.");
-    return;
-  }
-
-  const tradeInValue = Number(
-    lead.trade_in_value ||
-    lead.trade_in_credit ||
-    lead.tradein_credit ||
-    lead.estimated_trade_in_value ||
-    lead.tradein_estimated_value ||
-    0
-  );
-
-  project.tradein_sync_received = true;
-  project.tradein_project_id = lead.project_id || lead.axis_project_id || "";
-  project.tradein_modality_id = lead.modality_id || "";
-
-  project.tradein_equipment_make = lead.make || "";
-  project.tradein_equipment_model = lead.model || "";
-  project.tradein_equipment_modality = normalizeModality(lead.modality || "");
-  project.tradein_equipment_serial_number = lead.serial_number || "";
-  project.tradein_equipment_dom = lead.dom || "";
-
-  project.tradein_credit = tradeInValue;
-  project.tradein_estimated_value = tradeInValue;
-  project.quote_trade_in_credit = tradeInValue;
-
-  project.tradein_synced_to_axis_at =
-    lead.last_tradein_update_at || new Date().toISOString();
-
-  project.tradein_sync_source = "unmatched_tradein_lead";
-  project.tradein_unmatched_lead_id = lead.id || "";
-
-  project.rep_notes = project.rep_notes
-    ? `${project.rep_notes}\nUnmatched trade-in lead attached.`
-    : "Unmatched trade-in lead attached.";
-
-  project.manager_unseen_update = true;
-  project.manager_flash_at = new Date().toISOString();
-  project.manager_flash_type = "unmatched_tradein_attached";
-
-  const quoteAmount = Number(project.quote_amount || 0);
-  const estimatedCost = Number(project.quote_estimated_cost || 0);
-  const net = Math.max(0, quoteAmount - tradeInValue);
-
-  project.quote_net_amount = net;
-  project.quote_profit = net - estimatedCost;
-  project.quote_margin = net > 0
-    ? Math.round(((net - estimatedCost) / net) * 100)
-    : 0;
-
-  lead.linked_axis_project_id = project.id;
-
-if (project.project_type === "new_sales_project") {
-  lead.linked_new_project_id = project.id;
-  lead.linked_new_project_name = project.model || "";
-} else {
-  lead.linked_lifecycle_project_id = project.id;
-  lead.linked_lifecycle_project_name = project.oem_project_id || project.model || "";
-}
-
-lead.linked_axis_project_site = project.site || "";
-lead.linked_at = new Date().toISOString();
-
-  localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
-
-  saveRecords();
-  syncFeedStatus(project);
-
-  state.selectedId = project.id;
-
-  render();
-
-  alert("Trade-in lead attached to AXIS project.");
 }
  function render() {
   importTradeInSyncRecords();
