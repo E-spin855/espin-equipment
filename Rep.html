@@ -637,7 +637,30 @@ td:nth-child(11){
     </div>
   </div>
 </div>
+<div class="panel" id="unmatchedTradeInPanel" style="margin-bottom:18px;display:none;">
+  <div class="panel-head">
+    <h2>Unmatched Trade-In Leads</h2>
+    <span class="mini">Trade-In records not matched to AXIS lifecycle/new projects</span>
+  </div>
 
+  <div class="panel-body table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Source Project</th>
+          <th>Facility</th>
+          <th>Make</th>
+          <th>Model</th>
+          <th>Modality</th>
+          <th>Serial</th>
+          <th>Value</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="unmatchedTradeInTableBody"></tbody>
+    </table>
+  </div>
+</div>
 <div class="panel" id="newProjectsPanel" style="margin-bottom:18px;display:none;">
   <div class="panel-head">
     <h2>New Sales Projects</h2>
@@ -786,7 +809,7 @@ td:nth-child(11){
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
-
+const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
 const state = {
   records: [],
   selectedId: null
@@ -2058,7 +2081,58 @@ function renderNewProjectDetail(rec) {
           </div>
         `
     }
+${
+  rec.image_sync_received
+    ? `
+      <div class="detail-card" style="
+        border:1px solid rgba(0,229,255,.35);
+        background:rgba(0,229,255,.07);
+      ">
+        <div class="k">Trade-In Images Received</div>
 
+        <div class="v">
+          ${Number(rec.image_count || rec.images?.length || 0)} Image(s)
+        </div>
+
+        <div class="mini" style="margin-top:8px;line-height:1.45;">
+          Last updated by:
+          <strong>${rec.last_image_update_by || "-"}</strong><br>
+          Updated:
+          <strong>${rec.last_image_update_at ? new Date(rec.last_image_update_at).toLocaleString() : "-"}</strong>
+        </div>
+
+        <div style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+          gap:10px;
+          margin-top:12px;
+        ">
+          ${(rec.images || []).map(img => `
+            <div style="
+              border:1px solid rgba(88,184,255,.22);
+              border-radius:12px;
+              overflow:hidden;
+              background:rgba(8,18,35,.7);
+            ">
+              <img
+                src="${img.url}"
+                style="width:100%;height:90px;object-fit:cover;display:block;"
+              />
+              <div style="padding:8px;font-size:12px;line-height:1.35;">
+                <strong>${img.title || "Untitled Image"}</strong>
+                ${
+                  img.notes
+                    ? `<div class="mini" style="margin-top:4px;">${img.notes}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `
+    : ""
+}
     <div class="detail-card">
       <div class="k">Financial Opportunity</div>
       <div class="v">
@@ -3014,9 +3088,12 @@ function importTradeInSyncRecords() {
     const modalityId = String(item.modality_id || "").trim();
 
     const isNewProjectSync =
-      item.axis_source === "new_axis_project" ||
-      item.sync_mode === "sync_tradein_to_new_axis_project";
+  item.axis_source === "new_axis_project" ||
+  item.sync_mode === "sync_tradein_to_new_axis_project";
 
+const isUnmatchedTradeInLead =
+  item.unmatched_tradein_lead === true ||
+  item.sync_mode === "create_unmatched_tradein_lead";
     const existing = isNewProjectSync
       ? state.records.find(r =>
           r.project_type === "new_sales_project" &&
@@ -3044,7 +3121,40 @@ function importTradeInSyncRecords() {
             String(r.serial_number || "").trim() === serial
           )
         );
+if (!existing && isUnmatchedTradeInLead) {
+  let unmatched = [];
 
+  try {
+    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
+    if (!Array.isArray(unmatched)) unmatched = [];
+  } catch {
+    unmatched = [];
+  }
+
+  const unmatchedRecord = {
+    ...item,
+    id: item.id || `unmatched_tradein_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    lead_type: "unmatched_tradein_lead",
+    source: "Unmatched Trade-In Lead",
+    created_at: item.last_tradein_update_at || new Date().toISOString(),
+    status: "needs_axis_review"
+  };
+
+  const existsInUnmatched = unmatched.some(r =>
+    String(r.id || "") === String(unmatchedRecord.id || "") ||
+    (
+      String(r.serial_number || "") &&
+      String(r.serial_number || "") === String(unmatchedRecord.serial_number || "")
+    )
+  );
+
+  if (!existsInUnmatched) {
+    unmatched.unshift(unmatchedRecord);
+    localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
+  }
+
+  return;
+}
     const isNewProject =
       existing?.project_type === "new_sales_project" ||
       isNewProjectSync;
@@ -3313,7 +3423,30 @@ function importTradeInSyncRecords() {
       tradein_removal_pathways: item.removal_pathways || existing?.tradein_removal_pathways || "",
       tradein_software_version: item.software_version || existing?.tradein_software_version || "",
       tradein_upgrade_notes: item.upgrade_notes || existing?.tradein_upgrade_notes || "",
+image_sync_received:
+  item.image_sync_received ||
+  existing?.image_sync_received ||
+  false,
 
+image_count:
+  item.image_count ||
+  existing?.image_count ||
+  0,
+
+images:
+  item.images ||
+  existing?.images ||
+  [],
+
+last_image_update_by:
+  item.last_image_update_by ||
+  existing?.last_image_update_by ||
+  "",
+
+last_image_update_at:
+  item.last_image_update_at ||
+  existing?.last_image_update_at ||
+  "",
       manager_unseen_update: true,
       manager_flash_at: new Date().toISOString(),
       manager_flash_type: isNewProject
@@ -3512,7 +3645,12 @@ function buildSmartTimeline(rec) {
         label: "Trade-In details synced back to AXIS"
       });
     }
-
+if (rec.image_sync_received) {
+  items.push({
+    date: rec.last_image_update_at || "Current",
+    label: `${Number(rec.image_count || rec.images?.length || 0)} trade-in image(s) synced back to AXIS`
+  });
+}
     if (rec.quote_created_at) {
       items.push({
         date: rec.quote_created_at,
@@ -3640,12 +3778,60 @@ function buildManagerEscalation(rec) {
     </div>
   `;
 }
+function renderUnmatchedTradeInLeads() {
+  const panel = $("unmatchedTradeInPanel");
+  const tbody = $("unmatchedTradeInTableBody");
+
+  if (!panel || !tbody) return;
+
+  let unmatched = [];
+
+  try {
+    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
+    if (!Array.isArray(unmatched)) unmatched = [];
+  } catch {
+    unmatched = [];
+  }
+
+  if (!unmatched.length) {
+    panel.style.display = "none";
+    tbody.innerHTML = "";
+    return;
+  }
+
+  panel.style.display = "block";
+
+  tbody.innerHTML = unmatched.map(item => {
+    const value = Number(
+      item.trade_in_value ||
+      item.trade_in_credit ||
+      item.tradein_credit ||
+      item.estimated_trade_in_value ||
+      item.tradein_estimated_value ||
+      0
+    );
+
+    return `
+      <tr>
+        <td>${item.project_id || item.axis_project_id || "-"}</td>
+        <td>${item.site || item.project_name || "Unknown Facility"}</td>
+        <td>${item.make || "-"}</td>
+        <td>${item.model || "-"}</td>
+        <td>${item.modality || "-"}</td>
+        <td>${item.serial_number || "-"}</td>
+        <td>$${value.toLocaleString()}</td>
+        <td><span class="pill ready">Needs AXIS Review</span></td>
+      </tr>
+    `;
+  }).join("");
+}
  function render() {
   importTradeInSyncRecords();
 
   renderStats();
   renderRepMenu();
   renderFollowUpAlertCenter();
+  renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
   renderTable();
   renderDetail();
@@ -3807,7 +3993,7 @@ if (modality === "CATH") {
   };
 }
 
-if (modality === "PET") {
+if (modality === "PET" || modality === "PETCT") {
   return {
     ...base,
     pet_manufacturer: rec.make || "",
@@ -5279,6 +5465,44 @@ function deleteLostNewProject() {
   saveRecords();
   render();
 }
+function markNewProjectWon(id) {
+  const rec = state.records.find(r => r.id === id);
+  if (!rec) return;
+
+  rec.quote_status = "won";
+  rec.lifecycle_completed = true;
+  rec.completed_at = new Date().toISOString();
+  rec.completed_by = `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
+
+  rec.project_management_ready = true;
+  rec.project_management_status = "Pending PM Review";
+  rec.project_management_created_at = new Date().toISOString();
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "completed";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
+}
+
+function markNewProjectLost(id) {
+  const rec = state.records.find(r => r.id === id);
+  if (!rec) return;
+
+  rec.quote_status = "lost";
+  rec.rep_status = "lost";
+  rec.lifecycle_completed = false;
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "new_project_lost";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
+}
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
   loadRecords();
@@ -5299,7 +5523,8 @@ function init() {
     e.key === "espin_rep_queue" ||
     e.key === "axis_tradein_sync_records_v1" ||
     e.key === "axis_manager_sync_ping_v1" ||
-    e.key === AXIS_SHARE_KEY
+   e.key === AXIS_SHARE_KEY ||
+e.key === UNMATCHED_TRADEIN_KEY
   ) {
     loadRecords();
     importTradeInSyncRecords();
@@ -5372,13 +5597,13 @@ $("quoteInstallRequired").addEventListener("change", updateQuotePreview);
 $("quoteRemovalRequired").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertDate").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertNote").addEventListener("input", updateQuotePreview);
-
-  $("clearBtn").addEventListener("click", () => {
+$("clearBtn").addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("espin_rep_queue");
   localStorage.removeItem("axis_manager_sync_ping_v1");
   localStorage.removeItem("axis_tradein_sync_records_v1");
   localStorage.removeItem("axis_tradein_last_sync_v1");
+  localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
 
   state.records = [];
   state.selectedId = null;

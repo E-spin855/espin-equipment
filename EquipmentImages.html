@@ -697,6 +697,77 @@ photos.forEach(photo => appendCard(photo, new Set(getActiveBadges())));
     filePicker.value = "";
   }
 };
+function syncImagesToAxisDemo(sentPhotoIds) {
+  const key = "axis_tradein_sync_records_v1";
+
+  let records = [];
+
+  try {
+    records = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(records)) records = [];
+  } catch {
+    records = [];
+  }
+
+  const selectedPhotos = photos
+    .filter(p => sentPhotoIds.includes(getPrimaryId(p)))
+    .map(p => ({
+      id: getPrimaryId(p),
+      url: p.photo_url,
+      title: p.photo_title || "",
+      notes: p.photo_comment || ""
+    }));
+
+  const axisRecordId =
+    params.get("axis_record_id") ||
+    localStorage.getItem("axis_record_id") ||
+    "";
+
+  const axisProjectId =
+    params.get("axis_project_id") ||
+    localStorage.getItem("axis_project_id") ||
+    "";
+
+  const axisSerialNumber =
+    params.get("axis_serial_number") ||
+    localStorage.getItem("axis_serial_number") ||
+    "";
+
+  const imageSyncRecord = {
+    id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
+
+    sync_mode: axisRecordId || axisProjectId
+      ? "update_existing_axis_record"
+      : "create_unmatched_tradein_lead",
+
+    unmatched_tradein_lead: !(axisRecordId || axisProjectId),
+
+    axis_record_id: axisRecordId,
+    axis_project_id: axisProjectId,
+    axis_serial_number: axisSerialNumber,
+
+    project_id: projectId,
+    modality_id: modalityId,
+
+    image_sync_received: true,
+    image_count: selectedPhotos.length,
+    images: selectedPhotos,
+
+    last_image_update_by: userEmail,
+    last_image_update_at: new Date().toISOString(),
+
+    crm_status: "Trade-In Images Sent",
+    rep_notes: "Images were submitted from Espin Trade-In."
+  };
+
+  records.unshift(imageSyncRecord);
+
+  localStorage.setItem(key, JSON.stringify(records));
+  localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(imageSyncRecord));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  console.log("AXIS IMAGE SYNC RECORD:", imageSyncRecord);
+}
 /* SEND */
 sendBtn.onclick = async () => {
   const selectedPhotos = photos.filter(p => selected.has(getPrimaryId(p)));
@@ -757,7 +828,7 @@ sendBtn.onclick = async () => {
         photoIds: ids
       })
     });
-
+syncImagesToAxisDemo(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
       .forEach(cb => (cb.checked = false));
