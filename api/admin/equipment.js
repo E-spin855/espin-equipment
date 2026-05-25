@@ -36,11 +36,15 @@ export default async function handler(req, res) {
     client = await pool.connect();
 
     if (req.method === "GET") {
-      const { rows } = await client.query(`
+      const { rows } = await client.query(
+        `
         SELECT *
         FROM equipment_projects
+        WHERE LOWER(TRIM(sales_rep_email)) = $1
         ORDER BY created_at DESC
-      `);
+        `,
+        [userEmail]
+      );
 
       return res.status(200).json(rows);
     }
@@ -67,51 +71,18 @@ export default async function handler(req, res) {
     const sales_rep_last = safe(body.sales_rep_last);
     const sales_rep_company = safe(body.sales_rep_company);
     const sales_rep_phone = safe(body.sales_rep_phone);
-    const sales_rep_email = safe(body.sales_rep_email || userEmail);
+
+    // 🔒 Force project ownership to logged-in user
+    const sales_rep_email = userEmail;
 
     if (!project_name) {
       return res.status(400).json({ error: "Project name required" });
     }
 
-    if (req.method === "PUT") {
-      if (!id) {
-        return res.status(400).json({ error: "Missing id for update" });
-      }
-
-      await client.query(
-        `UPDATE equipment_projects SET
-          project_name = $1,
-          site_address = $2,
-          city = $3,
-          state = $4,
-          zip_code = $5,
-          sales_rep_first = $6,
-          sales_rep_last = $7,
-          sales_rep_phone = $8,
-          sales_rep_email = $9,
-          sales_rep_company = $10
-         WHERE id = $11`,
-        [
-          project_name,
-          site_address,
-          city,
-          state,
-          zip_code,
-          sales_rep_first,
-          sales_rep_last,
-          sales_rep_phone,
-          sales_rep_email,
-          sales_rep_company,
-          id
-        ]
-      );
-
-      return res.status(200).json({ ok: true });
-    }
-
     if (req.method === "POST") {
       const result = await client.query(
-        `INSERT INTO equipment_projects (
+        `
+        INSERT INTO equipment_projects (
           project_name,
           site_address,
           city,
@@ -122,8 +93,10 @@ export default async function handler(req, res) {
           sales_rep_company,
           sales_rep_phone,
           sales_rep_email
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        RETURNING id`,
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id
+        `,
         [
           project_name,
           site_address,
@@ -139,6 +112,50 @@ export default async function handler(req, res) {
       );
 
       return res.status(200).json({ id: result.rows[0].id });
+    }
+
+    if (req.method === "PUT") {
+      if (!id) {
+        return res.status(400).json({ error: "Missing id for update" });
+      }
+
+      const result = await client.query(
+        `
+        UPDATE equipment_projects SET
+          project_name = $1,
+          site_address = $2,
+          city = $3,
+          state = $4,
+          zip_code = $5,
+          sales_rep_first = $6,
+          sales_rep_last = $7,
+          sales_rep_phone = $8,
+          sales_rep_email = $9,
+          sales_rep_company = $10
+        WHERE id = $11
+        AND LOWER(TRIM(sales_rep_email)) = $12
+        `,
+        [
+          project_name,
+          site_address,
+          city,
+          state,
+          zip_code,
+          sales_rep_first,
+          sales_rep_last,
+          sales_rep_phone,
+          sales_rep_email,
+          sales_rep_company,
+          id,
+          userEmail
+        ]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(403).json({ error: "Not authorized to update this project" });
+      }
+
+      return res.status(200).json({ ok: true });
     }
 
     return res.status(405).json({ error: "Method not allowed" });
