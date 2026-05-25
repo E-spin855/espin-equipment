@@ -42,16 +42,57 @@ function getSerialForModality(modality, data) {
   }
 }
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function setCors(req, res) {
+  const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  const origin = req.headers.origin || "";
+
+  if (allowedOrigins.length && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  } else if (!allowedOrigins.length) {
+    // Fallback for local/demo use only. Production should set ALLOWED_ORIGINS.
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email, x-clear-source");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-user-email, x-clear-source"
+  );
+}
+
+async function requireProjectAccess(projectId, userEmail) {
+  if (!projectId) {
+    return { ok: false, status: 400, error: "Missing projectId" };
+  }
+
+  if (!userEmail) {
+    return { ok: false, status: 401, error: "Missing user email" };
+  }
+
+  const accessKey = `equipment_project_access:${projectId}:${userEmail}`;
+  const access = await kv.get(accessKey);
+
+  if (!access) {
+    return { ok: false, status: 403, error: "Access denied" };
+  }
+
+  return { ok: true };
+}
+
+export default async function handler(req, res) {
+  setCors(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
   const client = await pool.connect();
+  let txStarted = false;
 
   try {
     // ================= GET =================
@@ -62,11 +103,12 @@ export default async function handler(req, res) {
       const userEmail = cleanEmail(req.headers["x-user-email"] || req.query.email);
       const clearSource = String(req.headers["x-clear-source"] || "").toLowerCase();
 
-      if (!projectId) {
-        return res.status(400).json({ error: "Missing projectId" });
+      const accessCheck = await requireProjectAccess(projectId, userEmail);
+      if (!accessCheck.ok) {
+        return res.status(accessCheck.status).json({ error: accessCheck.error });
       }
 
-      if (userEmail && clearSource === "management") {
+      if (clearSource === "management") {
         await kv.del(`equipment:unread:project:${projectId}:${userEmail}`);
       }
 
@@ -100,17 +142,27 @@ export default async function handler(req, res) {
       );
 
       const row = result.rows[0];
-      const data = safeObject(row?.data);
 
-      if (row?.mri_serial && !data.mri_serial) data.mri_serial = row.mri_serial;
-      if (row?.xray_serial && !data.xray_serial) data.xray_serial = row.xray_serial;
-      if (row?.pet_serial && !data.pet_serial) data.pet_serial = row.pet_serial;
-      if (row?.carm_serial && !data.carm_serial) data.carm_serial = row.carm_serial;
+      if (!row) {
+        return res.status(200).json({
+          projectId,
+          modalityId: "",
+          modality: modality || "",
+          data: modality ? { modality } : {}
+        });
+      }
+
+      const data = safeObject(row.data);
+
+      if (row.mri_serial && !data.mri_serial) data.mri_serial = row.mri_serial;
+      if (row.xray_serial && !data.xray_serial) data.xray_serial = row.xray_serial;
+      if (row.pet_serial && !data.pet_serial) data.pet_serial = row.pet_serial;
+      if (row.carm_serial && !data.carm_serial) data.carm_serial = row.carm_serial;
 
       return res.status(200).json({
         projectId,
-        modalityId: row?.modality_id || "",
-        modality: row?.modality || modality || "",
+        modalityId: row.modality_id || "",
+        modality: row.modality || modality || "",
         data
       });
     }
@@ -122,9 +174,16 @@ export default async function handler(req, res) {
       let modalityId = cleanText(body.modalityId);
       const rawData = safeObject(body.data);
       const modality = cleanModality(body.modality || rawData.modality);
+      const userEmail = cleanEmail(req.headers["x-user-email"] || body.email);
 
-      if (!projectId) return res.status(400).json({ error: "Missing projectId" });
-      if (!modality) return res.status(400).json({ error: "Missing modality" });
+      const accessCheck = await requireProjectAccess(projectId, userEmail);
+      if (!accessCheck.ok) {
+        return res.status(accessCheck.status).json({ error: accessCheck.error });
+      }
+
+      if (!modality) {
+        return res.status(400).json({ error: "Missing modality" });
+      }
 
       const data = { ...rawData, modality };
 
@@ -143,6 +202,7 @@ export default async function handler(req, res) {
       const carmSerial = cleanText(data.carm_serial);
 
       await client.query("BEGIN");
+      txStarted = true;
 
       // ===== CREATE / UPDATE MODALITY =====
       if (!modalityId) {
@@ -169,13 +229,17 @@ export default async function handler(req, res) {
         );
 
         modalityId = created.rows[0]?.id;
-        if (!modalityId) throw new Error("Failed to create modality");
+
+        if (!modalityId) {
+          throw new Error("Failed to create modality");
+        }
       } else {
         const updated = await client.query(
           `
           UPDATE equipment_modalities
           SET modality = $2, updated_at = NOW()
-          WHERE id = $1 AND project_id = $3
+          WHERE id = $1
+            AND project_id = $3
           `,
           [modalityId, modality, projectId]
         );
@@ -222,16 +286,19 @@ export default async function handler(req, res) {
         ]
       );
 
-      // ===== BADGE (FIXED — NO HARDCODE ADMIN ONLY) =====
+      // ===== BADGE ONLY USERS WITH PROJECT ACCESS =====
       const users = await kv.keys(`equipment_project_access:${projectId}:*`);
+
       for (const key of users) {
-        const email = key.split(":").pop();
-        if (email) {
+        const email = cleanEmail(key.split(":").pop());
+
+        if (email && email !== userEmail) {
           await kv.incr(`equipment:unread:project:${projectId}:${email}`);
         }
       }
 
       await client.query("COMMIT");
+      txStarted = false;
 
       return res.status(200).json({
         success: true,
@@ -244,9 +311,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
 
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (txStarted) {
+      await client.query("ROLLBACK").catch(() => {});
+    }
+
     console.error("equipment-details ERROR:", err);
-    return res.status(500).json({ error: err.message || "Request failed" });
+
+    return res.status(500).json({
+      error: err.message || "Request failed"
+    });
   } finally {
     client.release();
   }
