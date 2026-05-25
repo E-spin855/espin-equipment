@@ -1161,7 +1161,7 @@ function renderNewProjectsTable() {
     r.project_type === "new_sales_project"
   );
 
-  if (!newProjects.length) {
+  if (!attachableProjects.length) {
     panel.style.display = "none";
     tbody.innerHTML = "";
     $("newProjectDetailArea")?.classList.add("hidden");
@@ -3802,11 +3802,11 @@ function renderUnmatchedTradeInLeads() {
     return;
   }
 
-  const newProjects = state.records.filter(r =>
-    r.project_type === "new_sales_project" &&
-    r.quote_status !== "lost" &&
-    r.quote_status !== "won"
-  );
+  const attachableProjects = state.records.filter(r =>
+  !r.lifecycle_completed &&
+  r.quote_status !== "lost" &&
+  r.quote_status !== "won"
+);
 
   panel.style.display = "block";
 
@@ -3834,7 +3834,7 @@ function renderUnmatchedTradeInLeads() {
         <td><span class="pill ready">Needs AXIS Review</span></td>
         <td>
           ${
-            newProjects.length
+            attachableProjects.length
               ? `
                 <select
                   id="attachTradeInSelect_${leadId}"
@@ -3842,9 +3842,9 @@ function renderUnmatchedTradeInLeads() {
                   style="min-width:220px;margin-bottom:8px;"
                 >
                   <option value="">Select new project</option>
-                  ${newProjects.map(p => `
+                  ${attachableProjects.map(p => `
                     <option value="${p.id}">
-                      ${(p.site || "Unknown")} — ${(p.model || "New Project")}
+                      ${p.project_type === "new_sales_project" ? "NEW PROJECT" : "LIFECYCLE"} — ${(p.site || "Unknown")} — ${(p.make || "")} ${(p.model || "")} ${p.serial_number ? "SN: " + p.serial_number : ""}
                     </option>
                   `).join("")}
                 </select>
@@ -3857,7 +3857,7 @@ function renderUnmatchedTradeInLeads() {
                   Attach
                 </button>
               `
-              : `<span class="mini">Create a new project first</span>`
+              : `<span class="mini">No open AXIS projects available</span>`
           }
         </td>
       </tr>
@@ -3896,7 +3896,7 @@ function attachUnmatchedTradeInToProject(leadId) {
   );
 
   if (!project) {
-    alert("New project not found.");
+    alert("AXIS project not found.");
     return;
   }
 
@@ -3947,7 +3947,8 @@ function attachUnmatchedTradeInToProject(leadId) {
     ? Math.round(((net - estimatedCost) / net) * 100)
     : 0;
 
-  lead.linked_new_project_id = project.id;
+  lead.linked_axis_project_id = project.id;
+lead.linked_new_project_id = project.id;
   lead.linked_new_project_name = project.model || "";
   lead.linked_new_project_site = project.site || "";
   lead.linked_at = new Date().toISOString();
@@ -3961,7 +3962,7 @@ function attachUnmatchedTradeInToProject(leadId) {
 
   render();
 
-  alert("Trade-in lead attached to new project.");
+  alert("Trade-in lead attached to AXIS project.");
 }
  function render() {
   importTradeInSyncRecords();
