@@ -1973,12 +1973,14 @@ rec.manager_response_date = responseDate;
 rec.manager_response_notes = responseNotes;
 rec.manager_response_at = new Date().toISOString();
 
-/* 🔥 THIS MAKES REP SIDE FLASH */
+/* 🔥 REP SIDE FLASH ONLY */
 rec.manager_response_seen_by_rep = false;
 rec.manager_response_seen_at = "";
-rec.manager_unseen_update = true;
-rec.manager_flash_at = new Date().toISOString();
-rec.manager_flash_type = "manager_response";
+
+/* ✅ DO NOT flash manager side for manager's own response */
+rec.manager_unseen_update = false;
+rec.manager_flash_at = "";
+rec.manager_flash_type = "";
 
   if (responseAction === "needs_follow_up" && responseDate) {
     rec.next_action_date = responseDate;
@@ -2036,11 +2038,15 @@ function syncManagerResponseToStorage(updatedRec) {
       ...item,
       ...updatedRec,
       key,
+
+      // rep side should flash
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-      manager_unseen_update: true,
-      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
-      manager_flash_type: "manager_response"
+
+      // manager side should NOT flash from its own response
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: ""
     };
   });
 
@@ -2050,9 +2056,9 @@ function syncManagerResponseToStorage(updatedRec) {
       key,
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-      manager_unseen_update: true,
-      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
-      manager_flash_type: "manager_response"
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: ""
     });
   }
 
@@ -2086,10 +2092,14 @@ function syncManagerResponseToStorage(updatedRec) {
       ...item,
       ...updatedRec,
       key,
+
+      // rep side flash trigger
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-      manager_unseen_update: true,
-      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+
+      // do not use manager_unseen_update for manager response
+      manager_unseen_update: false,
+      manager_flash_at: "",
       manager_flash_type: "manager_response"
     };
   });
@@ -2100,8 +2110,8 @@ function syncManagerResponseToStorage(updatedRec) {
       key,
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-      manager_unseen_update: true,
-      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+      manager_unseen_update: false,
+      manager_flash_at: "",
       manager_flash_type: "manager_response"
     });
   }
@@ -2297,16 +2307,15 @@ function selectRow(id) {
   const rec = sourceRecords.find(r => r.id === id);
   if (!rec) return;
 
+  // ✅ Manager opened it, so manager flash must stop
+  rec.manager_unseen_update = false;
+  rec.manager_flash_at = "";
+  rec.manager_flash_type = "";
+
+  // ✅ Quote badge can stop flashing too
   rec.quote_seen = true;
 
-  if (repMode) {
-    rec.manager_response_seen_by_rep = true;
-    rec.manager_response_seen_at = new Date().toISOString();
-    rec.manager_unseen_update = false;
-    rec.manager_flash_at = "";
-    rec.manager_flash_type = "";
-  }
-
+  // ✅ Save cleared flash state into both stores
   syncFeedStatus(rec);
 
   const latest = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -2314,8 +2323,8 @@ function selectRow(id) {
   const updated = latest.find(r =>
     r.id === rec.id ||
     (
-      r.oem_project_id === rec.oem_project_id &&
-      r.serial_number === rec.serial_number
+      String(r.oem_project_id || "") === String(rec.oem_project_id || "") &&
+      String(r.serial_number || "") === String(rec.serial_number || "")
     )
   );
 
