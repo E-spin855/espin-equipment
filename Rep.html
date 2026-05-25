@@ -540,6 +540,17 @@ td:nth-child(11){
   50%{box-shadow:0 0 22px rgba(65,255,156,.75);}
   100%{box-shadow:0 0 0 rgba(65,255,156,0);}
 }
+.manager-response-flash{
+  animation:managerResponsePulse 1s infinite;
+  outline:2px solid rgba(255,216,77,.85);
+  background:rgba(255,216,77,.12)!important;
+}
+
+@keyframes managerResponsePulse{
+  0%{box-shadow:0 0 0 rgba(255,216,77,0);}
+  50%{box-shadow:0 0 24px rgba(255,216,77,.85);}
+  100%{box-shadow:0 0 0 rgba(255,216,77,0);}
+}
  </style>
 </head>
 <body>
@@ -1337,7 +1348,10 @@ if (state.selectedRep) {
   });
 
   tbody.innerHTML = sorted.map(rec => {
-    const selectedClass = rec.id === state.selectedId ? "selected" : "";
+   const selectedClass = [
+  rec.id === state.selectedId ? "selected" : "",
+  rec.manager_response_action && !rec.manager_response_seen_by_rep ? "manager-response-flash" : ""
+].filter(Boolean).join(" ");
 
     return `
       <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
@@ -1377,7 +1391,13 @@ if (state.selectedRep) {
       if (rec.lifecycle_completed) {
         return `<span class="pill submitted">COMPLETED</span>`;
       }
-
+if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+  return `
+    <span class="pill pending tradein-flash">
+      MANAGER UPDATE
+    </span>
+  `;
+}
     if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
   return `
     <span class="pill submitted tradein-flash">
@@ -1705,7 +1725,9 @@ project_management_created_at: "",
 manager_response_action: "",
 manager_response_date: "",
 manager_response_notes: "",
-manager_response_at: ""
+manager_response_at: "",
+manager_response_seen_by_rep: true,
+manager_response_seen_at: ""
   };
 
 }); // ✅ DO NOT REMOVE THIS LINE
@@ -1781,7 +1803,12 @@ project_management_created_at: existing.project_management_created_at || "",
 manager_response_action: existing.manager_response_action || newRec.manager_response_action || "",
 manager_response_date: existing.manager_response_date || newRec.manager_response_date || "",
 manager_response_notes: existing.manager_response_notes || newRec.manager_response_notes || "",
-manager_response_at: existing.manager_response_at || newRec.manager_response_at || ""
+manager_response_at: existing.manager_response_at || newRec.manager_response_at || "",
+manager_response_seen_by_rep:
+  existing.manager_response_seen_by_rep !== undefined
+    ? existing.manager_response_seen_by_rep
+    : true,
+manager_response_seen_at: existing.manager_response_seen_at || ""
       }
     : newRec
 );
@@ -2997,9 +3024,8 @@ foundInQueue = true;
 return {
   ...item,
   ...rec,
-  key,
   manager_unseen_update: true,
-  manager_flash_at: new Date().toISOString(),
+  manager_flash_at: rec.manager_flash_at || new Date().toISOString(),
   manager_flash_type: rec.manager_flash_type || "rep_update"
 };
 });
@@ -3048,13 +3074,13 @@ queue.unshift({
   });
 
   if (!foundInMain) {
-    main.unshift({
-      ...rec,
-      key,
-      manager_unseen_update: true,
-      manager_flash_at: new Date().toISOString(),
-      manager_flash_type: "rep_update"
-    });
+   main.unshift({
+  ...rec,
+  key,
+  manager_unseen_update: true,
+  manager_flash_at: rec.manager_flash_at || new Date().toISOString(),
+  manager_flash_type: rec.manager_flash_type || "rep_update"
+});
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
@@ -4480,7 +4506,16 @@ function selectRow(id) {
 
   if (rec?.tradein_sync_received && !rec.tradein_seen_by_rep) {
     rec.tradein_seen_by_rep = true;
+  }
+
+  if (rec?.manager_response_action && !rec.manager_response_seen_by_rep) {
+    rec.manager_response_seen_by_rep = true;
+    rec.manager_response_seen_at = new Date().toISOString();
+  }
+
+  if (rec) {
     saveRecords();
+    syncFeedStatus(rec);
   }
 
   render();
