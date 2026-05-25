@@ -13,11 +13,15 @@ const pool = new Pool({
 const FROM_EMAIL = "Espin Medical <info@espinmedical.com>";
 const ADMIN_EMAIL = "info@espinmedical.com";
 
-const clean = (v) => String(v || "").toLowerCase().trim();
-const cleanText = (v) => String(v || "").trim();
+const clean = v => String(v || "").toLowerCase().trim();
+const cleanText = v => String(v || "").trim();
 
-function isHttpUrl(value) {
-  return /^https?:\/\/.+/i.test(String(value || "").trim());
+function safeJson(body) {
+  if (!body) return {};
+  if (typeof body === "string") {
+    try { return JSON.parse(body); } catch { return {}; }
+  }
+  return body;
 }
 
 function escapeHtml(s) {
@@ -29,40 +33,15 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+function isHttpUrl(value) {
+  return /^https?:\/\/.+/i.test(String(value || "").trim());
+}
+
 function buildImageSrc(photoUrl) {
   const raw = String(photoUrl || "").trim();
   return isHttpUrl(raw) ? raw : null;
 }
 
-function safeJson(body) {
-  if (!body) return {};
-  if (typeof body === "string") {
-    try { return JSON.parse(body); } catch { return {}; }
-  }
-  return body;
-}
-
-/* RECIPIENTS */
-async function getRecipients() {
-  return ["info@espinmedical.com"];
-}
-
-/* BADGE */
-async function recomputeBadge(email) {
-  const e = clean(email);
-
-  const keys = await kv.keys(`equipment:unread:*:*:*:${e}`);
-  const values = keys.length ? await kv.mget(...keys) : [];
-
-  const total = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
-
-  await kv.set(`app:badge:equipment:${e}`, total);
-  await kv.set(`ios:badge:counter:equipment:${e}`, total);
-
-  return total;
-}
-
-/* EQUIPMENT BLOCK */
 function buildEquipmentHtml(details = {}) {
   const rows = Object.entries(details)
     .filter(([_, v]) => v && typeof v !== "object")
@@ -88,47 +67,109 @@ function buildEquipmentHtml(details = {}) {
   `;
 }
 
+async function recomputeBadge(email) {
+  const e = clean(email);
+  const keys = await kv.keys(`equipment:unread:*:*:*:${e}`);
+  const values = keys.length ? await kv.mget(...keys) : [];
+  const total = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
+
+  await kv.set(`app:badge:equipment:${e}`, total);
+  await kv.set(`ios:badge:counter:equipment:${e}`, total);
+
+  return total;
+}
+
+async function getRecipients(projectId, senderEmail, client) {
+  const recipients = new Set();
+
+  recipients.add(ADMIN_EMAIL);
+
+  const projectRes = await client.query(
+    `
+    SELECT sales_rep_email
+    FROM equipment_projects
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [projectId]
+  );
+
+  const ownerEmail = clean(projectRes.rows[0]?.sales_rep_email);
+  if (ownerEmail) recipients.add(ownerEmail);
+
+  const accessKeys = await kv.keys(`equipment_project_access:${projectId}:*`);
+
+  for (const key of accessKeys) {
+    const email = clean(key.split(":").pop());
+    if (email) recipients.add(email);
+  }
+
+  recipients.delete(clean(senderEmail));
+
+  return [...recipients];
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   const body = safeJson(req.body);
   const projectId = cleanText(body.projectId);
   const modalityId = cleanText(body.modalityId);
-  const photoIds = Array.isArray(body.photoIds) ? body.photoIds : [];
+  const photoIds = Array.isArray(body.photoIds) ? body.photoIds.map(String) : [];
+  const senderEmail = clean(req.headers["x-user-email"]);
 
-  if (!projectId || !photoIds.length) {
+  if (!projectId || !modalityId || !photoIds.length || !senderEmail) {
     return res.status(400).json({ error: "Invalid request" });
   }
 
   const client = await pool.connect();
 
   try {
-    /* PROJECT */
     const projectRes = await client.query(
-      `SELECT * FROM equipment_projects WHERE id = $1`,
+      `
+      SELECT *
+      FROM equipment_projects
+      WHERE id = $1
+      LIMIT 1
+      `,
       [projectId]
     );
 
     const project = projectRes.rows[0];
-    if (!project) return res.status(404).json({ error: "Project not found" });
 
-    /* DETAILS */
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    const ownerEmail = clean(project.sales_rep_email);
+
+    if (ownerEmail !== senderEmail && senderEmail !== ADMIN_EMAIL) {
+      return res.status(403).json({ error: "Not authorized to send images for this project" });
+    }
+
     const detailsRes = await client.query(
-      `SELECT * FROM equipment_details WHERE project_id = $1 AND modality_id = $2 LIMIT 1`,
+      `
+      SELECT data
+      FROM equipment_details
+      WHERE project_id = $1
+        AND modality_id = $2
+      LIMIT 1
+      `,
       [projectId, modalityId]
     );
 
-    const detailsRow = detailsRes.rows[0] || {};
-    const equipmentHtml = buildEquipmentHtml(detailsRow.data || {});
+    const equipmentHtml = buildEquipmentHtml(detailsRes.rows[0]?.data || {});
 
-    /* PHOTOS */
     const photosRes = await client.query(
       `
       SELECT id, photo_url, photo_title, photo_comment
@@ -136,7 +177,7 @@ export default async function handler(req, res) {
       WHERE project_id = $1
         AND modality_id = $2
         AND id = ANY($3::uuid[])
-        AND hidden = false
+      ORDER BY created_at DESC
       `,
       [projectId, modalityId, photoIds]
     );
@@ -151,6 +192,7 @@ export default async function handler(req, res) {
         if (!src) return null;
 
         return {
+          id: String(p.id),
           label: p.photo_title || `Image ${i + 1}`,
           src,
           comment: p.photo_comment || ""
@@ -158,10 +200,12 @@ export default async function handler(req, res) {
       })
       .filter(Boolean);
 
-    /* IMAGE BLOCKS (FRAMED) */
+    if (!prepared.length) {
+      return res.status(400).json({ error: "No valid image URLs" });
+    }
+
     const imagesHtml = prepared.map(img => `
       <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-
         <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e5e7eb">
           <div style="font-size:11px;font-weight:700;color:#1F7BC8;letter-spacing:.5px">
             IMAGE NAME
@@ -180,20 +224,21 @@ export default async function handler(req, res) {
                </div>`
             : ""
         }
-
       </div>
     `).join("");
 
-    /* FINAL HTML */
     const html = `
       <div style="font-family:Arial;max-width:650px;margin:auto">
-
         <div style="border-bottom:3px solid #1F7BC8;padding-bottom:12px;margin-bottom:16px">
           <div style="font-size:20px;font-weight:800">
             ${escapeHtml(project.project_name)}
           </div>
           <div>${escapeHtml(project.site_address || "")}</div>
-          <div>${escapeHtml(project.zip_code || "")}</div>
+          <div>
+            ${escapeHtml(project.city || "")}
+            ${escapeHtml(project.state || "")}
+            ${escapeHtml(project.zip_code || "")}
+          </div>
         </div>
 
         ${equipmentHtml}
@@ -205,68 +250,56 @@ export default async function handler(req, res) {
 
           ${imagesHtml}
         </div>
-
       </div>
     `;
 
-    const recipients = await getRecipients();
+    const recipients = await getRecipients(projectId, senderEmail, client);
 
-    await resend.emails.send({
-      from: FROM_EMAIL,
-      to: recipients,
-      subject: `Equipment Images – ${project.project_name}`,
-      html
-    });
-// 🔥 CREATE NEW PILL FOR ADMIN (CRITICAL FIX)
-const key = `equipment:badges_images:${projectId}:${modalityId}:${ADMIN_EMAIL}`;
-
-const existing = await kv.get(key);
-
-let current = [];
-
-if (existing) {
-  try {
-    const parsed = typeof existing === "string"
-      ? JSON.parse(existing)
-      : existing;
-
-    if (Array.isArray(parsed)) current = parsed;
-  } catch {}
-}
-
-const merged = [
-  ...new Set([
-    ...current.map(String),
-    ...photoIds.map(String)
-  ])
-];
-
-await kv.set(key, merged);
-
-console.log("🔥 ADMIN NEW BADGE SET", {
-  key,
-  merged
-});
-    for (const email of recipients) {
-      await kv.incr(`equipment:unread:images:${projectId}:${modalityId}:${email}`);
-      const badge = await recomputeBadge(email);
-
-     await sendPushToUsers(
-  project.project_name,
-  `Equipment and Images Update – ${prepared.length} new images`,
-  {
-    recipients: [email],
-    projectId,
-    modalityId,
-    badge
-  }
-);
+    if (recipients.length) {
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: recipients,
+        subject: `Equipment Images – ${project.project_name}`,
+        html
+      });
     }
 
-    return res.json({ success: true });
+    for (const email of recipients) {
+      const badgeKey = `equipment:badges_images:${projectId}:${modalityId}:${email}`;
+
+      const existing = await kv.get(badgeKey);
+      let current = [];
+
+      if (existing) {
+        try {
+          const parsed = typeof existing === "string" ? JSON.parse(existing) : existing;
+          if (Array.isArray(parsed)) current = parsed;
+        } catch {}
+      }
+
+      const merged = [...new Set([...current.map(String), ...prepared.map(p => p.id)])];
+      await kv.set(badgeKey, merged);
+
+      await kv.incr(`equipment:unread:images:${projectId}:${modalityId}:${email}`);
+
+      const badge = await recomputeBadge(email);
+
+      await sendPushToUsers(
+        project.project_name,
+        `Equipment and Images Update – ${prepared.length} new images`,
+        {
+          recipients: [email],
+          projectId,
+          modalityId,
+          badge
+        }
+      );
+    }
+
+    return res.status(200).json({ success: true });
 
   } catch (err) {
-    console.error("EMAIL ERROR:", err);
+    console.error("PHOTO EMAIL ERROR:", err);
     return res.status(500).json({ error: "Failed" });
   } finally {
     client.release();

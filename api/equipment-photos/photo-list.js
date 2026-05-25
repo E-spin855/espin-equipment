@@ -24,14 +24,19 @@ export default async function handler(req, res) {
       `
       SELECT p.*
       FROM equipment_photos p
+      JOIN equipment_modalities m
+        ON m.id = p.modality_id
+      JOIN equipment_projects ep
+        ON ep.id = m.project_id
       WHERE p.modality_id = $1
-      AND NOT EXISTS (
-        SELECT 1
-        FROM equipment_photo_visibility v
-        WHERE v.photo_id = p.id
-          AND v.email = $2
-          AND v.hidden = true
-      )
+        AND LOWER(TRIM(ep.sales_rep_email)) = $2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM equipment_photo_visibility v
+          WHERE v.photo_id = p.id
+            AND LOWER(TRIM(v.email)) = $2
+            AND v.hidden = true
+        )
       ORDER BY p.created_at DESC
       `,
       [modalityId, email]

@@ -65,13 +65,33 @@ function setCors(req, res) {
   );
 }
 
-async function requireProjectAccess(projectId, userEmail) {
+async function requireProjectAccess(client, projectId, userEmail) {
   if (!projectId) {
     return { ok: false, status: 400, error: "Missing projectId" };
   }
 
   if (!userEmail) {
     return { ok: false, status: 401, error: "Missing user email" };
+  }
+
+  if (userEmail === "info@espinmedical.com") {
+    return { ok: true };
+  }
+
+  const project = await client.query(
+    `
+    SELECT id, sales_rep_email
+    FROM equipment_projects
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [projectId]
+  );
+
+  const ownerEmail = cleanEmail(project.rows[0]?.sales_rep_email);
+
+  if (ownerEmail === userEmail) {
+    return { ok: true };
   }
 
   const accessKey = `equipment_project_access:${projectId}:${userEmail}`;
@@ -83,7 +103,6 @@ async function requireProjectAccess(projectId, userEmail) {
 
   return { ok: true };
 }
-
 export default async function handler(req, res) {
   setCors(req, res);
 
@@ -103,7 +122,7 @@ export default async function handler(req, res) {
       const userEmail = cleanEmail(req.headers["x-user-email"] || req.query.email);
       const clearSource = String(req.headers["x-clear-source"] || "").toLowerCase();
 
-      const accessCheck = await requireProjectAccess(projectId, userEmail);
+      const accessCheck = await requireProjectAccess(client, projectId, userEmail);
       if (!accessCheck.ok) {
         return res.status(accessCheck.status).json({ error: accessCheck.error });
       }
@@ -176,7 +195,7 @@ export default async function handler(req, res) {
       const modality = cleanModality(body.modality || rawData.modality);
       const userEmail = cleanEmail(req.headers["x-user-email"] || body.email);
 
-      const accessCheck = await requireProjectAccess(projectId, userEmail);
+      const accessCheck = await requireProjectAccess(client, projectId, userEmail);
       if (!accessCheck.ok) {
         return res.status(accessCheck.status).json({ error: accessCheck.error });
       }
