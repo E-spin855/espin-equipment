@@ -309,16 +309,22 @@ window.addEventListener("load", () => {
   });
 });
 
-// ✅ LOGOUT (unchanged)
+// ✅ LOGOUT
+const DEVICE_TOKEN_KEY = `${APP_PREFIX}deviceToken`;
+
 document.getElementById("logoutBtn").onclick = async () => {
   const userEmail = (localStorage.getItem(EMAIL_KEY) || "").trim().toLowerCase();
+  const deviceToken = localStorage.getItem(DEVICE_TOKEN_KEY) || "";
 
   try {
-    if (userEmail) {
+    if (userEmail || deviceToken) {
       await fetch("/api/devices/equipment-unregister", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: userEmail }),
+        body: JSON.stringify({
+          email: userEmail,
+          deviceToken
+        }),
         keepalive: true
       });
     }
@@ -335,6 +341,7 @@ document.getElementById("logoutBtn").onclick = async () => {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(EMAIL_KEY);
   localStorage.removeItem(KEEP_KEY);
+  localStorage.removeItem(DEVICE_TOKEN_KEY);
 
   location.replace("index.html");
 };

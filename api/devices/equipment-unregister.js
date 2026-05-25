@@ -13,35 +13,43 @@ export default async function handler(req, res) {
 
   try {
     const email = clean(req.body?.email);
+    const deviceToken = String(req.body?.deviceToken || "").trim();
 
-    console.log("🧹 EQUIPMENT UNREGISTER START:", email);
+    console.log("🧹 EQUIPMENT UNREGISTER START:", { email, deviceToken });
 
-    if (!email) {
-      return res.status(400).json({ error: "Missing email" });
+    if (!email && !deviceToken) {
+      return res.status(400).json({ error: "Missing email or deviceToken" });
     }
 
-    // 🔥 GET ALL TOKENS (ANDROID + IOS)
     const androidKeys = await kv.keys("device:android:*");
     const iosKeys = await kv.keys("device:ios:*");
 
     const allKeys = [...androidKeys, ...iosKeys];
 
     let deleted = 0;
+    const toDelete = [];
 
     if (allKeys.length) {
       const records = await kv.mget(...allKeys);
 
-      const toDelete = [];
-
       for (let i = 0; i < allKeys.length; i++) {
+        const key = allKeys[i];
         const rec = records[i];
 
-        if (
+        const tokenFromKey = key.split(":").pop();
+
+        const matchesEmail =
+          email &&
           rec &&
           typeof rec === "object" &&
-          clean(rec.email) === email
-        ) {
-          toDelete.push(allKeys[i]);
+          clean(rec.email) === email;
+
+        const matchesToken =
+          deviceToken &&
+          tokenFromKey === deviceToken;
+
+        if (matchesEmail || matchesToken) {
+          toDelete.push(key);
         }
       }
 
@@ -52,9 +60,11 @@ export default async function handler(req, res) {
     }
 
     console.log("🗑️ KV TOKENS CLEARED:", deleted);
-    console.log("✅ EQUIPMENT UNREGISTER COMPLETE:", email);
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({
+      success: true,
+      deleted
+    });
 
   } catch (err) {
     console.error("UNREGISTER ERROR:", err);

@@ -1117,7 +1117,12 @@ setTimeout(() => applyChangedFieldStyling(), 50);
   };
 }
 function normalizeAxisTradeInRecord(result) {
-  const modality = String(result.effectiveModality || formData.modality || currentModality || "").toUpperCase().trim();
+  const modality = String(
+    result.effectiveModality ||
+    formData.modality ||
+    currentModality ||
+    ""
+  ).toUpperCase().trim();
 
   const fieldMap = {
     CT: {
@@ -1215,88 +1220,137 @@ function normalizeAxisTradeInRecord(result) {
   const map = fieldMap[modality] || {};
   const get = (key) => key ? String(formData[key] || "").trim() : "";
 
- const fromAxis =
-  source === "axis" ||
-  params.get("source") === "axis" ||
-  params.has("axis_record_id") ||
-  params.has("axis_project_id");
+  const fromAxis =
+    source === "axis" ||
+    params.get("source") === "axis" ||
+    params.has("axis_record_id") ||
+    params.has("axis_project_id");
 
-const axisRecordId =
-  params.get("axis_record_id") ||
-  (fromAxis ? localStorage.getItem("axis_record_id") : "") ||
-  "";
+  const axisRecordId =
+    params.get("axis_record_id") ||
+    (fromAxis ? localStorage.getItem("axis_record_id") : "") ||
+    "";
 
-const axisParentRecordId =
-  params.get("axis_parent_record_id") ||
-  params.get("axis_record_id") ||
-  (fromAxis ? localStorage.getItem("axis_parent_record_id") : "") ||
-  (fromAxis ? localStorage.getItem("axis_record_id") : "") ||
-  "";
+  const axisParentRecordId =
+    params.get("axis_parent_record_id") ||
+    params.get("axis_record_id") ||
+    (fromAxis ? localStorage.getItem("axis_parent_record_id") : "") ||
+    axisRecordId ||
+    "";
 
-const axisProjectId =
-  params.get("axis_project_id") ||
-  (fromAxis ? localStorage.getItem("axis_project_id") : "") ||
-  "";
+  const axisProjectId =
+    params.get("axis_project_id") ||
+    (fromAxis ? localStorage.getItem("axis_project_id") : "") ||
+    "";
 
-const isAxisLinked =
-  fromAxis && (!!axisRecordId || !!axisParentRecordId || !!axisProjectId);
-return {
-  id: `tradein_${projectId}_${modalityId || modality}_${Date.now()}`,
-  axis_record_id: axisRecordId,
-  axis_project_id: axisProjectId,
-  axis_parent_record_id: axisParentRecordId,
-  axis_parent_project_type:
-  params.get("axis_parent_project_type") ||
-  (fromAxis ? localStorage.getItem("axis_parent_project_type") : "") ||
-  "",
+  const axisParentProjectType =
+    params.get("axis_parent_project_type") ||
+    (fromAxis ? localStorage.getItem("axis_parent_project_type") : "") ||
+    "";
 
-axis_parent_project_name:
-  params.get("axis_parent_project_name") ||
-  (fromAxis ? localStorage.getItem("axis_parent_project_name") : "") ||
-  "",
+  const axisParentProjectName =
+    params.get("axis_parent_project_name") ||
+    (fromAxis ? localStorage.getItem("axis_parent_project_name") : "") ||
+    "";
 
-axis_serial_number:
-  params.get("axis_serial_number") ||
-  (fromAxis ? localStorage.getItem("axis_serial_number") : "") ||
-  get(map.serial_number),
+  const axisSource =
+    params.get("axis_source") ||
+    (fromAxis ? localStorage.getItem("axis_source") : "") ||
+    "";
 
-axis_source:
-  params.get("axis_source") ||
-  (fromAxis ? localStorage.getItem("axis_source") : "") ||
-  (isAxisLinked ? "existing_axis_equipment" : "field_tradein_app"),
+  const syncMode =
+    params.get("sync_mode") ||
+    (fromAxis ? localStorage.getItem("sync_mode") : "") ||
+    "";
 
-sync_mode:
-  params.get("sync_mode") ||
-  (fromAxis ? localStorage.getItem("sync_mode") : "") ||
-  (isAxisLinked ? "update_existing_axis_record" : "create_unmatched_tradein_lead"),
-  unmatched_tradein_lead: !isAxisLinked,
-  project_id: projectId,
-  modality_id: modalityId || "",
-  modality,
-  hospital_asset_id: String(formData.additional_identifier || "").trim(),
-  make: get(map.make),
-  model: get(map.model),
-  serial_number: get(map.serial_number),
-  dom: get(map.dom),
-  installed_date: get(map.installed_date),
-  in_use_status: get(map.in_use_status),
-  out_of_use_date: get(map.out_of_use_date),
-  availability_timeframe: get(map.availability_timeframe),
-  removal_pathways: get(map.removal_pathways),
-  loading_dock: get(map.loading_dock),
-  hard_drive_removed: get(map.hard_drive_removed),
-  software_version: get(map.software_version),
-  upgrade_notes: get(map.upgrade_notes),
-  changed_fields: result.changedFields || [],
-  last_tradein_update_by: userEmail,
-  last_tradein_update_at: new Date().toISOString(),
-  crm_status: isAxisLinked ? "AXIS Trade-In Field Update" : "Unmatched Trade-In Lead",
-  rep_notes: isAxisLinked
-    ? "Equipment data synced from Espin Trade-In."
-    : "Field-originated trade-in submitted from Espin Trade-In. No AXIS project was linked at time of submission."
-};
+  const serialNumber = get(map.serial_number);
+  const additionalIdentifier = String(formData.additional_identifier || "").trim();
+
+  const isAxisLinked =
+    fromAxis && (
+      !!axisRecordId ||
+      !!axisParentRecordId ||
+      !!axisProjectId
+    );
+
+  const finalSyncMode =
+    syncMode ||
+    (isAxisLinked ? "update_existing_axis_record" : "create_unmatched_tradein_lead");
+
+  const finalAxisSource =
+    axisSource ||
+    (axisParentProjectType === "new_sales_project"
+      ? "new_axis_project"
+      : isAxisLinked
+      ? "existing_axis_equipment"
+      : "field_tradein_app");
+
+  return {
+    id: `tradein_${projectId}_${modalityId || modality}_${Date.now()}`,
+
+    axis_record_id: axisRecordId,
+    axis_parent_record_id: axisParentRecordId,
+    axis_project_id: axisProjectId,
+
+    axis_parent_project_type: axisParentProjectType,
+    axis_parent_project_name: axisParentProjectName,
+
+    axis_serial_number:
+      params.get("axis_serial_number") ||
+      (fromAxis ? localStorage.getItem("axis_serial_number") : "") ||
+      serialNumber ||
+      additionalIdentifier,
+
+    axis_source: finalAxisSource,
+    sync_mode: finalSyncMode,
+
+    unmatched_tradein_lead: !isAxisLinked,
+
+    project_id: projectId,
+    modality_id: modalityId || "",
+    modality,
+
+    hospital_asset_id: additionalIdentifier,
+
+    make: get(map.make),
+    model: get(map.model),
+    serial_number: serialNumber,
+    dom: get(map.dom),
+
+    installed_date: get(map.installed_date),
+    in_use_status: get(map.in_use_status),
+    out_of_use_date: get(map.out_of_use_date),
+    availability_timeframe: get(map.availability_timeframe),
+    removal_pathways: get(map.removal_pathways),
+    loading_dock: get(map.loading_dock),
+    hard_drive_removed: get(map.hard_drive_removed),
+    software_version: get(map.software_version),
+    upgrade_notes: get(map.upgrade_notes),
+
+    site:
+      axisParentProjectName ||
+      localStorage.getItem("espinEquipment_activeProjectName") ||
+      "Trade-In Field Update",
+
+    project_name:
+      axisParentProjectName ||
+      localStorage.getItem("espinEquipment_activeProjectName") ||
+      "Trade-In Field Update",
+
+    changed_fields: result.changedFields || [],
+
+    last_tradein_update_by: userEmail,
+    last_tradein_update_at: new Date().toISOString(),
+
+    crm_status: isAxisLinked
+      ? "AXIS Trade-In Field Update"
+      : "Unmatched Trade-In Lead",
+
+    rep_notes: isAxisLinked
+      ? "Equipment data synced from Espin Trade-In."
+      : "Field-originated trade-in submitted from Espin Trade-In. No AXIS project was linked at time of submission."
+  };
 }
-
 function syncTradeInToAxisDemo(result) {
   const key = "axis_tradein_sync_records_v1";
   const newRecord = normalizeAxisTradeInRecord(result);
