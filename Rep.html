@@ -2999,6 +2999,7 @@ function syncFeedStatus(rec) {
   const key = `${rec.oem_project_id}_${rec.serial_number}`;
 
   let queue = [];
+
   try {
     queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
     if (!Array.isArray(queue)) queue = [];
@@ -3017,32 +3018,28 @@ function syncFeedStatus(rec) {
         String(item.serial_number || "") === String(rec.serial_number || "")
       );
 
-   if (!sameRecord) return item;
+    if (!sameRecord) return item;
 
-foundInQueue = true;
+    foundInQueue = true;
 
-return {
-  ...item,
-  ...rec,
-  manager_unseen_update: true,
-  manager_flash_at: rec.manager_flash_at || new Date().toISOString(),
-  manager_flash_type: rec.manager_flash_type || "rep_update"
-};
-});
+    return {
+      ...item,
+      ...rec,
+      key
+    };
+  });
 
-if (!foundInQueue) {
-queue.unshift({
-  ...rec,
-  key,
-  manager_unseen_update: true,
-  manager_flash_at: new Date().toISOString(),
-  manager_flash_type: rec.manager_flash_type || "rep_update"
-});
-}
+  if (!foundInQueue) {
+    queue.unshift({
+      ...rec,
+      key
+    });
+  }
 
   localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
 
   let main = [];
+
   try {
     main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     if (!Array.isArray(main)) main = [];
@@ -3067,20 +3064,15 @@ queue.unshift({
     return {
       ...item,
       ...rec,
-      manager_unseen_update: true,
-      manager_flash_at: new Date().toISOString(),
-      manager_flash_type: "rep_update"
+      key
     };
   });
 
   if (!foundInMain) {
-   main.unshift({
-  ...rec,
-  key,
-  manager_unseen_update: true,
-  manager_flash_at: rec.manager_flash_at || new Date().toISOString(),
-  manager_flash_type: rec.manager_flash_type || "rep_update"
-});
+    main.unshift({
+      ...rec,
+      key
+    });
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));

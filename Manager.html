@@ -978,8 +978,10 @@ if (
   tbody.innerHTML = sorted.map(rec => {
  const selectedClass = [
   rec.id === state.selectedId ? "selected" : "",
-  rec.manager_unseen_update ? "manager-row-flash" : ""
-].join(" ");
+  repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep
+    ? "manager-row-flash"
+    : ""
+].filter(Boolean).join(" ");
     const alerts = getAlerts(rec);
 
     return `
@@ -2004,29 +2006,55 @@ rec.manager_flash_type = "manager_response";
   render();
 } 
 function syncManagerResponseToStorage(updatedRec) {
+  const key = `${updatedRec.oem_project_id}_${updatedRec.serial_number}`;
+
   let main = [];
 
   try {
     main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
   } catch {
     main = [];
   }
 
+  let foundInMain = false;
+
   main = main.map(item => {
     const sameRecord =
       item.id === updatedRec.id ||
+      item.key === key ||
       (
-        item.oem_project_id === updatedRec.oem_project_id &&
-        item.serial_number === updatedRec.serial_number
+        String(item.oem_project_id || "") === String(updatedRec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(updatedRec.serial_number || "")
       );
 
     if (!sameRecord) return item;
 
+    foundInMain = true;
+
     return {
       ...item,
-      ...updatedRec
+      ...updatedRec,
+      key,
+      manager_response_seen_by_rep: false,
+      manager_response_seen_at: "",
+      manager_unseen_update: true,
+      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+      manager_flash_type: "manager_response"
     };
   });
+
+  if (!foundInMain) {
+    main.unshift({
+      ...updatedRec,
+      key,
+      manager_response_seen_by_rep: false,
+      manager_response_seen_at: "",
+      manager_unseen_update: true,
+      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+      manager_flash_type: "manager_response"
+    });
+  }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
 
@@ -2034,26 +2062,49 @@ function syncManagerResponseToStorage(updatedRec) {
 
   try {
     queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    if (!Array.isArray(queue)) queue = [];
   } catch {
     queue = [];
   }
 
+  let foundInQueue = false;
+
   queue = queue.map(item => {
     const sameRecord =
       item.id === updatedRec.id ||
-      item.key === `${updatedRec.oem_project_id}_${updatedRec.serial_number}` ||
+      item.key === key ||
       (
-        item.oem_project_id === updatedRec.oem_project_id &&
-        item.serial_number === updatedRec.serial_number
+        String(item.oem_project_id || "") === String(updatedRec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(updatedRec.serial_number || "")
       );
 
     if (!sameRecord) return item;
 
+    foundInQueue = true;
+
     return {
       ...item,
-      ...updatedRec
+      ...updatedRec,
+      key,
+      manager_response_seen_by_rep: false,
+      manager_response_seen_at: "",
+      manager_unseen_update: true,
+      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+      manager_flash_type: "manager_response"
     };
   });
+
+  if (!foundInQueue) {
+    queue.unshift({
+      ...updatedRec,
+      key,
+      manager_response_seen_by_rep: false,
+      manager_response_seen_at: "",
+      manager_unseen_update: true,
+      manager_flash_at: updatedRec.manager_flash_at || new Date().toISOString(),
+      manager_flash_type: "manager_response"
+    });
+  }
 
   localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
@@ -2247,9 +2298,14 @@ function selectRow(id) {
   if (!rec) return;
 
   rec.quote_seen = true;
-  rec.manager_unseen_update = false;
-  rec.manager_flash_at = "";
-  rec.manager_flash_type = "";
+
+  if (repMode) {
+    rec.manager_response_seen_by_rep = true;
+    rec.manager_response_seen_at = new Date().toISOString();
+    rec.manager_unseen_update = false;
+    rec.manager_flash_at = "";
+    rec.manager_flash_type = "";
+  }
 
   syncFeedStatus(rec);
 
