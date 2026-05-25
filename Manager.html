@@ -627,7 +627,13 @@ function getDaysSince(date) {
 function uuid() {
   return "id_" + Math.random().toString(36).slice(2, 10);
 }
+function getRecordKey(rec) {
+  if (rec.project_type === "new_sales_project") {
+    return rec.key || `new_project_${rec.id}`;
+  }
 
+  return rec.key || `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
+}
 function normalizeModality(v) {
   const m = String(v || "").trim().toUpperCase();
   if (m === "X-RAY" || m === "XRAY") return "XRAY";
@@ -1028,7 +1034,8 @@ if (
 
           return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
         })()
-     `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
+           : hasManagerUnseenUpdate(rec)
+      ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
       : !alerts.length
       ? '<span class="mini">No Action</span>'
       : alerts.map(a => `
@@ -2011,7 +2018,8 @@ rec.manager_flash_type = "";
   render();
 } 
 function syncManagerResponseToStorage(updatedRec) {
-  const key = `${updatedRec.oem_project_id}_${updatedRec.serial_number}`;
+ const key = getRecordKey(updatedRec);
+updatedRec.key = key;
 
   let main = [];
 
@@ -2169,12 +2177,12 @@ function render() {
   }
 
   queue.forEach(q => {
-    const qKey = q.key || `${q.oem_project_id || ""}_${q.serial_number || ""}`;
+    const qKey = getRecordKey(q);
 
     const idx = main.findIndex(r =>
       r.id === q.id ||
       r.key === qKey ||
-      `${r.oem_project_id || ""}_${r.serial_number || ""}` === qKey
+      const qKey = getRecordKey(q);getRecordKey(r) === qKey
     );
 
     if (idx >= 0) {
@@ -2322,7 +2330,8 @@ function selectRow(id) {
   const rec = sourceRecords.find(r => r.id === id);
   if (!rec) return;
 
-  const key = `${rec.oem_project_id}_${rec.serial_number}`;
+  const key = getRecordKey(rec);
+rec.key = key;
 
   rec.manager_unseen_update = false;
   rec.manager_flash_at = "";
@@ -2342,8 +2351,7 @@ function selectRow(id) {
       item.id === rec.id ||
       item.key === key ||
       (
-        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
-        String(item.serial_number || "") === String(rec.serial_number || "")
+        getRecordKey(item) === key
       );
 
     if (!sameRecord) return item;
@@ -2566,56 +2574,98 @@ function syncRepRecord(updatedRec) {
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 }
 function syncFeedStatus(rec) {
-  let queue = JSON.parse(
-    localStorage.getItem("espin_rep_queue") || "[]"
-  );
+  const key = rec.project_type === "new_sales_project"
+    ? `new_project_${rec.id}`
+    : `${rec.oem_project_id}_${rec.serial_number}`;
 
-  const key = `${rec.oem_project_id}_${rec.serial_number}`;
+  rec.key = key;
+
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  let foundInQueue = false;
 
   queue = queue.map(item => {
     const sameRecord =
       item.key === key ||
       item.id === rec.id ||
       (
-        item.oem_project_id === rec.oem_project_id &&
-        item.serial_number === rec.serial_number
+        rec.project_type !== "new_sales_project" &&
+        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
       );
 
     if (!sameRecord) return item;
 
+    foundInQueue = true;
+
     return {
       ...item,
-      ...rec
+      ...rec,
+      key
     };
   });
 
-  localStorage.setItem(
-    "espin_rep_queue",
-    JSON.stringify(queue)
-  );
-
-  syncRepRecord(rec);
-
-  localStorage.setItem(
-    "axis_manager_sync_ping_v1",
-    String(Date.now())
-  );
-
-  window.dispatchEvent(
-    new Event("rep_feed_update")
-  );
-
-  if (!repMode) {
-    try {
-      state.records = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "[]"
-      );
-    } catch {
-      state.records = [];
-    }
+  if (!foundInQueue) {
+    queue.unshift({
+      ...rec,
+      key
+    });
   }
 
-  render();
+  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+
+  let main = [];
+
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
+  }
+
+  let foundInMain = false;
+
+  main = main.map(item => {
+    const sameRecord =
+      item.key === key ||
+      item.id === rec.id ||
+      (
+        rec.project_type !== "new_sales_project" &&
+        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
+      );
+
+    if (!sameRecord) return item;
+
+    foundInMain = true;
+
+    return {
+      ...item,
+      ...rec,
+      key
+    };
+  });
+
+  if (!foundInMain) {
+    main.unshift({
+      ...rec,
+      key
+    });
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  state.records = main;
+
+  window.dispatchEvent(new Event("rep_feed_update"));
 }
 // 🔥 AXIS ADD: ACTION SCORE
 function getActionScore(rec) {
