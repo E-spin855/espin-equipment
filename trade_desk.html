@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AXIS Trade Desk Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+  font-family:Arial;
+  background:#07111f;
+  color:#eef6ff;
+  margin:0;
+  padding:20px;
+}
+
+h1,h2,h3{
+  margin:0 0 12px;
+}
+
+.panel{
+  background:#0b1830;
+  border:1px solid #23415f;
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:16px;
+}
+
+input,select,textarea,button{
+  width:100%;
+  box-sizing:border-box;
+  padding:10px;
+  margin:4px 0;
+  border-radius:8px;
+  border:1px solid #345;
+  color:#fff;
+  background:#10233f;
+}
+
+textarea{
+  min-height:80px;
+}
+
+button{
+  background:#1d8cff;
+  cursor:pointer;
+  border:none;
+  font-weight:bold;
+}
+
+button.green{background:#18a558}
+button.red{background:#c0392b}
+button.dark{background:#334155}
+button.gold{background:#b8860b}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+  gap:16px;
+}
+
+.card{
+  background:#101f38;
+  border:1px solid #2b4a68;
+  border-radius:10px;
+  padding:12px;
+  margin:8px 0;
+}
+
+.small{
+  color:#9db6d2;
+  font-size:13px;
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:20px;
+  background:#263f5f;
+  margin:3px 3px 3px 0;
+  font-size:12px;
+}
+
+.win{background:#18a558}
+.pending{background:#b8860b}
+.blue{background:#1d8cff}
+.redBadge{background:#c0392b}
+
+.field-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.kv{
+  margin:5px 0;
+  font-size:14px;
+}
+
+.kv strong{
+  color:#ffffff;
+}
+
+.image-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:8px;
+}
+
+.image-box{
+  border:1px solid #2b4a68;
+  border-radius:10px;
+  padding:6px;
+  background:#07111f;
+  width:130px;
+}
+
+.image-box img{
+  width:100%;
+  height:90px;
+  object-fit:cover;
+  border-radius:8px;
+  display:block;
+}
+
+hr{
+  border:0;
+  border-top:1px solid #2b4a68;
+  margin:12px 0;
+}
+
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:#07111f;
+  border:1px solid #2b4a68;
+  padding:10px;
+  border-radius:10px;
+  color:#b9d7ff;
+  font-size:12px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>AXIS Trade Desk Workflow Demo</h1>
+<p class="small">
+Trade-In App → Trade Desk AXIS → Bidding Portal → Winning Bid → Rep Quote Sync
+</p>
+
+<div class="grid">
+
+  <div class="panel">
+    <h2>1. Trade-In App Intake</h2>
+
+    <div class="field-row">
+      <input id="project_id" placeholder="project_id / Quote ID">
+      <input id="modality_id" placeholder="modality_id">
+    </div>
+
+    <select id="modality" onchange="applyModalityDefaults()">
+      <option value="">Select Modality</option>
+      <option value="CT">CT</option>
+      <option value="MRI">MRI</option>
+      <option value="MAMMO">MAMMO</option>
+      <option value="XRAY">X-Ray</option>
+      <option value="CARM">C-Arm</option>
+      <option value="PETCT">PET/CT</option>
+    </select>
+
+    <div class="field-row">
+      <input id="make" placeholder="make / Manufacturer">
+      <input id="model" placeholder="model">
+    </div>
+
+    <div class="field-row">
+      <input id="serial_number" placeholder="serial_number">
+      <input id="hospital_asset_id" placeholder="hospital_asset_id / Additional Identifier">
+    </div>
+
+    <div class="field-row">
+      <input id="dom" placeholder="dom / Date Manufactured">
+      <input id="installed_date" placeholder="installed_date">
+    </div>
+
+    <div class="field-row">
+      <select id="in_use_status">
+        <option value="">System In Use?</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+
+      <input id="out_of_use_date" placeholder="out_of_use_date">
+    </div>
+
+    <input id="availability_timeframe" placeholder="availability_timeframe">
+
+    <textarea id="removal_pathways" placeholder="removal_pathways"></textarea>
+
+    <div class="field-row">
+      <select id="loading_dock">
+        <option value="">Loading Dock Available?</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+
+      <select id="hard_drive_removed">
+        <option value="">Hard Drives Removed?</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+    </div>
+
+    <div class="field-row">
+      <input id="software_version" placeholder="software_version">
+      <input id="axis_parent_project_name" placeholder="axis_parent_project_name">
+    </div>
+
+    <textarea id="upgrade_notes" placeholder="upgrade_notes"></textarea>
+    <textarea id="rep_notes" placeholder="rep_notes"></textarea>
+
+    <label class="small">Equipment Images</label>
+    <input id="photos" type="file" accept="image/*" multiple>
+
+    <button onclick="submitTradeIn()">Submit to Trade Desk AXIS</button>
+    <button class="dark" onclick="loadSample()">Load Sample Record</button>
+  </div>
+
+  <div class="panel">
+    <h2>2. Trade Desk AXIS</h2>
+    <div id="tradeDesk"></div>
+  </div>
+
+  <div class="panel">
+    <h2>3. Bidder Portal</h2>
+    <div id="bidderPortal"></div>
+  </div>
+
+  <div class="panel">
+    <h2>4. Rep Quote Sync</h2>
+    <div id="repQuotes"></div>
+  </div>
+
+</div>
+
+<script>
+const KEY = "axis_trade_desk_demo_v1";
+const AXIS_TRADE_DESK_QUEUE_KEY = "axis_trade_desk_queue_v1";
+const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
+const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
+const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
+
+function loadData(){
+  try {
+    const data = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveData(data){
+  localStorage.setItem(KEY, JSON.stringify(data));
+  localStorage.setItem(TRADEIN_SYNC_KEY, JSON.stringify(data));
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+}
+
+function money(n){
+  return "$" + Number(n || 0).toLocaleString();
+}
+
+function val(id){
+  return String(document.getElementById(id)?.value || "").trim();
+}
+
+function uid(prefix){
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeModality(v){
+  const m = String(v || "").trim().toUpperCase();
+
+  if (m === "X-RAY" || m === "XRAY") return "XRAY";
+  if (m === "CATH LAB" || m === "CATH") return "CARM";
+  if (m === "PET") return "PETCT";
+
+  return m;
+}
+
+function applyModalityDefaults(){
+  const m = val("modality");
+
+  if (m === "CT") {
+    make.value = make.value || "Siemens";
+    model.value = model.value || "SOMATOM Definition AS";
+    software_version.value = software_version.value || "VA48A";
+  }
+
+  if (m === "MRI") {
+    make.value = make.value || "GE";
+    model.value = model.value || "Optima MR450w";
+    software_version.value = software_version.value || "DV26";
+  }
+
+  if (m === "MAMMO") {
+    make.value = make.value || "Hologic";
+    model.value = model.value || "Selenia Dimensions";
+  }
+
+  if (m === "XRAY") {
+    make.value = make.value || "Carestream";
+    model.value = model.value || "DRX-Evolution";
+  }
+
+  if (m === "CARM") {
+    make.value = make.value || "OEC";
+    model.value = model.value || "9900 Elite";
+  }
+
+  if (m === "PETCT") {
+    make.value = make.value || "Siemens";
+    model.value = model.value || "Biograph mCT";
+  }
+}
+
+function readPhotos(callback){
+  const files = Array.from(document.getElementById("photos").files || []);
+
+  if (!files.length) {
+    callback([]);
+    return;
+  }
+
+  let completed = 0;
+  const images = [];
+
+  files.forEach((file, index) => {
+    const reader = new FileReader();
+
+    reader.onload = e => {
+      images.push({
+        image_id: uid("image"),
+        project_id: val("project_id"),
+        modality_id: val("modality_id"),
+        title: index === 0 ? "Front View" : index === 1 ? "Serial Tag" : "Additional View",
+        type: index === 0 ? "front_view" : index === 1 ? "serial_tag" : "additional_view",
+        url: e.target.result,
+        filename: file.name,
+        uploaded_by: "rep@demo.com",
+        uploaded_at: new Date().toISOString()
+      });
+
+      completed++;
+
+      if (completed === files.length) {
+        callback(images);
+      }
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildAxisRecord(images){
+  const projectId = val("project_id") || `QUOTE-${Date.now()}`;
+  const modalityId = val("modality_id") || uid("modality");
+
+  return {
+    id: uid("tradein"),
+
+    axis_record_id: uid("axis_record"),
+    axis_project_id: projectId,
+    axis_parent_record_id: "",
+    axis_parent_project_type: "Trade-In Opportunity",
+    axis_parent_project_name: val("axis_parent_project_name") || "Replacement / Trade-In Review",
+    axis_serial_number: val("serial_number"),
+    axis_source: "espin_trade_in_app",
+    sync_mode: "create_or_update_axis_trade_desk_record",
+
+    project_id: projectId,
+    modality_id: modalityId,
+    modality: normalizeModality(val("modality")),
+    hospital_asset_id: val("hospital_asset_id"),
+    make: val("make"),
+    model: val("model"),
+    serial_number: val("serial_number"),
+    dom: val("dom"),
+    installed_date: val("installed_date"),
+    in_use_status: val("in_use_status"),
+    out_of_use_date: val("out_of_use_date"),
+    availability_timeframe: val("availability_timeframe"),
+    removal_pathways: val("removal_pathways"),
+    loading_dock: val("loading_dock"),
+    hard_drive_removed: val("hard_drive_removed"),
+    software_version: val("software_version"),
+    upgrade_notes: val("upgrade_notes"),
+
+    images,
+    image_sync_received: images.length > 0,
+    image_count: images.length,
+    last_image_update_by: "rep@demo.com",
+    last_image_update_at: images.length ? new Date().toISOString() : "",
+
+    changed_fields: [
+      "modality",
+      "make",
+      "model",
+      "serial_number",
+      "availability_timeframe",
+      "removal_pathways",
+      "images"
+    ],
+
+    last_tradein_update_by: "rep@demo.com",
+    last_tradein_update_at: new Date().toISOString(),
+    crm_status: "New Trade-In Field Update",
+    rep_notes: val("rep_notes") || "Equipment data synced from Espin Trade-In.",
+
+    trade_desk_status: "Submitted to Trade Desk",
+    bid_status: "Not Released",
+    approved_for_bidding_at: "",
+    approved_by: "",
+    bids: [],
+    winningBid: null,
+    winning_bid_amount: "",
+    winning_bidder: "",
+    winning_bid_terms: "",
+    winning_bid_selected_at: "",
+    quote_sync_status: "Pending Bid",
+    quote_id: projectId,
+    trade_in_credit: "",
+    tradein_credit: "",
+
+    createdAt: new Date().toISOString()
+  };
+}
+
+function importAxisTradeDeskQueue(){
+  let deskData = loadData();
+
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem(AXIS_TRADE_DESK_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  if (!queue.length) return false;
+
+  let changed = false;
+
+  queue.forEach(item => {
+    const projectId =
+      item.project_id ||
+      item.tradein_project_id ||
+      item.axis_project_id ||
+      item.quote_id ||
+      item.oem_project_id ||
+      "";
+
+    const modalityId =
+      item.modality_id ||
+      item.tradein_modality_id ||
+      item.axis_modality_id ||
+      "";
+
+    const record = {
+      id: item.trade_desk_id || item.id || uid("tradein"),
+
+      axis_record_id: item.axis_record_id || item.axis_parent_record_id || item.id || "",
+      axis_project_id: item.axis_project_id || item.oem_project_id || projectId,
+      axis_parent_record_id: item.axis_parent_record_id || item.axis_record_id || item.id || "",
+      axis_parent_project_type: item.axis_parent_project_type || item.axis_project_type || "AXIS Sales Project",
+      axis_parent_project_name: item.axis_parent_project_name || item.axis_project_name || item.project_name || item.model || "AXIS Trade-In Review",
+      axis_serial_number: item.axis_serial_number || item.serial_number || item.tradein_equipment_serial_number || "",
+      axis_source: item.axis_source || "axis_rep_side",
+      sync_mode: "create_or_update_axis_trade_desk_record",
+
+      project_id: projectId || `QUOTE-${Date.now()}`,
+      modality_id: modalityId || uid("modality"),
+
+      modality: normalizeModality(item.modality || item.tradein_equipment_modality || ""),
+      hospital_asset_id: item.hospital_asset_id || item.additional_identifier || "",
+      make: item.make || item.tradein_equipment_make || "",
+      model: item.model || item.tradein_equipment_model || "",
+      serial_number: item.serial_number || item.tradein_equipment_serial_number || "",
+      dom: item.dom || item.tradein_equipment_dom || "",
+      installed_date: item.installed_date || "",
+
+      site: item.site || item.facility || item.customer || "",
+      site_address: item.site_address || "",
+      city: item.city || "",
+      state: item.state || "",
+      zip_code: item.zip_code || "",
+
+      in_use_status: item.in_use_status || item.tradein_in_use_status || "",
+      out_of_use_date: item.out_of_use_date || item.tradein_out_of_use_date || "",
+      availability_timeframe: item.availability_timeframe || item.tradein_availability_timeframe || "",
+      removal_pathways: item.removal_pathways || item.tradein_removal_pathways || "",
+      loading_dock: item.loading_dock || item.tradein_loading_dock || "",
+      hard_drive_removed: item.hard_drive_removed || item.tradein_hard_drive_removed || "",
+      software_version: item.software_version || item.tradein_software_version || "",
+      upgrade_notes: item.upgrade_notes || item.tradein_upgrade_notes || "",
+
+      images: item.images || [],
+      image_sync_received: Boolean(item.images && item.images.length),
+      image_count: Array.isArray(item.images) ? item.images.length : 0,
+      last_image_update_by: item.last_image_update_by || item.assigned_rep_email || "",
+      last_image_update_at: item.last_image_update_at || "",
+
+      changed_fields: item.changed_fields || [
+        "modality",
+        "make",
+        "model",
+        "serial_number",
+        "availability_timeframe",
+        "removal_pathways",
+        "images"
+      ],
+
+      assigned_rep_name: item.assigned_rep_name || "",
+      assigned_rep_email: item.assigned_rep_email || item.sales_rep_email || "",
+      assigned_rep_phone: item.assigned_rep_phone || item.sales_rep_phone || "",
+
+      last_tradein_update_by:
+        item.last_tradein_update_by ||
+        item.assigned_rep_email ||
+        item.sales_rep_email ||
+        "axis@demo.com",
+
+      last_tradein_update_at:
+        item.last_tradein_update_at ||
+        item.sent_to_trade_desk_at ||
+        new Date().toISOString(),
+
+      crm_status: "Received From AXIS Rep",
+      rep_notes: item.rep_notes || "Trade-in sent from AXIS rep workflow.",
+
+      trade_desk_status: item.trade_desk_status || "Submitted to Trade Desk",
+      bid_status: item.bid_status || "Not Released",
+      approved_for_bidding_at: item.approved_for_bidding_at || "",
+      approved_by: item.approved_by || "",
+      bids: item.bids || [],
+      winningBid: item.winningBid || null,
+      winning_bid_amount: item.winning_bid_amount || "",
+      winning_bidder: item.winning_bidder || "",
+      winning_bid_terms: item.winning_bid_terms || "",
+      winning_bid_selected_at: item.winning_bid_selected_at || "",
+      quote_sync_status: item.quote_sync_status || "Pending Bid",
+      quote_id: item.quote_id || projectId,
+      trade_in_credit: item.trade_in_credit || item.tradein_credit || "",
+      tradein_credit: item.tradein_credit || item.trade_in_credit || "",
+
+      createdAt: item.createdAt || new Date().toISOString(),
+      received_from_axis_at: item.received_from_axis_at || new Date().toISOString()
+    };
+
+    const matchIndex = deskData.findIndex(r =>
+      String(r.axis_record_id || "") === String(record.axis_record_id || "") ||
+      (
+        String(r.project_id || "") === String(record.project_id || "") &&
+        String(r.modality_id || "") === String(record.modality_id || "")
+      ) ||
+      (
+        String(r.serial_number || "") &&
+        String(record.serial_number || "") &&
+        String(r.serial_number || "") === String(record.serial_number || "")
+      )
+    );
+
+    if (matchIndex >= 0) {
+      deskData[matchIndex] = {
+        ...deskData[matchIndex],
+        ...record,
+        id: deskData[matchIndex].id,
+        bids: deskData[matchIndex].bids || record.bids || [],
+        winningBid: deskData[matchIndex].winningBid || record.winningBid || null,
+        winning_bid_amount: deskData[matchIndex].winning_bid_amount || record.winning_bid_amount || "",
+        winning_bidder: deskData[matchIndex].winning_bidder || record.winning_bidder || "",
+        winning_bid_terms: deskData[matchIndex].winning_bid_terms || record.winning_bid_terms || "",
+        winning_bid_selected_at: deskData[matchIndex].winning_bid_selected_at || record.winning_bid_selected_at || "",
+        trade_in_credit: deskData[matchIndex].trade_in_credit || record.trade_in_credit || "",
+        tradein_credit: deskData[matchIndex].tradein_credit || record.tradein_credit || ""
+      };
+    } else {
+      deskData.unshift(record);
+    }
+
+    changed = true;
+  });
+
+  if (changed) {
+    saveData(deskData);
+    localStorage.removeItem(AXIS_TRADE_DESK_QUEUE_KEY);
+    localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+  }
+
+  return changed;
+}
+
+function submitTradeIn(){
+  if (!val("modality")) return alert("Select modality.");
+
+  if (!val("serial_number") && !val("hospital_asset_id")) {
+    return alert("Serial Number or Additional Identifier required.");
+  }
+
+  readPhotos(images => {
+    const data = loadData();
+    const record = buildAxisRecord(images);
+
+    const matchIndex = data.findIndex(r =>
+      String(r.project_id || "") === String(record.project_id || "") &&
+      String(r.modality_id || "") === String(record.modality_id || "")
+    );
+
+    if (matchIndex >= 0) {
+      data[matchIndex] = {
+        ...data[matchIndex],
+        ...record,
+        id: data[matchIndex].id,
+        axis_record_id: data[matchIndex].axis_record_id || record.axis_record_id,
+        bids: data[matchIndex].bids || [],
+        winningBid: data[matchIndex].winningBid || null
+      };
+    } else {
+      data.unshift(record);
+    }
+
+    saveData(data);
+    localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(record));
+    render();
+  });
+}
+
+function approveForBidding(id){
+  const data = loadData();
+  const rec = data.find(r => r.id === id);
+  if (!rec) return;
+
+  rec.trade_desk_status = "Approved for Bidding";
+  rec.bid_status = "Open for Bids";
+  rec.approved_for_bidding_at = new Date().toISOString();
+  rec.approved_by = "trade.desk@demo.com";
+  rec.crm_status = "Released to Approved Bidders";
+
+  saveData(data);
+  render();
+}
+
+function rejectFromBidding(id){
+  const data = loadData();
+  const rec = data.find(r => r.id === id);
+  if (!rec) return;
+
+  rec.trade_desk_status = "Needs More Information";
+  rec.bid_status = "Hold";
+  rec.quote_sync_status = "Waiting on Trade Desk";
+  rec.crm_status = "Trade Desk Needs More Information";
+
+  saveData(data);
+  render();
+}
+
+function addBid(id){
+  const bidder = val("bidder_" + id);
+  const amount = Number(val("amount_" + id));
+  const terms = val("terms_" + id);
+  const expires = val("expires_" + id);
+
+  if (!bidder || !amount) return alert("Enter bidder and amount.");
+
+  const data = loadData();
+  const rec = data.find(r => r.id === id);
+  if (!rec) return;
+
+  rec.bids = rec.bids || [];
+
+  rec.bids.push({
+    bid_id: uid("bid"),
+    bidder,
+    amount,
+    terms,
+    expires,
+    submitted_at: new Date().toISOString()
+  });
+
+  rec.bid_status = "Bids Received";
+  rec.crm_status = "Bid Received";
+
+  saveData(data);
+  render();
+}
+
+function selectWinner(id, index){
+  const data = loadData();
+  const rec = data.find(r => r.id === id);
+  if (!rec || !rec.bids[index]) return;
+
+  const winning = rec.bids[index];
+
+  rec.winningBid = winning;
+  rec.winning_bid_amount = winning.amount;
+  rec.winning_bidder = winning.bidder;
+  rec.winning_bid_terms = winning.terms;
+  rec.winning_bid_selected_at = new Date().toISOString();
+
+  rec.trade_in_credit = winning.amount;
+  rec.tradein_credit = winning.amount;
+  rec.tradein_estimated_value = winning.amount;
+  rec.estimated_trade_in_value = winning.amount;
+
+  rec.trade_desk_status = "Winning Bid Selected";
+  rec.bid_status = "Awarded";
+  rec.quote_sync_status = "Synced to Rep Quote";
+  rec.crm_status = "Winning Bid Synced to Quote";
+
+  rec.last_tradein_update_at = new Date().toISOString();
+  rec.changed_fields = [
+    ...(rec.changed_fields || []),
+    "winning_bid_amount",
+    "winning_bidder",
+    "trade_in_credit",
+    "quote_sync_status"
+  ];
+
+  saveData(data);
+  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+  render();
+}
+
+function clearDemo(){
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(TRADEIN_SYNC_KEY);
+  localStorage.removeItem(LAST_SYNC_KEY);
+  localStorage.removeItem(MANAGER_PING_KEY);
+  localStorage.removeItem(AXIS_TRADE_DESK_QUEUE_KEY);
+  render();
+}
+
+function loadSample(){
+  project_id.value = "QUOTE-1048";
+  modality_id.value = "MOD-CT-001";
+  modality.value = "CT";
+  make.value = "Siemens";
+  model.value = "SOMATOM Definition AS";
+  serial_number.value = "CT-83922";
+  hospital_asset_id.value = "Room 2 / Asset 123";
+  dom.value = "2016-04";
+  installed_date.value = "2016-08";
+  in_use_status.value = "Yes";
+  out_of_use_date.value = "";
+  availability_timeframe.value = "60-90 days";
+  removal_pathways.value = "Ground floor imaging suite. Double doors available. Dock access available through rear corridor.";
+  loading_dock.value = "Yes";
+  hard_drive_removed.value = "No";
+  software_version.value = "VA48A";
+  axis_parent_project_name.value = "CT Replacement Planning";
+  upgrade_notes.value = "Includes injector. Tube replaced in 2021.";
+  rep_notes.value = "Customer is evaluating replacement and wants trade-in credit included in quote.";
+}
+
+function imageHtml(rec){
+  if (!Array.isArray(rec.images) || !rec.images.length) {
+    return `<p class="small">No images synced yet.</p>`;
+  }
+
+  return `
+    <div class="image-row">
+      ${rec.images.map(img => `
+        <div class="image-box">
+          <img src="${img.url}" alt="${img.type || "equipment image"}">
+          <div class="small">${img.title || img.type || "image"}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function statusBadge(rec){
+  const status = rec.trade_desk_status || "Submitted to Trade Desk";
+
+  let cls = "pending";
+  if (status.includes("Approved")) cls = "blue";
+  if (status.includes("Winning")) cls = "win";
+  if (status.includes("Needs")) cls = "redBadge";
+
+  return `<span class="badge ${cls}">${status}</span>`;
+}
+
+function render(){
+  importAxisTradeDeskQueue();
+
+  const data = loadData();
+
+  tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No trade-ins submitted yet.</p>";
+  bidderPortal.innerHTML = "";
+  repQuotes.innerHTML = "";
+
+  data.forEach(rec => {
+    tradeDesk.innerHTML += `
+      <div class="card">
+        <h3>${rec.modality || "-"} — ${rec.make || "-"} ${rec.model || ""}</h3>
+
+        ${statusBadge(rec)}
+        <span class="badge">${rec.bid_status || "Not Released"}</span>
+        <span class="badge">${rec.crm_status || "-"}</span>
+
+        <div class="kv"><strong>project_id:</strong> ${rec.project_id || "-"}</div>
+        <div class="kv"><strong>modality_id:</strong> ${rec.modality_id || "-"}</div>
+        <div class="kv"><strong>axis_record_id:</strong> ${rec.axis_record_id || "-"}</div>
+        <div class="kv"><strong>axis_parent_record_id:</strong> ${rec.axis_parent_record_id || "-"}</div>
+        <div class="kv"><strong>axis_project_id:</strong> ${rec.axis_project_id || "-"}</div>
+        <div class="kv"><strong>axis_source:</strong> ${rec.axis_source || "-"}</div>
+        <div class="kv"><strong>serial_number:</strong> ${rec.serial_number || "-"}</div>
+        <div class="kv"><strong>hospital_asset_id:</strong> ${rec.hospital_asset_id || "-"}</div>
+        <div class="kv"><strong>dom:</strong> ${rec.dom || "-"}</div>
+        <div class="kv"><strong>installed_date:</strong> ${rec.installed_date || "-"}</div>
+        <div class="kv"><strong>in_use_status:</strong> ${rec.in_use_status || "-"}</div>
+        <div class="kv"><strong>availability_timeframe:</strong> ${rec.availability_timeframe || "-"}</div>
+        <div class="kv"><strong>loading_dock:</strong> ${rec.loading_dock || "-"}</div>
+        <div class="kv"><strong>hard_drive_removed:</strong> ${rec.hard_drive_removed || "-"}</div>
+        <div class="kv"><strong>software_version:</strong> ${rec.software_version || "-"}</div>
+
+        <p class="small"><strong>Removal Pathways:</strong><br>${rec.removal_pathways || "-"}</p>
+        <p class="small"><strong>Rep Notes:</strong><br>${rec.rep_notes || "-"}</p>
+
+        ${imageHtml(rec)}
+
+        <hr>
+
+        <button onclick="approveForBidding('${rec.id}')">Approve for Bidding</button>
+        <button class="gold" onclick="rejectFromBidding('${rec.id}')">Needs More Information</button>
+
+        <details>
+          <summary class="small">View synced AXIS payload</summary>
+          <pre>${JSON.stringify(rec, null, 2)}</pre>
+        </details>
+      </div>
+    `;
+
+    if ((rec.trade_desk_status || "").includes("Approved") || (rec.bid_status || "") !== "Not Released") {
+      bidderPortal.innerHTML += `
+        <div class="card">
+          <h3>${rec.make || "-"} ${rec.model || ""}</h3>
+
+          <span class="badge">${rec.modality || "-"}</span>
+          <span class="badge">Serial: ${rec.serial_number || "-"}</span>
+          <span class="badge">Available: ${rec.availability_timeframe || "-"}</span>
+
+          ${imageHtml(rec)}
+
+          <hr>
+
+          <input id="bidder_${rec.id}" placeholder="Bidder Name">
+          <input id="amount_${rec.id}" type="number" placeholder="Bid Amount">
+          <input id="terms_${rec.id}" placeholder="Terms / Pickup Notes">
+          <input id="expires_${rec.id}" placeholder="Bid Expiration Date">
+
+          <button onclick="addBid('${rec.id}')">Submit Bid</button>
+
+          <hr>
+
+          ${
+            rec.bids && rec.bids.length
+              ? rec.bids.map((b,i)=>`
+                <div class="card">
+                  <span class="badge ${rec.winningBid && rec.winningBid.bid_id === b.bid_id ? "win" : "pending"}">
+                    ${b.bidder}: ${money(b.amount)}
+                  </span>
+                  <div class="small">Terms: ${b.terms || "-"}</div>
+                  <div class="small">Expires: ${b.expires || "-"}</div>
+                  <button class="green" onclick="selectWinner('${rec.id}',${i})">Select Winning Bid</button>
+                </div>
+              `).join("")
+              : "<p class='small'>No bids submitted yet.</p>"
+          }
+        </div>
+      `;
+    }
+
+    repQuotes.innerHTML += `
+      <div class="card">
+        <h3>Quote: ${rec.quote_id || rec.project_id || "-"}</h3>
+
+        <span class="badge">${rec.quote_sync_status || "Pending Bid"}</span>
+        <span class="badge">${rec.crm_status || "-"}</span>
+
+        <div class="kv"><strong>Equipment:</strong> ${rec.modality || "-"} — ${rec.make || "-"} ${rec.model || ""}</div>
+        <div class="kv"><strong>Serial:</strong> ${rec.serial_number || "-"}</div>
+        <div class="kv"><strong>Trade-In Credit:</strong> ${rec.trade_in_credit ? money(rec.trade_in_credit) : "Pending Trade Desk Bid"}</div>
+        <div class="kv"><strong>Winning Bidder:</strong> ${rec.winning_bidder || "-"}</div>
+        <div class="kv"><strong>Winning Terms:</strong> ${rec.winning_bid_terms || "-"}</div>
+        <div class="kv"><strong>Last Sync:</strong> ${rec.last_tradein_update_at || "-"}</div>
+
+        <hr>
+
+        <p class="small">
+          This is the value the rep would see inside the quote after Trade Desk selects the winning bid.
+        </p>
+      </div>
+    `;
+  });
+
+  repQuotes.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
+}
+
+window.addEventListener("storage", (e) => {
+  if (
+    e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
+    e.key === MANAGER_PING_KEY ||
+    e.key === KEY ||
+    e.key === TRADEIN_SYNC_KEY
+  ) {
+    render();
+  }
+});
+
+setInterval(() => {
+  if (importAxisTradeDeskQueue()) {
+    render();
+  }
+}, 2000);
+
+render();
+</script>
+
+</body>
+</html>
