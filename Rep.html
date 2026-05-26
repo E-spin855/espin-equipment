@@ -311,6 +311,29 @@ td:nth-child(11){
   color:#b8ffd7;
   border:1px solid rgba(65,255,156,.55);
   box-shadow:0 0 18px rgba(65,255,156,.22);
+.alert-urgent,
+.next-action-urgent{
+  background:linear-gradient(90deg,#ff3b3b,#ff6b6b) !important;
+  color:#fff !important;
+  border:1px solid rgba(255,107,107,.95) !important;
+  box-shadow:0 0 20px rgba(255,107,107,.45) !important;
+}
+
+.alert-medium,
+.next-action-medium{
+  background:linear-gradient(90deg,#8f6f14,#d4a20f) !important;
+  color:#fff7d6 !important;
+  border:1px solid rgba(212,162,15,.95) !important;
+  box-shadow:0 0 20px rgba(212,162,15,.35) !important;
+}
+
+.alert-low,
+.next-action-low{
+  background:linear-gradient(90deg,#14532d,#22c55e) !important;
+  color:#dcfce7 !important;
+  border:1px solid rgba(34,197,94,.95) !important;
+  box-shadow:0 0 20px rgba(34,197,94,.32) !important;
+}
 }.next-action-completed{
   background:rgba(65,255,156,.12);
   color:#b8ffd7;
@@ -1139,6 +1162,29 @@ function getPressureBadge(label) {
   if (label === "LOST") return '<span class="pill postponed">LOST</span>';
   return '<span class="pill local">LOW</span>';
 }
+function getUrgencyLevel(rec) {
+  const alerts = getAlerts(rec);
+  const type = alerts[0]?.type || "";
+
+  if (type === "disposal" || type === "replacement") {
+    return "urgent";
+  }
+
+  if (type === "upgrade" || type === "service") {
+    return "medium";
+  }
+
+  if (type === "planning" || type === "proactive") {
+    return "low";
+  }
+
+  const score = getPressureScore(rec);
+
+  if (score >= 6) return "urgent";
+  if (score >= 3) return "medium";
+
+  return "low";
+}
 function submitAssociatedTradeIn(kind) {
   const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -1476,9 +1522,11 @@ function renderTable() {
                 return `<span class="mini">No Action</span>`;
               }
 
-              return alerts.map(a =>
-                `<span class="alert-badge alert-${a.type}">${a.label}</span>`
-              ).join("");
+              const urgency = getUrgencyLevel(rec);
+
+return alerts.map(a =>
+  `<span class="alert-badge alert-${urgency}">${a.label}</span>`
+).join("");
             })()
           }
         </td>
@@ -1518,13 +1566,14 @@ function renderTable() {
 
               const type = alerts[0].type;
 
-              if (type === "disposal") return `<span class="next-action-label next-action-disposition">Disposition Review</span>`;
-              if (type === "replacement") return `<span class="next-action-label next-action-replacement">Replacement Planning</span>`;
-              if (type === "upgrade") return `<span class="next-action-label next-action-upgrade">Upgrade Review</span>`;
-              if (type === "planning") return `<span class="next-action-label next-action-planning">Budget Planning</span>`;
-              if (type === "proactive") return `<span class="next-action-label next-action-proactive">Early Customer Outreach</span>`;
-              if (type === "service") return `<span class="next-action-label next-action-service">Service Review</span>`;
+            const urgency = getUrgencyLevel(rec);
 
+if (type === "disposal") return `<span class="next-action-label next-action-${urgency}">Disposition Review</span>`;
+if (type === "replacement") return `<span class="next-action-label next-action-${urgency}">Replacement Planning</span>`;
+if (type === "upgrade") return `<span class="next-action-label next-action-${urgency}">Upgrade Review</span>`;
+if (type === "planning") return `<span class="next-action-label next-action-${urgency}">Budget Planning</span>`;
+if (type === "proactive") return `<span class="next-action-label next-action-${urgency}">Early Customer Outreach</span>`;
+if (type === "service") return `<span class="next-action-label next-action-${urgency}">Service Review</span>`;
               return `<span class="next-action-label next-action-service">${alerts[0].label}</span>`;
             })()
           }
