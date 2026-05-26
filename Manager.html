@@ -2309,18 +2309,18 @@ function selectRow(id) {
     ? JSON.parse(localStorage.getItem("espin_rep_queue") || "[]")
     : state.records;
 
-  const rec = sourceRecords.find(r => r.id === id);
-  if (!rec) return;
+  const rec = sourceRecords.find(r => String(r.id) === String(id));
+
+  if (!rec) {
+    console.warn("Record not found for id:", id);
+    return;
+  }
 
   const key = getRecordKey(rec);
-rec.key = key;
-
-  rec.manager_unseen_update = false;
-  rec.manager_flash_at = "";
-  rec.manager_flash_type = "";
-  rec.quote_seen = true;
+  rec.key = key;
 
   let main = [];
+
   try {
     main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     if (!Array.isArray(main)) main = [];
@@ -2328,18 +2328,21 @@ rec.key = key;
     main = [];
   }
 
+  let foundInMain = false;
+
   main = main.map(item => {
     const sameRecord =
-      item.id === rec.id ||
-      item.key === key ||
-      (
-        getRecordKey(item) === key
-      );
+      String(item.id || "") === String(rec.id || "") ||
+      String(item.key || "") === String(key || "") ||
+      String(getRecordKey(item) || "") === String(key || "");
 
     if (!sameRecord) return item;
 
+    foundInMain = true;
+
     return {
       ...item,
+      key,
       manager_unseen_update: false,
       manager_flash_at: "",
       manager_flash_type: "",
@@ -2347,9 +2350,21 @@ rec.key = key;
     };
   });
 
+  if (!foundInMain) {
+    main.unshift({
+      ...rec,
+      key,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      quote_seen: true
+    });
+  }
+
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
 
   let queue = [];
+
   try {
     queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
     if (!Array.isArray(queue)) queue = [];
@@ -2359,8 +2374,8 @@ rec.key = key;
 
   queue = queue.map(item => {
     const sameRecord =
-      item.id === rec.id ||
-      item.key === key ||
+      String(item.id || "") === String(rec.id || "") ||
+      String(item.key || "") === String(key || "") ||
       (
         String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
         String(item.serial_number || "") === String(rec.serial_number || "")
@@ -2370,6 +2385,7 @@ rec.key = key;
 
     return {
       ...item,
+      key,
       manager_unseen_update: false,
       manager_flash_at: "",
       manager_flash_type: "",
@@ -2381,16 +2397,7 @@ rec.key = key;
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   state.records = main;
-
-  const updated = main.find(r =>
-    r.id === rec.id ||
-    (
-      String(r.oem_project_id || "") === String(rec.oem_project_id || "") &&
-      String(r.serial_number || "") === String(rec.serial_number || "")
-    )
-  );
-
-  state.selectedId = updated?.id || rec.id;
+  state.selectedId = rec.id;
 
   render();
 }
