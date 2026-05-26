@@ -636,10 +636,12 @@ function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
 
+  // ✅ DO NOT import TRADEIN_SYNC_KEY here.
+  // This page writes TRADEIN_SYNC_KEY itself, so importing it causes a self-sync loop
+  // and rebuilds the bidder fields while typing.
   const sources = [
     AXIS_TRADE_DESK_QUEUE_KEY,
-    AXIS_TRADE_DESK_INBOX_KEY,
-    TRADEIN_SYNC_KEY
+    AXIS_TRADE_DESK_INBOX_KEY
   ];
 
   sources.forEach(key => {
@@ -648,13 +650,16 @@ function importAutomaticIntake(){
     if (!incoming.length) return;
 
     incoming.forEach(item => {
+      const before = JSON.stringify(deskData);
       deskData = mergeRecordIntoDesk(deskData, item);
-      changed = true;
+      const after = JSON.stringify(deskData);
+
+      if (before !== after) {
+        changed = true;
+      }
     });
 
-    if (key === AXIS_TRADE_DESK_QUEUE_KEY || key === AXIS_TRADE_DESK_INBOX_KEY) {
-      localStorage.removeItem(key);
-    }
+    localStorage.removeItem(key);
   });
 
   if (changed) {
@@ -898,8 +903,30 @@ function statusBadge(rec){
   return `<span class="badge ${cls}">${status}</span>`;
 }
 
+function captureBidInputs(){
+  const values = {};
+
+  document.querySelectorAll(
+    'input[id^="bidder_"], input[id^="amount_"], input[id^="terms_"], input[id^="expires_"]'
+  ).forEach(input => {
+    values[input.id] = input.value;
+  });
+
+  return values;
+}
+
+function restoreBidInputs(values){
+  Object.keys(values || {}).forEach(id => {
+    const input = document.getElementById(id);
+
+    if (input) {
+      input.value = values[id];
+    }
+  });
+}
+
 function render(){
-  importAutomaticIntake();
+  const savedBidInputs = captureBidInputs();
 
   const data = loadData();
 
@@ -983,29 +1010,29 @@ function render(){
           <hr>
 
           <input
-  id="bidder_${rec.id}"
-  placeholder="Bidder Name"
-  autocomplete="off"
->
+            id="bidder_${rec.id}"
+            placeholder="Bidder Name"
+            autocomplete="off"
+          >
 
-<input
-  id="amount_${rec.id}"
-  type="number"
-  placeholder="Bid Amount"
-  autocomplete="off"
->
+          <input
+            id="amount_${rec.id}"
+            type="number"
+            placeholder="Bid Amount"
+            autocomplete="off"
+          >
 
-<input
-  id="terms_${rec.id}"
-  placeholder="Terms / Pickup Notes"
-  autocomplete="off"
->
+          <input
+            id="terms_${rec.id}"
+            placeholder="Terms / Pickup Notes"
+            autocomplete="off"
+          >
 
-<input
-  id="expires_${rec.id}"
-  placeholder="Bid Expiration Date"
-  autocomplete="off"
->
+          <input
+            id="expires_${rec.id}"
+            placeholder="Bid Expiration Date"
+            autocomplete="off"
+          >
 
           <button onclick="addBid('${rec.id}')">Submit Bid</button>
 
@@ -1057,6 +1084,8 @@ function render(){
   });
 
   repQuotes.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
+
+  restoreBidInputs(savedBidInputs);
 }
 
 window.addEventListener("storage", (e) => {
@@ -1064,8 +1093,7 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
-    e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY
+    e.key === KEY
   ) {
     render();
   }
@@ -1090,6 +1118,7 @@ setInterval(() => {
   }
 }, 2000);
 
+importAutomaticIntake();
 render();
 </script>
 
