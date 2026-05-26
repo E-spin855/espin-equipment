@@ -723,6 +723,12 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     localStorage.getItem("axis_record_id") ||
     "";
 
+  const axisParentRecordId =
+    params.get("axis_parent_record_id") ||
+    localStorage.getItem("axis_parent_record_id") ||
+    axisRecordId ||
+    "";
+
   const axisProjectId =
     params.get("axis_project_id") ||
     localStorage.getItem("axis_project_id") ||
@@ -733,18 +739,45 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     localStorage.getItem("axis_serial_number") ||
     "";
 
+  const axisParentProjectType =
+    params.get("axis_parent_project_type") ||
+    localStorage.getItem("axis_parent_project_type") ||
+    "";
+
+  const axisParentProjectName =
+    params.get("axis_parent_project_name") ||
+    localStorage.getItem("axis_parent_project_name") ||
+    "";
+
+  const axisSource =
+    params.get("axis_source") ||
+    localStorage.getItem("axis_source") ||
+    "";
+
+  const syncMode =
+    params.get("sync_mode") ||
+    localStorage.getItem("sync_mode") ||
+    (
+      axisRecordId || axisParentRecordId || axisProjectId
+        ? "update_existing_axis_record"
+        : "create_unmatched_tradein_lead"
+    );
+
   const imageSyncRecord = {
     id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
+    sync_event_id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
 
-    sync_mode: axisRecordId || axisProjectId
-      ? "update_existing_axis_record"
-      : "create_unmatched_tradein_lead",
-
-    unmatched_tradein_lead: !(axisRecordId || axisProjectId),
+    sync_mode: syncMode,
+    unmatched_tradein_lead:
+      !(axisRecordId || axisParentRecordId || axisProjectId),
 
     axis_record_id: axisRecordId,
+    axis_parent_record_id: axisParentRecordId,
     axis_project_id: axisProjectId,
     axis_serial_number: axisSerialNumber,
+    axis_parent_project_type: axisParentProjectType,
+    axis_parent_project_name: axisParentProjectName,
+    axis_source: axisSource,
 
     project_id: projectId,
     modality_id: modalityId,
@@ -755,6 +788,8 @@ function syncImagesToAxisDemo(sentPhotoIds) {
 
     last_image_update_by: userEmail,
     last_image_update_at: new Date().toISOString(),
+    last_tradein_update_by: userEmail,
+    last_tradein_update_at: new Date().toISOString(),
 
     crm_status: "Trade-In Images Sent",
     rep_notes: "Images were submitted from Espin Trade-In."
@@ -766,7 +801,12 @@ function syncImagesToAxisDemo(sentPhotoIds) {
   localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(imageSyncRecord));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
-  console.log("AXIS IMAGE SYNC RECORD:", imageSyncRecord);
+  window.dispatchEvent(new StorageEvent("storage", {
+    key: "axis_tradein_sync_records_v1",
+    newValue: JSON.stringify(records)
+  }));
+
+  console.log("✅ AXIS IMAGE SYNC RECORD:", imageSyncRecord);
 }
 /* SEND */
 sendBtn.onclick = async () => {
@@ -816,18 +856,25 @@ sendBtn.onclick = async () => {
       });
     }
 
-    await fetch(`/api/equipment-photos/photo-email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-email": userEmail
-      },
-      body: JSON.stringify({
-        projectId,
-        modalityId,
-        photoIds: ids
-      })
-    });
+   const emailRes = await fetch(`/api/equipment-photos/photo-email`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-user-email": userEmail
+  },
+  body: JSON.stringify({
+    projectId,
+    modalityId,
+    photoIds: ids
+  })
+});
+
+const emailOut = await emailRes.json().catch(() => ({}));
+
+if (!emailRes.ok) {
+  throw new Error(emailOut?.error || "Image email failed");
+}
+
 syncImagesToAxisDemo(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
