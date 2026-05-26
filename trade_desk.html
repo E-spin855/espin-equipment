@@ -232,10 +232,8 @@ function loadData(){
 
 function saveData(data){
   saveArray(KEY, data);
-  saveArray(TRADEIN_SYNC_KEY, data);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
-
 function getRecordKey(rec){
   return (
     rec.axis_parent_record_id ||
@@ -642,10 +640,9 @@ function importAutomaticIntake(){
   let changed = false;
 
   const sources = [
-    AXIS_TRADE_DESK_QUEUE_KEY,
-    AXIS_TRADE_DESK_INBOX_KEY,
-    TRADEIN_SYNC_KEY
-  ];
+  AXIS_TRADE_DESK_QUEUE_KEY,
+  AXIS_TRADE_DESK_INBOX_KEY
+];
 
   sources.forEach(key => {
     const incoming = loadArray(key);
@@ -697,24 +694,23 @@ function rejectFromBidding(id){
   saveData(data);
   render();
 }
+const bidDrafts = {};
+
 function saveBidInput(id, field, value){
-  const data = loadData();
-  const rec = data.find(r => r.id === id);
-  if (!rec) return;
-
-  rec[field] = value;
-
-  saveData(data);
+  if (!bidDrafts[id]) bidDrafts[id] = {};
+  bidDrafts[id][field] = value;
 }
 function addBid(id){
   const data = loadData();
   const rec = data.find(r => r.id === id);
   if (!rec) return;
 
-  const bidder = String(rec.bidder_name_input || "").trim();
-  const amount = Number(rec.bid_amount_input || 0);
-  const terms = String(rec.bid_terms_input || "").trim();
-  const expires = String(rec.bid_expiration_input || "").trim();
+  const draft = bidDrafts[id] || {};
+
+  const bidder = String(draft.bidder_name_input || val("bidder_" + id)).trim();
+  const amount = Number(draft.bid_amount_input || val("amount_" + id));
+  const terms = String(draft.bid_terms_input || val("terms_" + id)).trim();
+  const expires = String(draft.bid_expiration_input || val("expires_" + id)).trim();
 
   if (!bidder || !amount) return alert("Enter bidder and amount.");
 
@@ -733,6 +729,8 @@ function addBid(id){
   rec.bid_amount_input = "";
   rec.bid_terms_input = "";
   rec.bid_expiration_input = "";
+
+  delete bidDrafts[id];
 
   rec.bid_status = "Bids Received";
   rec.crm_status = "Bid Received";
@@ -999,9 +997,9 @@ function render(){
 
           <hr>
 
-          <input
+         <input
   id="bidder_${rec.id}"
-  value="${rec.bidder_name_input || ""}"
+  value="${bidDrafts[rec.id]?.bidder_name_input || rec.bidder_name_input || ""}"
   placeholder="Bidder Name"
   autocomplete="off"
   oninput="saveBidInput('${rec.id}', 'bidder_name_input', this.value)"
@@ -1010,7 +1008,7 @@ function render(){
 <input
   id="amount_${rec.id}"
   type="number"
-  value="${rec.bid_amount_input || ""}"
+  value="${bidDrafts[rec.id]?.bid_amount_input || rec.bid_amount_input || ""}"
   placeholder="Bid Amount"
   autocomplete="off"
   oninput="saveBidInput('${rec.id}', 'bid_amount_input', this.value)"
@@ -1018,7 +1016,7 @@ function render(){
 
 <input
   id="terms_${rec.id}"
-  value="${rec.bid_terms_input || ""}"
+  value="${bidDrafts[rec.id]?.bid_terms_input || rec.bid_terms_input || ""}"
   placeholder="Terms / Pickup Notes"
   autocomplete="off"
   oninput="saveBidInput('${rec.id}', 'bid_terms_input', this.value)"
@@ -1027,8 +1025,7 @@ function render(){
 <input
   id="expires_${rec.id}"
   type="date"
-  value="${rec.bid_expiration_input || ""}"
-  placeholder="Bid Expiration Date"
+  value="${bidDrafts[rec.id]?.bid_expiration_input || rec.bid_expiration_input || ""}"
   autocomplete="off"
   oninput="saveBidInput('${rec.id}', 'bid_expiration_input', this.value)"
 >
@@ -1089,13 +1086,11 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
-    e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY
+    e.key === KEY
   ) {
     render();
   }
 });
-
 setInterval(() => {
   const active = document.activeElement;
 
