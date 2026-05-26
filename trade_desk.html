@@ -1853,7 +1853,7 @@ function render(){
 
           <hr>
 
-          ${
+         ${
   rec.bids && rec.bids.length
     ? (() => {
         const rankedBids = [...rec.bids]
@@ -1865,13 +1865,24 @@ function render(){
           .sort((a, b) => b.amountNumber - a.amountNumber);
 
         const highestAmount = rankedBids[0]?.amountNumber || 0;
+        const lowestAmount = rankedBids[rankedBids.length - 1]?.amountNumber || 0;
 
         return rankedBids.map((b, rankIndex) => {
-          const isHighest = b.amountNumber === highestAmount && highestAmount > 0;
-          const isWinner = rec.winningBid && rec.winningBid.bid_id === b.bid_id;
+          const isHighest =
+            b.amountNumber === highestAmount &&
+            highestAmount > 0;
+
+          const isLowest =
+            rankedBids.length > 1 &&
+            b.amountNumber === lowestAmount &&
+            lowestAmount > 0;
+
+          const isWinner =
+            rec.winningBid &&
+            rec.winningBid.bid_id === b.bid_id;
 
           return `
-            <div class="card ${isHighest ? "high-bid-card" : "lower-bid-card"}">
+            <div class="card ${isHighest ? "high-bid-card" : isLowest ? "low-bid-card" : "lower-bid-card"}">
               <span class="bid-rank">
                 #${rankIndex + 1}
               </span>
@@ -1879,7 +1890,9 @@ function render(){
               ${
                 isHighest
                   ? `<span class="badge high-bid-badge">HIGHEST BID</span>`
-                  : `<span class="badge pending">LOWER BID</span>`
+                  : isLowest
+                  ? `<span class="badge low-bid-badge">LOWEST BID</span>`
+                  : `<span class="badge pending">MID BID</span>`
               }
 
               ${
@@ -1894,7 +1907,10 @@ function render(){
 
               <div class="kv" style="font-size:18px;">
                 <strong>Bid Amount:</strong>
-                <span style="color:${isHighest ? "#41ff9c" : "#eef6ff"};font-weight:900;">
+                <span style="
+                  color:${isHighest ? "#41ff9c" : isLowest ? "#ff6b6b" : "#eef6ff"};
+                  font-weight:900;
+                ">
                   ${money(b.amount)}
                 </span>
               </div>
