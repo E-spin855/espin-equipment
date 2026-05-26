@@ -1259,38 +1259,69 @@ function formatTradeInFieldLabel(key){
 }
 
 function modalityRawFieldRows(rec){
-  const allowedPrefixes = [
-    "ct_",
-    "mri_",
-    "mamo_",
-    "xray_",
-    "carm_",
-    "pet_"
-  ];
+  const modality = String(rec.modality || "").toUpperCase();
 
-  return Object.entries(rec)
-    .filter(([key, value]) => {
-      const k = String(key || "").toLowerCase();
+  const modalityFields = {
+    CT: [
+      "ct_slices",
+      "ct_tube_mas",
+      "ct_mhu",
+      "ct_tube_dom",
+      "ct_tube_installation_date",
+      "ct_goc_version",
+      "ct_upgrades",
+      "ct_injector",
+      "ct_injector_model",
+      "ct_chiller"
+    ],
 
-      return (
-        allowedPrefixes.some(prefix => k.startsWith(prefix)) &&
-        value !== "" &&
-        value !== null &&
-        value !== undefined
-      );
-    })
-    .map(([key, value]) => `
+    MRI: [
+      "mri_magnet_type",
+      "mri_bore_size_cm",
+      "mri_num_channels",
+      "mri_gradient",
+      "mri_coils",
+      "mri_service",
+      "mri_service_name"
+    ],
+
+    MAMMO: [
+      "mamo_dimensionality",
+      "mamo_stereotactic_options",
+      "mamo_cad"
+    ],
+
+    XRAY: [
+      "xray_floor_mounted",
+      "xray_ceiling_mounted"
+    ],
+
+    CARM: [
+      "carm_monitors",
+      "carm_image_intensifier"
+    ],
+
+    PETCT: [
+      "pet_ct_slices",
+      "pet_tube_dom",
+      "pet_tube_mas"
+    ]
+  };
+
+  const keys = modalityFields[modality] || [];
+
+  return keys
+    .filter(key => String(rec[key] || "").trim())
+    .map(key => `
       <div class="kv">
         <strong>${htmlSafe(formatTradeInFieldLabel(key))}:</strong>
-        ${htmlSafe(value)}
+        ${htmlSafe(rec[key])}
       </div>
     `)
     .join("");
 }
 
 function tradeInFieldRows(rec){
-  const rawRows = modalityRawFieldRows(rec);
-
   const rows = [
     ["Modality", rec.modality],
     ["Manufacturer", rec.make],
@@ -1318,12 +1349,13 @@ function tradeInFieldRows(rec){
     `)
     .join("");
 
+  const extraRows = modalityRawFieldRows(rec);
+
   return `
     ${genericRows}
-    ${rawRows ? `<div class="field-block">${rawRows}</div>` : ""}
+    ${extraRows}
   `;
 }
-
 function render(){
   if (isBidInputFocused()) return;
 
