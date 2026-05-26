@@ -636,12 +636,10 @@ function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
 
-  // ✅ DO NOT import TRADEIN_SYNC_KEY here.
-  // This page writes TRADEIN_SYNC_KEY itself, so importing it causes a self-sync loop
-  // and rebuilds the bidder fields while typing.
   const sources = [
     AXIS_TRADE_DESK_QUEUE_KEY,
-    AXIS_TRADE_DESK_INBOX_KEY
+    AXIS_TRADE_DESK_INBOX_KEY,
+    TRADEIN_SYNC_KEY
   ];
 
   sources.forEach(key => {
@@ -650,16 +648,13 @@ function importAutomaticIntake(){
     if (!incoming.length) return;
 
     incoming.forEach(item => {
-      const before = JSON.stringify(deskData);
       deskData = mergeRecordIntoDesk(deskData, item);
-      const after = JSON.stringify(deskData);
-
-      if (before !== after) {
-        changed = true;
-      }
+      changed = true;
     });
 
-    localStorage.removeItem(key);
+    if (key === AXIS_TRADE_DESK_QUEUE_KEY || key === AXIS_TRADE_DESK_INBOX_KEY) {
+      localStorage.removeItem(key);
+    }
   });
 
   if (changed) {
@@ -731,34 +726,17 @@ function addBid(id){
 function syncWinningBidToRepAndManager(rec){
   const key = getRecordKey(rec);
 
-  const credit =
-    rec.trade_in_credit ||
-    rec.tradein_credit ||
-    rec.winning_bid_amount ||
-    rec.winningBid?.amount ||
-    "";
-
   const payload = {
     ...rec,
 
     key,
 
-    trade_in_credit: credit,
-    tradein_credit: credit,
-    tradeInCredit: credit,
-    trade_in_value: credit,
-    tradeDeskValue: credit,
-    trade_desk_value: credit,
+    trade_in_credit: rec.trade_in_credit || rec.winning_bid_amount || "",
+    tradein_credit: rec.tradein_credit || rec.winning_bid_amount || "",
+    tradein_estimated_value: rec.tradein_estimated_value || rec.winning_bid_amount || "",
+    estimated_trade_in_value: rec.estimated_trade_in_value || rec.winning_bid_amount || "",
 
-    quote_trade_in_credit: credit,
-    quoteTradeInCredit: credit,
-
-    associated_trade_in_credit: credit,
-    associatedTradeInCredit: credit,
-
-    tradein_estimated_value: credit,
-    estimated_trade_in_value: credit,
-
+    quote_trade_in_credit: rec.trade_in_credit || rec.winning_bid_amount || "",
     quote_status: "trade_in_credit_received",
     quote_sync_status: "Synced to Rep Quote",
 
@@ -771,9 +749,7 @@ function syncWinningBidToRepAndManager(rec){
     rep_last_action_at: new Date().toISOString(),
 
     submitted_to: "AXIS Trade Desk",
-    source: rec.source || "AXIS Trade Desk Sync",
-
-    last_tradein_update_at: new Date().toISOString()
+    source: rec.source || "AXIS Trade Desk Sync"
   };
 
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(payload));
@@ -782,125 +758,66 @@ function syncWinningBidToRepAndManager(rec){
   syncRecords = mergeRecordIntoDesk(syncRecords, payload);
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
-  function sameRecord(item){
-    if (!item) return false;
+  let lifecycle = loadArray(LIFECYCLE_KEY);
 
-    const itemKey = getRecordKey(item);
-
-    return (
-      String(itemKey || "") === String(key || "") ||
-
+  lifecycle = lifecycle.map(item => {
+    const same =
+      getRecordKey(item) === key ||
       item.id === rec.axis_parent_record_id ||
       item.id === rec.axis_record_id ||
-      item.id === rec.id ||
-
-      String(item.axis_record_id || "") === String(rec.axis_record_id || "") ||
-      String(item.axis_parent_record_id || "") === String(rec.axis_parent_record_id || "") ||
-
       (
-        String(item.project_id || item.oem_project_id || item.axis_project_id || "") ===
-        String(rec.project_id || rec.axis_project_id || rec.oem_project_id || "") &&
-        String(item.serial_number || item.axis_serial_number || "") ===
-        String(rec.serial_number || rec.axis_serial_number || "")
-      ) ||
+        String(item.oem_project_id || item.project_id || "") === String(rec.axis_project_id || rec.project_id || "") &&
+        (
+          String(item.serial_number || "") === String(rec.serial_number || "") ||
+          String(item.serial_number || "") === String(rec.axis_serial_number || "")
+        )
+      );
 
-      (
-        String(item.project_id || item.oem_project_id || item.axis_project_id || "") ===
-        String(rec.project_id || rec.axis_project_id || rec.oem_project_id || "") &&
-        String(item.modality_id || "") === String(rec.modality_id || "")
-      )
-    );
+    return same ? { ...item, ...payload, id: item.id || payload.id } : item;
+  });
+
+  const existsInLifecycle = lifecycle.some(item =>
+    getRecordKey(item) === key ||
+    item.id === rec.axis_parent_record_id ||
+    item.id === rec.axis_record_id
+  );
+
+  if (!existsInLifecycle) {
+    lifecycle.unshift(payload);
   }
 
-  // ✅ Update every existing matching localStorage array.
-  // This fixes new project rows even if they are stored under a different key.
-  for (let i = 0; i < localStorage.length; i++) {
-    const storageKey = localStorage.key(i);
-    if (!storageKey) continue;
-
-    let arr;
-
-    try {
-      arr = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    } catch {
-      continue;
-    }
-
-    if (!Array.isArray(arr)) continue;
-
-    let changed = false;
-
-    arr = arr.map(item => {
-      if (!item || typeof item !== "object") return item;
-
-      if (!sameRecord(item)) return item;
-
-      changed = true;
-
-      return {
-        ...item,
-        ...payload,
-
-        // preserve original row id so table does not break
-        id: item.id || payload.id,
-
-        // force all possible display fields
-        trade_in_credit: credit,
-        tradein_credit: credit,
-        tradeInCredit: credit,
-        trade_in_value: credit,
-        tradeDeskValue: credit,
-        trade_desk_value: credit,
-        quote_trade_in_credit: credit,
-        quoteTradeInCredit: credit,
-        associated_trade_in_credit: credit,
-        associatedTradeInCredit: credit,
-        tradein_estimated_value: credit,
-        estimated_trade_in_value: credit
-      };
-    });
-
-    if (changed) {
-      localStorage.setItem(storageKey, JSON.stringify(arr));
-      console.log("✅ Trade-in credit written to:", storageKey, credit);
-    }
-  }
+  saveArray(LIFECYCLE_KEY, lifecycle);
 
   let repQueue = loadArray(REP_QUEUE_KEY);
 
-  const existsInRepQueue = repQueue.some(item => sameRecord(item));
+  repQueue = repQueue.map(item => {
+    const same =
+      getRecordKey(item) === key ||
+      item.id === rec.axis_parent_record_id ||
+      item.id === rec.axis_record_id ||
+      (
+        String(item.project_id || item.oem_project_id || "") === String(rec.project_id || rec.axis_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
+      );
 
-  if (existsInRepQueue) {
-    repQueue = repQueue.map(item =>
-      sameRecord(item)
-        ? {
-            ...item,
-            ...payload,
-            id: item.id || payload.id,
-            trade_in_credit: credit,
-            tradein_credit: credit,
-            tradeInCredit: credit,
-            quote_trade_in_credit: credit,
-            associated_trade_in_credit: credit
-          }
-        : item
-    );
-  } else {
+    return same ? { ...item, ...payload, id: item.id || payload.id } : item;
+  });
+
+  const existsInRepQueue = repQueue.some(item =>
+    getRecordKey(item) === key ||
+    item.id === rec.axis_parent_record_id ||
+    item.id === rec.axis_record_id
+  );
+
+  if (!existsInRepQueue) {
     repQueue.unshift(payload);
   }
 
   saveArray(REP_QUEUE_KEY, repQueue);
 
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
-
-  console.log("✅ Winning bid synced everywhere:", {
-    credit,
-    key,
-    project_id: rec.project_id,
-    axis_project_id: rec.axis_project_id,
-    serial_number: rec.serial_number
-  });
 }
+
 function selectWinner(id, index){
   const data = loadData();
   const rec = data.find(r => r.id === id);
@@ -981,30 +898,8 @@ function statusBadge(rec){
   return `<span class="badge ${cls}">${status}</span>`;
 }
 
-function captureBidInputs(){
-  const values = {};
-
-  document.querySelectorAll(
-    'input[id^="bidder_"], input[id^="amount_"], input[id^="terms_"], input[id^="expires_"]'
-  ).forEach(input => {
-    values[input.id] = input.value;
-  });
-
-  return values;
-}
-
-function restoreBidInputs(values){
-  Object.keys(values || {}).forEach(id => {
-    const input = document.getElementById(id);
-
-    if (input) {
-      input.value = values[id];
-    }
-  });
-}
-
 function render(){
-  const savedBidInputs = captureBidInputs();
+  importAutomaticIntake();
 
   const data = loadData();
 
@@ -1088,29 +983,29 @@ function render(){
           <hr>
 
           <input
-            id="bidder_${rec.id}"
-            placeholder="Bidder Name"
-            autocomplete="off"
-          >
+  id="bidder_${rec.id}"
+  placeholder="Bidder Name"
+  autocomplete="off"
+>
 
-          <input
-            id="amount_${rec.id}"
-            type="number"
-            placeholder="Bid Amount"
-            autocomplete="off"
-          >
+<input
+  id="amount_${rec.id}"
+  type="number"
+  placeholder="Bid Amount"
+  autocomplete="off"
+>
 
-          <input
-            id="terms_${rec.id}"
-            placeholder="Terms / Pickup Notes"
-            autocomplete="off"
-          >
+<input
+  id="terms_${rec.id}"
+  placeholder="Terms / Pickup Notes"
+  autocomplete="off"
+>
 
-          <input
-            id="expires_${rec.id}"
-            placeholder="Bid Expiration Date"
-            autocomplete="off"
-          >
+<input
+  id="expires_${rec.id}"
+  placeholder="Bid Expiration Date"
+  autocomplete="off"
+>
 
           <button onclick="addBid('${rec.id}')">Submit Bid</button>
 
@@ -1162,8 +1057,6 @@ function render(){
   });
 
   repQuotes.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
-
-  restoreBidInputs(savedBidInputs);
 }
 
 window.addEventListener("storage", (e) => {
@@ -1171,7 +1064,8 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
-    e.key === KEY
+    e.key === KEY ||
+    e.key === TRADEIN_SYNC_KEY
   ) {
     render();
   }
@@ -1196,7 +1090,6 @@ setInterval(() => {
   }
 }, 2000);
 
-importAutomaticIntake();
 render();
 </script>
 
