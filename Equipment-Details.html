@@ -306,6 +306,10 @@ const params = new URLSearchParams(location.search);
 
 const AXIS_DEMO_SYNC_ENABLED = true;
 const ADMIN_DOWNLOAD_EXCEL_ENABLED = false;
+
+const AXIS_TRADE_DESK_INBOX_KEY = "axis_trade_desk_inbox_v1";
+const AXIS_MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
+
 const projectId =
   params.get("projectId") ||
   params.get("id") ||
@@ -1403,6 +1407,91 @@ localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   return newRecord;
 }
+function syncTradeInToAxisTradeDesk(result) {
+  const newRecord = normalizeAxisTradeInRecord(result);
+
+  let inbox = [];
+
+  try {
+    inbox = JSON.parse(localStorage.getItem(AXIS_TRADE_DESK_INBOX_KEY) || "[]");
+    if (!Array.isArray(inbox)) inbox = [];
+  } catch {
+    inbox = [];
+  }
+
+  const tradeDeskRecord = {
+    ...newRecord,
+
+    source: "Espin Trade-In App",
+    axis_source: newRecord.axis_source || "espin_trade_in_app",
+    sync_mode: "sync_to_axis_trade_desk",
+
+    trade_desk_status: "Submitted to Trade Desk",
+    bid_status: "Not Released",
+    approved_for_bidding_at: "",
+    approved_by: "",
+
+    bids: [],
+    winningBid: null,
+    winning_bid_amount: "",
+    winning_bidder: "",
+    winning_bid_terms: "",
+    winning_bid_selected_at: "",
+
+    quote_sync_status: "Pending Bid",
+    quote_id: newRecord.project_id || projectId,
+    trade_in_credit: "",
+
+    crm_status: "New Trade-In Field Update",
+
+    createdAt: new Date().toISOString()
+  };
+
+  const matchIndex = inbox.findIndex(r =>
+    (
+      tradeDeskRecord.axis_parent_record_id &&
+      String(r.axis_parent_record_id || "") === String(tradeDeskRecord.axis_parent_record_id)
+    ) ||
+    (
+      tradeDeskRecord.axis_record_id &&
+      String(r.axis_record_id || "") === String(tradeDeskRecord.axis_record_id)
+    ) ||
+    (
+      String(r.project_id || "") === String(tradeDeskRecord.project_id || "") &&
+      String(r.modality_id || "") === String(tradeDeskRecord.modality_id || "") &&
+      String(r.serial_number || "") === String(tradeDeskRecord.serial_number || "")
+    )
+  );
+
+  if (matchIndex >= 0) {
+    inbox[matchIndex] = {
+      ...inbox[matchIndex],
+      ...tradeDeskRecord,
+      id: inbox[matchIndex].id,
+      bids: inbox[matchIndex].bids || [],
+      winningBid: inbox[matchIndex].winningBid || null,
+      winning_bid_amount: inbox[matchIndex].winning_bid_amount || "",
+      winning_bidder: inbox[matchIndex].winning_bidder || "",
+      winning_bid_terms: inbox[matchIndex].winning_bid_terms || "",
+      winning_bid_selected_at: inbox[matchIndex].winning_bid_selected_at || "",
+      trade_in_credit: inbox[matchIndex].trade_in_credit || ""
+    };
+  } else {
+    inbox.unshift(tradeDeskRecord);
+  }
+
+ localStorage.setItem(AXIS_TRADE_DESK_INBOX_KEY, JSON.stringify(inbox));
+
+// ✅ compatibility with existing AXIS Trade Desk page
+localStorage.setItem("axis_trade_desk_demo_v1", JSON.stringify(inbox));
+
+// ✅ notify other open AXIS pages
+localStorage.setItem(AXIS_MANAGER_PING_KEY, String(Date.now()));
+
+  console.log("AXIS TRADE DESK SYNC RECORD:", tradeDeskRecord);
+
+  return tradeDeskRecord;
+}
 async function saveData(){
   setButtonState("save");
 
@@ -1435,6 +1524,7 @@ async function sendEquipmentOnly(){
 
 if (AXIS_DEMO_SYNC_ENABLED) {
   syncTradeInToAxisDemo(result);
+  syncTradeInToAxisTradeDesk(result);
 }
 
   const res = await fetch("/api/send-equipment-emails", {
