@@ -1362,8 +1362,38 @@ manager_response_seen_at: existing.manager_response_seen_at || "",
 
   reader.readAsArrayBuffer(file);
 }
+function findSelectedRecord() {
+  const selectedId = String(state.selectedId || "").trim();
+
+  if (!selectedId) return null;
+
+  let main = [];
+  let queue = [];
+
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
+  }
+
+  try {
+    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  const all = [
+    ...state.records,
+    ...main,
+    ...queue
+  ];
+
+  return all.find(r => String(r.id || "").trim() === selectedId) || null;
+}
 function renderDetail() {
-  const rec = state.records.find(r => r.id === state.selectedId);
+  const rec = findSelectedRecord();
 
   const empty = $("emptyState");
   const detail = $("detailArea");
@@ -1940,7 +1970,7 @@ setTimeout(() => {
 
 // 🔥 MANAGER RESPONSE SAVE
 function saveManagerResponse() {
-  const rec = state.records.find(r => r.id === state.selectedId);
+  const rec = findSelectedRecord();
 
   if (!rec) {
     alert("Open a record first");
@@ -2305,21 +2335,15 @@ function init() {
   });
 }
 function selectRow(id) {
-  const sourceRecords = repMode
-    ? JSON.parse(localStorage.getItem("espin_rep_queue") || "[]")
-    : state.records;
+  const selectedId = String(id || "").trim();
 
-  const rec = sourceRecords.find(r => String(r.id) === String(id));
-
-  if (!rec) {
-    console.warn("Record not found for id:", id);
+  if (!selectedId) {
+    console.warn("Missing selected row id");
     return;
   }
 
-  const key = getRecordKey(rec);
-  rec.key = key;
-
   let main = [];
+  let queue = [];
 
   try {
     main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -2328,43 +2352,6 @@ function selectRow(id) {
     main = [];
   }
 
-  let foundInMain = false;
-
-  main = main.map(item => {
-    const sameRecord =
-      String(item.id || "") === String(rec.id || "") ||
-      String(item.key || "") === String(key || "") ||
-      String(getRecordKey(item) || "") === String(key || "");
-
-    if (!sameRecord) return item;
-
-    foundInMain = true;
-
-    return {
-      ...item,
-      key,
-      manager_unseen_update: false,
-      manager_flash_at: "",
-      manager_flash_type: "",
-      quote_seen: true
-    };
-  });
-
-  if (!foundInMain) {
-    main.unshift({
-      ...rec,
-      key,
-      manager_unseen_update: false,
-      manager_flash_at: "",
-      manager_flash_type: "",
-      quote_seen: true
-    });
-  }
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
-
-  let queue = [];
-
   try {
     queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
     if (!Array.isArray(queue)) queue = [];
@@ -2372,34 +2359,60 @@ function selectRow(id) {
     queue = [];
   }
 
-  queue = queue.map(item => {
+  const allRecords = [
+    ...state.records,
+    ...main,
+    ...queue
+  ];
+
+  const clickedRec = allRecords.find(r =>
+    String(r.id || "").trim() === selectedId
+  );
+
+  if (!clickedRec) {
+    console.warn("Record not found for selected id:", selectedId);
+    return;
+  }
+
+  const key = getRecordKey(clickedRec);
+
+  const cleanedRec = {
+    ...clickedRec,
+    key,
+    manager_unseen_update: false,
+    manager_flash_at: "",
+    manager_flash_type: "",
+    quote_seen: true
+  };
+
+  let foundInMain = false;
+
+  main = main.map(item => {
     const sameRecord =
-      String(item.id || "") === String(rec.id || "") ||
-      String(item.key || "") === String(key || "") ||
-      (
-        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
-        String(item.serial_number || "") === String(rec.serial_number || "")
-      );
+      String(item.id || "").trim() === selectedId ||
+      String(item.key || "") === String(key || "");
 
     if (!sameRecord) return item;
 
-    return {
-      ...item,
-      key,
-      manager_unseen_update: false,
-      manager_flash_at: "",
-      manager_flash_type: "",
-      quote_seen: true
-    };
+    foundInMain = true;
+    return { ...item, ...cleanedRec };
   });
 
-  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  if (!foundInMain) {
+    main.unshift(cleanedRec);
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
 
   state.records = main;
-  state.selectedId = rec.id;
+  state.selectedId = selectedId;
 
-  render();
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+
+  console.log("OPENED RECORD:", cleanedRec);
 }
 function getAlerts(rec) {
 if (rec.lifecycle_completed) {
