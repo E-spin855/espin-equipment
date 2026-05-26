@@ -728,8 +728,9 @@ td:nth-child(11){
                   <th>DOM</th>
                   <th>Age</th>
 		<th>Pressure</th>
-                  <th>Facility</th>
-                  <th>Status</th>
+<th>Trade-In Value</th>
+<th>Facility</th>
+<th>Status</th>
                   <th>Next Action</th>
                   <th>Source</th>
                   <th>Actions</th>
@@ -1273,7 +1274,7 @@ function renderTable() {
   const tbody = $("tableBody");
 
   if (!state.records.length) {
-    tbody.innerHTML = '<tr><td colspan="13">No records</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14">No records</td></tr>';
     return;
   }
 
@@ -1379,21 +1380,29 @@ function renderTable() {
         <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
 
         <td>
-          ${
-            rec.project_type === "new_sales_project" || rec.tradein_sync_received
-              ? "-"
-              : rec.quote_amount
-              ? getPressureBadge(getQuotePriority(rec))
-              : (() => {
-                  const p = getPressureScore(rec);
-                  if (p >= 6) return '<span class="pill ready">HIGH</span>';
-                  if (p >= 3) return '<span class="pill pending">MED</span>';
-                  return '<span class="pill local">LOW</span>';
-                })()
-          }
-        </td>
+  ${
+    rec.project_type === "new_sales_project"
+      ? "-"
+      : rec.quote_amount
+      ? getPressureBadge(getQuotePriority(rec))
+      : (() => {
+          const p = getPressureScore(rec);
+          if (p >= 6) return '<span class="pill ready">HIGH</span>';
+          if (p >= 3) return '<span class="pill pending">MED</span>';
+          return '<span class="pill local">LOW</span>';
+        })()
+  }
+</td>
 
-        <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
+<td>
+  ${
+    getTradeInCreditValue(rec) > 0
+      ? "$" + getTradeInCreditValue(rec).toLocaleString()
+      : "-"
+  }
+</td>
+
+<td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
         <td>
           ${
@@ -2346,8 +2355,14 @@ function saveNewProjectTradeInCredit(id) {
   const value = Number(input.value || 0);
 
   rec.tradein_credit = value;
-  rec.tradein_estimated_value = value;
-  rec.quote_trade_in_credit = value;
+rec.trade_in_credit = value;
+rec.trade_in_value = value;
+rec.trade_desk_value = value;
+rec.tradein_estimated_value = value;
+rec.estimated_trade_in_value = value;
+rec.quote_trade_in_credit = value;
+rec.associated_trade_in_credit = value;
+rec.associatedTradeInCredit = value;
 
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
@@ -3236,11 +3251,15 @@ function importTradeInSyncRecords() {
       existingNewProject.tradein_equipment_serial_number = serial;
       existingNewProject.tradein_equipment_dom = item.dom || item.tradein_equipment_dom || "";
 
-      existingNewProject.tradein_credit = tradeInValue;
-      existingNewProject.trade_in_credit = tradeInValue;
-      existingNewProject.tradein_estimated_value = tradeInValue;
-      existingNewProject.estimated_trade_in_value = tradeInValue;
-      existingNewProject.quote_trade_in_credit = tradeInValue;
+     existingNewProject.tradein_credit = tradeInValue;
+existingNewProject.trade_in_credit = tradeInValue;
+existingNewProject.trade_in_value = tradeInValue;
+existingNewProject.trade_desk_value = tradeInValue;
+existingNewProject.tradein_estimated_value = tradeInValue;
+existingNewProject.estimated_trade_in_value = tradeInValue;
+existingNewProject.quote_trade_in_credit = tradeInValue;
+existingNewProject.associated_trade_in_credit = tradeInValue;
+existingNewProject.associatedTradeInCredit = tradeInValue;
 
       const quoteAmount = Number(existingNewProject.quote_amount || 0);
       const estimatedCost = Number(existingNewProject.quote_estimated_cost || 0);
@@ -3305,10 +3324,14 @@ function importTradeInSyncRecords() {
     existingLifecycle.tradein_modality_id = modalityId;
 
     existingLifecycle.tradein_credit = tradeInValue;
-    existingLifecycle.trade_in_credit = tradeInValue;
-    existingLifecycle.tradein_estimated_value = tradeInValue;
-    existingLifecycle.estimated_trade_in_value = tradeInValue;
-    existingLifecycle.quote_trade_in_credit = tradeInValue;
+existingLifecycle.trade_in_credit = tradeInValue;
+existingLifecycle.trade_in_value = tradeInValue;
+existingLifecycle.trade_desk_value = tradeInValue;
+existingLifecycle.tradein_estimated_value = tradeInValue;
+existingLifecycle.estimated_trade_in_value = tradeInValue;
+existingLifecycle.quote_trade_in_credit = tradeInValue;
+existingLifecycle.associated_trade_in_credit = tradeInValue;
+existingLifecycle.associatedTradeInCredit = tradeInValue;
 
     existingLifecycle.tradein_equipment_make = item.make || existingLifecycle.tradein_equipment_make || "";
     existingLifecycle.tradein_equipment_model = item.model || existingLifecycle.tradein_equipment_model || "";
