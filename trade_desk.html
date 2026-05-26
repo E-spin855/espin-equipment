@@ -484,6 +484,11 @@ function normalizeIncomingRecord(item){
 
     bids: Array.isArray(item.bids) ? item.bids : [],
 
+bidder_name_input: item.bidder_name_input || "",
+bid_amount_input: item.bid_amount_input || "",
+bid_terms_input: item.bid_terms_input || "",
+bid_expiration_input: item.bid_expiration_input || "",
+
     winningBid:
       item.winningBid ||
       null,
@@ -692,18 +697,26 @@ function rejectFromBidding(id){
   saveData(data);
   render();
 }
-
-function addBid(id){
-  const bidder = val("bidder_" + id);
-  const amount = Number(val("amount_" + id));
-  const terms = val("terms_" + id);
-  const expires = val("expires_" + id);
-
-  if (!bidder || !amount) return alert("Enter bidder and amount.");
-
+function saveBidInput(id, field, value){
   const data = loadData();
   const rec = data.find(r => r.id === id);
   if (!rec) return;
+
+  rec[field] = value;
+
+  saveData(data);
+}
+function addBid(id){
+  const data = loadData();
+  const rec = data.find(r => r.id === id);
+  if (!rec) return;
+
+  const bidder = String(rec.bidder_name_input || "").trim();
+  const amount = Number(rec.bid_amount_input || 0);
+  const terms = String(rec.bid_terms_input || "").trim();
+  const expires = String(rec.bid_expiration_input || "").trim();
+
+  if (!bidder || !amount) return alert("Enter bidder and amount.");
 
   rec.bids = rec.bids || [];
 
@@ -716,13 +729,17 @@ function addBid(id){
     submitted_at: new Date().toISOString()
   });
 
+  rec.bidder_name_input = "";
+  rec.bid_amount_input = "";
+  rec.bid_terms_input = "";
+  rec.bid_expiration_input = "";
+
   rec.bid_status = "Bids Received";
   rec.crm_status = "Bid Received";
 
   saveData(data);
   render();
 }
-
 function syncWinningBidToRepAndManager(rec){
   const key = getRecordKey(rec);
 
@@ -984,29 +1001,37 @@ function render(){
 
           <input
   id="bidder_${rec.id}"
+  value="${rec.bidder_name_input || ""}"
   placeholder="Bidder Name"
   autocomplete="off"
+  oninput="saveBidInput('${rec.id}', 'bidder_name_input', this.value)"
 >
 
 <input
   id="amount_${rec.id}"
   type="number"
+  value="${rec.bid_amount_input || ""}"
   placeholder="Bid Amount"
   autocomplete="off"
+  oninput="saveBidInput('${rec.id}', 'bid_amount_input', this.value)"
 >
 
 <input
   id="terms_${rec.id}"
+  value="${rec.bid_terms_input || ""}"
   placeholder="Terms / Pickup Notes"
   autocomplete="off"
+  oninput="saveBidInput('${rec.id}', 'bid_terms_input', this.value)"
 >
 
 <input
   id="expires_${rec.id}"
+  type="date"
+  value="${rec.bid_expiration_input || ""}"
   placeholder="Bid Expiration Date"
   autocomplete="off"
+  oninput="saveBidInput('${rec.id}', 'bid_expiration_input', this.value)"
 >
-
           <button onclick="addBid('${rec.id}')">Submit Bid</button>
 
           <hr>
