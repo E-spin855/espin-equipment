@@ -1187,7 +1187,7 @@ function renderNewProjectsTable() {
     const projectId = rec.oem_project_id || rec.id || "-";
     const customer = rec.site || "-";
     const projectName = rec.model || "-";
-    const projectedRevenue = Number(rec.quote_amount || 0);
+    const projectedRevenue = rec.quote_amount ? Number(rec.quote_amount) : null;
     const expectedClose = rec.quote_expected_close_date || "-";
 
     const assignedRep =
@@ -1207,7 +1207,7 @@ function renderNewProjectsTable() {
         <td>${projectId}</td>
         <td>${customer}</td>
         <td>${projectName}</td>
-        <td>$${projectedRevenue.toLocaleString()}</td>
+        <td>${projectedRevenue !== null ? "$" + projectedRevenue.toLocaleString() : "Quote not created"}</td>
         <td>${expectedClose}</td>
         <td>${assignedRep}</td>
         <td>
@@ -2062,9 +2062,11 @@ function renderNewProjectDetail(rec) {
     </div>
 
     <div class="detail-card">
-      <div class="k">Projected Revenue</div>
-      <div class="v">$${quoteAmount.toLocaleString()}</div>
-    </div>
+  <div class="k">Quote Value</div>
+  <div class="v">
+    ${quoteAmount ? "$" + quoteAmount.toLocaleString() : "Quote not created"}
+  </div>
+</div>
 
     <div class="detail-card">
       <div class="k">Expected Close Date</div>
@@ -4812,7 +4814,6 @@ function openNewProjectModal() {
   $("newProjectContactEmail").value = "";
 
   $("newProjectName").value = "";
-  $("newProjectValue").value = "";
   $("newProjectCloseDate").value = "";
 
   $("newProjectRepFirst").value = "";
@@ -4944,14 +4945,13 @@ function saveNewProject() {
   const contactEmail = $("newProjectContactEmail").value.trim();
 
   const projectName = $("newProjectName").value.trim();
-  const projectValue = Number($("newProjectValue").value || 0);
   const closeDate = $("newProjectCloseDate").value;
 
   const repFirst = $("newProjectRepFirst").value.trim();
   const repLast = $("newProjectRepLast").value.trim();
 
-  if (!customer || !projectName || !projectValue || !closeDate || !repFirst || !repLast) {
-    alert("Fill out customer, project name, project value, close date, and assigned rep.");
+  if (!customer || !projectName || !closeDate || !repFirst || !repLast) {
+    alert("Fill out customer, project name, close date, and assigned rep.");
     return;
   }
 
@@ -4986,10 +4986,10 @@ function saveNewProject() {
     sales_rep_first: repFirst,
     sales_rep_last: repLast,
 
-    quote_amount: projectValue,
+    quote_amount: "",
     quote_estimated_cost: "",
     quote_trade_in_credit: "",
-    quote_net_amount: projectValue,
+    quote_net_amount: "",
     quote_profit: "",
     quote_margin: "",
     quote_status: "",
@@ -5043,7 +5043,9 @@ function saveNewProject() {
     manager_response_action: "",
     manager_response_date: "",
     manager_response_notes: "",
-    manager_response_at: ""
+    manager_response_at: "",
+    manager_response_seen_by_rep: true,
+    manager_response_seen_at: ""
   };
 
   state.records.unshift(rec);
