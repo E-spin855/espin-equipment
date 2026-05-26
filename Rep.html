@@ -5053,6 +5053,25 @@ function saveNewProject() {
   state.selectedId = rec.id;
   render();
 }
+function getTradeInCreditValue(rec) {
+  return Number(
+    rec.quote_trade_in_credit ||
+    rec.tradein_credit ||
+    rec.trade_in_credit ||
+    rec.tradeInCredit ||
+    rec.tradein_estimated_value ||
+    rec.estimated_trade_in_value ||
+    rec.trade_in_value ||
+    rec.tradeDeskValue ||
+    rec.trade_desk_value ||
+    rec.quoteTradeInCredit ||
+    rec.associated_trade_in_credit ||
+    rec.associatedTradeInCredit ||
+    rec.winning_bid_amount ||
+    rec.winningBid?.amount ||
+    0
+  );
+}
 function openQuoteModal() {
   const rec = state.records.find(r => r.id === state.selectedId);
 const isNewProject = rec?.project_type === "new_sales_project";
@@ -5067,11 +5086,10 @@ $("quoteAmount").previousElementSibling.textContent = isNewProject
   ? "Projected Revenue / New Equipment Cost"
   : "Quote Amount";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
-  $("quoteTradeInCredit").value =
-  rec.quote_trade_in_credit ||
-  rec.tradein_credit ||
-  rec.tradein_estimated_value ||
-  "";
+ const syncedTradeInCredit = getTradeInCreditValue(rec);
+
+$("quoteTradeInCredit").value =
+  syncedTradeInCredit > 0 ? syncedTradeInCredit : "";
   $("quoteStatus").value = rec.quote_status || "draft";
   $("quotePriority").value = rec.quote_priority || "medium";
   $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
@@ -5187,7 +5205,11 @@ function saveQuote() {
 
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCredit = Number($("quoteTradeInCredit").value || 0);
+  const tradeInCredit = Number(
+  $("quoteTradeInCredit").value ||
+  getTradeInCreditValue(rec) ||
+  0
+);
   const netQuote = Math.max(0, amount - tradeInCredit);
 
   const status = $("quoteStatus").value;
@@ -5222,6 +5244,10 @@ const ccEmail = $("quoteCcEmail").value.trim();
   rec.quote_amount = amount;
   rec.quote_estimated_cost = cost;
   rec.quote_trade_in_credit = tradeInCredit;
+rec.tradein_credit = tradeInCredit;
+rec.trade_in_credit = tradeInCredit;
+rec.tradein_estimated_value = tradeInCredit;
+rec.estimated_trade_in_value = tradeInCredit;
   rec.quote_net_amount = netQuote;
   rec.quote_profit = netQuote - cost;
   rec.quote_margin = netQuote > 0
