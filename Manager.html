@@ -148,13 +148,99 @@
     }
     .stat .k{font-size:13px;color:var(--muted);margin-bottom:8px}
     .stat .v{font-size:30px;font-weight:800;line-height:1}
-    .table-wrap{overflow:auto}
-    table{width:100%;border-collapse:collapse;min-width:1080px}
-    th,td{padding:13px 12px;border-bottom:1px solid rgba(88,184,255,.1);text-align:left;font-size:14px;vertical-align:middle}
-    th{position:sticky;top:0;background:rgba(9,18,35,.98);color:#a8c8e7;font-size:12px;text-transform:uppercase;letter-spacing:.09em}
-    tbody tr{background:rgba(9,18,35,.45)}
-    tbody tr:hover{background:rgba(14,31,63,.8)}
-    tbody tr.selected{outline:2px solid rgba(0,229,255,.6);background:rgba(16,38,76,.95)}
+   .table-wrap{
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  min-width:1280px;
+}
+
+th,td{
+  padding:16px 14px;
+  border-bottom:1px solid rgba(88,184,255,.14);
+  text-align:left;
+  font-size:14px;
+  vertical-align:middle;
+  line-height:1.25;
+}
+
+th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:rgba(9,18,35,.98);
+  color:#a8c8e7;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
+tbody tr{
+  background:rgba(9,18,35,.45);
+}
+
+tbody td{
+  height:96px;
+}
+tbody tr:hover{
+  background:rgba(14,31,63,.8);
+}
+
+tbody tr.selected{
+  outline:2px solid rgba(0,229,255,.6);
+  background:rgba(16,38,76,.95);
+}
+
+td{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+th:nth-child(1), td:nth-child(1){width:95px;}
+th:nth-child(2), td:nth-child(2){width:90px;}
+th:nth-child(3), td:nth-child(3){width:140px;}
+th:nth-child(4), td:nth-child(4){width:80px;}
+th:nth-child(5), td:nth-child(5){width:110px;}
+th:nth-child(6), td:nth-child(6){width:70px;}
+th:nth-child(7), td:nth-child(7){width:60px;}
+th:nth-child(8), td:nth-child(8){width:150px;}
+th:nth-child(9), td:nth-child(9){width:155px;}
+th:nth-child(10), td:nth-child(10){width:170px;}
+th:nth-child(11), td:nth-child(11){width:80px;}
+th:nth-child(12), td:nth-child(12){width:130px;}
+th:nth-child(13), td:nth-child(13){width:105px;}
+
+.alert-badge,
+.pill{
+  min-width:118px;
+  min-height:46px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  line-height:1.15;
+  white-space:normal;
+}
+
+td:nth-child(9) .alert-badge,
+td:nth-child(9) .pill{
+  width:130px;
+}
+
+td:nth-child(10) .alert-badge,
+td:nth-child(10) .pill{
+  width:145px;
+}
+
+td:nth-child(13) button{
+  width:78px;
+  min-width:78px;
+  padding:12px 10px;
+}
     .pill{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:700}
     .pill.ready{background:rgba(255,216,77,.16);color:#ffe890;border:1px solid rgba(255,216,77,.26)}
     .pill.pending{background:rgba(67,176,255,.13);color:#b7e1ff;border:1px solid rgba(67,176,255,.23)}
@@ -1095,41 +1181,6 @@ function renderTable() {
     ].filter(Boolean).join(" ");
 
     const alerts = getAlerts(rec);
-
-    const alertHtml =
-      rec.lifecycle_completed
-        ? `<span class="alert-badge alert-completed">COMPLETED</span>`
-        : rec.quote_status === "lost"
-        ? `<span class="pill postponed">QUOTE LOST</span>`
-        : rec.quote_status === "won"
-        ? `<span class="pill submitted">QUOTE WON</span>`
-        : rec.quote_amount
-        ? (() => {
-            const qs = String(rec.quote_status || "draft").toLowerCase();
-
-            if (qs === "draft") {
-              return `
-                <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
-                  QUOTE DRAFT
-                </span>
-              `;
-            }
-
-            if (qs === "sent") return `<span class="pill quote-sent">QUOTE SENT</span>`;
-            if (qs === "follow_up") return `<span class="pill quote-follow-up">QUOTE FOLLOW UP</span>`;
-
-            return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
-          })()
-        : hasManagerUnseenUpdate(rec)
-        ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
-        : !alerts.length
-        ? `<span class="mini">No Action</span>`
-        : alerts.map(a => `
-            <span class="alert-badge alert-${a.type}">
-              ${a.label}
-            </span>
-          `).join("");
-
     return `
       <tr class="${selectedClass}" data-id="${String(rec.id || "")}" style="cursor:pointer;">
         <td>${rec.oem_project_id || ""}</td>
