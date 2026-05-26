@@ -1234,7 +1234,7 @@ function renderNewProjectsTable() {
       : ""
   }
 </td>
-        <td>$${tradeInCredit.toLocaleString()}</td>
+        <td>${tradeInCreditRaw ? `$${tradeInCredit.toLocaleString()}` : "Pending Quote"}</td>
 
         <td>
           ${
@@ -3099,10 +3099,45 @@ function syncFeedStatus(rec) {
 
   window.dispatchEvent(new Event("rep_feed_update"));
 }
-function importTradeInSyncRecords() {
-  const shareEnabled =
-    localStorage.getItem(AXIS_SHARE_KEY) !== "off";
+function saveAsUnmatchedTradeInLead(item) {
+  let unmatched = [];
 
+  try {
+    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
+    if (!Array.isArray(unmatched)) unmatched = [];
+  } catch {
+    unmatched = [];
+  }
+
+  const serial = String(item.serial_number || item.axis_serial_number || "").trim();
+
+  const unmatchedRecord = {
+    ...item,
+    id:
+      item.id ||
+      item.trade_desk_id ||
+      `unmatched_tradein_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    lead_type: "unmatched_tradein_lead",
+    source: "Unmatched Trade-In Lead",
+    created_at: item.last_tradein_update_at || new Date().toISOString(),
+    status: "needs_axis_review"
+  };
+
+  const existsInUnmatched = unmatched.some(r =>
+    String(r.id || "") === String(unmatchedRecord.id || "") ||
+    (
+      serial &&
+      String(r.serial_number || r.axis_serial_number || "") === serial
+    )
+  );
+
+  if (!existsInUnmatched) {
+    unmatched.unshift(unmatchedRecord);
+    localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
+  }
+}
+function importTradeInSyncRecords() {
+  const shareEnabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
   if (!shareEnabled) return;
 
   const syncKey = "axis_tradein_sync_records_v1";
@@ -3119,395 +3154,176 @@ function importTradeInSyncRecords() {
   if (!synced.length) return;
 
   synced.forEach(item => {
-    const serial = String(item.serial_number || "").trim();
+    const serial = String(item.serial_number || item.axis_serial_number || "").trim();
     const projectId = String(item.project_id || "").trim();
     const modalityId = String(item.modality_id || "").trim();
 
     const isNewProjectSync =
-  item.axis_source === "new_axis_project" ||
-  item.sync_mode === "sync_tradein_to_new_axis_project";
+      item.axis_source === "new_axis_project" ||
+      item.axis_parent_project_type === "new_sales_project" ||
+      item.sync_mode === "sync_tradein_to_new_axis_project";
 
-const isUnmatchedTradeInLead =
-  item.unmatched_tradein_lead === true ||
-  item.sync_mode === "create_unmatched_tradein_lead";
-    const existing = isNewProjectSync
-      ? state.records.find(r =>
-          r.project_type === "new_sales_project" &&
-          item.axis_record_id &&
-          String(r.id || "").trim() === String(item.axis_record_id || "").trim()
-        )
-      : state.records.find(r =>
-          (
-            item.axis_record_id &&
-            String(r.id || "").trim() === String(item.axis_record_id || "").trim()
-          ) ||
-          (
-            item.axis_project_id &&
-            r.project_type !== "new_sales_project" &&
-            String(r.oem_project_id || "").trim() === String(item.axis_project_id || "").trim()
-          ) ||
-          (
-            item.axis_serial_number &&
-            r.project_type !== "new_sales_project" &&
-            String(r.serial_number || "").trim() === String(item.axis_serial_number || "").trim()
-          ) ||
-          (
-            serial &&
-            r.project_type !== "new_sales_project" &&
-            String(r.serial_number || "").trim() === serial
-          )
-        );
-if (!existing && isUnmatchedTradeInLead) {
-  let unmatched = [];
-
-  try {
-    unmatched = JSON.parse(localStorage.getItem(UNMATCHED_TRADEIN_KEY) || "[]");
-    if (!Array.isArray(unmatched)) unmatched = [];
-  } catch {
-    unmatched = [];
-  }
-
-  const unmatchedRecord = {
-    ...item,
-    id: item.id || `unmatched_tradein_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    lead_type: "unmatched_tradein_lead",
-    source: "Unmatched Trade-In Lead",
-    created_at: item.last_tradein_update_at || new Date().toISOString(),
-    status: "needs_axis_review"
-  };
-
-  const existsInUnmatched = unmatched.some(r =>
-    String(r.id || "") === String(unmatchedRecord.id || "") ||
-    (
-      String(r.serial_number || "") &&
-      String(r.serial_number || "") === String(unmatchedRecord.serial_number || "")
-    )
-  );
-
-  if (!existsInUnmatched) {
-    unmatched.unshift(unmatchedRecord);
-    localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
-  }
-
-  return;
-}
-    const isNewProject =
-      existing?.project_type === "new_sales_project" ||
-      isNewProjectSync;
+    const isUnmatchedTradeInLead =
+      item.unmatched_tradein_lead === true ||
+      item.sync_mode === "create_unmatched_tradein_lead";
 
     const tradeInValue = Number(
       item.trade_in_value ||
       item.trade_in_credit ||
       item.tradein_credit ||
+      item.quote_trade_in_credit ||
+      item.quoteTradeInCredit ||
+      item.associated_trade_in_credit ||
+      item.associatedTradeInCredit ||
       item.estimated_trade_in_value ||
       item.tradein_estimated_value ||
+      item.winning_bid_amount ||
+      item.winningBid?.amount ||
       0
     );
 
-    const fullRepName =
-      item.assigned_rep_name ||
-      `${item.sales_rep_first || ""} ${item.sales_rep_last || ""}`.trim() ||
-      `${existing?.sales_rep_first || ""} ${existing?.sales_rep_last || ""}`.trim() ||
-      "Trade-In Rep";
+    const existingNewProject = state.records.find(r =>
+      r.project_type === "new_sales_project" &&
+      (
+        String(r.id || "") === String(item.axis_record_id || "") ||
+        String(r.id || "") === String(item.axis_parent_record_id || "") ||
+        String(r.oem_project_id || "") === String(item.axis_project_id || "") ||
+        String(r.oem_project_id || "") === String(item.project_id || "")
+      )
+    );
 
-    const nameParts = fullRepName.split(" ").filter(Boolean);
+    const existingLifecycle = state.records.find(r =>
+      r.project_type !== "new_sales_project" &&
+      (
+        (
+          item.axis_record_id &&
+          String(r.id || "") === String(item.axis_record_id || "")
+        ) ||
+        (
+          item.axis_parent_record_id &&
+          String(r.id || "") === String(item.axis_parent_record_id || "")
+        ) ||
+        (
+          item.axis_project_id &&
+          String(r.oem_project_id || "") === String(item.axis_project_id || "")
+        ) ||
+        (
+          serial &&
+          String(r.serial_number || "") === serial
+        )
+      )
+    );
 
-    const imported = {
-      ...(existing || {}),
-
-      id:
-        existing?.id ||
-        `axis_tradein_${projectId || Date.now()}_${modalityId || serial || Math.random().toString(36).slice(2,8)}`,
-
-      source: isNewProject
-        ? "New AXIS Project Trade-In Sync"
-        : "Espin Trade-In Sync",
-
-      tradein_sync_received: true,
-      tradein_project_id: projectId,
-      tradein_modality_id: modalityId,
-
-      oem_project_id:
-        existing?.oem_project_id ||
-        item.axis_project_id ||
-        item.hospital_asset_id ||
-        item.oem_project_id ||
-        item.project_id ||
-        "",
-
-      make: isNewProject
-        ? existing?.make || "New Project"
-        : item.make || existing?.make || "",
-
-      model: isNewProject
-        ? existing?.model || item.project_name || "New Project"
-        : item.model || existing?.model || "",
-
-      modality: isNewProject
-        ? existing?.modality || "PROJECT"
-        : normalizeModality(item.modality || existing?.modality || ""),
-
-      serial_number: isNewProject
-        ? existing?.serial_number || ""
-        : serial || existing?.serial_number || "",
-
-      dom: isNewProject
-        ? existing?.dom || ""
-        : item.dom || existing?.dom || "",
-
-      site:
-        existing?.site ||
-        item.site ||
-        item.project_name ||
-        "Trade-In Field Update",
-
-      site_address: item.site_address || existing?.site_address || "",
-      city: item.city || existing?.city || "",
-      state: item.state || existing?.state || "",
-      zip_code: item.zip_code || existing?.zip_code || "",
-
-      sales_rep_first:
-        existing?.sales_rep_first ||
-        item.sales_rep_first ||
-        nameParts[0] ||
-        "",
-
-      sales_rep_last:
-        existing?.sales_rep_last ||
-        item.sales_rep_last ||
-        nameParts.slice(1).join(" ") ||
-        "",
-
-      sales_rep_company:
-        existing?.sales_rep_company ||
-        item.sales_rep_company ||
-        "Siemens Lifecycle Team",
-
-      sales_rep_phone:
-        existing?.sales_rep_phone ||
-        item.sales_rep_phone ||
-        item.assigned_rep_phone ||
-        "",
-
-      sales_rep_email:
-        existing?.sales_rep_email ||
-        item.sales_rep_email ||
-        item.assigned_rep_email ||
-        item.last_tradein_update_by ||
-        "",
-
-      contact_name:
-        existing?.contact_name ||
-        item.contact_name ||
-        "Hospital Contact",
-
-      contact_title:
-        existing?.contact_title ||
-        item.contact_title ||
-        "Hospital Contact",
-
-      contact_phone:
-        existing?.contact_phone ||
-        item.contact_phone ||
-        "",
-
-      contact_email:
-        existing?.contact_email ||
-        item.contact_email ||
-        "",
-
-      alert_enabled: existing?.alert_enabled || "yes",
-      threshold_years: existing?.threshold_years || "",
-      alert_override: isNewProject
-        ? existing?.alert_override || ""
-        : existing?.alert_override || "service",
-
-      proactive_signal: isNewProject ? existing?.proactive_signal || "" : "yes",
-
-      proactive_type: isNewProject
-        ? existing?.proactive_type || "new_project_trade_in_sync"
-        : "trade_in_field_update",
-
-      proactive_date: isNewProject
-        ? existing?.proactive_date || todayISO()
-        : todayISO(),
-
-      proactive_reason: isNewProject
-        ? "Associated trade-in equipment was synced back from the Trade-In app for this new sales project."
-        : "Trade-In details were synced back from the Trade-In app. Rep should review trade-in value, finalize quote numbers, and decide whether to submit to Siemens/Espin Trade-In Desk.",
-
-      proactive_enabled: isNewProject
-        ? existing?.proactive_enabled || "no"
-        : "yes",
-
-      rep_status: existing?.rep_status || (isNewProject ? "new_project" : "needed"),
-      rep_action: existing?.rep_action || "",
-      rep_notes:
-        existing?.rep_notes ||
-        (isNewProject
-          ? "Associated trade-in equipment synced from Espin Trade-In."
-          : "Equipment data synced from Espin Trade-In."),
-      rep_last_action_at: existing?.rep_last_action_at || "",
-      rep_hidden: existing?.rep_hidden || false,
-      rep_deleted: existing?.rep_deleted || false,
-      rep_follow_up_date: existing?.rep_follow_up_date || "",
-
-      lifecycle_completed: existing?.lifecycle_completed || false,
-      completed_at: existing?.completed_at || "",
-      completed_by: existing?.completed_by || "",
-
-      submitted_to: existing?.submitted_to || "",
-      submitted_at: existing?.submitted_at || "",
-
-      quote_trade_in_credit:
-        item.tradein_credit ||
-        item.tradein_estimated_value ||
-        item.estimated_trade_in_value ||
-        tradeInValue ||
-        existing?.quote_trade_in_credit ||
-        "",
-
-      quote_net_amount:
-        existing?.quote_amount
-          ? Math.max(
-              0,
-              Number(existing.quote_amount || 0) -
-              Number(
-                item.tradein_credit ||
-                item.tradein_estimated_value ||
-                item.estimated_trade_in_value ||
-                tradeInValue ||
-                existing.quote_trade_in_credit ||
-                0
-              )
-            )
-          : existing?.quote_net_amount || "",
-
-      quote_profit:
-        existing?.quote_amount
-          ? Math.max(
-              0,
-              Number(existing.quote_amount || 0) -
-              Number(
-                item.tradein_credit ||
-                item.tradein_estimated_value ||
-                item.estimated_trade_in_value ||
-                tradeInValue ||
-                existing.quote_trade_in_credit ||
-                0
-              )
-            ) - Number(existing.quote_estimated_cost || 0)
-          : existing?.quote_profit || "",
-
-      quote_margin:
-        existing?.quote_amount
-          ? (() => {
-              const net = Math.max(
-                0,
-                Number(existing.quote_amount || 0) -
-                Number(
-                  item.tradein_credit ||
-                  item.tradein_estimated_value ||
-                  item.estimated_trade_in_value ||
-                  tradeInValue ||
-                  existing.quote_trade_in_credit ||
-                  0
-                )
-              );
-
-              const profit = net - Number(existing.quote_estimated_cost || 0);
-              return net > 0 ? Math.round((profit / net) * 100) : 0;
-            })()
-          : existing?.quote_margin || "",
-
-      tradein_changed_fields: item.changed_fields || [],
-      tradein_last_update_by: item.last_tradein_update_by || "",
-      tradein_last_update_at: item.last_tradein_update_at || "",
-      tradein_estimated_value: tradeInValue || "",
-      tradein_credit:
-        item.tradein_credit ||
-        item.tradein_estimated_value ||
-        item.estimated_trade_in_value ||
-        tradeInValue ||
-        existing?.tradein_credit ||
-        "",
-
-      tradein_synced_to_axis_at:
-        item.last_tradein_update_at ||
-        new Date().toISOString(),
-
-      tradein_equipment_make:
-        item.make || existing?.tradein_equipment_make || "",
-
-      tradein_equipment_model:
-        item.model || existing?.tradein_equipment_model || "",
-
-      tradein_equipment_modality:
-        normalizeModality(item.modality || existing?.tradein_equipment_modality || ""),
-
-      tradein_equipment_serial_number:
-        serial || existing?.tradein_equipment_serial_number || "",
-
-      tradein_equipment_dom:
-        item.dom || existing?.tradein_equipment_dom || "",
-
-      tradein_availability_timeframe: item.availability_timeframe || existing?.tradein_availability_timeframe || "",
-      tradein_in_use_status: item.in_use_status || existing?.tradein_in_use_status || "",
-      tradein_out_of_use_date: item.out_of_use_date || existing?.tradein_out_of_use_date || "",
-      tradein_loading_dock: item.loading_dock || existing?.tradein_loading_dock || "",
-      tradein_hard_drive_removed: item.hard_drive_removed || existing?.tradein_hard_drive_removed || "",
-      tradein_removal_pathways: item.removal_pathways || existing?.tradein_removal_pathways || "",
-      tradein_software_version: item.software_version || existing?.tradein_software_version || "",
-      tradein_upgrade_notes: item.upgrade_notes || existing?.tradein_upgrade_notes || "",
-image_sync_received:
-  item.image_sync_received ||
-  existing?.image_sync_received ||
-  false,
-
-image_count:
-  item.image_count ||
-  existing?.image_count ||
-  0,
-
-images:
-  item.images ||
-  existing?.images ||
-  [],
-
-last_image_update_by:
-  item.last_image_update_by ||
-  existing?.last_image_update_by ||
-  "",
-
-last_image_update_at:
-  item.last_image_update_at ||
-  existing?.last_image_update_at ||
-  "",
-      manager_unseen_update: true,
-      manager_flash_at: new Date().toISOString(),
-      manager_flash_type: isNewProject
-        ? "new_project_tradein_sync"
-        : "tradein_sync"
-    };
-
-    if (existing) {
-      Object.assign(existing, imported);
-
-      if (!isNewProject) {
-        evaluateAndPush(existing);
+    if (isNewProjectSync) {
+      if (!existingNewProject) {
+        saveAsUnmatchedTradeInLead(item);
+        return;
       }
-    } else if (!isNewProject) {
-      state.records.unshift(imported);
-      evaluateAndPush(imported);
+
+      existingNewProject.tradein_sync_received = true;
+      existingNewProject.tradein_seen_by_rep = false;
+
+      existingNewProject.tradein_project_id = projectId;
+      existingNewProject.tradein_modality_id = modalityId;
+
+      existingNewProject.tradein_equipment_make = item.make || item.tradein_equipment_make || "";
+      existingNewProject.tradein_equipment_model = item.model || item.tradein_equipment_model || "";
+      existingNewProject.tradein_equipment_modality = normalizeModality(item.modality || item.tradein_equipment_modality || "");
+      existingNewProject.tradein_equipment_serial_number = serial;
+      existingNewProject.tradein_equipment_dom = item.dom || item.tradein_equipment_dom || "";
+
+      existingNewProject.tradein_credit = tradeInValue;
+      existingNewProject.trade_in_credit = tradeInValue;
+      existingNewProject.tradein_estimated_value = tradeInValue;
+      existingNewProject.estimated_trade_in_value = tradeInValue;
+      existingNewProject.quote_trade_in_credit = tradeInValue;
+
+      const quoteAmount = Number(existingNewProject.quote_amount || 0);
+      const estimatedCost = Number(existingNewProject.quote_estimated_cost || 0);
+      const netQuote = Math.max(0, quoteAmount - tradeInValue);
+      const profit = netQuote - estimatedCost;
+
+      existingNewProject.quote_net_amount = quoteAmount ? netQuote : "";
+      existingNewProject.quote_profit = quoteAmount ? profit : "";
+      existingNewProject.quote_margin = quoteAmount && netQuote > 0
+        ? Math.round((profit / netQuote) * 100)
+        : "";
+
+      existingNewProject.tradein_synced_to_axis_at =
+        item.last_tradein_update_at || new Date().toISOString();
+
+      existingNewProject.tradein_last_update_by = item.last_tradein_update_by || "";
+      existingNewProject.tradein_last_update_at = item.last_tradein_update_at || "";
+
+      existingNewProject.image_sync_received =
+        item.image_sync_received ||
+        Boolean(item.images && item.images.length) ||
+        existingNewProject.image_sync_received ||
+        false;
+
+      existingNewProject.image_count =
+        item.image_count ||
+        item.images?.length ||
+        existingNewProject.image_count ||
+        0;
+
+      existingNewProject.images =
+        item.images ||
+        existingNewProject.images ||
+        [];
+
+      existingNewProject.last_image_update_by =
+        item.last_image_update_by ||
+        existingNewProject.last_image_update_by ||
+        "";
+
+      existingNewProject.last_image_update_at =
+        item.last_image_update_at ||
+        existingNewProject.last_image_update_at ||
+        "";
+
+      existingNewProject.manager_unseen_update = true;
+      existingNewProject.manager_flash_at = new Date().toISOString();
+      existingNewProject.manager_flash_type = "new_project_tradein_sync";
+
+      return;
     }
+
+    if (isUnmatchedTradeInLead || !existingLifecycle) {
+      saveAsUnmatchedTradeInLead(item);
+      return;
+    }
+
+    existingLifecycle.tradein_sync_received = true;
+    existingLifecycle.tradein_seen_by_rep = false;
+
+    existingLifecycle.tradein_project_id = projectId;
+    existingLifecycle.tradein_modality_id = modalityId;
+
+    existingLifecycle.tradein_credit = tradeInValue;
+    existingLifecycle.trade_in_credit = tradeInValue;
+    existingLifecycle.tradein_estimated_value = tradeInValue;
+    existingLifecycle.estimated_trade_in_value = tradeInValue;
+    existingLifecycle.quote_trade_in_credit = tradeInValue;
+
+    existingLifecycle.tradein_equipment_make = item.make || existingLifecycle.tradein_equipment_make || "";
+    existingLifecycle.tradein_equipment_model = item.model || existingLifecycle.tradein_equipment_model || "";
+    existingLifecycle.tradein_equipment_modality = normalizeModality(item.modality || existingLifecycle.tradein_equipment_modality || "");
+    existingLifecycle.tradein_equipment_serial_number = serial || existingLifecycle.tradein_equipment_serial_number || "";
+    existingLifecycle.tradein_equipment_dom = item.dom || existingLifecycle.tradein_equipment_dom || "";
+
+    existingLifecycle.tradein_synced_to_axis_at =
+      item.last_tradein_update_at || new Date().toISOString();
+
+    existingLifecycle.manager_unseen_update = true;
+    existingLifecycle.manager_flash_at = new Date().toISOString();
+    existingLifecycle.manager_flash_type = "tradein_sync";
+
+    evaluateAndPush(existingLifecycle);
   });
 
   saveRecords();
-
-  localStorage.setItem(
-    "axis_manager_sync_ping_v1",
-    String(Date.now())
-  );
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 }
 function markActioned() {
   const rec = state.records.find(r => r.id === state.selectedId);
@@ -3535,7 +3351,6 @@ function hideForFollowUp() {
   syncFeedStatus(rec); // 🔥 REQUIRED
   upsertRecord(rec);
 }
-
 function deleteFromRepOnly() {
   const rec = state.records.find(r => r.id === state.selectedId);
   if (!rec) return;
@@ -5120,13 +4935,11 @@ const rec = state.records.find(r => r.id === state.selectedId);
 if (!rec) return;
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCredit = Number(
+ const tradeInCredit = Number(
   $("quoteTradeInCredit").value ||
-  rec.tradein_credit ||
-  rec.tradein_estimated_value ||
+  getTradeInCreditValue(rec) ||
   0
 );
-
   const netQuote = Math.max(0, amount - tradeInCredit);
   const profit = netQuote - cost;
 
@@ -5205,11 +5018,15 @@ function saveQuote() {
 
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCredit = Number(
-  $("quoteTradeInCredit").value ||
-  getTradeInCreditValue(rec) ||
-  0
-);
+  const tradeInCreditRaw =
+  rec.tradein_credit ||
+  rec.trade_in_credit ||
+  rec.quote_trade_in_credit ||
+  rec.tradein_estimated_value ||
+  rec.estimated_trade_in_value ||
+  "";
+
+const tradeInCredit = Number(tradeInCreditRaw || 0);
   const netQuote = Math.max(0, amount - tradeInCredit);
 
   const status = $("quoteStatus").value;
