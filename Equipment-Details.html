@@ -303,7 +303,55 @@ if (auth !== "true" || !userEmail) {
 }
 
 const params = new URLSearchParams(location.search);
+const AXIS_CONTEXT = {
+  axis_record_id:
+    params.get("axis_record_id") ||
+    localStorage.getItem("axis_record_id") ||
+    "",
 
+  axis_parent_record_id:
+    params.get("axis_parent_record_id") ||
+    params.get("axis_record_id") ||
+    localStorage.getItem("axis_parent_record_id") ||
+    localStorage.getItem("axis_record_id") ||
+    "",
+
+  axis_project_id:
+    params.get("axis_project_id") ||
+    localStorage.getItem("axis_project_id") ||
+    "",
+
+  axis_serial_number:
+    params.get("axis_serial_number") ||
+    localStorage.getItem("axis_serial_number") ||
+    "",
+
+  axis_parent_project_type:
+    params.get("axis_parent_project_type") ||
+    localStorage.getItem("axis_parent_project_type") ||
+    "",
+
+  axis_parent_project_name:
+    params.get("axis_parent_project_name") ||
+    localStorage.getItem("axis_parent_project_name") ||
+    "",
+
+  axis_source:
+    params.get("axis_source") ||
+    localStorage.getItem("axis_source") ||
+    "",
+
+  sync_mode:
+    params.get("sync_mode") ||
+    localStorage.getItem("sync_mode") ||
+    ""
+};
+
+Object.entries(AXIS_CONTEXT).forEach(([key, value]) => {
+  if (value) localStorage.setItem(key, value);
+});
+
+console.log("AXIS CONTEXT LOADED:", AXIS_CONTEXT);
 const AXIS_DEMO_SYNC_ENABLED = true;
 const ADMIN_DOWNLOAD_EXCEL_ENABLED = false;
 
@@ -763,12 +811,29 @@ function triggerRender(m){
   setTimeout(applyChangedFieldStyling, 50);
 }
 function appendCommonIdentifierFields(groupEl, serialKey){
-  groupEl.appendChild(field("Serial Number", serialKey));
-const identifierField = field("Additional Identifier", "additional_identifier");
-identifierField.querySelector("input").placeholder = "e.g. Room 2, Asset Tag 123, Hospital ID";
-groupEl.appendChild(identifierField);
-}
+  const axisProjectField = field(
+    "AXIS / Lifecycle Project ID",
+    "axis_lifecycle_project_id"
+  );
 
+  axisProjectField.querySelector("input").placeholder = "Example: AXIS-DISP-006";
+
+  const axisProjectValue =
+    formData.axis_lifecycle_project_id ||
+    AXIS_CONTEXT.axis_project_id ||
+    "";
+
+  axisProjectField.querySelector("input").value = axisProjectValue;
+  formData.axis_lifecycle_project_id = axisProjectValue;
+
+  groupEl.appendChild(axisProjectField);
+
+  groupEl.appendChild(field("Serial Number", serialKey));
+
+  const identifierField = field("Additional Identifier", "additional_identifier");
+  identifierField.querySelector("input").placeholder = "e.g. Room 2, Asset Tag 123, Hospital ID";
+  groupEl.appendChild(identifierField);
+}
 function renderCT(){
   const fc = document.getElementById("form-container");
   fc.innerHTML = "";
@@ -1225,62 +1290,52 @@ function normalizeAxisTradeInRecord(result) {
   const get = (key) => key ? String(formData[key] || "").trim() : "";
 
   const fromAxis =
-    source === "axis" ||
-    params.get("source") === "axis" ||
-    params.has("axis_record_id") ||
-    params.has("axis_project_id");
+  source === "axis" ||
+  params.get("source") === "axis" ||
+  !!AXIS_CONTEXT.axis_record_id ||
+  !!AXIS_CONTEXT.axis_parent_record_id ||
+  !!AXIS_CONTEXT.axis_project_id;
 
-  const axisRecordId =
-    params.get("axis_record_id") ||
-    (fromAxis ? localStorage.getItem("axis_record_id") : "") ||
-    "";
+const axisRecordId = AXIS_CONTEXT.axis_record_id || "";
 
-  const axisParentRecordId =
-    params.get("axis_parent_record_id") ||
-    params.get("axis_record_id") ||
-    (fromAxis ? localStorage.getItem("axis_parent_record_id") : "") ||
-    axisRecordId ||
-    "";
+const axisParentRecordId =
+  AXIS_CONTEXT.axis_parent_record_id ||
+  AXIS_CONTEXT.axis_record_id ||
+  "";
 
-  const axisProjectId =
-    params.get("axis_project_id") ||
-    (fromAxis ? localStorage.getItem("axis_project_id") : "") ||
-    "";
+const axisProjectId =
+  AXIS_CONTEXT.axis_project_id ||
+  formData.axis_lifecycle_project_id ||
+  "";
 
-  const axisParentProjectType =
-    params.get("axis_parent_project_type") ||
-    (fromAxis ? localStorage.getItem("axis_parent_project_type") : "") ||
-    "";
+const axisParentProjectType = AXIS_CONTEXT.axis_parent_project_type || "";
 
-  const axisParentProjectName =
-    params.get("axis_parent_project_name") ||
-    (fromAxis ? localStorage.getItem("axis_parent_project_name") : "") ||
-    "";
+const axisParentProjectName = AXIS_CONTEXT.axis_parent_project_name || "";
 
-  const axisSource =
-    params.get("axis_source") ||
-    (fromAxis ? localStorage.getItem("axis_source") : "") ||
-    "";
+const axisSource = AXIS_CONTEXT.axis_source || "";
 
-  const syncMode =
-    params.get("sync_mode") ||
-    (fromAxis ? localStorage.getItem("sync_mode") : "") ||
-    "";
+const syncMode = AXIS_CONTEXT.sync_mode || "";
+ const serialNumber = get(map.serial_number);
+const additionalIdentifier = String(formData.additional_identifier || "").trim();
 
-  const serialNumber = get(map.serial_number);
-  const additionalIdentifier = String(formData.additional_identifier || "").trim();
+const axisLifecycleProjectId = String(
+  formData.axis_lifecycle_project_id ||
+  AXIS_CONTEXT.axis_project_id ||
+  ""
+).trim();
 
-  const isAxisLinked =
-    fromAxis && (
-      !!axisRecordId ||
-      !!axisParentRecordId ||
-      !!axisProjectId
-    );
+  const hasAxisProjectLink = Boolean(
+  axisRecordId ||
+  axisParentRecordId ||
+  axisLifecycleProjectId ||
+  axisProjectId
+);
 
-  const finalSyncMode =
-    syncMode ||
-    (isAxisLinked ? "update_existing_axis_record" : "create_unmatched_tradein_lead");
+const isAxisLinked = hasAxisProjectLink;
 
+const finalSyncMode =
+  syncMode ||
+  (hasAxisProjectLink ? "update_existing_axis_record" : "create_unmatched_tradein_lead");
   const finalAxisSource =
     axisSource ||
     (axisParentProjectType === "new_sales_project"
@@ -1294,21 +1349,20 @@ function normalizeAxisTradeInRecord(result) {
 
     axis_record_id: axisRecordId,
     axis_parent_record_id: axisParentRecordId,
-    axis_project_id: axisProjectId,
+    axis_project_id: axisLifecycleProjectId || axisProjectId,
 
     axis_parent_project_type: axisParentProjectType,
     axis_parent_project_name: axisParentProjectName,
 
-    axis_serial_number:
-      params.get("axis_serial_number") ||
-      (fromAxis ? localStorage.getItem("axis_serial_number") : "") ||
-      serialNumber ||
-      additionalIdentifier,
+   axis_serial_number:
+  AXIS_CONTEXT.axis_serial_number ||
+  serialNumber ||
+  additionalIdentifier,
 
     axis_source: finalAxisSource,
     sync_mode: finalSyncMode,
 
-    unmatched_tradein_lead: !isAxisLinked,
+    unmatched_tradein_lead: !(axisLifecycleProjectId || isAxisLinked),
 
     project_id: projectId,
     modality_id: modalityId || "",
@@ -1346,13 +1400,13 @@ function normalizeAxisTradeInRecord(result) {
     last_tradein_update_by: userEmail,
     last_tradein_update_at: new Date().toISOString(),
 
-    crm_status: isAxisLinked
-      ? "AXIS Trade-In Field Update"
-      : "Unmatched Trade-In Lead",
+   crm_status: hasAxisProjectLink
+  ? "AXIS Trade-In Field Update"
+  : "Unmatched Trade-In Lead",
 
-    rep_notes: isAxisLinked
-      ? "Equipment data synced from Espin Trade-In."
-      : "Field-originated trade-in submitted from Espin Trade-In. No AXIS project was linked at time of submission."
+rep_notes: hasAxisProjectLink
+  ? "Equipment data synced from Espin Trade-In."
+  : "Field-originated trade-in submitted from Espin Trade-In. No AXIS project was linked at time of submission."
   };
 }
 function syncTradeInToAxisDemo(result) {
@@ -1421,10 +1475,15 @@ function syncTradeInToAxisTradeDesk(result) {
 
   const tradeDeskRecord = {
     ...newRecord,
-
+axis_record_id: newRecord.axis_record_id || "",
+axis_parent_record_id: newRecord.axis_parent_record_id || "",
+axis_project_id: newRecord.axis_project_id || "",
+axis_serial_number: newRecord.axis_serial_number || "",
+axis_parent_project_type: newRecord.axis_parent_project_type || "",
+axis_parent_project_name: newRecord.axis_parent_project_name || "",
     source: "Espin Trade-In App",
     axis_source: newRecord.axis_source || "espin_trade_in_app",
-    sync_mode: "sync_to_axis_trade_desk",
+    sync_mode: newRecord.sync_mode || "update_existing_axis_record",
 
     trade_desk_status: "Submitted to Trade Desk",
     bid_status: "Not Released",
