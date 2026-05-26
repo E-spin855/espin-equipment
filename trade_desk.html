@@ -740,20 +740,42 @@ function addBid(id){
 }
 function syncWinningBidToRepAndManager(rec){
   const key = getRecordKey(rec);
+  const winningAmount = Number(rec.winning_bid_amount || rec.winningBid?.amount || 0);
+
+  if (!winningAmount) {
+    alert("No winning bid amount found.");
+    return;
+  }
+
+  const isNewSalesProject =
+    rec.axis_parent_project_type === "new_sales_project" ||
+    rec.project_type === "new_sales_project" ||
+    rec.axis_source === "new_axis_project" ||
+    rec.sync_mode === "sync_tradein_to_new_axis_project";
 
   const payload = {
     ...rec,
 
     key,
 
-    trade_in_credit: rec.trade_in_credit || rec.winning_bid_amount || "",
-    tradein_credit: rec.tradein_credit || rec.winning_bid_amount || "",
-    tradein_estimated_value: rec.tradein_estimated_value || rec.winning_bid_amount || "",
-    estimated_trade_in_value: rec.estimated_trade_in_value || rec.winning_bid_amount || "",
+    trade_in_value: winningAmount,
+    trade_in_credit: winningAmount,
+    tradein_credit: winningAmount,
+    tradein_estimated_value: winningAmount,
+    estimated_trade_in_value: winningAmount,
+    quote_trade_in_credit: winningAmount,
+    associated_trade_in_credit: winningAmount,
+    associatedTradeInCredit: winningAmount,
+    winning_bid_amount: winningAmount,
 
-    quote_trade_in_credit: rec.trade_in_credit || rec.winning_bid_amount || "",
+    winning_bidder: rec.winning_bidder || rec.winningBid?.bidder || "",
+    winning_bid_terms: rec.winning_bid_terms || rec.winningBid?.terms || "",
+
     quote_status: "trade_in_credit_received",
     quote_sync_status: "Synced to Rep Quote",
+
+    tradein_sync_received: true,
+    tradein_seen_by_rep: false,
 
     manager_unseen_update: true,
     manager_flash_at: new Date().toISOString(),
@@ -764,22 +786,51 @@ function syncWinningBidToRepAndManager(rec){
     rep_last_action_at: new Date().toISOString(),
 
     submitted_to: "AXIS Trade Desk",
-    source: rec.source || "AXIS Trade Desk Sync"
+    source: rec.source || "AXIS Trade Desk Sync",
+
+    last_tradein_update_at: new Date().toISOString(),
+
+    sync_mode: isNewSalesProject
+      ? "sync_tradein_to_new_axis_project"
+      : "update_existing_axis_record"
   };
 
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(payload));
 
   let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-  syncRecords = mergeRecordIntoDesk(syncRecords, payload);
+  const payloadKey = getRecordKey(payload);
+  let foundSyncRecord = false;
+
+  syncRecords = syncRecords.map(item => {
+    const same =
+      getRecordKey(item) === payloadKey ||
+      String(item.axis_parent_record_id || "") === String(payload.axis_parent_record_id || "") ||
+      String(item.axis_record_id || "") === String(payload.axis_record_id || "") ||
+      (
+        String(item.axis_project_id || item.project_id || "") === String(payload.axis_project_id || payload.project_id || "") &&
+        String(item.serial_number || item.axis_serial_number || "") === String(payload.serial_number || payload.axis_serial_number || "")
+      );
+
+    if (!same) return item;
+
+    foundSyncRecord = true;
+    return { ...item, ...payload };
+  });
+
+  if (!foundSyncRecord) {
+    syncRecords.unshift(payload);
+  }
+
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
   let lifecycle = loadArray(LIFECYCLE_KEY);
+  let foundLifecycle = false;
 
   lifecycle = lifecycle.map(item => {
     const same =
       getRecordKey(item) === key ||
-      item.id === rec.axis_parent_record_id ||
-      item.id === rec.axis_record_id ||
+      String(item.id || "") === String(rec.axis_parent_record_id || "") ||
+      String(item.id || "") === String(rec.axis_record_id || "") ||
       (
         String(item.oem_project_id || item.project_id || "") === String(rec.axis_project_id || rec.project_id || "") &&
         (
@@ -788,51 +839,55 @@ function syncWinningBidToRepAndManager(rec){
         )
       );
 
-    return same ? { ...item, ...payload, id: item.id || payload.id } : item;
+    if (!same) return item;
+
+    foundLifecycle = true;
+
+    return {
+      ...item,
+      ...payload,
+      id: item.id || payload.id
+    };
   });
 
-  const existsInLifecycle = lifecycle.some(item =>
-    getRecordKey(item) === key ||
-    item.id === rec.axis_parent_record_id ||
-    item.id === rec.axis_record_id
-  );
-
-  if (!existsInLifecycle) {
+  if (!foundLifecycle) {
     lifecycle.unshift(payload);
   }
 
   saveArray(LIFECYCLE_KEY, lifecycle);
 
   let repQueue = loadArray(REP_QUEUE_KEY);
+  let foundRepQueue = false;
 
   repQueue = repQueue.map(item => {
     const same =
       getRecordKey(item) === key ||
-      item.id === rec.axis_parent_record_id ||
-      item.id === rec.axis_record_id ||
+      String(item.id || "") === String(rec.axis_parent_record_id || "") ||
+      String(item.id || "") === String(rec.axis_record_id || "") ||
       (
         String(item.project_id || item.oem_project_id || "") === String(rec.project_id || rec.axis_project_id || "") &&
         String(item.serial_number || "") === String(rec.serial_number || "")
       );
 
-    return same ? { ...item, ...payload, id: item.id || payload.id } : item;
+    if (!same) return item;
+
+    foundRepQueue = true;
+    return { ...item, ...payload, id: item.id || payload.id };
   });
 
-  const existsInRepQueue = repQueue.some(item =>
-    getRecordKey(item) === key ||
-    item.id === rec.axis_parent_record_id ||
-    item.id === rec.axis_record_id
-  );
-
-  if (!existsInRepQueue) {
+  if (!foundRepQueue) {
     repQueue.unshift(payload);
   }
 
   saveArray(REP_QUEUE_KEY, repQueue);
 
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
-}
 
+  window.dispatchEvent(new StorageEvent("storage", {
+    key: TRADEIN_SYNC_KEY,
+    newValue: JSON.stringify(syncRecords)
+  }));
+}
 function selectWinner(id, index){
   const data = loadData();
   const rec = data.find(r => r.id === id);
@@ -1086,7 +1141,8 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
-    e.key === KEY
+    e.key === KEY ||
+    e.key === TRADEIN_SYNC_KEY
   ) {
     render();
   }
