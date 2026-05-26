@@ -782,12 +782,23 @@ function addBid(id){
 
 function syncWinningBidToRepAndManager(rec){
   const key = getRecordKey(rec);
-  const winningAmount = getWinningAmount(rec);
+
+  const winningAmount = Number(
+    rec.winning_bid_amount ||
+    rec.winningBid?.amount ||
+    rec.trade_in_credit ||
+    rec.tradein_credit ||
+    rec.tradein_estimated_value ||
+    rec.estimated_trade_in_value ||
+    0
+  );
 
   if (!winningAmount) {
     alert("No winning bid amount found.");
     return;
   }
+
+  const now = new Date().toISOString();
 
   const isNewSalesProject =
     String(rec.axis_parent_project_type || "").toLowerCase() === "new_sales_project" ||
@@ -813,24 +824,23 @@ function syncWinningBidToRepAndManager(rec){
     winning_bidder: rec.winning_bidder || rec.winningBid?.bidder || "",
     winning_bid_terms: rec.winning_bid_terms || rec.winningBid?.terms || "",
 
-    quote_status: "trade_in_credit_received",
     quote_sync_status: "Synced to Rep Quote",
 
     tradein_sync_received: true,
     tradein_seen_by_rep: false,
 
     manager_unseen_update: true,
-    manager_flash_at: new Date().toISOString(),
+    manager_flash_at: now,
     manager_flash_type: "trade_in_credit",
 
     rep_action: rec.rep_action || "trade_review",
     rep_status: rec.rep_status || "acted",
-    rep_last_action_at: new Date().toISOString(),
+    rep_last_action_at: now,
 
     submitted_to: "AXIS Trade Desk",
     source: rec.source || "AXIS Trade Desk Sync",
 
-    last_tradein_update_at: new Date().toISOString(),
+    last_tradein_update_at: now,
 
     sync_mode: isNewSalesProject
       ? "sync_tradein_to_new_axis_project"
@@ -863,7 +873,18 @@ function syncWinningBidToRepAndManager(rec){
   let foundLifecycle = false;
 
   lifecycle = lifecycle.map(item => {
-    if (!isSameAxisRecord(item, payload)) return item;
+    const sameNewProject =
+      item.project_type === "new_sales_project" &&
+      (
+        String(item.id || "") === String(payload.axis_parent_record_id || "") ||
+        String(item.id || "") === String(payload.axis_record_id || "") ||
+        String(item.oem_project_id || "") === String(payload.axis_project_id || "") ||
+        String(item.oem_project_id || "") === String(payload.project_id || "")
+      );
+
+    const sameExistingLifecycle = isSameAxisRecord(item, payload);
+
+    if (!sameNewProject && !sameExistingLifecycle) return item;
 
     foundLifecycle = true;
 
@@ -881,19 +902,63 @@ function syncWinningBidToRepAndManager(rec){
       tradein_estimated_value: winningAmount,
       estimated_trade_in_value: winningAmount,
       quote_trade_in_credit: winningAmount,
+      associated_trade_in_credit: winningAmount,
+      associatedTradeInCredit: winningAmount,
 
-      tradein_equipment_make: payload.make || item.tradein_equipment_make || item.make || "",
-      tradein_equipment_model: payload.model || item.tradein_equipment_model || item.model || "",
-      tradein_equipment_modality: payload.modality || item.tradein_equipment_modality || item.modality || "",
-      tradein_equipment_serial_number: payload.serial_number || item.tradein_equipment_serial_number || item.serial_number || "",
-      tradein_equipment_dom: payload.dom || item.tradein_equipment_dom || item.dom || "",
+      tradein_equipment_make:
+        payload.make ||
+        item.tradein_equipment_make ||
+        item.make ||
+        "",
 
-      image_sync_received: payload.image_sync_received || item.image_sync_received || false,
-      image_count: payload.image_count || item.image_count || 0,
-      images: payload.images && payload.images.length ? payload.images : item.images || [],
+      tradein_equipment_model:
+        payload.model ||
+        item.tradein_equipment_model ||
+        item.model ||
+        "",
 
-      last_image_update_by: payload.last_image_update_by || item.last_image_update_by || "",
-      last_image_update_at: payload.last_image_update_at || item.last_image_update_at || "",
+      tradein_equipment_modality:
+        payload.modality ||
+        item.tradein_equipment_modality ||
+        item.modality ||
+        "",
+
+      tradein_equipment_serial_number:
+        payload.serial_number ||
+        item.tradein_equipment_serial_number ||
+        item.serial_number ||
+        "",
+
+      tradein_equipment_dom:
+        payload.dom ||
+        item.tradein_equipment_dom ||
+        item.dom ||
+        "",
+
+      image_sync_received:
+        payload.image_sync_received ||
+        item.image_sync_received ||
+        false,
+
+      image_count:
+        payload.image_count ||
+        item.image_count ||
+        0,
+
+      images:
+        payload.images && payload.images.length
+          ? payload.images
+          : item.images || [],
+
+      last_image_update_by:
+        payload.last_image_update_by ||
+        item.last_image_update_by ||
+        "",
+
+      last_image_update_at:
+        payload.last_image_update_at ||
+        item.last_image_update_at ||
+        "",
 
       winning_bid_amount: winningAmount,
       winning_bidder: payload.winning_bidder || "",
@@ -901,19 +966,15 @@ function syncWinningBidToRepAndManager(rec){
       quote_sync_status: "Synced to Rep Quote",
 
       manager_unseen_update: true,
-      manager_flash_at: new Date().toISOString(),
+      manager_flash_at: now,
       manager_flash_type: "trade_in_credit",
 
       rep_action: item.rep_action || "trade_review",
       rep_status: item.rep_status || "acted",
-      rep_last_action_at: new Date().toISOString()
+      rep_last_action_at: now
     };
   });
 
-  /*
-    DO NOT create a new lifecycle record here.
-    If it cannot match the original AXIS record, it stays only in TRADEIN_SYNC_KEY.
-  */
   saveArray(LIFECYCLE_KEY, lifecycle);
 
   let repQueue = loadArray(REP_QUEUE_KEY);
@@ -927,6 +988,11 @@ function syncWinningBidToRepAndManager(rec){
     return {
       ...item,
       ...payload,
+      tradein_credit: winningAmount,
+      trade_in_credit: winningAmount,
+      tradein_estimated_value: winningAmount,
+      estimated_trade_in_value: winningAmount,
+      quote_trade_in_credit: winningAmount,
       id: item.id || payload.id
     };
   });
@@ -938,8 +1004,12 @@ function syncWinningBidToRepAndManager(rec){
   saveArray(REP_QUEUE_KEY, repQueue);
 
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
-}
 
+  window.dispatchEvent(new StorageEvent("storage", {
+    key: TRADEIN_SYNC_KEY,
+    newValue: JSON.stringify(syncRecords)
+  }));
+}
 function selectWinner(id, index){
   const data = loadData();
   const rec = data.find(r => r.id === id);
