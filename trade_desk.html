@@ -203,6 +203,36 @@ function val(id){
   return String(document.getElementById(id)?.value || "").trim();
 }
 
+function jsSafe(v){
+  return String(v || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;");
+}
+
+function htmlSafe(v){
+  return String(v || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function isBidInputFocused(){
+  const active = document.activeElement;
+
+  return (
+    active &&
+    (
+      active.id?.startsWith("bidder_") ||
+      active.id?.startsWith("amount_") ||
+      active.id?.startsWith("terms_") ||
+      active.id?.startsWith("expires_")
+    )
+  );
+}
+
 function normalizeModality(v){
   const m = String(v || "").trim().toUpperCase();
 
@@ -241,6 +271,14 @@ function getRecordKey(rec){
     rec.axis_record_id ||
     rec.key ||
     `${rec.project_id || rec.oem_project_id || ""}_${rec.modality_id || ""}_${rec.serial_number || rec.hospital_asset_id || ""}`
+  );
+}
+
+function findById(data, id){
+  const selectedId = String(id || "").trim();
+
+  return data.find(r =>
+    String(r.id || "").trim() === selectedId
   );
 }
 
@@ -303,10 +341,19 @@ function normalizeIncomingRecord(item){
     item.axis_serial_number ||
     "";
 
-  return {
-    id: item.trade_desk_id || item.id || uid("tradein"),
+  const id =
+    item.trade_desk_id ||
+    item.id ||
+    uid("tradein");
 
-    key: item.key || getRecordKey(item),
+  return {
+    id,
+
+    key:
+      item.key ||
+      item.axis_parent_record_id ||
+      item.axis_record_id ||
+      `${projectId}_${modalityId}_${serial || item.hospital_asset_id || ""}`,
 
     axis_record_id:
       item.axis_record_id ||
@@ -524,11 +571,6 @@ function normalizeIncomingRecord(item){
 
     bids: Array.isArray(item.bids) ? item.bids : [],
 
-    bidder_name_input: item.bidder_name_input || "",
-    bid_amount_input: item.bid_amount_input || "",
-    bid_terms_input: item.bid_terms_input || "",
-    bid_expiration_input: item.bid_expiration_input || "",
-
     winningBid:
       item.winningBid ||
       null,
@@ -708,8 +750,13 @@ function importAutomaticIntake(){
 
 function approveForBidding(id){
   const data = loadData();
-  const rec = data.find(r => r.id === id);
-  if (!rec) return;
+  const rec = findById(data, id);
+
+  if (!rec) {
+    console.warn("Approve failed. Record not found:", id, data);
+    alert("Record not found for approval.");
+    return;
+  }
 
   rec.trade_desk_status = "Approved for Bidding";
   rec.bid_status = "Open for Bids";
@@ -723,8 +770,13 @@ function approveForBidding(id){
 
 function rejectFromBidding(id){
   const data = loadData();
-  const rec = data.find(r => r.id === id);
-  if (!rec) return;
+  const rec = findById(data, id);
+
+  if (!rec) {
+    console.warn("Reject failed. Record not found:", id, data);
+    alert("Record not found.");
+    return;
+  }
 
   rec.trade_desk_status = "Needs More Information";
   rec.bid_status = "Hold";
@@ -742,8 +794,12 @@ function saveBidInput(id, field, value){
 
 function addBid(id){
   const data = loadData();
-  const rec = data.find(r => r.id === id);
-  if (!rec) return;
+  const rec = findById(data, id);
+
+  if (!rec) {
+    alert("Record not found.");
+    return;
+  }
 
   const draft = bidDrafts[id] || {};
 
@@ -752,7 +808,10 @@ function addBid(id){
   const terms = String(draft.bid_terms_input || val("terms_" + id)).trim();
   const expires = String(draft.bid_expiration_input || val("expires_" + id)).trim();
 
-  if (!bidder || !amount) return alert("Enter bidder and amount.");
+  if (!bidder || !amount) {
+    alert("Enter bidder and amount.");
+    return;
+  }
 
   rec.bids = rec.bids || [];
 
@@ -764,11 +823,6 @@ function addBid(id){
     expires,
     submitted_at: new Date().toISOString()
   });
-
-  rec.bidder_name_input = "";
-  rec.bid_amount_input = "";
-  rec.bid_terms_input = "";
-  rec.bid_expiration_input = "";
 
   delete bidDrafts[id];
 
@@ -923,10 +977,15 @@ function syncWinningBidToRepAndManager(rec){
 
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
+
 function selectWinner(id, index){
   const data = loadData();
-  const rec = data.find(r => r.id === id);
-  if (!rec || !rec.bids[index]) return;
+  const rec = findById(data, id);
+
+  if (!rec || !rec.bids || !rec.bids[index]) {
+    alert("Bid not found.");
+    return;
+  }
 
   const winning = rec.bids[index];
 
@@ -984,8 +1043,8 @@ function imageHtml(rec){
     <div class="image-row">
       ${rec.images.map(img => `
         <div class="image-box">
-          <img src="${img.url}" alt="${img.type || "equipment image"}">
-          <div class="small">${img.title || img.type || "image"}</div>
+          <img src="${htmlSafe(img.url)}" alt="${htmlSafe(img.type || "equipment image")}">
+          <div class="small">${htmlSafe(img.title || img.type || "image")}</div>
         </div>
       `).join("")}
     </div>
@@ -1000,11 +1059,11 @@ function statusBadge(rec){
   if (status.includes("Winning")) cls = "win";
   if (status.includes("Needs")) cls = "redBadge";
 
-  return `<span class="badge ${cls}">${status}</span>`;
+  return `<span class="badge ${cls}">${htmlSafe(status)}</span>`;
 }
 
 function render(){
-  importAutomaticIntake();
+  if (isBidInputFocused()) return;
 
   const data = loadData();
 
@@ -1014,20 +1073,23 @@ function render(){
   repQuotes.innerHTML = "";
 
   data.forEach(rec => {
+    const safeId = jsSafe(rec.id);
+    const rawId = String(rec.id || "");
+
     syncedIntake.innerHTML += `
       <div class="card">
-        <h3>${rec.site || rec.axis_parent_project_name || rec.project_name || "Synced Trade-In"}</h3>
+        <h3>${htmlSafe(rec.site || rec.axis_parent_project_name || rec.project_name || "Synced Trade-In")}</h3>
 
         <span class="badge blue">AUTO-SYNCED</span>
-        <span class="badge">${rec.axis_source || "Trade-In App"}</span>
+        <span class="badge">${htmlSafe(rec.axis_source || "Trade-In App")}</span>
 
-        <div class="kv"><strong>Project ID:</strong> ${rec.project_id || "-"}</div>
-        <div class="kv"><strong>Modality ID:</strong> ${rec.modality_id || "-"}</div>
-        <div class="kv"><strong>Equipment:</strong> ${rec.modality || "-"} — ${rec.make || "-"} ${rec.model || ""}</div>
-        <div class="kv"><strong>Serial:</strong> ${rec.serial_number || rec.axis_serial_number || "-"}</div>
-        <div class="kv"><strong>Additional Identifier:</strong> ${rec.hospital_asset_id || "-"}</div>
-        <div class="kv"><strong>Rep:</strong> ${rec.assigned_rep_name || rec.last_tradein_update_by || "-"}</div>
-        <div class="kv"><strong>Last Sync:</strong> ${rec.last_tradein_update_at || "-"}</div>
+        <div class="kv"><strong>Project ID:</strong> ${htmlSafe(rec.project_id || "-")}</div>
+        <div class="kv"><strong>Modality ID:</strong> ${htmlSafe(rec.modality_id || "-")}</div>
+        <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
+        <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
+        <div class="kv"><strong>Additional Identifier:</strong> ${htmlSafe(rec.hospital_asset_id || "-")}</div>
+        <div class="kv"><strong>Rep:</strong> ${htmlSafe(rec.assigned_rep_name || rec.last_tradein_update_by || "-")}</div>
+        <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
         ${imageHtml(rec)}
       </div>
@@ -1035,43 +1097,43 @@ function render(){
 
     tradeDesk.innerHTML += `
       <div class="card">
-        <h3>${rec.modality || "-"} — ${rec.make || "-"} ${rec.model || ""}</h3>
+        <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
 
         ${statusBadge(rec)}
-        <span class="badge">${rec.bid_status || "Not Released"}</span>
-        <span class="badge">${rec.crm_status || "-"}</span>
+        <span class="badge">${htmlSafe(rec.bid_status || "Not Released")}</span>
+        <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
-        <div class="kv"><strong>project_id:</strong> ${rec.project_id || "-"}</div>
-        <div class="kv"><strong>modality_id:</strong> ${rec.modality_id || "-"}</div>
-        <div class="kv"><strong>axis_record_id:</strong> ${rec.axis_record_id || "-"}</div>
-        <div class="kv"><strong>axis_parent_record_id:</strong> ${rec.axis_parent_record_id || "-"}</div>
-        <div class="kv"><strong>axis_project_id:</strong> ${rec.axis_project_id || "-"}</div>
-        <div class="kv"><strong>axis_parent_project_type:</strong> ${rec.axis_parent_project_type || "-"}</div>
-        <div class="kv"><strong>axis_source:</strong> ${rec.axis_source || "-"}</div>
-        <div class="kv"><strong>sync_mode:</strong> ${rec.sync_mode || "-"}</div>
-        <div class="kv"><strong>serial_number:</strong> ${rec.serial_number || "-"}</div>
-        <div class="kv"><strong>hospital_asset_id:</strong> ${rec.hospital_asset_id || "-"}</div>
-        <div class="kv"><strong>dom:</strong> ${rec.dom || "-"}</div>
-        <div class="kv"><strong>installed_date:</strong> ${rec.installed_date || "-"}</div>
-        <div class="kv"><strong>in_use_status:</strong> ${rec.in_use_status || "-"}</div>
-        <div class="kv"><strong>availability_timeframe:</strong> ${rec.availability_timeframe || "-"}</div>
-        <div class="kv"><strong>loading_dock:</strong> ${rec.loading_dock || "-"}</div>
-        <div class="kv"><strong>hard_drive_removed:</strong> ${rec.hard_drive_removed || "-"}</div>
-        <div class="kv"><strong>software_version:</strong> ${rec.software_version || "-"}</div>
+        <div class="kv"><strong>project_id:</strong> ${htmlSafe(rec.project_id || "-")}</div>
+        <div class="kv"><strong>modality_id:</strong> ${htmlSafe(rec.modality_id || "-")}</div>
+        <div class="kv"><strong>axis_record_id:</strong> ${htmlSafe(rec.axis_record_id || "-")}</div>
+        <div class="kv"><strong>axis_parent_record_id:</strong> ${htmlSafe(rec.axis_parent_record_id || "-")}</div>
+        <div class="kv"><strong>axis_project_id:</strong> ${htmlSafe(rec.axis_project_id || "-")}</div>
+        <div class="kv"><strong>axis_parent_project_type:</strong> ${htmlSafe(rec.axis_parent_project_type || "-")}</div>
+        <div class="kv"><strong>axis_source:</strong> ${htmlSafe(rec.axis_source || "-")}</div>
+        <div class="kv"><strong>sync_mode:</strong> ${htmlSafe(rec.sync_mode || "-")}</div>
+        <div class="kv"><strong>serial_number:</strong> ${htmlSafe(rec.serial_number || "-")}</div>
+        <div class="kv"><strong>hospital_asset_id:</strong> ${htmlSafe(rec.hospital_asset_id || "-")}</div>
+        <div class="kv"><strong>dom:</strong> ${htmlSafe(rec.dom || "-")}</div>
+        <div class="kv"><strong>installed_date:</strong> ${htmlSafe(rec.installed_date || "-")}</div>
+        <div class="kv"><strong>in_use_status:</strong> ${htmlSafe(rec.in_use_status || "-")}</div>
+        <div class="kv"><strong>availability_timeframe:</strong> ${htmlSafe(rec.availability_timeframe || "-")}</div>
+        <div class="kv"><strong>loading_dock:</strong> ${htmlSafe(rec.loading_dock || "-")}</div>
+        <div class="kv"><strong>hard_drive_removed:</strong> ${htmlSafe(rec.hard_drive_removed || "-")}</div>
+        <div class="kv"><strong>software_version:</strong> ${htmlSafe(rec.software_version || "-")}</div>
 
-        <p class="small"><strong>Removal Pathways:</strong><br>${rec.removal_pathways || "-"}</p>
-        <p class="small"><strong>Rep Notes:</strong><br>${rec.rep_notes || "-"}</p>
+        <p class="small"><strong>Removal Pathways:</strong><br>${htmlSafe(rec.removal_pathways || "-")}</p>
+        <p class="small"><strong>Rep Notes:</strong><br>${htmlSafe(rec.rep_notes || "-")}</p>
 
         ${imageHtml(rec)}
 
         <hr>
 
-        <button onclick="approveForBidding('${rec.id}')">Approve for Bidding</button>
-        <button class="gold" onclick="rejectFromBidding('${rec.id}')">Needs More Information</button>
+        <button onclick="approveForBidding('${safeId}')">Approve for Bidding</button>
+        <button class="gold" onclick="rejectFromBidding('${safeId}')">Needs More Information</button>
 
         <details>
           <summary class="small">View synced AXIS payload</summary>
-          <pre>${JSON.stringify(rec, null, 2)}</pre>
+          <pre>${htmlSafe(JSON.stringify(rec, null, 2))}</pre>
         </details>
       </div>
     `;
@@ -1079,50 +1141,50 @@ function render(){
     if ((rec.trade_desk_status || "").includes("Approved") || (rec.bid_status || "") !== "Not Released") {
       bidderPortal.innerHTML += `
         <div class="card">
-          <h3>${rec.make || "-"} ${rec.model || ""}</h3>
+          <h3>${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
 
-          <span class="badge">${rec.modality || "-"}</span>
-          <span class="badge">Serial: ${rec.serial_number || "-"}</span>
-          <span class="badge">Available: ${rec.availability_timeframe || "-"}</span>
+          <span class="badge">${htmlSafe(rec.modality || "-")}</span>
+          <span class="badge">Serial: ${htmlSafe(rec.serial_number || "-")}</span>
+          <span class="badge">Available: ${htmlSafe(rec.availability_timeframe || "-")}</span>
 
           ${imageHtml(rec)}
 
           <hr>
 
           <input
-            id="bidder_${rec.id}"
-            value="${bidDrafts[rec.id]?.bidder_name_input || rec.bidder_name_input || ""}"
+            id="bidder_${htmlSafe(rawId)}"
+            value="${htmlSafe(bidDrafts[rawId]?.bidder_name_input || "")}"
             placeholder="Bidder Name"
             autocomplete="off"
-            oninput="saveBidInput('${rec.id}', 'bidder_name_input', this.value)"
+            oninput="saveBidInput('${safeId}', 'bidder_name_input', this.value)"
           >
 
           <input
-            id="amount_${rec.id}"
+            id="amount_${htmlSafe(rawId)}"
             type="number"
-            value="${bidDrafts[rec.id]?.bid_amount_input || rec.bid_amount_input || ""}"
+            value="${htmlSafe(bidDrafts[rawId]?.bid_amount_input || "")}"
             placeholder="Bid Amount"
             autocomplete="off"
-            oninput="saveBidInput('${rec.id}', 'bid_amount_input', this.value)"
+            oninput="saveBidInput('${safeId}', 'bid_amount_input', this.value)"
           >
 
           <input
-            id="terms_${rec.id}"
-            value="${bidDrafts[rec.id]?.bid_terms_input || rec.bid_terms_input || ""}"
+            id="terms_${htmlSafe(rawId)}"
+            value="${htmlSafe(bidDrafts[rawId]?.bid_terms_input || "")}"
             placeholder="Terms / Pickup Notes"
             autocomplete="off"
-            oninput="saveBidInput('${rec.id}', 'bid_terms_input', this.value)"
+            oninput="saveBidInput('${safeId}', 'bid_terms_input', this.value)"
           >
 
           <input
-            id="expires_${rec.id}"
+            id="expires_${htmlSafe(rawId)}"
             type="date"
-            value="${bidDrafts[rec.id]?.bid_expiration_input || rec.bid_expiration_input || ""}"
+            value="${htmlSafe(bidDrafts[rawId]?.bid_expiration_input || "")}"
             autocomplete="off"
-            oninput="saveBidInput('${rec.id}', 'bid_expiration_input', this.value)"
+            oninput="saveBidInput('${safeId}', 'bid_expiration_input', this.value)"
           >
 
-          <button onclick="addBid('${rec.id}')">Submit Bid</button>
+          <button onclick="addBid('${safeId}')">Submit Bid</button>
 
           <hr>
 
@@ -1131,11 +1193,11 @@ function render(){
               ? rec.bids.map((b,i)=>`
                 <div class="card">
                   <span class="badge ${rec.winningBid && rec.winningBid.bid_id === b.bid_id ? "win" : "pending"}">
-                    ${b.bidder}: ${money(b.amount)}
+                    ${htmlSafe(b.bidder)}: ${money(b.amount)}
                   </span>
-                  <div class="small">Terms: ${b.terms || "-"}</div>
-                  <div class="small">Expires: ${b.expires || "-"}</div>
-                  <button class="green" onclick="selectWinner('${rec.id}',${i})">Select Winning Bid</button>
+                  <div class="small">Terms: ${htmlSafe(b.terms || "-")}</div>
+                  <div class="small">Expires: ${htmlSafe(b.expires || "-")}</div>
+                  <button class="green" onclick="selectWinner('${safeId}',${i})">Select Winning Bid</button>
                 </div>
               `).join("")
               : "<p class='small'>No bids submitted yet.</p>"
@@ -1146,21 +1208,21 @@ function render(){
 
     repQuotes.innerHTML += `
       <div class="card">
-        <h3>Quote: ${rec.quote_id || rec.project_id || "-"}</h3>
+        <h3>Quote: ${htmlSafe(rec.quote_id || rec.project_id || "-")}</h3>
 
-        <span class="badge">${rec.quote_sync_status || "Pending Bid"}</span>
-        <span class="badge">${rec.crm_status || "-"}</span>
+        <span class="badge">${htmlSafe(rec.quote_sync_status || "Pending Bid")}</span>
+        <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
-        <div class="kv"><strong>Equipment:</strong> ${rec.modality || "-"} — ${rec.make || "-"} ${rec.model || ""}</div>
-        <div class="kv"><strong>Serial:</strong> ${rec.serial_number || "-"}</div>
+        <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
+        <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || "-")}</div>
         <div class="kv"><strong>Trade-In Credit:</strong> ${
           rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount
             ? money(rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount)
             : "Pending Trade Desk Bid"
         }</div>
-        <div class="kv"><strong>Winning Bidder:</strong> ${rec.winning_bidder || "-"}</div>
-        <div class="kv"><strong>Winning Terms:</strong> ${rec.winning_bid_terms || "-"}</div>
-        <div class="kv"><strong>Last Sync:</strong> ${rec.last_tradein_update_at || "-"}</div>
+        <div class="kv"><strong>Winning Bidder:</strong> ${htmlSafe(rec.winning_bidder || "-")}</div>
+        <div class="kv"><strong>Winning Terms:</strong> ${htmlSafe(rec.winning_bid_terms || "-")}</div>
+        <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
         <hr>
 
@@ -1182,29 +1244,21 @@ window.addEventListener("storage", (e) => {
     e.key === KEY ||
     e.key === TRADEIN_SYNC_KEY
   ) {
-    render();
+    if (!isBidInputFocused()) {
+      render();
+    }
   }
 });
 
 setInterval(() => {
-  const active = document.activeElement;
-
-  const userIsTypingBid =
-    active &&
-    (
-      active.id?.startsWith("bidder_") ||
-      active.id?.startsWith("amount_") ||
-      active.id?.startsWith("terms_") ||
-      active.id?.startsWith("expires_")
-    );
-
-  if (userIsTypingBid) return;
+  if (isBidInputFocused()) return;
 
   if (importAutomaticIntake()) {
     render();
   }
 }, 2000);
 
+importAutomaticIntake();
 render();
 </script>
 
