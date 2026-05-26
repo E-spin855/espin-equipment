@@ -2147,26 +2147,44 @@ function render() {
     const qKey = getRecordKey(q);
 
     const idx = main.findIndex(r =>
-      r.id === q.id ||
-      r.key === qKey ||
-      getRecordKey(r) === qKey
+      String(r.id || "") === String(q.id || "") ||
+      String(r.key || "") === String(qKey || "") ||
+      String(getRecordKey(r) || "") === String(qKey || "") ||
+      (
+        String(r.oem_project_id || "") === String(q.oem_project_id || "") &&
+        String(r.serial_number || "") === String(q.serial_number || "")
+      )
     );
 
     if (idx >= 0) {
+      const existing = main[idx];
+
       main[idx] = {
-        ...main[idx],
+        ...existing,
         ...q,
         key: qKey,
+
+        quote_seen:
+          existing.quote_seen === true || q.quote_seen === true,
+
         manager_unseen_update:
-          q.manager_flash_type === "manager_response"
+          existing.manager_unseen_update === false
+            ? false
+            : q.manager_flash_type === "manager_response"
             ? false
             : q.manager_unseen_update,
+
         manager_flash_at:
-          q.manager_flash_type === "manager_response"
+          existing.manager_unseen_update === false
+            ? ""
+            : q.manager_flash_type === "manager_response"
             ? ""
             : q.manager_flash_at,
+
         manager_flash_type:
-          q.manager_flash_type === "manager_response"
+          existing.manager_unseen_update === false
+            ? ""
+            : q.manager_flash_type === "manager_response"
             ? ""
             : q.manager_flash_type
       };
@@ -2343,11 +2361,7 @@ function selectRow(id) {
     queue = [];
   }
 
-  const allRecords = [
-    ...state.records,
-    ...main,
-    ...queue
-  ];
+  const allRecords = [...state.records, ...main, ...queue];
 
   const clickedRec = allRecords.find(r =>
     String(r.id || "").trim() === selectedId ||
@@ -2361,7 +2375,6 @@ function selectRow(id) {
   }
 
   const key = getRecordKey(clickedRec);
-
   const finalId = String(clickedRec.id || selectedId).trim();
 
   const cleanedRec = {
@@ -2389,20 +2402,39 @@ function selectRow(id) {
     if (!sameRecord) return item;
 
     foundInMain = true;
-
-    return {
-      ...item,
-      ...cleanedRec,
-      id: finalId,
-      key
-    };
+    return { ...item, ...cleanedRec };
   });
 
   if (!foundInMain) {
     main.unshift(cleanedRec);
   }
 
+  queue = queue.map(item => {
+    const sameRecord =
+      String(item.id || "").trim() === finalId ||
+      String(item.id || "").trim() === selectedId ||
+      String(item.key || "") === String(key || "") ||
+      (
+        String(item.oem_project_id || "") === String(cleanedRec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(cleanedRec.serial_number || "")
+      );
+
+    if (!sameRecord) return item;
+
+    return {
+      ...item,
+      id: finalId,
+      key,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      quote_seen: true
+    };
+  });
+
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
+  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   state.records = main;
   state.selectedId = finalId;
