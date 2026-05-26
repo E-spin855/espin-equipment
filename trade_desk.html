@@ -1079,7 +1079,93 @@ function statusBadge(rec){
 
   return `<span class="badge ${cls}">${htmlSafe(status)}</span>`;
 }
+function tradeInFieldRows(rec){
+  const modality = String(rec.modality || "").toUpperCase();
 
+  const rows = [
+    ["Modality", rec.modality],
+    ["Manufacturer", rec.make],
+    ["Model", rec.model],
+    ["Serial Number", rec.serial_number || rec.axis_serial_number],
+    ["Additional Identifier", rec.hospital_asset_id],
+    ["Date Manufactured / Year", rec.dom],
+    ["Date Installed", rec.installed_date],
+    ["System In Use", rec.in_use_status],
+    ["Date Removed From Service", rec.out_of_use_date],
+    ["Availability Time Frame", rec.availability_timeframe],
+    ["Describe Removal Pathways", rec.removal_pathways],
+    ["Loading Dock Available", rec.loading_dock],
+    ["Will Hard Drives Be Removed", rec.hard_drive_removed],
+    ["Software Version", rec.software_version],
+    ["Upgrade Notes", rec.upgrade_notes]
+  ];
+
+  if (modality === "CT") {
+    rows.push(
+      ["# of Slices", rec.ct_slices],
+      ["Tube mAs / Scan/sec", rec.ct_tube_mas],
+      ["Tube Size (mHu)", rec.ct_mhu],
+      ["Tube DOM", rec.ct_tube_dom],
+      ["Tube Installation Date", rec.ct_tube_installation_date],
+      ["GOC Version", rec.ct_goc_version],
+      ["Upgrades", rec.ct_upgrades],
+      ["Injector", rec.ct_injector],
+      ["Injector Model", rec.ct_injector_model],
+      ["Chiller", rec.ct_chiller]
+    );
+  }
+
+  if (modality === "MRI") {
+    rows.push(
+      ["Magnet Type", rec.mri_magnet_type],
+      ["Bore Size (cm)", rec.mri_bore_size_cm],
+      ["# Channels", rec.mri_num_channels],
+      ["Gradient", rec.mri_gradient],
+      ["Coils", rec.mri_coils],
+      ["Service", rec.mri_service],
+      ["Service Company", rec.mri_service_name]
+    );
+  }
+
+  if (modality === "MAMMO") {
+    rows.push(
+      ["2D or 3D", rec.mamo_dimensionality],
+      ["Stereotactic Options", rec.mamo_stereotactic_options],
+      ["Computer-Aided Detection (CAD)", rec.mamo_cad]
+    );
+  }
+
+  if (modality === "XRAY") {
+    rows.push(
+      ["Floor Mounted", rec.xray_floor_mounted],
+      ["Ceiling Mounted", rec.xray_ceiling_mounted]
+    );
+  }
+
+  if (modality === "CARM") {
+    rows.push(
+      ["Monitor Type", rec.carm_monitors],
+      ["Image Intensifier Size", rec.carm_image_intensifier]
+    );
+  }
+
+  if (modality === "PETCT") {
+    rows.push(
+      ["CT Slice Count", rec.pet_ct_slices],
+      ["Tube DOM", rec.pet_tube_dom],
+      ["Tube mAs / Scan/sec", rec.pet_tube_mas]
+    );
+  }
+
+  return rows
+    .filter(([label, value]) => String(value || "").trim())
+    .map(([label, value]) => `
+      <div class="kv">
+        <strong>${label}:</strong> ${value || "-"}
+      </div>
+    `)
+    .join("");
+}
 function render(){
   if (isBidInputFocused()) return;
 
@@ -1094,6 +1180,37 @@ function render(){
     const safeId = jsSafe(rec.id);
     const rawId = String(rec.id || "");
 
+    const repFirst =
+      rec.assigned_rep_first ||
+      rec.sales_rep_first ||
+      rec.rep_first ||
+      "";
+
+    const repLast =
+      rec.assigned_rep_last ||
+      rec.sales_rep_last ||
+      rec.rep_last ||
+      "";
+
+    const repFull =
+      rec.assigned_rep_name ||
+      `${repFirst} ${repLast}`.trim() ||
+      rec.rep_name ||
+      "";
+
+    const repEmail =
+      rec.assigned_rep_email ||
+      rec.sales_rep_email ||
+      rec.rep_email ||
+      rec.last_tradein_update_by ||
+      "";
+
+    const repPhone =
+      rec.assigned_rep_phone ||
+      rec.sales_rep_phone ||
+      rec.rep_phone ||
+      "";
+
     syncedIntake.innerHTML += `
       <div class="card">
         <h3>${htmlSafe(rec.site || rec.axis_parent_project_name || rec.project_name || "Synced Trade-In")}</h3>
@@ -1106,11 +1223,15 @@ function render(){
         <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
         <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
         <div class="kv"><strong>Additional Identifier:</strong> ${htmlSafe(rec.hospital_asset_id || "-")}</div>
-       <div class="kv"><strong>Rep First Name:</strong> ${rec.assigned_rep_first || "-"}</div>
-<div class="kv"><strong>Rep Last Name:</strong> ${rec.assigned_rep_last || "-"}</div>
-<div class="kv"><strong>Rep Full Name:</strong> ${rec.assigned_rep_name || "-"}</div>
-<div class="kv"><strong>Rep Email:</strong> ${rec.assigned_rep_email || rec.last_tradein_update_by || "-"}</div>
-<div class="kv"><strong>Rep Phone:</strong> ${rec.assigned_rep_phone || "-"}</div>
+
+        <hr>
+
+        <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(repFirst || "-")}</div>
+        <div class="kv"><strong>Rep Last Name:</strong> ${htmlSafe(repLast || "-")}</div>
+        <div class="kv"><strong>Rep Full Name:</strong> ${htmlSafe(repFull || "-")}</div>
+        <div class="kv"><strong>Rep Email:</strong> ${htmlSafe(repEmail || "-")}</div>
+        <div class="kv"><strong>Rep Phone:</strong> ${htmlSafe(repPhone || "-")}</div>
+
         <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
         ${imageHtml(rec)}
@@ -1125,25 +1246,48 @@ function render(){
         <span class="badge">${htmlSafe(rec.bid_status || "Not Released")}</span>
         <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
-        <div class="kv"><strong>project_id:</strong> ${htmlSafe(rec.project_id || "-")}</div>
-        <div class="kv"><strong>modality_id:</strong> ${htmlSafe(rec.modality_id || "-")}</div>
-        <div class="kv"><strong>axis_record_id:</strong> ${htmlSafe(rec.axis_record_id || "-")}</div>
-        <div class="kv"><strong>axis_parent_record_id:</strong> ${htmlSafe(rec.axis_parent_record_id || "-")}</div>
-        <div class="kv"><strong>axis_project_id:</strong> ${htmlSafe(rec.axis_project_id || "-")}</div>
-        <div class="kv"><strong>axis_parent_project_type:</strong> ${htmlSafe(rec.axis_parent_project_type || "-")}</div>
-        <div class="kv"><strong>axis_source:</strong> ${htmlSafe(rec.axis_source || "-")}</div>
-        <div class="kv"><strong>sync_mode:</strong> ${htmlSafe(rec.sync_mode || "-")}</div>
-        <div class="kv"><strong>serial_number:</strong> ${htmlSafe(rec.serial_number || "-")}</div>
-        <div class="kv"><strong>hospital_asset_id:</strong> ${htmlSafe(rec.hospital_asset_id || "-")}</div>
-        <div class="kv"><strong>dom:</strong> ${htmlSafe(rec.dom || "-")}</div>
-        <div class="kv"><strong>installed_date:</strong> ${htmlSafe(rec.installed_date || "-")}</div>
-        <div class="kv"><strong>in_use_status:</strong> ${htmlSafe(rec.in_use_status || "-")}</div>
-        <div class="kv"><strong>availability_timeframe:</strong> ${htmlSafe(rec.availability_timeframe || "-")}</div>
-        <div class="kv"><strong>loading_dock:</strong> ${htmlSafe(rec.loading_dock || "-")}</div>
-        <div class="kv"><strong>hard_drive_removed:</strong> ${htmlSafe(rec.hard_drive_removed || "-")}</div>
-        <div class="kv"><strong>software_version:</strong> ${htmlSafe(rec.software_version || "-")}</div>
+        <hr>
 
-        <p class="small"><strong>Removal Pathways:</strong><br>${htmlSafe(rec.removal_pathways || "-")}</p>
+        <h3>Trade-In App Equipment Details</h3>
+
+        <div class="kv"><strong>Modality:</strong> ${htmlSafe(rec.modality || "-")}</div>
+        <div class="kv"><strong>Manufacturer:</strong> ${htmlSafe(rec.make || "-")}</div>
+        <div class="kv"><strong>Model:</strong> ${htmlSafe(rec.model || "-")}</div>
+        <div class="kv"><strong>Serial Number:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
+        <div class="kv"><strong>Additional Identifier:</strong> ${htmlSafe(rec.hospital_asset_id || "-")}</div>
+        <div class="kv"><strong>Date Manufactured / Year:</strong> ${htmlSafe(rec.dom || "-")}</div>
+        <div class="kv"><strong>Date Installed:</strong> ${htmlSafe(rec.installed_date || "-")}</div>
+        <div class="kv"><strong>System In Use:</strong> ${htmlSafe(rec.in_use_status || "-")}</div>
+        <div class="kv"><strong>Date Removed From Service:</strong> ${htmlSafe(rec.out_of_use_date || "-")}</div>
+        <div class="kv"><strong>Availability Time Frame:</strong> ${htmlSafe(rec.availability_timeframe || "-")}</div>
+        <div class="kv"><strong>Loading Dock Available:</strong> ${htmlSafe(rec.loading_dock || "-")}</div>
+        <div class="kv"><strong>Will Hard Drives Be Removed:</strong> ${htmlSafe(rec.hard_drive_removed || "-")}</div>
+        <div class="kv"><strong>Software Version:</strong> ${htmlSafe(rec.software_version || "-")}</div>
+
+        <p class="small"><strong>Describe Removal Pathways:</strong><br>${htmlSafe(rec.removal_pathways || "-")}</p>
+        <p class="small"><strong>Upgrade Notes:</strong><br>${htmlSafe(rec.upgrade_notes || "-")}</p>
+
+        <hr>
+
+        <h3>Rep Information</h3>
+
+        <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(repFirst || "-")}</div>
+        <div class="kv"><strong>Rep Last Name:</strong> ${htmlSafe(repLast || "-")}</div>
+        <div class="kv"><strong>Rep Full Name:</strong> ${htmlSafe(repFull || "-")}</div>
+        <div class="kv"><strong>Rep Email:</strong> ${htmlSafe(repEmail || "-")}</div>
+        <div class="kv"><strong>Rep Phone:</strong> ${htmlSafe(repPhone || "-")}</div>
+
+        <hr>
+
+        <h3>Trade Desk Status</h3>
+
+        <div class="kv"><strong>Trade Desk Status:</strong> ${htmlSafe(rec.trade_desk_status || "-")}</div>
+        <div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
+        <div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
+        <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
+
+        <hr>
+
         <p class="small"><strong>Rep Notes:</strong><br>${htmlSafe(rec.rep_notes || "-")}</p>
 
         ${imageHtml(rec)}
@@ -1154,7 +1298,7 @@ function render(){
         <button class="gold" onclick="rejectFromBidding('${safeId}')">Needs More Information</button>
 
         <details>
-          <summary class="small">View synced AXIS payload</summary>
+          <summary class="small">View technical AXIS payload</summary>
           <pre>${htmlSafe(JSON.stringify(rec, null, 2))}</pre>
         </details>
       </div>
@@ -1166,7 +1310,7 @@ function render(){
           <h3>${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
 
           <span class="badge">${htmlSafe(rec.modality || "-")}</span>
-          <span class="badge">Serial: ${htmlSafe(rec.serial_number || "-")}</span>
+          <span class="badge">Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</span>
           <span class="badge">Available: ${htmlSafe(rec.availability_timeframe || "-")}</span>
 
           ${imageHtml(rec)}
@@ -1236,7 +1380,7 @@ function render(){
         <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
         <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
-        <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || "-")}</div>
+        <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
         <div class="kv"><strong>Trade-In Credit:</strong> ${
           rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount
             ? money(rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount)
