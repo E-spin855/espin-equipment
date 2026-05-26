@@ -3155,6 +3155,29 @@ function saveAsUnmatchedTradeInLead(item) {
     localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
   }
 }
+function getTradeInSyncSeenKey(item) {
+  return String(
+    item.sync_event_id ||
+    item.id ||
+    `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}_${item.last_tradein_update_at || ""}`
+  ).trim();
+}
+
+function readProcessedTradeInSyncKeys() {
+  try {
+    const arr = JSON.parse(localStorage.getItem("axis_processed_tradein_sync_keys_v1") || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeProcessedTradeInSyncKeys(keys) {
+  localStorage.setItem(
+    "axis_processed_tradein_sync_keys_v1",
+    JSON.stringify([...new Set(keys)].slice(-500))
+  );
+}
 function importTradeInSyncRecords() {
   const shareEnabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
   if (!shareEnabled) return;
@@ -3172,7 +3195,14 @@ function importTradeInSyncRecords() {
 
   if (!synced.length) return;
 
+  const processedKeys = readProcessedTradeInSyncKeys();
+  const processedSet = new Set(processedKeys);
+  let changed = false;
+
   synced.forEach(item => {
+    const syncSeenKey = getTradeInSyncSeenKey(item);
+    const alreadyProcessed = syncSeenKey && processedSet.has(syncSeenKey);
+
     const serial = String(item.serial_number || item.axis_serial_number || "").trim();
     const projectId = String(item.project_id || "").trim();
     const modalityId = String(item.modality_id || "").trim();
@@ -3235,12 +3265,18 @@ function importTradeInSyncRecords() {
 
     if (isNewProjectSync) {
       if (!existingNewProject) {
-        saveAsUnmatchedTradeInLead(item);
+        if (!alreadyProcessed) saveAsUnmatchedTradeInLead(item);
         return;
       }
 
       existingNewProject.tradein_sync_received = true;
-      existingNewProject.tradein_seen_by_rep = false;
+
+      if (!alreadyProcessed) {
+        existingNewProject.tradein_seen_by_rep = false;
+        existingNewProject.manager_unseen_update = true;
+        existingNewProject.manager_flash_at = new Date().toISOString();
+        existingNewProject.manager_flash_type = "new_project_tradein_sync";
+      }
 
       existingNewProject.tradein_project_id = projectId;
       existingNewProject.tradein_modality_id = modalityId;
@@ -3251,15 +3287,15 @@ function importTradeInSyncRecords() {
       existingNewProject.tradein_equipment_serial_number = serial;
       existingNewProject.tradein_equipment_dom = item.dom || item.tradein_equipment_dom || "";
 
-     existingNewProject.tradein_credit = tradeInValue;
-existingNewProject.trade_in_credit = tradeInValue;
-existingNewProject.trade_in_value = tradeInValue;
-existingNewProject.trade_desk_value = tradeInValue;
-existingNewProject.tradein_estimated_value = tradeInValue;
-existingNewProject.estimated_trade_in_value = tradeInValue;
-existingNewProject.quote_trade_in_credit = tradeInValue;
-existingNewProject.associated_trade_in_credit = tradeInValue;
-existingNewProject.associatedTradeInCredit = tradeInValue;
+      existingNewProject.tradein_credit = tradeInValue;
+      existingNewProject.trade_in_credit = tradeInValue;
+      existingNewProject.trade_in_value = tradeInValue;
+      existingNewProject.trade_desk_value = tradeInValue;
+      existingNewProject.tradein_estimated_value = tradeInValue;
+      existingNewProject.estimated_trade_in_value = tradeInValue;
+      existingNewProject.quote_trade_in_credit = tradeInValue;
+      existingNewProject.associated_trade_in_credit = tradeInValue;
+      existingNewProject.associatedTradeInCredit = tradeInValue;
 
       const quoteAmount = Number(existingNewProject.quote_amount || 0);
       const estimatedCost = Number(existingNewProject.quote_estimated_cost || 0);
@@ -3268,9 +3304,10 @@ existingNewProject.associatedTradeInCredit = tradeInValue;
 
       existingNewProject.quote_net_amount = quoteAmount ? netQuote : "";
       existingNewProject.quote_profit = quoteAmount ? profit : "";
-      existingNewProject.quote_margin = quoteAmount && netQuote > 0
-        ? Math.round((profit / netQuote) * 100)
-        : "";
+      existingNewProject.quote_margin =
+        quoteAmount && netQuote > 0
+          ? Math.round((profit / netQuote) * 100)
+          : "";
 
       existingNewProject.tradein_synced_to_axis_at =
         item.last_tradein_update_at || new Date().toISOString();
@@ -3305,33 +3342,41 @@ existingNewProject.associatedTradeInCredit = tradeInValue;
         existingNewProject.last_image_update_at ||
         "";
 
-      existingNewProject.manager_unseen_update = true;
-      existingNewProject.manager_flash_at = new Date().toISOString();
-      existingNewProject.manager_flash_type = "new_project_tradein_sync";
-
+      changed = true;
+      if (syncSeenKey) processedSet.add(syncSeenKey);
       return;
     }
 
     if (isUnmatchedTradeInLead || !existingLifecycle) {
-      saveAsUnmatchedTradeInLead(item);
+      if (!alreadyProcessed) {
+        saveAsUnmatchedTradeInLead(item);
+        if (syncSeenKey) processedSet.add(syncSeenKey);
+        changed = true;
+      }
       return;
     }
 
     existingLifecycle.tradein_sync_received = true;
-    existingLifecycle.tradein_seen_by_rep = false;
+
+    if (!alreadyProcessed) {
+      existingLifecycle.tradein_seen_by_rep = false;
+      existingLifecycle.manager_unseen_update = true;
+      existingLifecycle.manager_flash_at = new Date().toISOString();
+      existingLifecycle.manager_flash_type = "tradein_sync";
+    }
 
     existingLifecycle.tradein_project_id = projectId;
     existingLifecycle.tradein_modality_id = modalityId;
 
     existingLifecycle.tradein_credit = tradeInValue;
-existingLifecycle.trade_in_credit = tradeInValue;
-existingLifecycle.trade_in_value = tradeInValue;
-existingLifecycle.trade_desk_value = tradeInValue;
-existingLifecycle.tradein_estimated_value = tradeInValue;
-existingLifecycle.estimated_trade_in_value = tradeInValue;
-existingLifecycle.quote_trade_in_credit = tradeInValue;
-existingLifecycle.associated_trade_in_credit = tradeInValue;
-existingLifecycle.associatedTradeInCredit = tradeInValue;
+    existingLifecycle.trade_in_credit = tradeInValue;
+    existingLifecycle.trade_in_value = tradeInValue;
+    existingLifecycle.trade_desk_value = tradeInValue;
+    existingLifecycle.tradein_estimated_value = tradeInValue;
+    existingLifecycle.estimated_trade_in_value = tradeInValue;
+    existingLifecycle.quote_trade_in_credit = tradeInValue;
+    existingLifecycle.associated_trade_in_credit = tradeInValue;
+    existingLifecycle.associatedTradeInCredit = tradeInValue;
 
     existingLifecycle.tradein_equipment_make = item.make || existingLifecycle.tradein_equipment_make || "";
     existingLifecycle.tradein_equipment_model = item.model || existingLifecycle.tradein_equipment_model || "";
@@ -3342,15 +3387,19 @@ existingLifecycle.associatedTradeInCredit = tradeInValue;
     existingLifecycle.tradein_synced_to_axis_at =
       item.last_tradein_update_at || new Date().toISOString();
 
-    existingLifecycle.manager_unseen_update = true;
-    existingLifecycle.manager_flash_at = new Date().toISOString();
-    existingLifecycle.manager_flash_type = "tradein_sync";
+    if (!alreadyProcessed) {
+      evaluateAndPush(existingLifecycle);
+    }
 
-    evaluateAndPush(existingLifecycle);
+    changed = true;
+    if (syncSeenKey) processedSet.add(syncSeenKey);
   });
 
-  saveRecords();
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  if (changed) {
+    saveRecords();
+    writeProcessedTradeInSyncKeys([...processedSet]);
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
 }
 function markActioned() {
   const rec = state.records.find(r => r.id === state.selectedId);
