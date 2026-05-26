@@ -2609,12 +2609,10 @@ function selectRow(id) {
   console.log("OPENED RECORD:", cleanedRec);
 }
 function getAlerts(rec) {
-if (rec.lifecycle_completed) {
-  return [{
-    type: "completed",
-    label: "COMPLETED"
-  }];
-}
+  if (rec.lifecycle_completed || rec.project_type === "new_sales_project") {
+    return [];
+  }
+
   const age = ageFromDom(rec.dom);
   const modality = normalizeModality(rec.modality);
 
@@ -2627,64 +2625,125 @@ if (rec.lifecycle_completed) {
     OTHER: 8
   };
 
+  if (rec.alert_enabled === "no") return [];
+
+  const hasRepScheduledFollowUp =
+    rec.rep_action === "follow_up" ||
+    rec.rep_status === "follow_up_scheduled" ||
+    rec.rep_hidden === true;
+
+  if (
+    hasRepScheduledFollowUp &&
+    rec.next_action_date &&
+    rec.next_action_date > todayISO()
+  ) {
+    return [{ type: "postponed", label: "Follow-Up Scheduled" }];
+  }
+
+  const validOverrides = [
+    "disposal",
+    "replacement",
+    "upgrade",
+    "planning",
+    "service",
+    "proactive"
+  ];
+
+  if (validOverrides.includes(String(rec.alert_override || "").toLowerCase().trim())) {
+    const type = String(rec.alert_override || "").toLowerCase().trim();
+
+    const labelMap = {
+      disposal: "Disposition Review",
+      replacement: "Replacement Planning Review",
+      upgrade: "Upgrade Review Signal",
+      planning: "Budget Planning Review",
+      service: "Service",
+      proactive: "Proactive"
+    };
+
+    return [{
+      type,
+      label: labelMap[type] || type.toUpperCase()
+    }];
+  }
+
+  const proactiveSignal =
+    rec.proactive_enabled !== "no" &&
+    (
+      rec.proactive_signal === "yes" ||
+      rec.proactive_signal === "true" ||
+      rec.proactive_signal === "1"
+    );
+
+  if (proactiveSignal) {
+    return [{
+      type: "proactive",
+      label: "Proactive"
+    }];
+  }
+
+  const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
+  const condition = String(rec.condition || "").toLowerCase().trim();
+  const utilization = Number(rec.utilization || 0);
+
+  const serviceTriggered =
+    serviceTrend === "high" ||
+    serviceTrend === "rising" ||
+    condition === "poor" ||
+    condition === "fair" ||
+    utilization >= 85;
+
   const threshold =
     Number(rec.threshold_years) > 0
       ? Number(rec.threshold_years)
       : (DEFAULT_THRESHOLDS[modality] || 8);
 
-  const hasServiceSignal =
-    (rec.service_cost_trend && rec.service_cost_trend !== "none") ||
-    (rec.condition && rec.condition !== "good") ||
-    (rec.utilization && rec.utilization > 0);
+  const planningOffset =
+    rec.planning_offset === "" || rec.planning_offset === undefined
+      ? -1
+      : Number(rec.planning_offset);
 
-  if (rec.alert_enabled === "no") return [];
+  const upgradeOffset =
+    rec.upgrade_offset === "" || rec.upgrade_offset === undefined
+      ? 0
+      : Number(rec.upgrade_offset);
 
- const hasRealFollowUp =
-  rec.rep_action === "follow_up" ||
-  rec.rep_status === "follow_up_scheduled" ||
-  rec.manager_response_action === "needs_follow_up";
+  const replacementOffset =
+    rec.replacement_offset === "" || rec.replacement_offset === undefined
+      ? 1
+      : Number(rec.replacement_offset);
 
-if (
-  hasRealFollowUp &&
-  rec.next_action_date &&
-  rec.next_action_date > todayISO()
-) {
-  return [{ type: "postponed", label: "Follow-Up Scheduled" }];
-}
+  const disposalOffset =
+    rec.disposal_offset === "" || rec.disposal_offset === undefined
+      ? 2
+      : Number(rec.disposal_offset);
 
-  const validOverrides = ["disposal","replacement","upgrade","planning","service"];
+  if (age === null || age === undefined) {
+    if (serviceTriggered) {
+      return [{ type: "service", label: "Service" }];
+    }
 
-  if (validOverrides.includes(rec.alert_override)) {
-    return [{
-      type: rec.alert_override,
-      label: rec.alert_override.replace(/_/g, " ").toUpperCase()
-    }];
-  }
-
-  const planningOffset = rec.planning_offset === "" ? 0 : Number(rec.planning_offset);
-  const upgradeOffset = rec.upgrade_offset === "" ? 0 : Number(rec.upgrade_offset);
-  const replacementOffset = rec.replacement_offset === "" ? 1 : Number(rec.replacement_offset);
-  const disposalOffset = rec.disposal_offset === "" ? 2 : Number(rec.disposal_offset);
-
-  // 🔥 SERVICE FIRST (independent of age)
-  if (hasServiceSignal && age < threshold) {
-    return [{ type: "service", label: "Service Review" }];
+    return [];
   }
 
   if (age >= threshold + disposalOffset) {
-    return [{ type: "disposal", label: "Disposition Review Signal" }];
+    return [{ type: "disposal", label: "Disposition Review" }];
   }
 
   if (age >= threshold + replacementOffset) {
-    return [{ type: "replacement", label: "Replacement Planning" }];
+    return [{ type: "replacement", label: "Replacement Planning Review" }];
   }
 
   if (age >= threshold + upgradeOffset) {
-    return [{ type: "upgrade", label: "Upgrade Opportunity" }];
+    return [{ type: "upgrade", label: "Upgrade Review Signal" }];
   }
 
   if (age >= threshold + planningOffset) {
-    return [{ type: "planning", label: "Budget Planning" }];
+    return [{ type: "planning", label: "Budget Planning Review" }];
+  }
+
+  if (serviceTriggered) {
+    return [{ type: "service", label: "Service" }];
   }
 
   return [];
