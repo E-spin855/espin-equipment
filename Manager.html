@@ -928,48 +928,44 @@ function selectRep(name) {
 function renderTable() {
   const tbody = $("tableBody");
 
- const sourceRecords = repMode
-  ? JSON.parse(localStorage.getItem("espin_rep_queue") || "[]")
-  : state.records;
+  const sourceRecords = repMode
+    ? JSON.parse(localStorage.getItem("espin_rep_queue") || "[]")
+    : state.records;
 
-const filteredRecords = state.selectedRep
-  ? sourceRecords.filter(r => {
+  const filteredRecords = state.selectedRep
+    ? sourceRecords.filter(r => {
+        const repName = r.assigned_rep_name?.trim() || "Unassigned";
+        return repName === state.selectedRep;
+      })
+    : sourceRecords;
 
-      const repName =
-        r.assigned_rep_name?.trim() || "Unassigned";
+  if (!filteredRecords.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="13" style="color:#9db6d2;">
+          No records for selected rep
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
-      return repName === state.selectedRep;
-
-    })
-  : sourceRecords;
-if (!filteredRecords.length) {
-  tbody.innerHTML = `
-    <tr>
-      <td colspan="13" style="color:#9db6d2;">
-        No records for selected rep
-      </td>
-    </tr>
-  `;
-  return;
-}
-
-
-const sorted = [...filteredRecords].sort((a, b) => {
+  const sorted = [...filteredRecords].sort((a, b) => {
     const score = (rec) => {
       if (rec.submitted_to) return 0;
 
-    const hasRealFollowUp =
-  rec.rep_action === "follow_up" ||
-  rec.rep_status === "follow_up_scheduled" ||
-  rec.manager_response_action === "needs_follow_up";
+      const hasRealFollowUp =
+        rec.rep_action === "follow_up" ||
+        rec.rep_status === "follow_up_scheduled" ||
+        rec.manager_response_action === "needs_follow_up";
 
-if (
-  hasRealFollowUp &&
-  rec.next_action_date &&
-  rec.next_action_date > todayISO()
-) {
-  return 1;
-}
+      if (
+        hasRealFollowUp &&
+        rec.next_action_date &&
+        rec.next_action_date > todayISO()
+      ) {
+        return 1;
+      }
 
       const alerts = getAlerts(rec);
 
@@ -986,114 +982,72 @@ if (
   });
 
   tbody.innerHTML = sorted.map(rec => {
- const selectedClass = [
-  rec.id === state.selectedId ? "selected" : "",
-  repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep
-    ? "manager-row-flash"
-    : ""
-].filter(Boolean).join(" ");
+    const selectedClass = [
+      String(rec.id) === String(state.selectedId) ? "selected" : "",
+      repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep
+        ? "manager-row-flash"
+        : ""
+    ].filter(Boolean).join(" ");
+
     const alerts = getAlerts(rec);
 
+    const alertHtml =
+      rec.lifecycle_completed
+        ? `<span class="alert-badge alert-completed">COMPLETED</span>`
+        : rec.quote_status === "lost"
+        ? `<span class="pill postponed">QUOTE LOST</span>`
+        : rec.quote_status === "won"
+        ? `<span class="pill submitted">QUOTE WON</span>`
+        : rec.quote_amount
+        ? (() => {
+            const qs = String(rec.quote_status || "draft").toLowerCase();
+
+            if (qs === "draft") {
+              return `
+                <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
+                  QUOTE DRAFT
+                </span>
+              `;
+            }
+
+            if (qs === "sent") return `<span class="pill quote-sent">QUOTE SENT</span>`;
+            if (qs === "follow_up") return `<span class="pill quote-follow-up">QUOTE FOLLOW UP</span>`;
+
+            return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
+          })()
+        : hasManagerUnseenUpdate(rec)
+        ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
+        : !alerts.length
+        ? `<span class="mini">No Action</span>`
+        : alerts.map(a => `
+            <span class="alert-badge alert-${a.type}">
+              ${a.label}
+            </span>
+          `).join("");
+
     return `
-<tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
-
-<td>${rec.oem_project_id || ""}</td>
-<td>${rec.make || ""}</td>
-<td>${rec.model || ""}</td>
-<td>${rec.modality || ""}</td>
-<td>${rec.serial_number || ""}</td>
-<td>${rec.dom || ""}</td>
-<td>${ageFromDom(rec.dom) || "-"}</td>
-
-<td>
-  ${rec.site || rec.site_address || "-"}
-</td>
-
-<td>
-  ${
-    rec.lifecycle_completed
-      ? `<span class="alert-badge alert-completed">COMPLETED</span>`
-      : rec.quote_status === "lost"
-      ? `<span class="pill postponed">QUOTE LOST</span>`
-      : rec.quote_status === "won"
-      ? `<span class="pill submitted">QUOTE WON</span>`
-      : rec.quote_amount
-      ? (() => {
-          const qs = String(rec.quote_status || "draft").toLowerCase();
-
-          if (qs === "draft") {
-            return `
-              <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
-                QUOTE DRAFT
-              </span>
-            `;
-          }
-
-          if (qs === "sent") return `<span class="pill quote-sent">QUOTE SENT</span>`;
-          if (qs === "follow_up") return `<span class="pill quote-follow-up">QUOTE FOLLOW UP</span>`;
-
-          return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
-        })()
-           : hasManagerUnseenUpdate(rec)
-      ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
-      : !alerts.length
-      ? '<span class="mini">No Action</span>'
-      : alerts.map(a => `
-          <span class="alert-badge alert-${a.type}">
-            ${a.label}
-          </span>
-        `).join("")
-  }
-</td>
-<td>
-  ${
-    rec.lifecycle_completed
-      ? `<span class="alert-badge alert-completed">COMPLETED</span>`
-      : rec.quote_status === "lost"
-      ? `<span class="pill postponed">QUOTE LOST</span>`
-      : rec.quote_status === "won"
-      ? `<span class="pill submitted">QUOTE WON</span>`
-      : rec.quote_amount
-      ? (() => {
-          const qs = String(rec.quote_status || "draft").toLowerCase();
-
-          if (qs === "draft") {
-            return `
-              <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
-                QUOTE DRAFT
-              </span>
-            `;
-          }
-
-          if (qs === "sent") return `<span class="pill quote-sent">QUOTE SENT</span>`;
-          if (qs === "follow_up") return `<span class="pill quote-follow-up">QUOTE FOLLOW UP</span>`;
-
-          return `<span class="pill pending">QUOTE ${qs.replace("_", " ").toUpperCase()}</span>`;
-        })()
-      : hasManagerUnseenUpdate(rec)
-      ? `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`
-      : !alerts.length
-      ? '<span class="mini">No Action</span>'
-      : alerts.map(a => `
-          <span class="alert-badge alert-${a.type}">
-            ${a.label}
-          </span>
-        `).join("")
-  }
-</td>
-<td>${rec.source || ""}</td>
-
-<td style="font-weight:700;color:#a2f5ff;">
-  ${rec.assigned_rep_name || "-"}
-</td>
-<td>
-  <button onclick="event.stopPropagation(); selectRow('${rec.id}')">
-    Open
-  </button>
-</td>
-
-</tr>
-`;
+      <tr class="${selectedClass}" data-id="${String(rec.id || "")}" style="cursor:pointer;">
+        <td>${rec.oem_project_id || ""}</td>
+        <td>${rec.make || ""}</td>
+        <td>${rec.model || ""}</td>
+        <td>${rec.modality || ""}</td>
+        <td>${rec.serial_number || ""}</td>
+        <td>${rec.dom || ""}</td>
+        <td>${ageFromDom(rec.dom) || "-"}</td>
+        <td>${rec.site || rec.site_address || "-"}</td>
+        <td>${alertHtml}</td>
+        <td>${alertHtml}</td>
+        <td>${rec.source || ""}</td>
+        <td style="font-weight:700;color:#a2f5ff;">
+          ${rec.assigned_rep_name || "-"}
+        </td>
+        <td>
+          <button type="button" class="open-record-btn" data-id="${String(rec.id || "")}">
+            Open
+          </button>
+        </td>
+      </tr>
+    `;
   }).join("");
 }
 function excelDateToISO(val) {
@@ -2278,6 +2232,27 @@ function init() {
   loadRecords();
   render();
 
+  const tableBody = $("tableBody");
+
+  if (tableBody) {
+    tableBody.addEventListener("click", function(e) {
+      const btn = e.target.closest(".open-record-btn");
+      const row = e.target.closest("tr[data-id]");
+
+      const id =
+        btn?.dataset?.id ||
+        row?.dataset?.id ||
+        "";
+
+      if (!id) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      selectRow(id);
+    });
+  }
+
   setInterval(() => {
     const active = document.activeElement;
 
@@ -2308,31 +2283,40 @@ function init() {
     render();
   });
 
-  $("clearBtn").addEventListener("click", () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem("espin_rep_queue");
-    localStorage.removeItem("axis_manager_sync_ping_v1");
+  const clearBtn = $("clearBtn");
 
-    state.records = [];
-    state.selectedId = null;
-    state.selectedRep = null;
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem("espin_rep_queue");
+      localStorage.removeItem("axis_manager_sync_ping_v1");
 
-    $("csvInput").value = "";
+      state.records = [];
+      state.selectedId = null;
+      state.selectedRep = null;
 
-    render();
-  });
+      const csvInput = $("csvInput");
+      if (csvInput) csvInput.value = "";
 
-  document.getElementById("csvInput").addEventListener("change", function (e) {
-    const file = e.target.files[0];
+      render();
+    });
+  }
 
-    if (!file) return;
+  const csvInput = $("csvInput");
 
-    try {
-      handleCSVUpload(file);
-    } catch (err) {
-      console.error("HANDLE UPLOAD FAILED:", err);
-    }
-  });
+  if (csvInput) {
+    csvInput.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+
+      if (!file) return;
+
+      try {
+        handleCSVUpload(file);
+      } catch (err) {
+        console.error("HANDLE UPLOAD FAILED:", err);
+      }
+    });
+  }
 }
 function selectRow(id) {
   const selectedId = String(id || "").trim();
@@ -2366,18 +2350,23 @@ function selectRow(id) {
   ];
 
   const clickedRec = allRecords.find(r =>
-    String(r.id || "").trim() === selectedId
+    String(r.id || "").trim() === selectedId ||
+    String(r.key || "").trim() === selectedId
   );
 
   if (!clickedRec) {
     console.warn("Record not found for selected id:", selectedId);
+    alert("Record not found. Clear local data and reload CSV.");
     return;
   }
 
   const key = getRecordKey(clickedRec);
 
+  const finalId = String(clickedRec.id || selectedId).trim();
+
   const cleanedRec = {
     ...clickedRec,
+    id: finalId,
     key,
     manager_unseen_update: false,
     manager_flash_at: "",
@@ -2389,13 +2378,24 @@ function selectRow(id) {
 
   main = main.map(item => {
     const sameRecord =
+      String(item.id || "").trim() === finalId ||
       String(item.id || "").trim() === selectedId ||
-      String(item.key || "") === String(key || "");
+      String(item.key || "") === String(key || "") ||
+      (
+        String(item.oem_project_id || "") === String(cleanedRec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(cleanedRec.serial_number || "")
+      );
 
     if (!sameRecord) return item;
 
     foundInMain = true;
-    return { ...item, ...cleanedRec };
+
+    return {
+      ...item,
+      ...cleanedRec,
+      id: finalId,
+      key
+    };
   });
 
   if (!foundInMain) {
@@ -2405,7 +2405,7 @@ function selectRow(id) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
 
   state.records = main;
-  state.selectedId = selectedId;
+  state.selectedId = finalId;
 
   renderStats();
   renderRepMenu();
