@@ -997,33 +997,35 @@ function renderStats() {
     .querySelector(".k").textContent = "Won Quote Revenue";
 }
 function renderRepMenu() {
-
   const container = document.getElementById("repFeed");
+  if (!container) return;
 
   const reps = {};
 
   state.records.forEach(rec => {
-
-    const rep =
-      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
-
-   if (!rep) {
-  console.log("MISSING REP:", rec);
-  return;
-}
-
     if (rec.rep_deleted) return;
 
-    if (!reps[rep]) {
-      reps[rep] = {
-        name: rep,
-        hospitals: new Set()
+    const repName =
+      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+      rec.assigned_rep_name ||
+      "Unassigned";
+
+    if (!reps[repName]) {
+      reps[repName] = {
+        name: repName,
+        count: 0,
+        open: 0,
+        completed: 0
       };
     }
 
-    reps[rep].hospitals.add(
-      rec.site || rec.site_address || "Unknown"
-    );
+    reps[repName].count++;
+
+    if (rec.lifecycle_completed || rec.rep_status === "completed") {
+      reps[repName].completed++;
+    } else {
+      reps[repName].open++;
+    }
   });
 
   const list = Object.values(reps);
@@ -1033,39 +1035,49 @@ function renderRepMenu() {
     return;
   }
 
-  container.innerHTML = list.map(rep => `
-
+  container.innerHTML = `
     <div
-      onclick="selectRep('${rep.name.replace(/'/g, "\\'")}')"
+      onclick="selectRep('')"
       style="
         padding:14px;
         border-bottom:1px solid rgba(88,184,255,.15);
         cursor:pointer;
+        background:${!state.selectedRep ? "rgba(67,176,255,.12)" : "transparent"};
       "
     >
-
-      <div style="font-weight:800;font-size:15px;">
-        ${rep.name}
+      <div style="font-weight:900;font-size:15px;color:#eef6ff;">
+        All Reps
       </div>
 
       <div class="mini" style="margin-top:6px;">
-        ${rep.hospitals.size} Assigned Hospital(s)
+        ${state.records.length} Total Records
       </div>
-
     </div>
 
-  `).join("");
+    ${list.map(rep => `
+      <div
+        onclick="selectRep('${rep.name.replace(/'/g, "\\'")}')"
+        style="
+          padding:14px;
+          border-bottom:1px solid rgba(88,184,255,.15);
+          cursor:pointer;
+          background:${state.selectedRep === rep.name ? "rgba(67,176,255,.12)" : "transparent"};
+        "
+      >
+        <div style="font-weight:900;font-size:15px;color:#eef6ff;">
+          ${rep.name}
+        </div>
+
+        <div class="mini" style="margin-top:6px;">
+          ${rep.count} Total • ${rep.open} Open • ${rep.completed} Completed
+        </div>
+      </div>
+    `).join("")}
+  `;
 }
 function selectRep(repName) {
-
-  if (state.selectedRep === repName) {
-    state.selectedRep = null;
-  } else {
-    state.selectedRep = repName;
-  }
-
+  state.selectedRep = repName || null;
   state.selectedId = null;
-
   render();
 }
 function getPrimaryTrigger(rec) {
@@ -1315,12 +1327,16 @@ function renderTable() {
     r.project_type !== "new_sales_project"
   );
 
-  if (state.selectedRep) {
-    visibleRecords = visibleRecords.filter(r => {
-      const rep = `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim();
-      return rep === state.selectedRep;
-    });
-  }
+ if (state.selectedRep) {
+  visibleRecords = visibleRecords.filter(r => {
+    const rep =
+      `${r.sales_rep_first || ""} ${r.sales_rep_last || ""}`.trim() ||
+      r.assigned_rep_name ||
+      "Unassigned";
+
+    return rep === state.selectedRep;
+  });
+}
 
   const sorted = [...visibleRecords].sort((a, b) => {
     const score = (rec) => {
