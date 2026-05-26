@@ -793,10 +793,29 @@ function syncWinningBidToRepAndManager(rec){
     rec.axis_source === "new_axis_project" ||
     rec.sync_mode === "sync_tradein_to_new_axis_project";
 
+  const syncMode = isNewSalesProject
+    ? "sync_tradein_to_new_axis_project"
+    : "update_existing_axis_record";
+
   const payload = {
     ...rec,
 
     key: getRecordKey(rec),
+
+    axis_record_id: rec.axis_record_id || rec.axis_parent_record_id || "",
+    axis_parent_record_id: rec.axis_parent_record_id || rec.axis_record_id || "",
+    axis_project_id: rec.axis_project_id || rec.oem_project_id || rec.project_id || "",
+    axis_serial_number: rec.axis_serial_number || rec.serial_number || "",
+
+    axis_parent_project_type: isNewSalesProject
+      ? "new_sales_project"
+      : "lifecycle_equipment",
+
+    axis_source: isNewSalesProject
+      ? "new_axis_project"
+      : "existing_axis_equipment",
+
+    sync_mode: syncMode,
 
     trade_in_value: winningAmount,
     trade_in_credit: winningAmount,
@@ -826,13 +845,9 @@ function syncWinningBidToRepAndManager(rec){
     rep_last_action_at: new Date().toISOString(),
 
     submitted_to: "AXIS Trade Desk",
-    source: rec.source || "AXIS Trade Desk Sync",
+    source: "AXIS Trade Desk Sync",
 
-    last_tradein_update_at: new Date().toISOString(),
-
-    sync_mode: isNewSalesProject
-      ? "sync_tradein_to_new_axis_project"
-      : "update_existing_axis_record"
+    last_tradein_update_at: new Date().toISOString()
   };
 
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(payload));
@@ -857,9 +872,57 @@ function syncWinningBidToRepAndManager(rec){
 
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
+  let lifecycleRecords = loadArray("espin_lifecycle_demo_records_v1");
+  let foundLifecycleRecord = false;
+
+  lifecycleRecords = lifecycleRecords.map(item => {
+    if (!isSameAxisRecord(item, payload)) return item;
+
+    foundLifecycleRecord = true;
+
+    return {
+      ...item,
+
+      tradein_sync_received: true,
+      tradein_seen_by_rep: false,
+
+      tradein_project_id: payload.project_id || "",
+      tradein_modality_id: payload.modality_id || "",
+
+      tradein_credit: winningAmount,
+      trade_in_credit: winningAmount,
+      tradein_estimated_value: winningAmount,
+      estimated_trade_in_value: winningAmount,
+      quote_trade_in_credit: winningAmount,
+
+      tradein_equipment_make: payload.make || item.tradein_equipment_make || item.make || "",
+      tradein_equipment_model: payload.model || item.tradein_equipment_model || item.model || "",
+      tradein_equipment_modality: payload.modality || item.tradein_equipment_modality || item.modality || "",
+      tradein_equipment_serial_number: payload.serial_number || payload.axis_serial_number || item.serial_number || "",
+      tradein_equipment_dom: payload.dom || item.tradein_equipment_dom || item.dom || "",
+
+      winning_bid_amount: winningAmount,
+      winning_bidder: payload.winning_bidder || "",
+      winning_bid_terms: payload.winning_bid_terms || "",
+
+      quote_sync_status: "Synced to Rep Quote",
+
+      manager_unseen_update: true,
+      manager_flash_at: new Date().toISOString(),
+      manager_flash_type: "trade_in_credit",
+
+      last_tradein_update_at: new Date().toISOString()
+    };
+  });
+
+  if (!foundLifecycleRecord && isNewSalesProject) {
+    lifecycleRecords.unshift(payload);
+  }
+
+  saveArray("espin_lifecycle_demo_records_v1", lifecycleRecords);
+
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
-
 function selectWinner(id, index){
   const data = loadData();
   const rec = data.find(r => r.id === id);
