@@ -191,6 +191,8 @@ const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 const LIFECYCLE_KEY = "espin_lifecycle_demo_records_v1";
 const REP_QUEUE_KEY = "espin_rep_queue";
 
+const bidDrafts = {};
+
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -234,12 +236,50 @@ function saveData(data){
   saveArray(KEY, data);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
+
 function getRecordKey(rec){
-  return (
+  return String(
     rec.axis_parent_record_id ||
     rec.axis_record_id ||
     rec.key ||
     `${rec.project_id || rec.oem_project_id || ""}_${rec.modality_id || ""}_${rec.serial_number || rec.hospital_asset_id || ""}`
+  );
+}
+
+function getWinningAmount(rec){
+  return Number(
+    rec.winning_bid_amount ||
+    rec.winningBid?.amount ||
+    rec.trade_in_credit ||
+    rec.tradein_credit ||
+    rec.tradein_estimated_value ||
+    rec.estimated_trade_in_value ||
+    0
+  );
+}
+
+function isSameAxisRecord(item, rec){
+  const itemKey = getRecordKey(item);
+  const recKey = getRecordKey(rec);
+
+  return (
+    itemKey === recKey ||
+
+    String(item.id || "") === String(rec.axis_parent_record_id || "") ||
+    String(item.id || "") === String(rec.axis_record_id || "") ||
+
+    String(item.axis_parent_record_id || "") === String(rec.axis_parent_record_id || "") ||
+    String(item.axis_record_id || "") === String(rec.axis_record_id || "") ||
+
+    String(item.oem_project_id || "") === String(rec.axis_project_id || "") ||
+    String(item.oem_project_id || "") === String(rec.project_id || "") ||
+
+    (
+      String(item.oem_project_id || item.project_id || "") === String(rec.axis_project_id || rec.project_id || "") &&
+      String(item.serial_number || item.axis_serial_number || "") &&
+      String(rec.serial_number || rec.axis_serial_number || "") &&
+      String(item.serial_number || item.axis_serial_number || "") === String(rec.serial_number || rec.axis_serial_number || "")
+    )
   );
 }
 
@@ -291,7 +331,7 @@ function normalizeIncomingRecord(item){
       item.axis_parent_project_type ||
       item.axis_project_type ||
       item.project_type ||
-      "AXIS Sales Project",
+      "",
 
     axis_parent_project_name:
       item.axis_parent_project_name ||
@@ -315,7 +355,10 @@ function normalizeIncomingRecord(item){
       item.source ||
       "espin_trade_in_app",
 
-    sync_mode: "create_or_update_axis_trade_desk_record",
+    sync_mode:
+      item.sync_mode ||
+      item.axis_sync_mode ||
+      "create_or_update_axis_trade_desk_record",
 
     project_id: projectId || `QUOTE-${Date.now()}`,
     modality_id: modalityId || uid("modality"),
@@ -482,10 +525,10 @@ function normalizeIncomingRecord(item){
 
     bids: Array.isArray(item.bids) ? item.bids : [],
 
-bidder_name_input: item.bidder_name_input || "",
-bid_amount_input: item.bid_amount_input || "",
-bid_terms_input: item.bid_terms_input || "",
-bid_expiration_input: item.bid_expiration_input || "",
+    bidder_name_input: item.bidder_name_input || "",
+    bid_amount_input: item.bid_amount_input || "",
+    bid_terms_input: item.bid_terms_input || "",
+    bid_expiration_input: item.bid_expiration_input || "",
 
     winningBid:
       item.winningBid ||
@@ -640,9 +683,9 @@ function importAutomaticIntake(){
   let changed = false;
 
   const sources = [
-  AXIS_TRADE_DESK_QUEUE_KEY,
-  AXIS_TRADE_DESK_INBOX_KEY
-];
+    AXIS_TRADE_DESK_QUEUE_KEY,
+    AXIS_TRADE_DESK_INBOX_KEY
+  ];
 
   sources.forEach(key => {
     const incoming = loadArray(key);
@@ -654,9 +697,7 @@ function importAutomaticIntake(){
       changed = true;
     });
 
-    if (key === AXIS_TRADE_DESK_QUEUE_KEY || key === AXIS_TRADE_DESK_INBOX_KEY) {
-      localStorage.removeItem(key);
-    }
+    localStorage.removeItem(key);
   });
 
   if (changed) {
@@ -694,12 +735,12 @@ function rejectFromBidding(id){
   saveData(data);
   render();
 }
-const bidDrafts = {};
 
 function saveBidInput(id, field, value){
   if (!bidDrafts[id]) bidDrafts[id] = {};
   bidDrafts[id][field] = value;
 }
+
 function addBid(id){
   const data = loadData();
   const rec = data.find(r => r.id === id);
@@ -738,9 +779,10 @@ function addBid(id){
   saveData(data);
   render();
 }
+
 function syncWinningBidToRepAndManager(rec){
   const key = getRecordKey(rec);
-  const winningAmount = Number(rec.winning_bid_amount || rec.winningBid?.amount || 0);
+  const winningAmount = getWinningAmount(rec);
 
   if (!winningAmount) {
     alert("No winning bid amount found.");
@@ -748,10 +790,10 @@ function syncWinningBidToRepAndManager(rec){
   }
 
   const isNewSalesProject =
-    rec.axis_parent_project_type === "new_sales_project" ||
-    rec.project_type === "new_sales_project" ||
-    rec.axis_source === "new_axis_project" ||
-    rec.sync_mode === "sync_tradein_to_new_axis_project";
+    String(rec.axis_parent_project_type || "").toLowerCase() === "new_sales_project" ||
+    String(rec.project_type || "").toLowerCase() === "new_sales_project" ||
+    String(rec.axis_source || "").toLowerCase() === "new_axis_project" ||
+    String(rec.sync_mode || "").toLowerCase() === "sync_tradein_to_new_axis_project";
 
   const payload = {
     ...rec,
@@ -798,23 +840,17 @@ function syncWinningBidToRepAndManager(rec){
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(payload));
 
   let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-  const payloadKey = getRecordKey(payload);
   let foundSyncRecord = false;
 
   syncRecords = syncRecords.map(item => {
-    const same =
-      getRecordKey(item) === payloadKey ||
-      String(item.axis_parent_record_id || "") === String(payload.axis_parent_record_id || "") ||
-      String(item.axis_record_id || "") === String(payload.axis_record_id || "") ||
-      (
-        String(item.axis_project_id || item.project_id || "") === String(payload.axis_project_id || payload.project_id || "") &&
-        String(item.serial_number || item.axis_serial_number || "") === String(payload.serial_number || payload.axis_serial_number || "")
-      );
-
-    if (!same) return item;
+    if (!isSameAxisRecord(item, payload)) return item;
 
     foundSyncRecord = true;
-    return { ...item, ...payload };
+
+    return {
+      ...item,
+      ...payload
+    };
   });
 
   if (!foundSyncRecord) {
@@ -827,21 +863,66 @@ function syncWinningBidToRepAndManager(rec){
   let foundLifecycle = false;
 
   lifecycle = lifecycle.map(item => {
-    const same =
-      getRecordKey(item) === key ||
-      String(item.id || "") === String(rec.axis_parent_record_id || "") ||
-      String(item.id || "") === String(rec.axis_record_id || "") ||
-      (
-        String(item.oem_project_id || item.project_id || "") === String(rec.axis_project_id || rec.project_id || "") &&
-        (
-          String(item.serial_number || "") === String(rec.serial_number || "") ||
-          String(item.serial_number || "") === String(rec.axis_serial_number || "")
-        )
-      );
-
-    if (!same) return item;
+    if (!isSameAxisRecord(item, payload)) return item;
 
     foundLifecycle = true;
+
+    return {
+      ...item,
+
+      tradein_sync_received: true,
+      tradein_seen_by_rep: false,
+
+      tradein_project_id: payload.project_id || item.tradein_project_id || "",
+      tradein_modality_id: payload.modality_id || item.tradein_modality_id || "",
+
+      tradein_credit: winningAmount,
+      trade_in_credit: winningAmount,
+      tradein_estimated_value: winningAmount,
+      estimated_trade_in_value: winningAmount,
+      quote_trade_in_credit: winningAmount,
+
+      tradein_equipment_make: payload.make || item.tradein_equipment_make || item.make || "",
+      tradein_equipment_model: payload.model || item.tradein_equipment_model || item.model || "",
+      tradein_equipment_modality: payload.modality || item.tradein_equipment_modality || item.modality || "",
+      tradein_equipment_serial_number: payload.serial_number || item.tradein_equipment_serial_number || item.serial_number || "",
+      tradein_equipment_dom: payload.dom || item.tradein_equipment_dom || item.dom || "",
+
+      image_sync_received: payload.image_sync_received || item.image_sync_received || false,
+      image_count: payload.image_count || item.image_count || 0,
+      images: payload.images && payload.images.length ? payload.images : item.images || [],
+
+      last_image_update_by: payload.last_image_update_by || item.last_image_update_by || "",
+      last_image_update_at: payload.last_image_update_at || item.last_image_update_at || "",
+
+      winning_bid_amount: winningAmount,
+      winning_bidder: payload.winning_bidder || "",
+      winning_bid_terms: payload.winning_bid_terms || "",
+      quote_sync_status: "Synced to Rep Quote",
+
+      manager_unseen_update: true,
+      manager_flash_at: new Date().toISOString(),
+      manager_flash_type: "trade_in_credit",
+
+      rep_action: item.rep_action || "trade_review",
+      rep_status: item.rep_status || "acted",
+      rep_last_action_at: new Date().toISOString()
+    };
+  });
+
+  /*
+    DO NOT create a new lifecycle record here.
+    If it cannot match the original AXIS record, it stays only in TRADEIN_SYNC_KEY.
+  */
+  saveArray(LIFECYCLE_KEY, lifecycle);
+
+  let repQueue = loadArray(REP_QUEUE_KEY);
+  let foundRepQueue = false;
+
+  repQueue = repQueue.map(item => {
+    if (!isSameAxisRecord(item, payload)) return item;
+
+    foundRepQueue = true;
 
     return {
       ...item,
@@ -850,44 +931,15 @@ function syncWinningBidToRepAndManager(rec){
     };
   });
 
-  if (!foundLifecycle) {
-    lifecycle.unshift(payload);
-  }
-
-  saveArray(LIFECYCLE_KEY, lifecycle);
-
-  let repQueue = loadArray(REP_QUEUE_KEY);
-  let foundRepQueue = false;
-
-  repQueue = repQueue.map(item => {
-    const same =
-      getRecordKey(item) === key ||
-      String(item.id || "") === String(rec.axis_parent_record_id || "") ||
-      String(item.id || "") === String(rec.axis_record_id || "") ||
-      (
-        String(item.project_id || item.oem_project_id || "") === String(rec.project_id || rec.axis_project_id || "") &&
-        String(item.serial_number || "") === String(rec.serial_number || "")
-      );
-
-    if (!same) return item;
-
-    foundRepQueue = true;
-    return { ...item, ...payload, id: item.id || payload.id };
-  });
-
-  if (!foundRepQueue) {
+  if (!foundRepQueue && foundLifecycle) {
     repQueue.unshift(payload);
   }
 
   saveArray(REP_QUEUE_KEY, repQueue);
 
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
-
-  window.dispatchEvent(new StorageEvent("storage", {
-    key: TRADEIN_SYNC_KEY,
-    newValue: JSON.stringify(syncRecords)
-  }));
 }
+
 function selectWinner(id, index){
   const data = loadData();
   const rec = data.find(r => r.id === id);
@@ -1011,7 +1063,9 @@ function render(){
         <div class="kv"><strong>axis_record_id:</strong> ${rec.axis_record_id || "-"}</div>
         <div class="kv"><strong>axis_parent_record_id:</strong> ${rec.axis_parent_record_id || "-"}</div>
         <div class="kv"><strong>axis_project_id:</strong> ${rec.axis_project_id || "-"}</div>
+        <div class="kv"><strong>axis_parent_project_type:</strong> ${rec.axis_parent_project_type || "-"}</div>
         <div class="kv"><strong>axis_source:</strong> ${rec.axis_source || "-"}</div>
+        <div class="kv"><strong>sync_mode:</strong> ${rec.sync_mode || "-"}</div>
         <div class="kv"><strong>serial_number:</strong> ${rec.serial_number || "-"}</div>
         <div class="kv"><strong>hospital_asset_id:</strong> ${rec.hospital_asset_id || "-"}</div>
         <div class="kv"><strong>dom:</strong> ${rec.dom || "-"}</div>
@@ -1052,38 +1106,39 @@ function render(){
 
           <hr>
 
-         <input
-  id="bidder_${rec.id}"
-  value="${bidDrafts[rec.id]?.bidder_name_input || rec.bidder_name_input || ""}"
-  placeholder="Bidder Name"
-  autocomplete="off"
-  oninput="saveBidInput('${rec.id}', 'bidder_name_input', this.value)"
->
+          <input
+            id="bidder_${rec.id}"
+            value="${bidDrafts[rec.id]?.bidder_name_input || rec.bidder_name_input || ""}"
+            placeholder="Bidder Name"
+            autocomplete="off"
+            oninput="saveBidInput('${rec.id}', 'bidder_name_input', this.value)"
+          >
 
-<input
-  id="amount_${rec.id}"
-  type="number"
-  value="${bidDrafts[rec.id]?.bid_amount_input || rec.bid_amount_input || ""}"
-  placeholder="Bid Amount"
-  autocomplete="off"
-  oninput="saveBidInput('${rec.id}', 'bid_amount_input', this.value)"
->
+          <input
+            id="amount_${rec.id}"
+            type="number"
+            value="${bidDrafts[rec.id]?.bid_amount_input || rec.bid_amount_input || ""}"
+            placeholder="Bid Amount"
+            autocomplete="off"
+            oninput="saveBidInput('${rec.id}', 'bid_amount_input', this.value)"
+          >
 
-<input
-  id="terms_${rec.id}"
-  value="${bidDrafts[rec.id]?.bid_terms_input || rec.bid_terms_input || ""}"
-  placeholder="Terms / Pickup Notes"
-  autocomplete="off"
-  oninput="saveBidInput('${rec.id}', 'bid_terms_input', this.value)"
->
+          <input
+            id="terms_${rec.id}"
+            value="${bidDrafts[rec.id]?.bid_terms_input || rec.bid_terms_input || ""}"
+            placeholder="Terms / Pickup Notes"
+            autocomplete="off"
+            oninput="saveBidInput('${rec.id}', 'bid_terms_input', this.value)"
+          >
 
-<input
-  id="expires_${rec.id}"
-  type="date"
-  value="${bidDrafts[rec.id]?.bid_expiration_input || rec.bid_expiration_input || ""}"
-  autocomplete="off"
-  oninput="saveBidInput('${rec.id}', 'bid_expiration_input', this.value)"
->
+          <input
+            id="expires_${rec.id}"
+            type="date"
+            value="${bidDrafts[rec.id]?.bid_expiration_input || rec.bid_expiration_input || ""}"
+            autocomplete="off"
+            oninput="saveBidInput('${rec.id}', 'bid_expiration_input', this.value)"
+          >
+
           <button onclick="addBid('${rec.id}')">Submit Bid</button>
 
           <hr>
@@ -1141,12 +1196,12 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
-    e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY
+    e.key === KEY
   ) {
     render();
   }
 });
+
 setInterval(() => {
   const active = document.activeElement;
 
