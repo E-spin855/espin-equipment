@@ -2283,9 +2283,9 @@ ${
           Create / Update Quote
         </button>
 
-        <button type="button" class="green" onclick="submitRecord('tradein_app')">
-          Send to Trade-In App
-        </button>
+       <button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">
+  Send to Trade-In App
+</button>
 
         ${
           rec.tradein_sync_received
@@ -4301,9 +4301,17 @@ upsertRecord(rec);
 
 return false;
 }
-async function submitRecord(kind) {
-  const rec = state.records.find(r => r.id === state.selectedId);
-  if (!rec) return;
+async function submitRecord(kind, recordId = null) {
+  const id = recordId || state.selectedId;
+
+  const rec = state.records.find(r => r.id === id);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  state.selectedId = rec.id;
 
   const success = await sendToEspin(kind, rec);
   if (!success) return;
@@ -5022,15 +5030,11 @@ function saveQuote() {
 
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCreditRaw =
-  rec.tradein_credit ||
-  rec.trade_in_credit ||
-  rec.quote_trade_in_credit ||
-  rec.tradein_estimated_value ||
-  rec.estimated_trade_in_value ||
-  "";
-
-const tradeInCredit = Number(tradeInCreditRaw || 0);
+  const tradeInCredit = Number(
+  $("quoteTradeInCredit").value ||
+  getTradeInCreditValue(rec) ||
+  0
+);
   const netQuote = Math.max(0, amount - tradeInCredit);
 
   const status = $("quoteStatus").value;
