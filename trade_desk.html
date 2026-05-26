@@ -226,6 +226,34 @@ pre{
 textarea#infoRequestNotes{
   min-height:90px;
 }
+<style>
+.high-bid-card{
+  border:2px solid #22c55e !important;
+  box-shadow:0 0 22px rgba(34,197,94,.35);
+  background:rgba(24,165,88,.10);
+}
+
+.high-bid-badge{
+  background:#18a558 !important;
+  color:#fff;
+  font-weight:900;
+}
+
+.lower-bid-card{
+  opacity:.72;
+}
+
+.bid-rank{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:20px;
+  background:#1d8cff;
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+  margin-right:6px;
+}
+</style>
 </style>
 </head>
 
@@ -1826,19 +1854,68 @@ function render(){
           <hr>
 
           ${
-            rec.bids && rec.bids.length
-              ? rec.bids.map((b,i)=>`
-                <div class="card">
-                  <span class="badge ${rec.winningBid && rec.winningBid.bid_id === b.bid_id ? "win" : "pending"}">
-                    ${htmlSafe(b.bidder)}: ${money(b.amount)}
-                  </span>
-                  <div class="small">Terms: ${htmlSafe(b.terms || "-")}</div>
-                  <div class="small">Expires: ${htmlSafe(b.expires || "-")}</div>
-                  <button class="green" onclick="selectWinner('${safeId}',${i})">Select Winning Bid</button>
-                </div>
-              `).join("")
-              : "<p class='small'>No bids submitted yet.</p>"
-          }
+  rec.bids && rec.bids.length
+    ? (() => {
+        const rankedBids = [...rec.bids]
+          .map((bid, originalIndex) => ({
+            ...bid,
+            originalIndex,
+            amountNumber: Number(bid.amount || 0)
+          }))
+          .sort((a, b) => b.amountNumber - a.amountNumber);
+
+        const highestAmount = rankedBids[0]?.amountNumber || 0;
+
+        return rankedBids.map((b, rankIndex) => {
+          const isHighest = b.amountNumber === highestAmount && highestAmount > 0;
+          const isWinner = rec.winningBid && rec.winningBid.bid_id === b.bid_id;
+
+          return `
+            <div class="card ${isHighest ? "high-bid-card" : "lower-bid-card"}">
+              <span class="bid-rank">
+                #${rankIndex + 1}
+              </span>
+
+              ${
+                isHighest
+                  ? `<span class="badge high-bid-badge">HIGHEST BID</span>`
+                  : `<span class="badge pending">LOWER BID</span>`
+              }
+
+              ${
+                isWinner
+                  ? `<span class="badge win">SELECTED WINNER</span>`
+                  : ""
+              }
+
+              <div class="kv" style="margin-top:10px;">
+                <strong>Bidder:</strong> ${htmlSafe(b.bidder || "-")}
+              </div>
+
+              <div class="kv" style="font-size:18px;">
+                <strong>Bid Amount:</strong>
+                <span style="color:${isHighest ? "#41ff9c" : "#eef6ff"};font-weight:900;">
+                  ${money(b.amount)}
+                </span>
+              </div>
+
+              <div class="small">
+                Terms: ${htmlSafe(b.terms || "-")}
+              </div>
+
+              <div class="small">
+                Expires: ${htmlSafe(b.expires || "-")}
+              </div>
+
+              <button class="green" onclick="selectWinner('${safeId}',${b.originalIndex})">
+                Select Winning Bid
+              </button>
+            </div>
+          `;
+        }).join("");
+      })()
+    : "<p class='small'>No bids submitted yet.</p>"
+}
         </div>
       `;
     }
