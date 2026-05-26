@@ -325,6 +325,23 @@ const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 const bidDrafts = {};
 let activeInfoRequestId = "";
 
+const APPROVED_BIDDERS = [
+  {
+    company: "Northwest Imaging Buyers",
+    contact: "Mark Reynolds",
+    email: "buyer1@example.com",
+    modalities: ["CT", "MRI"],
+    region: "West"
+  },
+  {
+    company: "National Imaging Resale",
+    contact: "Sarah Klein",
+    email: "buyer2@example.com",
+    modalities: ["CT", "XRAY", "CARM"],
+    region: "National"
+  }
+];
+
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -973,16 +990,48 @@ function approveForBidding(id){
     return;
   }
 
-  rec.trade_desk_status = "Approved for Bidding";
+  const modality = String(rec.modality || "").toUpperCase().trim();
+
+  const matchedBidders = APPROVED_BIDDERS.filter(bidder => {
+    const modalities = Array.isArray(bidder.modalities)
+      ? bidder.modalities.map(m => String(m || "").toUpperCase().trim())
+      : [];
+
+    return (
+      modalities.includes(modality) ||
+      modalities.includes("ALL") ||
+      bidder.region === "National"
+    );
+  });
+
+  rec.trade_desk_status = "Released to Approved Bidders";
   rec.bid_status = "Open for Bids";
   rec.approved_for_bidding_at = new Date().toISOString();
   rec.approved_by = "trade.desk@demo.com";
-  rec.crm_status = "Released to Approved Bidders";
+  rec.crm_status = "Bidder Portal Visibility Created";
+
+  rec.released_to_bidders = matchedBidders.map(b => ({
+    company: b.company,
+    contact: b.contact,
+    email: b.email,
+    region: b.region,
+    released_at: new Date().toISOString()
+  }));
+
+  rec.bidder_portal_visible = true;
 
   saveData(data);
+
+  const bidderEmails = matchedBidders.map(b => b.email).join(", ");
+
+  alert(
+    matchedBidders.length
+      ? `Asset released to approved bidders:\n\n${bidderEmails}`
+      : "Asset approved, but no matching approved bidders were found."
+  );
+
   render();
 }
-
 function openInfoRequestModal(id){
   const data = loadData();
   const rec = findById(data, id);
