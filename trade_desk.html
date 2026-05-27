@@ -935,51 +935,97 @@ function mergeRecordIntoDesk(deskData, incoming){
   });
 
   if (matchIndex >= 0) {
+    const existing = deskData[matchIndex];
+
     deskData[matchIndex] = {
-      ...deskData[matchIndex],
+      ...existing,
       ...record,
 
-      id: deskData[matchIndex].id,
+      // KEEP ORIGINAL DESK RECORD ID
+      id: existing.id,
 
+      // DO NOT LET INCOMING SYNC RESET BIDDER RELEASE STATUS
+      trade_desk_status:
+        existing.trade_desk_status &&
+        existing.trade_desk_status !== "Submitted to Trade Desk"
+          ? existing.trade_desk_status
+          : record.trade_desk_status,
+
+      bid_status:
+        existing.bid_status &&
+        existing.bid_status !== "Not Released"
+          ? existing.bid_status
+          : record.bid_status,
+
+      approved_for_bidding_at:
+        existing.approved_for_bidding_at || record.approved_for_bidding_at || "",
+
+      approved_by:
+        existing.approved_by || record.approved_by || "",
+
+      released_to_bidders:
+        existing.released_to_bidders && existing.released_to_bidders.length
+          ? existing.released_to_bidders
+          : record.released_to_bidders || [],
+
+      bidder_portal_visible:
+        existing.bidder_portal_visible === true ||
+        record.bidder_portal_visible === true,
+
+      // KEEP BIDS / WINNER
       bids:
-        deskData[matchIndex].bids && deskData[matchIndex].bids.length
-          ? deskData[matchIndex].bids
+        existing.bids && existing.bids.length
+          ? existing.bids
           : record.bids || [],
 
       winningBid:
-        deskData[matchIndex].winningBid ||
-        record.winningBid ||
-        null,
+        existing.winningBid || record.winningBid || null,
 
       winning_bid_amount:
-        deskData[matchIndex].winning_bid_amount ||
-        record.winning_bid_amount ||
-        "",
+        existing.winning_bid_amount || record.winning_bid_amount || "",
 
       winning_bidder:
-        deskData[matchIndex].winning_bidder ||
-        record.winning_bidder ||
-        "",
+        existing.winning_bidder || record.winning_bidder || "",
 
       winning_bid_terms:
-        deskData[matchIndex].winning_bid_terms ||
-        record.winning_bid_terms ||
-        "",
+        existing.winning_bid_terms || record.winning_bid_terms || "",
 
       winning_bid_selected_at:
-        deskData[matchIndex].winning_bid_selected_at ||
-        record.winning_bid_selected_at ||
-        "",
+        existing.winning_bid_selected_at || record.winning_bid_selected_at || "",
 
       trade_in_credit:
-        deskData[matchIndex].trade_in_credit ||
-        record.trade_in_credit ||
-        "",
+        existing.trade_in_credit || record.trade_in_credit || "",
 
       tradein_credit:
-        deskData[matchIndex].tradein_credit ||
-        record.tradein_credit ||
-        ""
+        existing.tradein_credit || record.tradein_credit || "",
+
+      quote_sync_status:
+        existing.quote_sync_status &&
+        existing.quote_sync_status !== "Pending Bid"
+          ? existing.quote_sync_status
+          : record.quote_sync_status,
+
+      // KEEP UPDATED IMAGE LIST
+      images:
+        record.images && record.images.length
+          ? record.images
+          : existing.images || [],
+
+      image_sync_received:
+        Boolean(record.images && record.images.length) ||
+        existing.image_sync_received ||
+        false,
+
+      image_count:
+        record.images && record.images.length
+          ? record.images.length
+          : existing.image_count || 0,
+
+      last_image_update_by:
+        record.last_image_update_by || existing.last_image_update_by || "",
+
+      last_image_update_at:
+        record.last_image_update_at || existing.last_image_update_at || ""
     };
   } else {
     deskData.unshift(record);
@@ -987,7 +1033,6 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   return deskData;
 }
-
 function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
