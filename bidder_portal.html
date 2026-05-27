@@ -520,23 +520,91 @@ function imageHtml(rec){
   `;
 }
 function tradeInFieldRows(rec){
+  const getV = (...keys) => {
+    for (const key of keys) {
+      const v = rec[key];
+      if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+    }
+    return "";
+  };
+
   const rows = [
-    ["Modality", rec.modality],
-    ["Manufacturer", rec.make],
-    ["Model", rec.model],
-    ["Serial Number", rec.serial_number || rec.axis_serial_number],
-    ["Additional Identifier", rec.hospital_asset_id],
-    ["Date Manufactured / Year", rec.dom],
-    ["Date Installed", rec.installed_date],
-    ["System In Use", rec.in_use_status],
-    ["Date Removed From Service", rec.out_of_use_date],
-    ["Availability Time Frame", rec.availability_timeframe],
-    ["Describe Removal Pathways", rec.removal_pathways],
-    ["Loading Dock Available", rec.loading_dock],
-    ["Will Hard Drives Be Removed", rec.hard_drive_removed],
-    ["Software Version", rec.software_version],
-    ["Upgrade Notes", rec.upgrade_notes]
+    ["Modality", getV("modality", "tradein_equipment_modality")],
+    ["Manufacturer", getV("make", "tradein_equipment_make")],
+    ["Model", getV("model", "tradein_equipment_model")],
+    ["Serial Number", getV("serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+    ["Additional Identifier", getV("hospital_asset_id", "additional_identifier")],
+    ["Date Manufactured / Year", getV("dom", "tradein_equipment_dom")],
+    ["Date Installed", getV("installed_date", "tradein_installed_date")],
+    ["System In Use", getV("in_use_status", "tradein_in_use_status")],
+    ["Date Removed From Service", getV("out_of_use_date", "tradein_out_of_use_date")],
+    ["Availability Time Frame", getV("availability_timeframe", "tradein_availability_timeframe")],
+    ["Removal Pathways", getV("removal_pathways", "tradein_removal_pathways")],
+    ["Loading Dock Available", getV("loading_dock", "tradein_loading_dock")],
+    ["Will Hard Drives Be Removed", getV("hard_drive_removed", "tradein_hard_drive_removed")],
+    ["Software Version", getV("software_version", "tradein_software_version")],
+    ["Upgrade Notes", getV("upgrade_notes", "tradein_upgrade_notes")]
   ];
+
+  const modality = String(getV("modality", "tradein_equipment_modality")).toUpperCase();
+
+  if (modality === "CT") {
+    rows.push(
+      ["CT Number of Slices", getV("ct_slices")],
+      ["CT Tube mAs / Scan/sec", getV("ct_tube_mas")],
+      ["CT Tube Size (mHu)", getV("ct_mhu")],
+      ["CT Tube DOM", getV("ct_tube_dom")],
+      ["CT Tube Installation Date", getV("ct_tube_installation_date")],
+      ["CT GOC Version", getV("ct_goc_version")],
+      ["CT Upgrades", getV("ct_upgrades")],
+      ["CT Upgrades Description", getV("ct_upgrades_desc")],
+      ["CT Injector", getV("ct_injector")],
+      ["CT Injector Model", getV("ct_injector_model")],
+      ["CT Chiller", getV("ct_chiller")]
+    );
+  }
+
+  if (modality === "MRI") {
+    rows.push(
+      ["MRI Magnet Type", getV("mri_magnet_type")],
+      ["MRI Bore Size", getV("mri_bore_size_cm")],
+      ["MRI Number of Channels", getV("mri_num_channels")],
+      ["MRI Gradient", getV("mri_gradient")],
+      ["MRI Coils", getV("mri_coils")],
+      ["MRI Service", getV("mri_service")],
+      ["MRI Service Company", getV("mri_service_name")]
+    );
+  }
+
+  if (modality === "MAMMO") {
+    rows.push(
+      ["Mammography 2D / 3D", getV("mamo_dimensionality")],
+      ["Mammography Stereotactic Options", getV("mamo_stereotactic_options")],
+      ["Mammography CAD", getV("mamo_cad")]
+    );
+  }
+
+  if (modality === "XRAY") {
+    rows.push(
+      ["X-Ray Floor Mounted", getV("xray_floor_mounted")],
+      ["X-Ray Ceiling Mounted", getV("xray_ceiling_mounted")]
+    );
+  }
+
+  if (modality === "CARM" || modality === "C-ARM") {
+    rows.push(
+      ["C-Arm Monitor Type", getV("carm_monitors")],
+      ["C-Arm Image Intensifier Size", getV("carm_image_intensifier")]
+    );
+  }
+
+  if (modality === "PET" || modality === "PETCT") {
+    rows.push(
+      ["PET/CT Slice Count", getV("pet_ct_slices")],
+      ["PET/CT Tube DOM", getV("pet_tube_dom")],
+      ["PET/CT Tube mAs / Scan/sec", getV("pet_tube_mas")]
+    );
+  }
 
   return rows
     .filter(([label, value]) => String(value || "").trim())
@@ -547,7 +615,6 @@ function tradeInFieldRows(rec){
     `)
     .join("");
 }
-
 function renderPackageCard(rec){
   const recordId = String(rec.id || "");
   const safeRecordId = idSafe(recordId);
