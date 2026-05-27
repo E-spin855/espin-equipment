@@ -1775,7 +1775,50 @@ function renderReleaseTracker(rec){
     </div>
   `;
 }
+function getBidderName(bid){
+  return String(
+    bid.bidder_company ||
+    bid.bidder ||
+    bid.company ||
+    bid.bidder_name ||
+    bid.bidder_email ||
+    "-"
+  ).trim();
+}
 
+function getHighBidObject(rec){
+  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
+
+  return [...rec.bids]
+    .map(b => ({
+      ...b,
+      amountNumber: Number(b.amount || 0)
+    }))
+    .filter(b => b.amountNumber > 0)
+    .sort((a, b) => b.amountNumber - a.amountNumber)[0] || null;
+}
+
+function getLowBidObject(rec){
+  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
+
+  return [...rec.bids]
+    .map(b => ({
+      ...b,
+      amountNumber: Number(b.amount || 0)
+    }))
+    .filter(b => b.amountNumber > 0)
+    .sort((a, b) => a.amountNumber - b.amountNumber)[0] || null;
+}
+function getLastBidObject(rec){
+  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
+
+  return [...rec.bids]
+    .sort((a, b) => {
+      const da = new Date(a.submitted_at || 0).getTime();
+      const db = new Date(b.submitted_at || 0).getTime();
+      return db - da;
+    })[0] || null;
+}
 function renderBidCards(rec, safeId){
   if (!rec.bids || !rec.bids.length) {
     return "<p class='small'>No bids submitted yet.</p>";
