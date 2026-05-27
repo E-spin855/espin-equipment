@@ -1990,12 +1990,25 @@ function modalityRawFieldRows(rec){
 
 function tradeInFieldRows(rec){
   const getV = (...keys) => {
+  const sources = [
+    rec,
+    rec.data,
+    rec.record,
+    rec.equipment,
+    rec.bid_package,
+    rec.bid_package?.record,
+    rec.bid_package?.equipment
+  ].filter(v => v && typeof v === "object");
+
+  for (const source of sources) {
     for (const key of keys) {
-      const v = rec[key];
+      const v = source[key];
       if (v !== undefined && v !== null && String(v).trim() !== "") return v;
     }
-    return "";
-  };
+  }
+
+  return "";
+};
 
   const yesNo = (v) => {
     const s = String(v || "").trim().toLowerCase();
@@ -2436,10 +2449,19 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
           ? `
             <hr>
 
-            <h3 class="section-title">Trade-In App Equipment Details</h3>
-            ${tradeInFieldRows(rec)}
+<div class="field-block" style="border:none;background:transparent;padding:0;">
+  <h3 class="section-title">Trade-In App Equipment Details</h3>
+  ${tradeInFieldRows({
+    ...rec,
+    ...(rec.data || {}),
+    ...(rec.record || {}),
+    ...(rec.equipment || {}),
+    ...(rec.bid_package?.record || {}),
+    ...(rec.bid_package?.equipment || {})
+  })}
+</div>
 
-            <hr>
+<hr>
 
             <h3 class="section-title">Rep Information</h3>
             <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(rec.assigned_rep_first || rec.sales_rep_first || rec.rep_first || "-")}</div>
