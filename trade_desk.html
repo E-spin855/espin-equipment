@@ -1947,7 +1947,76 @@ function renderBidCards(rec, safeId){
     `;
   }).join("");
 }
+function saveBidDeadline(id){
+  const data = loadData();
+  const rec = findById(data, id);
 
+  if (!rec) {
+    alert("Record not found.");
+    return;
+  }
+
+  const input = document.getElementById(`bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+  const value = String(input?.value || "").trim();
+
+  if (!value) {
+    alert("Enter bidding end date.");
+    return;
+  }
+
+  rec.bid_deadline = value;
+  rec.bidding_ends_at = value;
+  rec.bid_expires_at = value;
+
+  if (rec.bid_package) {
+    rec.bid_package.bid_deadline = value;
+    rec.bid_package.bidding_ends_at = value;
+  }
+
+  rec.released_to_bidders = Array.isArray(rec.released_to_bidders)
+    ? rec.released_to_bidders.map(b => ({
+        ...b,
+        bid_deadline: value,
+        bidding_ends_at: value
+      }))
+    : [];
+
+  saveData(data);
+
+  let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
+
+  bidderPackages = bidderPackages.map(pkg => {
+    if (
+      String(pkg.bid_package_id || "") !== String(rec.bid_package_id || "") &&
+      String(pkg.trade_desk_record_id || "") !== String(rec.id || "")
+    ) {
+      return pkg;
+    }
+
+    return {
+      ...pkg,
+      bid_deadline: value,
+      bidding_ends_at: value,
+      record: {
+        ...(pkg.record || {}),
+        bid_deadline: value,
+        bidding_ends_at: value,
+        bid_expires_at: value
+      },
+      equipment: {
+        ...(pkg.equipment || {}),
+        bid_deadline: value,
+        bidding_ends_at: value,
+        bid_expires_at: value
+      }
+    };
+  });
+
+  saveArray(BIDDER_PORTAL_KEY, bidderPackages);
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+  render();
+}
 function renderTradeDeskPackageCard(rec, safeId, rawId){
   const packageId = getBidPackageId(rec);
   const active =
@@ -1965,7 +2034,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
     String(rec.bid_status || "") === "Awarded";
 
   const packageLink = rec.bid_package_url || buildBidderUrl(rec, rec.released_to_bidders?.[0]?.email || "");
-
+const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   return `
     <div class="package-card ${active ? "active" : ""}">
       <div class="package-card-head">
@@ -2027,14 +2096,29 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
 
             <hr>
 
-            <h3 class="section-title">Trade Desk Status</h3>
-            <div class="kv"><strong>Trade Desk Status:</strong> ${htmlSafe(rec.trade_desk_status || "-")}</div>
-            <div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
-            <div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
-            <div class="kv"><strong>Bid Package:</strong> ${htmlSafe(packageId)}</div>
-<div class="kv"><strong>Bidding Ends:</strong> ${htmlSafe(formatBidDeadline(rec))}</div>
-            <div class="kv"><strong>External Bidder Link:</strong> ${htmlSafe(packageLink || "Not released")}</div>
-            <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
+           <h3 class="section-title">Trade Desk Status</h3>
+<div class="kv"><strong>Trade Desk Status:</strong> ${htmlSafe(rec.trade_desk_status || "-")}</div>
+<div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
+<div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
+<div class="kv"><strong>Bid Package:</strong> ${htmlSafe(packageId)}</div>
+
+<div class="field-block" style="border:1px solid rgba(184,134,11,.65);background:rgba(184,134,11,.12);">
+  <label style="font-weight:900;color:#ffe7a3;">Bidding Ends</label>
+  <input
+    id="${deadlineInputId}"
+    type="date"
+    value="${htmlSafe(getBidDeadline(rec) || "")}"
+  >
+  <button class="gold" onclick="saveBidDeadline('${safeId}')">
+    Save Bidding End Date
+  </button>
+  <div class="small">
+    This date syncs to the bidder portal and bidder package payload.
+  </div>
+</div>
+
+<div class="kv"><strong>External Bidder Link:</strong> ${htmlSafe(packageLink || "Not released")}</div>
+<div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
             ${renderInfoRequestSummary(rec)}
 
