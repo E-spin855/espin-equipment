@@ -593,7 +593,36 @@ function getBidPackageId(rec){
     `PKG-${String(rec.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.id || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
   );
 }
+function getDefaultBidDeadline(){
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  return d.toISOString().slice(0, 10);
+}
 
+function getBidDeadline(rec){
+  return String(
+    rec.bid_deadline ||
+    rec.bidding_ends_at ||
+    rec.bid_package?.bid_deadline ||
+    rec.bid_package?.bidding_ends_at ||
+    rec.bid_expires_at ||
+    ""
+  ).trim();
+}
+
+function formatBidDeadline(rec){
+  const raw = getBidDeadline(rec);
+
+  if (!raw) return "Not set";
+
+  const d = new Date(raw);
+
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleDateString();
+  }
+
+  return raw;
+}
 function buildBidderUrl(rec, bidderEmail = ""){
   const packageId = getBidPackageId(rec);
   const url = new URL("bidder_portal.html", window.location.href);
@@ -1035,14 +1064,38 @@ function approveForBidding(id){
     return;
   }
 
+  const currentDeadline =
+    getBidDeadline(rec) ||
+    getDefaultBidDeadline();
+
+  const deadlineInput = prompt(
+    "Enter bidding end date:",
+    currentDeadline
+  );
+
+  if (!deadlineInput) {
+    alert("Bidding release cancelled. End date is required.");
+    return;
+  }
+
+  const bidDeadline = String(deadlineInput || "").trim();
+
   const packageId =
     rec.bid_package_id ||
     `PKG-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-  const packageUrl = buildBidderUrl({ ...rec, bid_package_id: packageId }, matchedBidders[0]?.email || "");
+  const packageUrl = buildBidderUrl(
+    { ...rec, bid_package_id: packageId, bid_deadline: bidDeadline },
+    matchedBidders[0]?.email || ""
+  );
 
   rec.bid_package_id = packageId;
   rec.bid_package_url = packageUrl;
+
+  rec.bid_deadline = bidDeadline;
+  rec.bidding_ends_at = bidDeadline;
+  rec.bid_expires_at = bidDeadline;
+
   rec.trade_desk_status = "Released to Approved Bidders";
   rec.bid_status = "Open for Bids";
   rec.approved_for_bidding_at = new Date().toISOString();
@@ -1057,7 +1110,12 @@ function approveForBidding(id){
     email: b.email,
     region: b.region,
     package_id: packageId,
-    package_url: buildBidderUrl({ ...rec, bid_package_id: packageId }, b.email),
+    package_url: buildBidderUrl(
+      { ...rec, bid_package_id: packageId, bid_deadline: bidDeadline },
+      b.email
+    ),
+    bid_deadline: bidDeadline,
+    bidding_ends_at: bidDeadline,
     released_at: new Date().toISOString()
   }));
 
@@ -1069,6 +1127,8 @@ function approveForBidding(id){
     released_at: rec.approved_for_bidding_at,
     released_by: rec.approved_by,
     trade_desk_email: TRADE_DESK_EMAIL,
+    bid_deadline: bidDeadline,
+    bidding_ends_at: bidDeadline,
     equipment: { ...rec },
     images: Array.isArray(rec.images) ? rec.images : [],
     released_to_bidders: rec.released_to_bidders,
@@ -1078,13 +1138,22 @@ function approveForBidding(id){
   saveData(data);
 
   let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
-  const idx = bidderPackages.findIndex(p => String(p.bid_package_id || "") === String(packageId));
+  const idx = bidderPackages.findIndex(p =>
+    String(p.bid_package_id || "") === String(packageId)
+  );
 
   const bidderPackage = {
     ...rec.bid_package,
     bid_package_id: packageId,
     trade_desk_record_id: rec.id,
-    record: rec,
+    record: {
+      ...rec,
+      bid_deadline: bidDeadline,
+      bidding_ends_at: bidDeadline,
+      bid_expires_at: bidDeadline
+    },
+    bid_deadline: bidDeadline,
+    bidding_ends_at: bidDeadline,
     bids: Array.isArray(rec.bids) ? rec.bids : []
   };
 
@@ -1121,6 +1190,7 @@ function approveForBidding(id){
     `BID PACKAGE`,
     `Package ID: ${packageId}`,
     `Package Status: Open for Bids`,
+    `Bidding Ends: ${formatBidDeadline({ bid_deadline: bidDeadline })}`,
     `Bid Package Link: ${packageUrl}`,
     ``,
     `EQUIPMENT SUMMARY`,
@@ -1150,7 +1220,7 @@ function approveForBidding(id){
     `APPROVED BIDDERS ON THIS RELEASE`,
     bidderList,
     ``,
-    `Please open the Bid Package link, review the equipment details and images, and submit your bid through the bidder portal.`,
+    `Please open the Bid Package link, review the equipment details and images, and submit your bid before the bidding end date.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1164,7 +1234,6 @@ function approveForBidding(id){
 
   window.location.href = mailto;
 }
-
 function openTradeDeskPackage(id){
   const clickedId = String(id || "").trim();
   if (!clickedId) return;
@@ -1933,6 +2002,10 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
           <div class="label">Package</div>
           <div>${isReleased ? "Released" : "Not Released"}</div>
         </div>
+<div class="package-meta-box">
+  <div class="label">Bidding Ends</div>
+  <div>${htmlSafe(formatBidDeadline(rec))}</div>
+</div>
       </div>
 
       ${
@@ -1959,6 +2032,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
             <div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
             <div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
             <div class="kv"><strong>Bid Package:</strong> ${htmlSafe(packageId)}</div>
+<div class="kv"><strong>Bidding Ends:</strong> ${htmlSafe(formatBidDeadline(rec))}</div>
             <div class="kv"><strong>External Bidder Link:</strong> ${htmlSafe(packageLink || "Not released")}</div>
             <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
@@ -2006,6 +2080,7 @@ function renderBidProgressCard(rec){
 
       <span class="badge">${htmlSafe(rec.bid_status || "Open for Bids")}</span>
       <span class="badge">${getBidCount(rec)} Bids Received</span>
+      <span class="badge gold">Bidding Ends: ${htmlSafe(formatBidDeadline(rec))}</span>
       ${
         win
           ? `<span class="badge win">Winner Selected</span>`
@@ -2041,7 +2116,6 @@ function renderBidProgressCard(rec){
     </div>
   `;
 }
-
 function renderQuoteCard(rec){
   return `
     <div class="card">
