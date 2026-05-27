@@ -803,11 +803,12 @@ function normalizeIncomingRecord(item){
       item.rep_phone ||
       "",
 
-    last_tradein_update_by:
-      item.last_tradein_update_by ||
-      item.assigned_rep_email ||
-      item.sales_rep_email ||
-      "axis@demo.com",
+   last_tradein_update_by:
+  item.last_tradein_update_by ||
+  item.assigned_rep_email ||
+  item.sales_rep_email ||
+  item.rep_email ||
+  "",
 
     last_tradein_update_at:
       item.last_tradein_update_at ||
@@ -937,12 +938,47 @@ function mergeRecordIntoDesk(deskData, incoming){
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
 
-    deskData[matchIndex] = {
-      ...existing,
-      ...record,
+   deskData[matchIndex] = {
+  ...existing,
+  ...record,
 
-      // KEEP ORIGINAL DESK RECORD ID
-      id: existing.id,
+  // KEEP ORIGINAL DESK RECORD ID
+  id: existing.id,
+
+  // KEEP REP DETAILS FROM ORIGINAL SERIAL-MATCHED RECORD
+  assigned_rep_first:
+    record.assigned_rep_first ||
+    existing.assigned_rep_first ||
+    existing.sales_rep_first ||
+    "",
+
+  assigned_rep_last:
+    record.assigned_rep_last ||
+    existing.assigned_rep_last ||
+    existing.sales_rep_last ||
+    "",
+
+  assigned_rep_name:
+    record.assigned_rep_name ||
+    existing.assigned_rep_name ||
+    existing.rep_name ||
+    `${existing.assigned_rep_first || existing.sales_rep_first || ""} ${existing.assigned_rep_last || existing.sales_rep_last || ""}`.trim() ||
+    "",
+
+  assigned_rep_email:
+    record.assigned_rep_email && record.assigned_rep_email !== "axis@demo.com"
+      ? record.assigned_rep_email
+      : existing.assigned_rep_email ||
+        existing.sales_rep_email ||
+        existing.rep_email ||
+        "",
+
+  assigned_rep_phone:
+    record.assigned_rep_phone ||
+    existing.assigned_rep_phone ||
+    existing.sales_rep_phone ||
+    existing.rep_phone ||
+    "",
 
       // DO NOT LET INCOMING SYNC RESET BIDDER RELEASE STATUS
       trade_desk_status:

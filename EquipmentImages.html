@@ -686,14 +686,23 @@ photos.forEach(photo => appendCard(photo, new Set(getActiveBadges())));
 };
 function syncImagesToAxisDemo(sentPhotoIds) {
   const key = "axis_tradein_sync_records_v1";
+  const lifecycleKey = "espin_lifecycle_demo_records_v1";
 
   let records = [];
+  let lifecycleRecords = [];
 
   try {
     records = JSON.parse(localStorage.getItem(key) || "[]");
     if (!Array.isArray(records)) records = [];
   } catch {
     records = [];
+  }
+
+  try {
+    lifecycleRecords = JSON.parse(localStorage.getItem(lifecycleKey) || "[]");
+    if (!Array.isArray(lifecycleRecords)) lifecycleRecords = [];
+  } catch {
+    lifecycleRecords = [];
   }
 
   const selectedPhotos = photos
@@ -741,6 +750,16 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     localStorage.getItem("sync_mode") ||
     "update_existing_axis_record";
 
+  const lifecycleMatch = lifecycleRecords.find(r =>
+    String(r.id || "") === String(axisRecordId || "") ||
+    String(r.id || "") === String(axisParentRecordId || "") ||
+    String(r.oem_project_id || "") === String(axisProjectId || "") ||
+    (
+      axisSerialNumber &&
+      String(r.serial_number || r.axis_serial_number || "") === String(axisSerialNumber)
+    )
+  ) || {};
+
   const existingIndex = records.findIndex(r =>
     String(r.axis_record_id || "") === String(axisRecordId || "") ||
     String(r.axis_parent_record_id || "") === String(axisParentRecordId || "") ||
@@ -759,27 +778,126 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     )),
     ...selectedPhotos
   ];
-if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber) {
-  console.warn("AXIS sync missing AXIS identity fields. Images will become unmatched lead.");
-}
+
+  if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber) {
+    console.warn("AXIS sync missing AXIS identity fields. Images will become unmatched lead.");
+  }
+
   const imageSyncRecord = {
     ...existing,
 
-    // DO NOT replace the real AXIS id with image_sync id
     sync_event_id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
 
     sync_mode: syncMode,
-    unmatched_tradein_lead: !(axisRecordId || axisParentRecordId || axisProjectId),
+    unmatched_tradein_lead: !(axisRecordId || axisParentRecordId || axisProjectId || axisSerialNumber),
 
-    axis_record_id: axisRecordId || existing.axis_record_id || "",
-    axis_parent_record_id: axisParentRecordId || existing.axis_parent_record_id || "",
-    axis_project_id: axisProjectId || existing.axis_project_id || "",
-    axis_serial_number: axisSerialNumber || existing.axis_serial_number || "",
-    axis_parent_project_type: axisParentProjectType || existing.axis_parent_project_type || "",
-    axis_source: axisSource || existing.axis_source || "",
+    axis_record_id: axisRecordId || existing.axis_record_id || lifecycleMatch.id || "",
+    axis_parent_record_id: axisParentRecordId || existing.axis_parent_record_id || lifecycleMatch.id || "",
+    axis_project_id: axisProjectId || existing.axis_project_id || lifecycleMatch.oem_project_id || "",
+    axis_serial_number: axisSerialNumber || existing.axis_serial_number || lifecycleMatch.serial_number || "",
+    axis_parent_project_type:
+      axisParentProjectType ||
+      existing.axis_parent_project_type ||
+      lifecycleMatch.project_type ||
+      "",
+    axis_source:
+      axisSource ||
+      existing.axis_source ||
+      "existing_axis_equipment",
 
     project_id: projectId,
     modality_id: modalityId,
+
+    make:
+      existing.make ||
+      lifecycleMatch.tradein_equipment_make ||
+      lifecycleMatch.make ||
+      "",
+
+    model:
+      existing.model ||
+      lifecycleMatch.tradein_equipment_model ||
+      lifecycleMatch.model ||
+      "",
+
+    modality:
+      existing.modality ||
+      lifecycleMatch.tradein_equipment_modality ||
+      lifecycleMatch.modality ||
+      "",
+
+    serial_number:
+      existing.serial_number ||
+      axisSerialNumber ||
+      lifecycleMatch.tradein_equipment_serial_number ||
+      lifecycleMatch.serial_number ||
+      "",
+
+    dom:
+      existing.dom ||
+      lifecycleMatch.tradein_equipment_dom ||
+      lifecycleMatch.dom ||
+      "",
+
+    site:
+      existing.site ||
+      lifecycleMatch.site ||
+      lifecycleMatch.facility ||
+      lifecycleMatch.hospital ||
+      "",
+
+    site_address:
+      existing.site_address ||
+      lifecycleMatch.site_address ||
+      "",
+
+    city:
+      existing.city ||
+      lifecycleMatch.city ||
+      "",
+
+    state:
+      existing.state ||
+      lifecycleMatch.state ||
+      "",
+
+    zip_code:
+      existing.zip_code ||
+      lifecycleMatch.zip_code ||
+      "",
+
+    assigned_rep_first:
+      existing.assigned_rep_first ||
+      lifecycleMatch.sales_rep_first ||
+      lifecycleMatch.assigned_rep_first ||
+      "",
+
+    assigned_rep_last:
+      existing.assigned_rep_last ||
+      lifecycleMatch.sales_rep_last ||
+      lifecycleMatch.assigned_rep_last ||
+      "",
+
+    assigned_rep_name:
+      existing.assigned_rep_name ||
+      lifecycleMatch.assigned_rep_name ||
+      `${lifecycleMatch.sales_rep_first || lifecycleMatch.assigned_rep_first || ""} ${lifecycleMatch.sales_rep_last || lifecycleMatch.assigned_rep_last || ""}`.trim() ||
+      "",
+
+    assigned_rep_email:
+      existing.assigned_rep_email && existing.assigned_rep_email !== "axis@demo.com"
+        ? existing.assigned_rep_email
+        : lifecycleMatch.sales_rep_email ||
+          lifecycleMatch.assigned_rep_email ||
+          lifecycleMatch.rep_email ||
+          "",
+
+    assigned_rep_phone:
+      existing.assigned_rep_phone ||
+      lifecycleMatch.sales_rep_phone ||
+      lifecycleMatch.assigned_rep_phone ||
+      lifecycleMatch.rep_phone ||
+      "",
 
     image_sync_received: true,
     image_count: mergedImages.length,
@@ -792,7 +910,17 @@ if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber)
     last_tradein_update_at: new Date().toISOString(),
 
     crm_status: "Trade-In Images Sent",
-    rep_notes: "Images were submitted from Espin Trade-In."
+    rep_notes: "Images were submitted from Espin Trade-In.",
+
+    changed_fields: [
+      ...new Set([
+        ...(existing.changed_fields || []),
+        "images",
+        "image_sync_received",
+        "image_count",
+        "last_image_update_at"
+      ])
+    ]
   };
 
   if (existingIndex >= 0) {

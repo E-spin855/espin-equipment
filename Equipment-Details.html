@@ -1535,9 +1535,12 @@ function normalizeAxisTradeInRecord(result) {
 
 function syncTradeInToAxisDemo(result) {
   const key = "axis_tradein_sync_records_v1";
+  const lifecycleKey = "espin_lifecycle_demo_records_v1";
+
   const newRecord = normalizeAxisTradeInRecord(result);
 
   let records = [];
+  let lifecycleRecords = [];
 
   try {
     records = JSON.parse(localStorage.getItem(key) || "[]");
@@ -1545,6 +1548,27 @@ function syncTradeInToAxisDemo(result) {
   } catch {
     records = [];
   }
+
+  try {
+    lifecycleRecords = JSON.parse(localStorage.getItem(lifecycleKey) || "[]");
+    if (!Array.isArray(lifecycleRecords)) lifecycleRecords = [];
+  } catch {
+    lifecycleRecords = [];
+  }
+
+  const lifecycleMatch = lifecycleRecords.find(r =>
+    String(r.id || "") === String(newRecord.axis_record_id || "") ||
+    String(r.id || "") === String(newRecord.axis_parent_record_id || "") ||
+    String(r.oem_project_id || "") === String(newRecord.axis_project_id || "") ||
+    (
+      newRecord.axis_serial_number &&
+      String(r.serial_number || r.axis_serial_number || "") === String(newRecord.axis_serial_number)
+    ) ||
+    (
+      newRecord.serial_number &&
+      String(r.serial_number || r.axis_serial_number || "") === String(newRecord.serial_number)
+    )
+  ) || {};
 
   const matchIndex = records.findIndex(r =>
     (
@@ -1559,7 +1583,7 @@ function syncTradeInToAxisDemo(result) {
       newRecord.axis_project_id &&
       newRecord.axis_serial_number &&
       String(r.axis_project_id || "") === String(newRecord.axis_project_id) &&
-      String(r.axis_serial_number || "") === String(newRecord.axis_serial_number)
+      String(r.axis_serial_number || r.serial_number || "") === String(newRecord.axis_serial_number)
     ) ||
     (
       String(r.project_id || "") === String(newRecord.project_id || "") &&
@@ -1568,26 +1592,231 @@ function syncTradeInToAxisDemo(result) {
     )
   );
 
+  const existing = matchIndex >= 0 ? records[matchIndex] : {};
+
+  const mergedImages = [
+    ...((existing.images || []).filter(img =>
+      !(newRecord.images || []).some(p => String(p.id) === String(img.id))
+    )),
+    ...((newRecord.images || []).filter(Boolean))
+  ];
+
+  const finalRecord = {
+    ...existing,
+    ...newRecord,
+
+    id: existing.id || newRecord.id,
+
+    sync_event_id:
+      newRecord.sync_event_id ||
+      `tradein_sync_${newRecord.project_id || "project"}_${newRecord.modality_id || "modality"}_${Date.now()}`,
+
+    axis_record_id:
+      newRecord.axis_record_id ||
+      existing.axis_record_id ||
+      lifecycleMatch.id ||
+      "",
+
+    axis_parent_record_id:
+      newRecord.axis_parent_record_id ||
+      existing.axis_parent_record_id ||
+      newRecord.axis_record_id ||
+      lifecycleMatch.id ||
+      "",
+
+    axis_project_id:
+      newRecord.axis_project_id ||
+      existing.axis_project_id ||
+      lifecycleMatch.oem_project_id ||
+      "",
+
+    axis_serial_number:
+      newRecord.axis_serial_number ||
+      existing.axis_serial_number ||
+      lifecycleMatch.serial_number ||
+      "",
+
+    axis_parent_project_type:
+      newRecord.axis_parent_project_type ||
+      existing.axis_parent_project_type ||
+      lifecycleMatch.project_type ||
+      "",
+
+    axis_source:
+      newRecord.axis_source ||
+      existing.axis_source ||
+      "existing_axis_equipment",
+
+    sync_mode:
+      newRecord.sync_mode ||
+      existing.sync_mode ||
+      "update_existing_axis_record",
+
+    make:
+      newRecord.make ||
+      existing.make ||
+      lifecycleMatch.tradein_equipment_make ||
+      lifecycleMatch.make ||
+      "",
+
+    model:
+      newRecord.model ||
+      existing.model ||
+      lifecycleMatch.tradein_equipment_model ||
+      lifecycleMatch.model ||
+      "",
+
+    modality:
+      newRecord.modality ||
+      existing.modality ||
+      lifecycleMatch.tradein_equipment_modality ||
+      lifecycleMatch.modality ||
+      "",
+
+    serial_number:
+      newRecord.serial_number ||
+      existing.serial_number ||
+      newRecord.axis_serial_number ||
+      lifecycleMatch.tradein_equipment_serial_number ||
+      lifecycleMatch.serial_number ||
+      "",
+
+    dom:
+      newRecord.dom ||
+      existing.dom ||
+      lifecycleMatch.tradein_equipment_dom ||
+      lifecycleMatch.dom ||
+      "",
+
+    site:
+      newRecord.site ||
+      existing.site ||
+      lifecycleMatch.site ||
+      lifecycleMatch.facility ||
+      lifecycleMatch.hospital ||
+      "",
+
+    site_address:
+      newRecord.site_address ||
+      existing.site_address ||
+      lifecycleMatch.site_address ||
+      "",
+
+    city:
+      newRecord.city ||
+      existing.city ||
+      lifecycleMatch.city ||
+      "",
+
+    state:
+      newRecord.state ||
+      existing.state ||
+      lifecycleMatch.state ||
+      "",
+
+    zip_code:
+      newRecord.zip_code ||
+      existing.zip_code ||
+      lifecycleMatch.zip_code ||
+      "",
+
+    assigned_rep_first:
+      newRecord.assigned_rep_first ||
+      existing.assigned_rep_first ||
+      lifecycleMatch.sales_rep_first ||
+      lifecycleMatch.assigned_rep_first ||
+      "",
+
+    assigned_rep_last:
+      newRecord.assigned_rep_last ||
+      existing.assigned_rep_last ||
+      lifecycleMatch.sales_rep_last ||
+      lifecycleMatch.assigned_rep_last ||
+      "",
+
+    assigned_rep_name:
+      newRecord.assigned_rep_name ||
+      existing.assigned_rep_name ||
+      lifecycleMatch.assigned_rep_name ||
+      `${lifecycleMatch.sales_rep_first || lifecycleMatch.assigned_rep_first || ""} ${lifecycleMatch.sales_rep_last || lifecycleMatch.assigned_rep_last || ""}`.trim() ||
+      "",
+
+    assigned_rep_email:
+      newRecord.assigned_rep_email ||
+      (
+        existing.assigned_rep_email && existing.assigned_rep_email !== "axis@demo.com"
+          ? existing.assigned_rep_email
+          : ""
+      ) ||
+      lifecycleMatch.sales_rep_email ||
+      lifecycleMatch.assigned_rep_email ||
+      lifecycleMatch.rep_email ||
+      "",
+
+    assigned_rep_phone:
+      newRecord.assigned_rep_phone ||
+      existing.assigned_rep_phone ||
+      lifecycleMatch.sales_rep_phone ||
+      lifecycleMatch.assigned_rep_phone ||
+      lifecycleMatch.rep_phone ||
+      "",
+
+    images: mergedImages,
+    image_sync_received: mergedImages.length > 0 || Boolean(newRecord.image_sync_received || existing.image_sync_received),
+    image_count: mergedImages.length || Number(newRecord.image_count || existing.image_count || 0),
+
+    tradein_sync_received: true,
+    tradein_seen_by_rep: false,
+
+    last_tradein_update_by:
+      newRecord.last_tradein_update_by ||
+      existing.last_tradein_update_by ||
+      newRecord.assigned_rep_email ||
+      userEmail ||
+      "",
+
+    last_tradein_update_at:
+      newRecord.last_tradein_update_at ||
+      new Date().toISOString(),
+
+    crm_status:
+      newRecord.crm_status ||
+      existing.crm_status ||
+      "Trade-In Equipment Sent",
+
+    rep_notes:
+      newRecord.rep_notes ||
+      existing.rep_notes ||
+      "Trade-in equipment was submitted from Espin Trade-In.",
+
+    changed_fields: [
+      ...new Set([
+        ...(existing.changed_fields || []),
+        ...(newRecord.changed_fields || []),
+        "modality",
+        "make",
+        "model",
+        "serial_number",
+        "tradein_sync_received",
+        "last_tradein_update_at"
+      ])
+    ]
+  };
+
   if (matchIndex >= 0) {
-    records[matchIndex] = {
-      ...records[matchIndex],
-      ...newRecord,
-      id: records[matchIndex].id,
-      last_tradein_update_at: newRecord.last_tradein_update_at
-    };
+    records[matchIndex] = finalRecord;
   } else {
-    records.unshift(newRecord);
+    records.unshift(finalRecord);
   }
 
   localStorage.setItem(key, JSON.stringify(records));
-  localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(newRecord));
+  localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(finalRecord));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
-  console.log("AXIS DEMO SYNC RECORD:", newRecord);
+  console.log("AXIS DEMO SYNC RECORD:", finalRecord);
 
-  return newRecord;
+  return finalRecord;
 }
-
 function syncTradeInToAxisTradeDesk(result) {
   const newRecord = normalizeAxisTradeInRecord(result);
 
