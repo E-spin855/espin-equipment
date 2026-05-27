@@ -22,32 +22,34 @@ h1,h2,h3{
 .panel{
   background:#0b1830;
   border:1px solid #23415f;
-  border-radius:14px;
-  padding:18px;
+  border-radius:12px;
+  padding:16px;
   margin-bottom:16px;
-  max-width:980px;
-  margin-left:auto;
-  margin-right:auto;
 }
 
 .card{
   background:#101f38;
   border:1px solid #2b4a68;
-  border-radius:12px;
-  padding:14px;
-  margin:10px 0;
+  border-radius:14px;
+  padding:16px;
+  margin:12px 0;
 }
 
 input,textarea,button{
   width:100%;
   box-sizing:border-box;
-  padding:12px;
-  margin:6px 0;
-  border-radius:10px;
+  padding:14px;
+  margin:8px 0;
+  border-radius:12px;
   border:1px solid #345;
   color:#fff;
   background:#10233f;
-  font-size:15px;
+  font-size:16px;
+}
+
+textarea{
+  min-height:95px;
+  resize:vertical;
 }
 
 button{
@@ -61,6 +63,10 @@ button.green{
   background:#18a558;
 }
 
+button.secondary{
+  background:#263f5f;
+}
+
 button:disabled{
   opacity:.55;
   cursor:not-allowed;
@@ -68,16 +74,17 @@ button:disabled{
 
 .small{
   color:#9db6d2;
-  font-size:13px;
+  font-size:14px;
 }
 
 .badge{
   display:inline-block;
-  padding:4px 8px;
+  padding:5px 10px;
   border-radius:20px;
   background:#263f5f;
-  margin:3px 3px 3px 0;
-  font-size:12px;
+  margin:4px 4px 4px 0;
+  font-size:13px;
+  font-weight:800;
 }
 
 .blue{background:#1d8cff}
@@ -85,50 +92,43 @@ button:disabled{
 .gold{background:#b8860b}
 
 .kv{
-  margin:6px 0;
-  font-size:14px;
+  margin:7px 0;
+  font-size:15px;
 }
 
 .kv strong{
-  color:#fff;
+  color:#ffffff;
 }
 
 hr{
   border:0;
   border-top:1px solid #2b4a68;
-  margin:14px 0;
-}
-
-.package-id{
-  color:#9db6d2;
-  font-size:12px;
-  font-weight:800;
-  letter-spacing:.08em;
+  margin:18px 0;
 }
 
 .package-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-  gap:10px;
-  margin-top:10px;
+  gap:12px;
+  margin-top:12px;
 }
 
 .package-box{
   border:1px solid #2b4a68;
   background:#07111f;
-  border-radius:10px;
-  padding:10px;
+  border-radius:12px;
+  padding:12px;
 }
 
 .package-box strong{
   display:block;
-  margin-bottom:5px;
+  margin-bottom:6px;
 }
 
 .image-row{
   display:flex;
   flex-wrap:wrap;
-  gap:8px;
+  gap:10px;
   margin-top:8px;
 }
 
@@ -149,60 +149,95 @@ hr{
 }
 
 .success-box{
-  background:rgba(24,165,88,.12);
-  border:1px solid rgba(24,165,88,.45);
-  color:#b9ffd6;
-  padding:12px;
-  border-radius:12px;
-  margin:12px 0;
-  font-size:14px;
-  font-weight:700;
   display:none;
+  background:rgba(24,165,88,.14);
+  border:1px solid rgba(24,165,88,.55);
+  color:#b9ffd6;
+  padding:14px;
+  border-radius:12px;
+  margin:14px 0;
+  font-weight:800;
 }
 
 .error-box{
-  background:rgba(192,57,43,.12);
-  border:1px solid rgba(192,57,43,.45);
-  color:#ffd0d0;
-  padding:12px;
-  border-radius:12px;
-  margin:12px 0;
-  font-size:14px;
-  font-weight:700;
   display:none;
+  background:rgba(192,57,43,.14);
+  border:1px solid rgba(192,57,43,.55);
+  color:#ffd1d1;
+  padding:14px;
+  border-radius:12px;
+  margin:14px 0;
+  font-weight:800;
+}
+
+.top-bar{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:14px;
+}
+
+@media(max-width:800px){
+  .top-bar{
+    flex-direction:column;
+  }
 }
 </style>
 </head>
 
 <body>
 
-<div class="panel">
-  <h1>AXIS Bidder Portal</h1>
-  <p class="small">
-    Review the authorized bid package below and submit your bid. Other bidder activity is not visible on this page.
-  </p>
-
-  <div id="successBox" class="success-box">Bid submitted successfully.</div>
-  <div id="errorBox" class="error-box"></div>
+<div class="top-bar">
+  <div>
+    <h1>AXIS Bidder Portal</h1>
+    <p class="small">
+      Authorized bidder view. Submit your bid here. Other bidders cannot see your amount.
+    </p>
+  </div>
 </div>
 
-<div id="app"></div>
+<div id="packageRoot"></div>
 
 <script>
 const TRADE_DESK_KEY = "axis_trade_desk_demo_v1";
-const BIDDER_PORTAL_KEY = "axis_bidder_portal_packages_v1";
+const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
+const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
 const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 
-const params = new URLSearchParams(location.search);
-const packageIdParam = String(params.get("packageId") || "").trim();
-const bidderEmailParam = String(params.get("bidder") || "").trim();
+const params = new URLSearchParams(window.location.search);
+
+const packageIdFromUrl =
+  params.get("packageId") ||
+  "";
+
+const recordIdFromUrl =
+  params.get("recordId") ||
+  "";
+
+const approvedBidderCompany =
+  params.get("company") ||
+  localStorage.getItem("axis_bidder_company_v1") ||
+  "Espin Medical";
+
+const approvedBidderEmail =
+  params.get("email") ||
+  localStorage.getItem("axis_bidder_email_v1") ||
+  "info@espinmedical.com";
+
+localStorage.setItem("axis_bidder_company_v1", approvedBidderCompany);
+localStorage.setItem("axis_bidder_email_v1", approvedBidderEmail);
+
+let activeRecordId = "";
+let bidDraft = {
+  bidder_company: approvedBidderCompany,
+  amount: "",
+  terms: "",
+  expires: ""
+};
 
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function money(n){
-  return "$" + Number(n || 0).toLocaleString();
 }
 
 function htmlSafe(v){
@@ -214,11 +249,15 @@ function htmlSafe(v){
     .replace(/'/g, "&#039;");
 }
 
+function money(n){
+  return "$" + Number(n || 0).toLocaleString();
+}
+
 function loadArray(key){
-  try{
+  try {
     const data = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(data) ? data : [];
-  }catch{
+  } catch {
     return [];
   }
 }
@@ -227,76 +266,76 @@ function saveArray(key, data){
   localStorage.setItem(key, JSON.stringify(Array.isArray(data) ? data : []));
 }
 
-function showError(msg){
-  const el = document.getElementById("errorBox");
-  el.textContent = msg;
-  el.style.display = "block";
-}
-
-function showSuccess(){
-  document.getElementById("successBox").style.display = "block";
-  document.getElementById("errorBox").style.display = "none";
-}
-
-function getPackage(){
-  const packages = loadArray(BIDDER_PORTAL_KEY);
-
-  let pkg = packages.find(p =>
-    String(p.bid_package_id || "") === packageIdParam ||
-    String(p.package_id || "") === packageIdParam
-  );
-
-  if (pkg) return pkg;
-
-  const desk = loadArray(TRADE_DESK_KEY);
-  const rec = desk.find(r => String(r.bid_package_id || "") === packageIdParam);
-
-  if (!rec) return null;
-
-  return {
-    bid_package_id: rec.bid_package_id,
-    package_id: rec.bid_package_id,
-    trade_desk_record_id: rec.id,
-    status: rec.bid_status || "Open for Bids",
-    record: rec,
-    images: Array.isArray(rec.images) ? rec.images : [],
-    released_to_bidders: Array.isArray(rec.released_to_bidders) ? rec.released_to_bidders : [],
-    bids: Array.isArray(rec.bids) ? rec.bids : []
-  };
-}
-
-function isAuthorized(pkg){
-  if (!bidderEmailParam) return true;
-
-  const released = Array.isArray(pkg.released_to_bidders)
-    ? pkg.released_to_bidders
-    : [];
-
-  if (!released.length) return true;
-
-  return released.some(b =>
-    String(b.email || "").toLowerCase().trim() === bidderEmailParam.toLowerCase().trim()
+function getBidPackageId(rec){
+  return String(
+    rec.bid_package_id ||
+    `PKG-${String(rec.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.id || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
   );
 }
 
-function imageHtml(images){
-  if (!Array.isArray(images) || !images.length) {
+function findPackage(){
+  const records = loadArray(TRADE_DESK_KEY);
+
+  if (!records.length) return null;
+
+  if (recordIdFromUrl) {
+    return records.find(r => String(r.id || "") === String(recordIdFromUrl)) || null;
+  }
+
+  if (packageIdFromUrl) {
+    return records.find(r =>
+      String(r.bid_package_id || "") === String(packageIdFromUrl) ||
+      String(getBidPackageId(r)) === String(packageIdFromUrl)
+    ) || null;
+  }
+
+  return records.find(r =>
+    r.bidder_portal_visible === true ||
+    r.bid_package_open === true ||
+    String(r.bid_status || "") === "Open for Bids" ||
+    String(r.bid_status || "") === "Bids Received"
+  ) || null;
+}
+
+function isBidFormFocused(){
+  const active = document.activeElement;
+
+  return (
+    active &&
+    (
+      active.id === "bidderCompany" ||
+      active.id === "bidAmount" ||
+      active.id === "bidTerms" ||
+      active.id === "bidExpires"
+    )
+  );
+}
+
+function syncDraftFromInputs(){
+  bidDraft.bidder_company = String(document.getElementById("bidderCompany")?.value || bidDraft.bidder_company || "").trim();
+  bidDraft.amount = String(document.getElementById("bidAmount")?.value || bidDraft.amount || "").trim();
+  bidDraft.terms = String(document.getElementById("bidTerms")?.value || bidDraft.terms || "").trim();
+  bidDraft.expires = String(document.getElementById("bidExpires")?.value || bidDraft.expires || "").trim();
+}
+
+function imageHtml(rec){
+  if (!Array.isArray(rec.images) || !rec.images.length) {
     return `<p class="small">No images included yet.</p>`;
   }
 
   return `
     <div class="image-row">
-      ${images.map(img => `
+      ${rec.images.map(img => `
         <div class="image-box">
-          <img src="${htmlSafe(img.url)}" alt="${htmlSafe(img.type || "equipment image")}">
-          <div class="small">${htmlSafe(img.title || img.type || "image")}</div>
+          <img src="${htmlSafe(img.url)}" alt="${htmlSafe(img.title || "equipment image")}">
+          <div class="small">${htmlSafe(img.title || "Equipment Image")}</div>
         </div>
       `).join("")}
     </div>
   `;
 }
 
-function fieldRows(rec){
+function tradeInFieldRows(rec){
   const rows = [
     ["Modality", rec.modality],
     ["Manufacturer", rec.make],
@@ -308,9 +347,9 @@ function fieldRows(rec){
     ["System In Use", rec.in_use_status],
     ["Date Removed From Service", rec.out_of_use_date],
     ["Availability Time Frame", rec.availability_timeframe],
-    ["Removal Pathways", rec.removal_pathways],
+    ["Describe Removal Pathways", rec.removal_pathways],
     ["Loading Dock Available", rec.loading_dock],
-    ["Hard Drives Removed", rec.hard_drive_removed],
+    ["Will Hard Drives Be Removed", rec.hard_drive_removed],
     ["Software Version", rec.software_version],
     ["Upgrade Notes", rec.upgrade_notes]
   ];
@@ -324,196 +363,304 @@ function fieldRows(rec){
     `)
     .join("");
 }
-
-function submitBid(packageId){
-  const bidder = String(document.getElementById("bidderName")?.value || "").trim();
-  const amount = Number(document.getElementById("bidAmount")?.value || 0);
-  const terms = String(document.getElementById("bidTerms")?.value || "").trim();
-  const expires = String(document.getElementById("bidExpires")?.value || "").trim();
-
-  if (!bidder || !amount) {
-    showError("Bidder name and bid amount are required.");
-    return;
-  }
-
-  let packages = loadArray(BIDDER_PORTAL_KEY);
-  let pkgIndex = packages.findIndex(p =>
-    String(p.bid_package_id || "") === packageId ||
-    String(p.package_id || "") === packageId
-  );
-
-  const pkg = getPackage();
-
-  if (!pkg) {
-    showError("Bid package not found.");
-    return;
-  }
-
-  const bid = {
-    bid_id: uid("bid"),
-    bidder,
-    bidder_email: bidderEmailParam,
-    amount,
-    terms,
-    expires,
-    submitted_at: new Date().toISOString()
-  };
-
-  const updatedPkg = {
-    ...pkg,
-    bid_package_id: pkg.bid_package_id || packageId,
-    package_id: pkg.package_id || packageId,
-    bids: [...(Array.isArray(pkg.bids) ? pkg.bids : []), bid],
-    last_bid_at: bid.submitted_at,
-    status: "Bids Received"
-  };
-
-  if (pkgIndex >= 0) {
-    packages[pkgIndex] = updatedPkg;
-  } else {
-    packages.unshift(updatedPkg);
-  }
-
-  saveArray(BIDDER_PORTAL_KEY, packages);
-
-  let desk = loadArray(TRADE_DESK_KEY);
-
-  desk = desk.map(rec => {
-    if (String(rec.bid_package_id || "") !== String(packageId)) return rec;
-
-    return {
-      ...rec,
-      bids: [...(Array.isArray(rec.bids) ? rec.bids : []), bid],
-      bid_status: "Bids Received",
-      crm_status: "Bid Received",
-      last_tradein_update_at: bid.submitted_at
-    };
-  });
-
-  saveArray(TRADE_DESK_KEY, desk);
-  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
-
-  showSuccess();
-
-  document.getElementById("bidderName").value = "";
-  document.getElementById("bidAmount").value = "";
-  document.getElementById("bidTerms").value = "";
-  document.getElementById("bidExpires").value = "";
-
-  render();
+function getBidDeadline(rec){
+  return String(
+    rec.bid_deadline ||
+    rec.bidding_ends_at ||
+    rec.bid_package?.bid_deadline ||
+    rec.bid_package?.bidding_ends_at ||
+    rec.bid_expires_at ||
+    ""
+  ).trim();
 }
 
+function formatBidDeadline(rec){
+  const raw = getBidDeadline(rec);
+
+  if (!raw) return "Not set";
+
+  const d = new Date(raw);
+
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleString();
+  }
+
+  return raw;
+}
 function render(){
-  const app = document.getElementById("app");
+  if (isBidFormFocused()) return;
 
-  if (!packageIdParam) {
-    app.innerHTML = `
+  const rec = findPackage();
+  const root = document.getElementById("packageRoot");
+
+  if (!rec) {
+    root.innerHTML = `
       <div class="panel">
-        <h2>Missing Package ID</h2>
-        <p class="small">No bid package was provided in the link.</p>
+        <h2>No open bid package found</h2>
+        <p class="small">
+          Open this page from the bid package email link, or release a package from AXIS Trade Desk first.
+        </p>
       </div>
     `;
     return;
   }
 
-  const pkg = getPackage();
+  activeRecordId = String(rec.id || "");
 
-  if (!pkg) {
-    app.innerHTML = `
-      <div class="panel">
-        <h2>Package Not Found</h2>
-        <p class="small">This bid package is not available on this browser demo storage.</p>
-      </div>
-    `;
-    return;
-  }
+  const packageId = getBidPackageId(rec);
 
-  if (!isAuthorized(pkg)) {
-    app.innerHTML = `
-      <div class="panel">
-        <h2>Not Authorized</h2>
-        <p class="small">This bidder email is not authorized for this package.</p>
-      </div>
-    `;
-    return;
-  }
+  const bidderCompanyValue =
+    bidDraft.bidder_company ||
+    approvedBidderCompany ||
+    "";
 
-  const rec = pkg.record || pkg.equipment || {};
-  const images = Array.isArray(pkg.images) && pkg.images.length
-    ? pkg.images
-    : Array.isArray(rec.images)
-    ? rec.images
-    : [];
-
-  app.innerHTML = `
+  root.innerHTML = `
     <div class="panel">
-      <div class="package-id">${htmlSafe(pkg.bid_package_id || pkg.package_id || packageIdParam)}</div>
-      <h2>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h2>
-
-      <span class="badge blue">${htmlSafe(pkg.status || rec.bid_status || "Open for Bids")}</span>
-      <span class="badge">Authorized Bid Package</span>
-
-      <div class="package-grid">
-        <div class="package-box">
-          <strong>Equipment</strong>
-          ${htmlSafe(rec.modality || "-")}<br>
-          ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}<br>
-          Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}
+      <div class="top-bar">
+        <div>
+          <div class="small">BID PACKAGE</div>
+          <h2>${htmlSafe(packageId)}</h2>
+          <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
         </div>
 
-        <div class="package-box">
-          <strong>Availability</strong>
-          ${htmlSafe(rec.availability_timeframe || "-")}<br>
-          Out of Use: ${htmlSafe(rec.out_of_use_date || "-")}
-        </div>
-
-        <div class="package-box">
-          <strong>Location</strong>
-          ${htmlSafe(rec.site || rec.axis_parent_project_name || rec.project_name || "-")}<br>
-          ${htmlSafe([rec.city, rec.state].filter(Boolean).join(", ") || "")}
-        </div>
-
-        <div class="package-box">
-          <strong>Package</strong>
-          Bid privately<br>
-          Other bids hidden
+        <div>
+          <span class="badge blue">${htmlSafe(rec.bid_status || "Open for Bids")}</span>
+          <span class="badge">${htmlSafe(rec.availability_timeframe || "Availability TBD")}</span>
         </div>
       </div>
 
+     <div class="package-grid">
+  <div class="package-box">
+    <strong>Manufacturer / Make</strong>
+    <span style="font-size:22px;font-weight:900;color:#ffffff;">
+      ${htmlSafe(rec.make || "-")}
+    </span>
+  </div>
+
+  <div class="package-box">
+    <strong>Model</strong>
+    <span style="font-size:20px;font-weight:800;">
+      ${htmlSafe(rec.model || "-")}
+    </span>
+  </div>
+
+  <div class="package-box">
+    <strong>Equipment</strong>
+    ${htmlSafe(rec.modality || "-")}<br>
+    Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}
+  </div>
+
+  <div class="package-box">
+    <strong>Bidding Ends</strong>
+    <span style="font-size:20px;font-weight:900;color:#ffd84d;">
+      ${htmlSafe(formatBidDeadline(rec))}
+    </span>
+  </div>
+
+  <div class="package-box">
+    <strong>Availability</strong>
+    ${htmlSafe(rec.availability_timeframe || "-")}<br>
+    Out of Use: ${htmlSafe(rec.out_of_use_date || "-")}
+  </div>
+
+  <div class="package-box">
+    <strong>Location</strong>
+    ${htmlSafe(rec.site || rec.axis_parent_project_name || rec.project_name || "-")}<br>
+    ${htmlSafe([rec.city, rec.state].filter(Boolean).join(", ") || "")}
+  </div>
+
+  <div class="package-box">
+    <strong>Bid Status</strong>
+    ${htmlSafe(rec.bid_status || "Open for Bids")}
+  </div>
+</div>
+
       <hr>
 
-      <h3>Equipment Details</h3>
-      ${fieldRows(rec)}
+      <h2>Equipment Details</h2>
+      ${tradeInFieldRows(rec)}
 
       <hr>
 
-      <h3>Images</h3>
-      ${imageHtml(images)}
+      <h2>Images</h2>
+      ${imageHtml(rec)}
 
       <hr>
 
-      <h3>Submit Bid</h3>
+      <h2>Submit Bid</h2>
       <p class="small">
         Your bid is submitted back to AXIS Trade Desk. Other bidders cannot see your amount.
       </p>
 
-      <input id="bidderName" placeholder="Bidder / Company Name" value="${htmlSafe(bidderEmailParam || "")}">
-      <input id="bidAmount" type="number" placeholder="Bid Amount">
-      <textarea id="bidTerms" placeholder="Terms / pickup notes"></textarea>
-      <input id="bidExpires" type="date">
+      <div id="successBox" class="success-box">
+        Bid submitted successfully to AXIS Trade Desk.
+      </div>
 
-      <button class="green" onclick="submitBid('${htmlSafe(pkg.bid_package_id || pkg.package_id || packageIdParam)}')">
-        Submit Bid
-      </button>
+      <div id="errorBox" class="error-box">
+        Enter company name and bid amount.
+      </div>
+
+      <input
+        id="bidderCompany"
+        value="${htmlSafe(bidderCompanyValue)}"
+        placeholder="Company Name"
+        autocomplete="organization"
+        oninput="syncDraftFromInputs()"
+      >
+
+      <input
+        id="bidAmount"
+        type="number"
+        value="${htmlSafe(bidDraft.amount)}"
+        placeholder="Bid Amount"
+        autocomplete="off"
+        oninput="syncDraftFromInputs()"
+      >
+
+      <textarea
+        id="bidTerms"
+        placeholder="Terms / pickup notes"
+        oninput="syncDraftFromInputs()"
+      >${htmlSafe(bidDraft.terms)}</textarea>
+
+     <input
+  id="bidExpires"
+  type="date"
+  value="${htmlSafe(bidDraft.expires)}"
+  placeholder="Your Bid Valid Until"
+  autocomplete="off"
+  oninput="syncDraftFromInputs()"
+>
+
+      <button class="green" onclick="submitBid()">Submit Bid</button>
     </div>
   `;
 }
 
-window.addEventListener("storage", (e) => {
-  if (e.key === BIDDER_PORTAL_KEY || e.key === TRADE_DESK_KEY) {
+function submitBid(){
+  syncDraftFromInputs();
+
+  const bidderCompany = String(bidDraft.bidder_company || "").trim();
+  const amount = Number(bidDraft.amount || 0);
+  const terms = String(bidDraft.terms || "").trim();
+  const expires = String(bidDraft.expires || "").trim();
+
+  const errorBox = document.getElementById("errorBox");
+  const successBox = document.getElementById("successBox");
+
+  if (errorBox) errorBox.style.display = "none";
+  if (successBox) successBox.style.display = "none";
+
+  if (!bidderCompany || !amount) {
+    if (errorBox) errorBox.style.display = "block";
+    return;
+  }
+
+  const records = loadArray(TRADE_DESK_KEY);
+
+  const index = records.findIndex(r =>
+    String(r.id || "") === String(activeRecordId) ||
+    String(r.bid_package_id || "") === String(packageIdFromUrl)
+  );
+
+  if (index < 0) {
+    alert("Bid package not found.");
+    return;
+  }
+
+  const rec = records[index];
+
+  rec.bids = Array.isArray(rec.bids) ? rec.bids : [];
+
+  const existingBidIndex = rec.bids.findIndex(b =>
+    String(b.bidder_company || b.bidder || "").toLowerCase().trim() === bidderCompany.toLowerCase().trim()
+  );
+
+  const bidPayload = {
+    bid_id: existingBidIndex >= 0 ? rec.bids[existingBidIndex].bid_id : uid("bid"),
+    bidder: bidderCompany,
+    bidder_company: bidderCompany,
+    bidder_email: approvedBidderEmail,
+    amount,
+    terms,
+    expires,
+    submitted_at: new Date().toISOString(),
+    source: "AXIS Bidder Portal"
+  };
+
+  if (existingBidIndex >= 0) {
+    rec.bids[existingBidIndex] = bidPayload;
+  } else {
+    rec.bids.push(bidPayload);
+  }
+
+  rec.bid_status = "Bids Received";
+  rec.crm_status = "Bid Received";
+  rec.quote_sync_status = rec.quote_sync_status || "Pending Bid";
+  rec.last_bid_received_at = new Date().toISOString();
+  rec.last_bidder_company = bidderCompany;
+  rec.last_bidder_email = approvedBidderEmail;
+  rec.bid_count = rec.bids.length;
+
+  records[index] = rec;
+
+  saveArray(TRADE_DESK_KEY, records);
+
+  const syncRecords = loadArray(TRADEIN_SYNC_KEY);
+  const syncIndex = syncRecords.findIndex(r =>
+    String(r.id || "") === String(rec.id || "") ||
+    String(r.axis_record_id || "") === String(rec.axis_record_id || "") ||
+    String(r.axis_parent_record_id || "") === String(rec.axis_parent_record_id || "") ||
+    String(r.bid_package_id || "") === String(rec.bid_package_id || "")
+  );
+
+  if (syncIndex >= 0) {
+    syncRecords[syncIndex] = {
+      ...syncRecords[syncIndex],
+      bids: rec.bids,
+      bid_status: rec.bid_status,
+      crm_status: rec.crm_status,
+      last_bid_received_at: rec.last_bid_received_at,
+      last_bidder_company: rec.last_bidder_company,
+      last_bidder_email: rec.last_bidder_email,
+      bid_count: rec.bid_count
+    };
+  } else {
+    syncRecords.unshift(rec);
+  }
+
+  saveArray(TRADEIN_SYNC_KEY, syncRecords);
+  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+  if (successBox) successBox.style.display = "block";
+
+  bidDraft.amount = "";
+  bidDraft.terms = "";
+  bidDraft.expires = "";
+
+  setTimeout(() => {
     render();
+  }, 900);
+}
+
+window.addEventListener("storage", e => {
+  if (
+    e.key === TRADE_DESK_KEY ||
+    e.key === TRADEIN_SYNC_KEY ||
+    e.key === MANAGER_PING_KEY
+  ) {
+    if (!isBidFormFocused()) {
+      render();
+    }
   }
 });
+
+setInterval(() => {
+  if (!isBidFormFocused()) {
+    render();
+  }
+}, 2500);
 
 render();
 </script>
