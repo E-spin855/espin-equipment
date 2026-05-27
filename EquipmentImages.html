@@ -24,7 +24,18 @@ const ADMIN_DOWNLOAD_PACKAGE_ENABLED = false;
 const userEmail = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().trim();
 
 const params = new URLSearchParams(location.search);
-
+[
+  "sales_rep_first",
+  "sales_rep_last",
+  "sales_rep_company",
+  "sales_rep_phone",
+  "sales_rep_email"
+].forEach(key => {
+  const value = params.get(key);
+  if (value) {
+    localStorage.setItem(`axis_${key}`, value);
+  }
+});
 const projectId = String(
   params.get("projectId") || params.get("id") || ""
 ).trim();
@@ -779,9 +790,56 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     ...selectedPhotos
   ];
 
-  if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber) {
+    if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber) {
     console.warn("AXIS sync missing AXIS identity fields. Images will become unmatched lead.");
   }
+
+  const axisSalesRepFirst =
+    params.get("sales_rep_first") ||
+    localStorage.getItem("axis_sales_rep_first") ||
+    lifecycleMatch.sales_rep_first ||
+    lifecycleMatch.assigned_rep_first ||
+    existing.assigned_rep_first ||
+    "";
+
+  const axisSalesRepLast =
+    params.get("sales_rep_last") ||
+    localStorage.getItem("axis_sales_rep_last") ||
+    lifecycleMatch.sales_rep_last ||
+    lifecycleMatch.assigned_rep_last ||
+    existing.assigned_rep_last ||
+    "";
+
+  const axisSalesRepCompany =
+    params.get("sales_rep_company") ||
+    localStorage.getItem("axis_sales_rep_company") ||
+    lifecycleMatch.sales_rep_company ||
+    lifecycleMatch.assigned_rep_company ||
+    existing.assigned_rep_company ||
+    "";
+
+  const axisSalesRepPhone =
+    params.get("sales_rep_phone") ||
+    localStorage.getItem("axis_sales_rep_phone") ||
+    lifecycleMatch.sales_rep_phone ||
+    lifecycleMatch.assigned_rep_phone ||
+    existing.assigned_rep_phone ||
+    "";
+
+  const axisSalesRepEmail =
+    params.get("sales_rep_email") ||
+    localStorage.getItem("axis_sales_rep_email") ||
+    lifecycleMatch.sales_rep_email ||
+    lifecycleMatch.assigned_rep_email ||
+    existing.assigned_rep_email ||
+    "";
+
+  const axisSalesRepName =
+    `${axisSalesRepFirst} ${axisSalesRepLast}`.trim() ||
+    existing.assigned_rep_name ||
+    lifecycleMatch.assigned_rep_name ||
+    axisSalesRepEmail ||
+    "";
 
   const imageSyncRecord = {
     ...existing,
@@ -866,38 +924,18 @@ function syncImagesToAxisDemo(sentPhotoIds) {
       lifecycleMatch.zip_code ||
       "",
 
-    assigned_rep_first:
-      existing.assigned_rep_first ||
-      lifecycleMatch.sales_rep_first ||
-      lifecycleMatch.assigned_rep_first ||
-      "",
+        sales_rep_first: axisSalesRepFirst,
+    sales_rep_last: axisSalesRepLast,
+    sales_rep_company: axisSalesRepCompany,
+    sales_rep_phone: axisSalesRepPhone,
+    sales_rep_email: axisSalesRepEmail,
 
-    assigned_rep_last:
-      existing.assigned_rep_last ||
-      lifecycleMatch.sales_rep_last ||
-      lifecycleMatch.assigned_rep_last ||
-      "",
-
-    assigned_rep_name:
-      existing.assigned_rep_name ||
-      lifecycleMatch.assigned_rep_name ||
-      `${lifecycleMatch.sales_rep_first || lifecycleMatch.assigned_rep_first || ""} ${lifecycleMatch.sales_rep_last || lifecycleMatch.assigned_rep_last || ""}`.trim() ||
-      "",
-
-    assigned_rep_email:
-      existing.assigned_rep_email && existing.assigned_rep_email !== "axis@demo.com"
-        ? existing.assigned_rep_email
-        : lifecycleMatch.sales_rep_email ||
-          lifecycleMatch.assigned_rep_email ||
-          lifecycleMatch.rep_email ||
-          "",
-
-    assigned_rep_phone:
-      existing.assigned_rep_phone ||
-      lifecycleMatch.sales_rep_phone ||
-      lifecycleMatch.assigned_rep_phone ||
-      lifecycleMatch.rep_phone ||
-      "",
+    assigned_rep_first: axisSalesRepFirst,
+    assigned_rep_last: axisSalesRepLast,
+    assigned_rep_name: axisSalesRepName,
+    assigned_rep_company: axisSalesRepCompany,
+    assigned_rep_phone: axisSalesRepPhone,
+    assigned_rep_email: axisSalesRepEmail,
 
     image_sync_received: true,
     image_count: mergedImages.length,

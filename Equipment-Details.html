@@ -303,6 +303,18 @@ if (auth !== "true" || !userEmail) {
 }
 
 const params = new URLSearchParams(location.search);
+[
+  "sales_rep_first",
+  "sales_rep_last",
+  "sales_rep_company",
+  "sales_rep_phone",
+  "sales_rep_email"
+].forEach(key => {
+  const value = params.get(key);
+  if (value) {
+    localStorage.setItem(`axis_${key}`, value);
+  }
+});
 const AXIS_CONTEXT = {
   axis_record_id:
     params.get("axis_record_id") ||
@@ -344,9 +356,33 @@ const AXIS_CONTEXT = {
   sync_mode:
     params.get("sync_mode") ||
     localStorage.getItem("sync_mode") ||
+    "",
+
+  sales_rep_first:
+    params.get("sales_rep_first") ||
+    localStorage.getItem("axis_sales_rep_first") ||
+    "",
+
+  sales_rep_last:
+    params.get("sales_rep_last") ||
+    localStorage.getItem("axis_sales_rep_last") ||
+    "",
+
+  sales_rep_company:
+    params.get("sales_rep_company") ||
+    localStorage.getItem("axis_sales_rep_company") ||
+    "",
+
+  sales_rep_phone:
+    params.get("sales_rep_phone") ||
+    localStorage.getItem("axis_sales_rep_phone") ||
+    "",
+
+  sales_rep_email:
+    params.get("sales_rep_email") ||
+    localStorage.getItem("axis_sales_rep_email") ||
     ""
 };
-
 Object.entries(AXIS_CONTEXT).forEach(([key, value]) => {
   if (value) localStorage.setItem(key, value);
 });
@@ -1429,30 +1465,35 @@ function normalizeAxisTradeInRecord(result) {
       ? "existing_axis_equipment"
       : "field_tradein_app");
 
-  const repEmail =
-    userEmail ||
-    localStorage.getItem("espinEquipment_userEmail") ||
-    "";
-
-  const repFirst =
-    localStorage.getItem("espinEquipment_userFirstName") ||
-    localStorage.getItem("espinEquipment_firstName") ||
+   const repFirst =
+    AXIS_CONTEXT.sales_rep_first ||
+    localStorage.getItem("axis_sales_rep_first") ||
     "";
 
   const repLast =
-    localStorage.getItem("espinEquipment_userLastName") ||
-    localStorage.getItem("espinEquipment_lastName") ||
+    AXIS_CONTEXT.sales_rep_last ||
+    localStorage.getItem("axis_sales_rep_last") ||
+    "";
+
+  const repCompany =
+    AXIS_CONTEXT.sales_rep_company ||
+    localStorage.getItem("axis_sales_rep_company") ||
+    "";
+
+  const repPhone =
+    AXIS_CONTEXT.sales_rep_phone ||
+    localStorage.getItem("axis_sales_rep_phone") ||
+    "";
+
+  const repEmail =
+    AXIS_CONTEXT.sales_rep_email ||
+    localStorage.getItem("axis_sales_rep_email") ||
+    userEmail ||
     "";
 
   const repName =
     `${repFirst} ${repLast}`.trim() ||
-    localStorage.getItem("espinEquipment_userName") ||
     repEmail ||
-    "";
-
-  const repPhone =
-    localStorage.getItem("espinEquipment_userPhone") ||
-    localStorage.getItem("espinEquipment_phone") ||
     "";
 
   return {
@@ -1512,12 +1553,18 @@ function normalizeAxisTradeInRecord(result) {
       localStorage.getItem("espinEquipment_activeProjectName") ||
       "Trade-In Field Update",
 
+       sales_rep_first: repFirst,
+    sales_rep_last: repLast,
+    sales_rep_company: repCompany,
+    sales_rep_phone: repPhone,
+    sales_rep_email: repEmail,
+
     assigned_rep_first: repFirst,
     assigned_rep_last: repLast,
     assigned_rep_name: repName,
+    assigned_rep_company: repCompany,
     assigned_rep_email: repEmail,
     assigned_rep_phone: repPhone,
-
     changed_fields: result.changedFields || [],
 
     last_tradein_update_by: repEmail,
@@ -1921,7 +1968,22 @@ async function saveData() {
       target.searchParams.set("modalityId", modalityId);
     }
 
-    target.searchParams.set("modality", effectiveModality);
+        target.searchParams.set("modality", effectiveModality);
+
+    target.searchParams.set("axis_record_id", AXIS_CONTEXT.axis_record_id || "");
+    target.searchParams.set("axis_parent_record_id", AXIS_CONTEXT.axis_parent_record_id || "");
+    target.searchParams.set("axis_project_id", AXIS_CONTEXT.axis_project_id || "");
+    target.searchParams.set("axis_serial_number", AXIS_CONTEXT.axis_serial_number || "");
+    target.searchParams.set("axis_parent_project_type", AXIS_CONTEXT.axis_parent_project_type || "");
+    target.searchParams.set("axis_parent_project_name", AXIS_CONTEXT.axis_parent_project_name || "");
+    target.searchParams.set("axis_source", AXIS_CONTEXT.axis_source || "");
+    target.searchParams.set("sync_mode", AXIS_CONTEXT.sync_mode || "");
+
+    target.searchParams.set("sales_rep_first", AXIS_CONTEXT.sales_rep_first || "");
+    target.searchParams.set("sales_rep_last", AXIS_CONTEXT.sales_rep_last || "");
+    target.searchParams.set("sales_rep_company", AXIS_CONTEXT.sales_rep_company || "");
+    target.searchParams.set("sales_rep_phone", AXIS_CONTEXT.sales_rep_phone || "");
+    target.searchParams.set("sales_rep_email", AXIS_CONTEXT.sales_rep_email || "");
 
     location.href = target.toString();
 
