@@ -412,8 +412,17 @@ function syncDraftFromInputs(recordId){
 
 function togglePackage(recordId){
   const id = String(recordId || "").trim();
+  if (!id) return;
 
-  openPackageId = openPackageId === id ? "" : id;
+  if (openPackageId === id) {
+    openPackageId = "";
+    userManuallyClosedPackage = true;
+    render();
+    return;
+  }
+
+  openPackageId = id;
+  userManuallyClosedPackage = false;
   render();
 }
 
@@ -615,7 +624,12 @@ function render(){
     return;
   }
 
-  if (!openPackageId && packages.length === 1 && (packageIdFromUrl || recordIdFromUrl)) {
+  if (
+    !userManuallyClosedPackage &&
+    !openPackageId &&
+    packages.length === 1 &&
+    (packageIdFromUrl || recordIdFromUrl)
+  ) {
     openPackageId = String(packages[0].id || "");
   }
 
@@ -661,7 +675,7 @@ function submitBid(recordId){
   );
 
   if (index < 0) {
-    alert("Bid package not found.");
+    alert("Bid package not found in Trade Desk local storage. Make sure Trade Desk page released this package first.");
     return;
   }
 
@@ -707,8 +721,7 @@ function submitBid(recordId){
 
   const packageIndex = bidderPackages.findIndex(pkg =>
     String(pkg.bid_package_id || "") === String(rec.bid_package_id || "") ||
-    String(pkg.trade_desk_record_id || "") === String(rec.id || "") ||
-    String(pkg.record?.id || "") === String(rec.id || "")
+    String(pkg.trade_desk_record_id || "") === String(rec.id || "")
   );
 
   const bidderPackagePayload = {
@@ -719,7 +732,6 @@ function submitBid(recordId){
     bid_status: rec.bid_status,
     crm_status: rec.crm_status,
     last_bid_at: rec.last_bid_received_at,
-    last_bid_received_at: rec.last_bid_received_at,
     last_bidder_company: bidderCompany,
     last_bidder_email: approvedBidderEmail,
     bid_count: rec.bids.length
@@ -745,29 +757,24 @@ function submitBid(recordId){
     String(r.bid_package_id || "") === String(rec.bid_package_id || "")
   );
 
-  const syncPayload = {
-    ...rec,
-    bids: rec.bids,
-    bid_status: rec.bid_status,
-    crm_status: rec.crm_status,
-    last_bid_received_at: rec.last_bid_received_at,
-    last_bidder_company: rec.last_bidder_company,
-    last_bidder_email: rec.last_bidder_email,
-    bid_count: rec.bid_count
-  };
-
   if (syncIndex >= 0) {
     syncRecords[syncIndex] = {
       ...syncRecords[syncIndex],
-      ...syncPayload
+      bids: rec.bids,
+      bid_status: rec.bid_status,
+      crm_status: rec.crm_status,
+      last_bid_received_at: rec.last_bid_received_at,
+      last_bidder_company: rec.last_bidder_company,
+      last_bidder_email: rec.last_bidder_email,
+      bid_count: rec.bid_count
     };
   } else {
-    syncRecords.unshift(syncPayload);
+    syncRecords.unshift(rec);
   }
 
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
-  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(syncPayload));
+  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 
   if (successBox) successBox.style.display = "block";
@@ -776,29 +783,13 @@ function submitBid(recordId){
   draft.terms = "";
   draft.expires = "";
 
+  userManuallyClosedPackage = false;
+  openPackageId = String(recordId || "");
+
   setTimeout(() => {
     render();
   }, 900);
 }
-
-window.addEventListener("storage", e => {
-  if (
-    e.key === TRADE_DESK_KEY ||
-    e.key === TRADEIN_SYNC_KEY ||
-    e.key === MANAGER_PING_KEY ||
-    e.key === BIDDER_PORTAL_KEY
-  ) {
-    if (!isBidFormFocused()) {
-      render();
-    }
-  }
-});
-
-setInterval(() => {
-  if (!isBidFormFocused()) {
-    render();
-  }
-}, 2500);
 
 render();
 </script>
