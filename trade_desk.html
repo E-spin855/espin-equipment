@@ -464,7 +464,10 @@ const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 
 const bidDrafts = {};
 let activeInfoRequestId = "";
-
+let activeBidPackageId =
+  new URLSearchParams(window.location.search).get("packageId") ||
+  localStorage.getItem("axis_trade_desk_active_package_id_v1") ||
+  "";
 const APPROVED_BIDDERS = [
   {
     company: "Espin Medical",
@@ -1277,7 +1280,6 @@ function importAutomaticIntake(){
 
   return changed;
 }
-
 function approveForBidding(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -1287,6 +1289,8 @@ function approveForBidding(id){
     alert("Record not found for approval.");
     return;
   }
+
+  const TRADE_DESK_EMAIL = "info@espinmedical.com";
 
   const modality = String(rec.modality || "").toUpperCase().trim();
 
@@ -1302,9 +1306,20 @@ function approveForBidding(id){
     );
   });
 
-  rec.bid_package_id = getBidPackageId(rec);
-  rec.bid_package_created_at = rec.bid_package_created_at || new Date().toISOString();
-  rec.bid_package_url = buildBidPackageUrl(rec);
+  if (!matchedBidders.length) {
+    alert("No matching approved bidders were found.");
+    return;
+  }
+
+  const packageId =
+    rec.bid_package_id ||
+    `PKG-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+  const packageUrl =
+    `${window.location.origin}${window.location.pathname}?packageId=${encodeURIComponent(packageId)}#bidderPortal`;
+
+  rec.bid_package_id = packageId;
+  rec.bid_package_url = packageUrl;
 
   rec.trade_desk_status = "Released to Approved Bidders";
   rec.bid_status = "Open for Bids";
@@ -1312,50 +1327,118 @@ function approveForBidding(id){
   rec.approved_by = "trade.desk@demo.com";
   rec.crm_status = "Bid Package Released";
 
+  rec.bidder_portal_visible = true;
+  rec.bid_package_open = true;
+
   rec.released_to_bidders = matchedBidders.map(b => ({
     company: b.company,
     contact: b.contact,
     email: b.email,
     region: b.region,
-    bid_package_id: rec.bid_package_id,
-    bid_package_url: rec.bid_package_url,
-    released_at: new Date().toISOString(),
-    status: "Sent / Awaiting Bid"
+    package_id: packageId,
+    package_url: packageUrl,
+    released_at: new Date().toISOString()
   }));
 
-  rec.bidder_portal_visible = true;
+  rec.bid_package = {
+    package_id: packageId,
+    package_url: packageUrl,
+    status: "Open for Bids",
+    released_at: rec.approved_for_bidding_at,
+    released_by: rec.approved_by,
+    trade_desk_email: TRADE_DESK_EMAIL,
+    equipment: {
+      modality: rec.modality || "",
+      make: rec.make || "",
+      model: rec.model || "",
+      serial_number: rec.serial_number || rec.axis_serial_number || "",
+      additional_identifier: rec.hospital_asset_id || "",
+      dom: rec.dom || "",
+      installed_date: rec.installed_date || "",
+      in_use_status: rec.in_use_status || "",
+      out_of_use_date: rec.out_of_use_date || "",
+      availability_timeframe: rec.availability_timeframe || "",
+      removal_pathways: rec.removal_pathways || "",
+      loading_dock: rec.loading_dock || "",
+      hard_drive_removed: rec.hard_drive_removed || "",
+      software_version: rec.software_version || "",
+      upgrade_notes: rec.upgrade_notes || ""
+    },
+    site: {
+      facility: rec.site || rec.axis_parent_project_name || rec.project_name || "",
+      address: rec.site_address || "",
+      city: rec.city || "",
+      state: rec.state || "",
+      zip_code: rec.zip_code || ""
+    },
+    images: Array.isArray(rec.images) ? rec.images : [],
+    released_to_bidders: rec.released_to_bidders
+  };
 
   saveData(data);
   render();
 
-  if (!matchedBidders.length) {
-    alert("Asset approved, but no matching approved bidders were found.");
-    return;
-  }
+  localStorage.setItem("axis_trade_desk_active_package_id_v1", packageId);
 
   const bidderEmails = matchedBidders
     .map(b => b.email)
     .filter(Boolean)
     .join(",");
 
+  const ccEmail = TRADE_DESK_EMAIL;
+
+  const imageLines =
+    Array.isArray(rec.images) && rec.images.length
+      ? rec.images.map((img, i) => {
+          return `${i + 1}. ${img.title || "Equipment Image"}${img.url ? `\n   ${img.url}` : ""}`;
+        }).join("\n")
+      : "No images included yet.";
+
+  const bidderList = matchedBidders
+    .map(b => `- ${b.company} / ${b.contact} / ${b.email}`)
+    .join("\n");
+
   const subject =
-    `Bid Package ${rec.bid_package_id} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
+    `Bid Package ${packageId} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
 
   const body = [
     `Hello,`,
     ``,
-    `A new AXIS digital bid package has been released for review.`,
+    `A new approved trade-in bid package has been released through AXIS Trade Desk.`,
     ``,
-    `Bid Package: ${rec.bid_package_id}`,
-    `Equipment: ${rec.modality || "-"} – ${rec.make || "-"} ${rec.model || ""}`,
+    `BID PACKAGE`,
+    `Package ID: ${packageId}`,
+    `Package Status: Open for Bids`,
+    `Bid Package Link: ${packageUrl}`,
+    ``,
+    `EQUIPMENT SUMMARY`,
+    `Modality: ${rec.modality || "-"}`,
+    `Manufacturer: ${rec.make || "-"}`,
+    `Model: ${rec.model || "-"}`,
     `Serial Number: ${rec.serial_number || rec.axis_serial_number || "-"}`,
+    `Additional Identifier: ${rec.hospital_asset_id || "-"}`,
+    `Date Manufactured / Year: ${rec.dom || "-"}`,
+    `Date Installed: ${rec.installed_date || "-"}`,
+    `System In Use: ${rec.in_use_status || "-"}`,
+    `Date Removed From Service: ${rec.out_of_use_date || "-"}`,
+    `Availability Time Frame: ${rec.availability_timeframe || "-"}`,
+    `Removal Pathways: ${rec.removal_pathways || "-"}`,
+    `Loading Dock Available: ${rec.loading_dock || "-"}`,
+    `Hard Drives Removed: ${rec.hard_drive_removed || "-"}`,
+    `Software Version: ${rec.software_version || "-"}`,
+    `Upgrade Notes: ${rec.upgrade_notes || "-"}`,
+    ``,
+    `FACILITY`,
     `Facility: ${rec.site || rec.axis_parent_project_name || rec.project_name || "-"}`,
-    `Availability: ${rec.availability_timeframe || "-"}`,
+    `Address: ${[rec.site_address, rec.city, rec.state, rec.zip_code].filter(Boolean).join(", ") || "-"}`,
     ``,
-    `Open Bid Package:`,
-    rec.bid_package_url,
+    `IMAGES`,
+    imageLines,
     ``,
-    `The package includes equipment details, availability notes, logistics information, uploaded images, and the bid submission form.`,
+    `APPROVED BIDDERS ON THIS RELEASE`,
+    bidderList,
+    ``,
+    `Please open the Bid Package link, review the equipment details and images, and submit your bid through the Bidder Portal section.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1363,12 +1446,12 @@ function approveForBidding(id){
 
   const mailto =
     `mailto:${encodeURIComponent(bidderEmails)}` +
-    `?subject=${encodeURIComponent(subject)}` +
+    `?cc=${encodeURIComponent(ccEmail)}` +
+    `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
   window.location.href = mailto;
 }
-
 function openInfoRequestModal(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -2289,7 +2372,8 @@ function render(){
         <div class="kv"><strong>Trade Desk Status:</strong> ${htmlSafe(rec.trade_desk_status || "-")}</div>
         <div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
         <div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
-        <div class="kv"><strong>Bid Package:</strong> ${htmlSafe(rec.bid_package_id || "Not created")}</div>
+        <div class="kv"><strong>Bid Package:</strong> ${htmlSafe(getBidPackageId(rec))}</div>
+        <div class="kv"><strong>Package URL:</strong> ${htmlSafe(rec.bid_package_url || "Not released")}</div>
         <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
         ${renderInfoRequestSummary(rec)}
@@ -2314,16 +2398,28 @@ function render(){
       </div>
     `;
 
-    if (
+    const isReleasedToBidders =
       rec.bidder_portal_visible === true ||
-      (rec.trade_desk_status || "").includes("Released") ||
-      (rec.bid_status || "") !== "Not Released"
-    ) {
+      rec.bid_package_open === true ||
+      String(rec.trade_desk_status || "").includes("Released") ||
+      String(rec.trade_desk_status || "").includes("Approved") ||
+      String(rec.bid_status || "") === "Open for Bids" ||
+      String(rec.bid_status || "") === "Bids Received" ||
+      String(rec.bid_status || "") === "Awarded";
+
+    const packageId = getBidPackageId(rec);
+
+    const packageMatches =
+      !activeBidPackageId ||
+      String(packageId || "") === String(activeBidPackageId || "") ||
+      String(rec.id || "") === String(activeBidPackageId || "");
+
+    if (isReleasedToBidders && packageMatches) {
       bidderPortal.innerHTML += `
         <div class="queue-card">
           <div>
             <div class="queue-title">
-              ${htmlSafe(getBidPackageId(rec))}
+              ${htmlSafe(packageId)}
             </div>
             <div class="small">
               ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}
@@ -2382,6 +2478,10 @@ function render(){
     `;
   });
 
+  if (!bidderPortal.innerHTML.trim()) {
+    bidderPortal.innerHTML = "<p class='small'>No open bid packages yet.</p>";
+  }
+
   repQuotes.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
 }
 
@@ -2391,7 +2491,8 @@ window.addEventListener("storage", (e) => {
     e.key === AXIS_TRADE_DESK_INBOX_KEY ||
     e.key === MANAGER_PING_KEY ||
     e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY
+    e.key === TRADEIN_SYNC_KEY ||
+    e.key === "axis_trade_desk_active_package_id_v1"
   ) {
     if (!isBidInputFocused()) {
       render();
@@ -2411,16 +2512,30 @@ importAutomaticIntake();
 render();
 
 window.addEventListener("load", () => {
+  const params = new URLSearchParams(window.location.search);
+  const packageId = params.get("packageId");
+
+  if (packageId) {
+    activeBidPackageId = packageId;
+    localStorage.setItem("axis_trade_desk_active_package_id_v1", packageId);
+    render();
+  }
+
   if (location.hash.startsWith("#bidPackage_")) {
     const id = decodeURIComponent(location.hash.replace("#bidPackage_", ""));
-    setTimeout(() => openBidPackage(id), 300);
+
+    setTimeout(() => {
+      openBidPackage(id);
+    }, 300);
   }
 
   if (location.hash === "#bidderPortal") {
-    document.getElementById("bidderPortal")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start"
-    });
+    setTimeout(() => {
+      document.getElementById("bidderPortal")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }, 250);
   }
 });
 </script>
