@@ -293,7 +293,13 @@ hr{
 </div>
 
 <div id="packageRoot"></div>
-
+<div id="imagePreviewOverlay" class="image-preview-overlay" onclick="closeImagePreview()">
+  <div class="image-preview-box" onclick="event.stopPropagation();">
+    <img id="imagePreviewImg" src="" alt="Image preview">
+    <div id="imagePreviewTitle" class="image-preview-title"></div>
+    <button class="image-preview-close" onclick="closeImagePreview()">Close Preview</button>
+  </div>
+</div>
 <script>
 const TRADE_DESK_KEY = "axis_trade_desk_demo_v1";
 const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
@@ -336,7 +342,25 @@ function htmlSafe(v){
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+function openImagePreview(url, title){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+  const titleEl = document.getElementById("imagePreviewTitle");
 
+  if (!overlay || !img || !titleEl) return;
+
+  img.src = url || "";
+  titleEl.textContent = title || "Equipment Image";
+  overlay.style.display = "flex";
+}
+
+function closeImagePreview(){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+
+  if (img) img.src = "";
+  if (overlay) overlay.style.display = "none";
+}
 function idSafe(v){
   return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
@@ -478,16 +502,23 @@ function imageHtml(rec){
 
   return `
     <div class="image-row">
-      ${rec.images.map(img => `
-        <div class="image-box">
-          <img src="${htmlSafe(img.url)}" alt="${htmlSafe(img.title || "equipment image")}">
-          <div class="small">${htmlSafe(img.title || "Equipment Image")}</div>
-        </div>
-      `).join("")}
+      ${rec.images.map(img => {
+        const url = htmlSafe(img.url || "");
+        const title = htmlSafe(img.title || img.type || "Equipment Image");
+
+        return `
+          <div class="image-box" onclick="openImagePreview('${url}', '${title}')" style="cursor:pointer;">
+            <img src="${url}" alt="${title}">
+            <div class="small">${title}</div>
+            <div class="small" style="color:#41ff9c;font-weight:800;margin-top:4px;">
+              Click to preview
+            </div>
+          </div>
+        `;
+      }).join("")}
     </div>
   `;
 }
-
 function tradeInFieldRows(rec){
   const rows = [
     ["Modality", rec.modality],
