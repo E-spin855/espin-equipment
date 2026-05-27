@@ -1,0 +1,522 @@
+<!-- FILE: bidder_portal.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AXIS Bidder Portal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+  font-family:Arial;
+  background:#07111f;
+  color:#eef6ff;
+  margin:0;
+  padding:20px;
+}
+
+h1,h2,h3{
+  margin:0 0 12px;
+}
+
+.panel{
+  background:#0b1830;
+  border:1px solid #23415f;
+  border-radius:14px;
+  padding:18px;
+  margin-bottom:16px;
+  max-width:980px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.card{
+  background:#101f38;
+  border:1px solid #2b4a68;
+  border-radius:12px;
+  padding:14px;
+  margin:10px 0;
+}
+
+input,textarea,button{
+  width:100%;
+  box-sizing:border-box;
+  padding:12px;
+  margin:6px 0;
+  border-radius:10px;
+  border:1px solid #345;
+  color:#fff;
+  background:#10233f;
+  font-size:15px;
+}
+
+button{
+  background:#1d8cff;
+  cursor:pointer;
+  border:none;
+  font-weight:bold;
+}
+
+button.green{
+  background:#18a558;
+}
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.small{
+  color:#9db6d2;
+  font-size:13px;
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:20px;
+  background:#263f5f;
+  margin:3px 3px 3px 0;
+  font-size:12px;
+}
+
+.blue{background:#1d8cff}
+.greenBadge{background:#18a558}
+.gold{background:#b8860b}
+
+.kv{
+  margin:6px 0;
+  font-size:14px;
+}
+
+.kv strong{
+  color:#fff;
+}
+
+hr{
+  border:0;
+  border-top:1px solid #2b4a68;
+  margin:14px 0;
+}
+
+.package-id{
+  color:#9db6d2;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+
+.package-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:10px;
+  margin-top:10px;
+}
+
+.package-box{
+  border:1px solid #2b4a68;
+  background:#07111f;
+  border-radius:10px;
+  padding:10px;
+}
+
+.package-box strong{
+  display:block;
+  margin-bottom:5px;
+}
+
+.image-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:8px;
+}
+
+.image-box{
+  border:1px solid #2b4a68;
+  border-radius:10px;
+  padding:6px;
+  background:#07111f;
+  width:150px;
+}
+
+.image-box img{
+  width:100%;
+  height:105px;
+  object-fit:cover;
+  border-radius:8px;
+  display:block;
+}
+
+.success-box{
+  background:rgba(24,165,88,.12);
+  border:1px solid rgba(24,165,88,.45);
+  color:#b9ffd6;
+  padding:12px;
+  border-radius:12px;
+  margin:12px 0;
+  font-size:14px;
+  font-weight:700;
+  display:none;
+}
+
+.error-box{
+  background:rgba(192,57,43,.12);
+  border:1px solid rgba(192,57,43,.45);
+  color:#ffd0d0;
+  padding:12px;
+  border-radius:12px;
+  margin:12px 0;
+  font-size:14px;
+  font-weight:700;
+  display:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="panel">
+  <h1>AXIS Bidder Portal</h1>
+  <p class="small">
+    Review the authorized bid package below and submit your bid. Other bidder activity is not visible on this page.
+  </p>
+
+  <div id="successBox" class="success-box">Bid submitted successfully.</div>
+  <div id="errorBox" class="error-box"></div>
+</div>
+
+<div id="app"></div>
+
+<script>
+const TRADE_DESK_KEY = "axis_trade_desk_demo_v1";
+const BIDDER_PORTAL_KEY = "axis_bidder_portal_packages_v1";
+const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
+
+const params = new URLSearchParams(location.search);
+const packageIdParam = String(params.get("packageId") || "").trim();
+const bidderEmailParam = String(params.get("bidder") || "").trim();
+
+function uid(prefix){
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function money(n){
+  return "$" + Number(n || 0).toLocaleString();
+}
+
+function htmlSafe(v){
+  return String(v || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function loadArray(key){
+  try{
+    const data = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(data) ? data : [];
+  }catch{
+    return [];
+  }
+}
+
+function saveArray(key, data){
+  localStorage.setItem(key, JSON.stringify(Array.isArray(data) ? data : []));
+}
+
+function showError(msg){
+  const el = document.getElementById("errorBox");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+function showSuccess(){
+  document.getElementById("successBox").style.display = "block";
+  document.getElementById("errorBox").style.display = "none";
+}
+
+function getPackage(){
+  const packages = loadArray(BIDDER_PORTAL_KEY);
+
+  let pkg = packages.find(p =>
+    String(p.bid_package_id || "") === packageIdParam ||
+    String(p.package_id || "") === packageIdParam
+  );
+
+  if (pkg) return pkg;
+
+  const desk = loadArray(TRADE_DESK_KEY);
+  const rec = desk.find(r => String(r.bid_package_id || "") === packageIdParam);
+
+  if (!rec) return null;
+
+  return {
+    bid_package_id: rec.bid_package_id,
+    package_id: rec.bid_package_id,
+    trade_desk_record_id: rec.id,
+    status: rec.bid_status || "Open for Bids",
+    record: rec,
+    images: Array.isArray(rec.images) ? rec.images : [],
+    released_to_bidders: Array.isArray(rec.released_to_bidders) ? rec.released_to_bidders : [],
+    bids: Array.isArray(rec.bids) ? rec.bids : []
+  };
+}
+
+function isAuthorized(pkg){
+  if (!bidderEmailParam) return true;
+
+  const released = Array.isArray(pkg.released_to_bidders)
+    ? pkg.released_to_bidders
+    : [];
+
+  if (!released.length) return true;
+
+  return released.some(b =>
+    String(b.email || "").toLowerCase().trim() === bidderEmailParam.toLowerCase().trim()
+  );
+}
+
+function imageHtml(images){
+  if (!Array.isArray(images) || !images.length) {
+    return `<p class="small">No images included yet.</p>`;
+  }
+
+  return `
+    <div class="image-row">
+      ${images.map(img => `
+        <div class="image-box">
+          <img src="${htmlSafe(img.url)}" alt="${htmlSafe(img.type || "equipment image")}">
+          <div class="small">${htmlSafe(img.title || img.type || "image")}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function fieldRows(rec){
+  const rows = [
+    ["Modality", rec.modality],
+    ["Manufacturer", rec.make],
+    ["Model", rec.model],
+    ["Serial Number", rec.serial_number || rec.axis_serial_number],
+    ["Additional Identifier", rec.hospital_asset_id],
+    ["Date Manufactured / Year", rec.dom],
+    ["Date Installed", rec.installed_date],
+    ["System In Use", rec.in_use_status],
+    ["Date Removed From Service", rec.out_of_use_date],
+    ["Availability Time Frame", rec.availability_timeframe],
+    ["Removal Pathways", rec.removal_pathways],
+    ["Loading Dock Available", rec.loading_dock],
+    ["Hard Drives Removed", rec.hard_drive_removed],
+    ["Software Version", rec.software_version],
+    ["Upgrade Notes", rec.upgrade_notes]
+  ];
+
+  return rows
+    .filter(([label, value]) => String(value || "").trim())
+    .map(([label, value]) => `
+      <div class="kv">
+        <strong>${htmlSafe(label)}:</strong> ${htmlSafe(value || "-")}
+      </div>
+    `)
+    .join("");
+}
+
+function submitBid(packageId){
+  const bidder = String(document.getElementById("bidderName")?.value || "").trim();
+  const amount = Number(document.getElementById("bidAmount")?.value || 0);
+  const terms = String(document.getElementById("bidTerms")?.value || "").trim();
+  const expires = String(document.getElementById("bidExpires")?.value || "").trim();
+
+  if (!bidder || !amount) {
+    showError("Bidder name and bid amount are required.");
+    return;
+  }
+
+  let packages = loadArray(BIDDER_PORTAL_KEY);
+  let pkgIndex = packages.findIndex(p =>
+    String(p.bid_package_id || "") === packageId ||
+    String(p.package_id || "") === packageId
+  );
+
+  const pkg = getPackage();
+
+  if (!pkg) {
+    showError("Bid package not found.");
+    return;
+  }
+
+  const bid = {
+    bid_id: uid("bid"),
+    bidder,
+    bidder_email: bidderEmailParam,
+    amount,
+    terms,
+    expires,
+    submitted_at: new Date().toISOString()
+  };
+
+  const updatedPkg = {
+    ...pkg,
+    bid_package_id: pkg.bid_package_id || packageId,
+    package_id: pkg.package_id || packageId,
+    bids: [...(Array.isArray(pkg.bids) ? pkg.bids : []), bid],
+    last_bid_at: bid.submitted_at,
+    status: "Bids Received"
+  };
+
+  if (pkgIndex >= 0) {
+    packages[pkgIndex] = updatedPkg;
+  } else {
+    packages.unshift(updatedPkg);
+  }
+
+  saveArray(BIDDER_PORTAL_KEY, packages);
+
+  let desk = loadArray(TRADE_DESK_KEY);
+
+  desk = desk.map(rec => {
+    if (String(rec.bid_package_id || "") !== String(packageId)) return rec;
+
+    return {
+      ...rec,
+      bids: [...(Array.isArray(rec.bids) ? rec.bids : []), bid],
+      bid_status: "Bids Received",
+      crm_status: "Bid Received",
+      last_tradein_update_at: bid.submitted_at
+    };
+  });
+
+  saveArray(TRADE_DESK_KEY, desk);
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+  showSuccess();
+
+  document.getElementById("bidderName").value = "";
+  document.getElementById("bidAmount").value = "";
+  document.getElementById("bidTerms").value = "";
+  document.getElementById("bidExpires").value = "";
+
+  render();
+}
+
+function render(){
+  const app = document.getElementById("app");
+
+  if (!packageIdParam) {
+    app.innerHTML = `
+      <div class="panel">
+        <h2>Missing Package ID</h2>
+        <p class="small">No bid package was provided in the link.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const pkg = getPackage();
+
+  if (!pkg) {
+    app.innerHTML = `
+      <div class="panel">
+        <h2>Package Not Found</h2>
+        <p class="small">This bid package is not available on this browser demo storage.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!isAuthorized(pkg)) {
+    app.innerHTML = `
+      <div class="panel">
+        <h2>Not Authorized</h2>
+        <p class="small">This bidder email is not authorized for this package.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const rec = pkg.record || pkg.equipment || {};
+  const images = Array.isArray(pkg.images) && pkg.images.length
+    ? pkg.images
+    : Array.isArray(rec.images)
+    ? rec.images
+    : [];
+
+  app.innerHTML = `
+    <div class="panel">
+      <div class="package-id">${htmlSafe(pkg.bid_package_id || pkg.package_id || packageIdParam)}</div>
+      <h2>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h2>
+
+      <span class="badge blue">${htmlSafe(pkg.status || rec.bid_status || "Open for Bids")}</span>
+      <span class="badge">Authorized Bid Package</span>
+
+      <div class="package-grid">
+        <div class="package-box">
+          <strong>Equipment</strong>
+          ${htmlSafe(rec.modality || "-")}<br>
+          ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}<br>
+          Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}
+        </div>
+
+        <div class="package-box">
+          <strong>Availability</strong>
+          ${htmlSafe(rec.availability_timeframe || "-")}<br>
+          Out of Use: ${htmlSafe(rec.out_of_use_date || "-")}
+        </div>
+
+        <div class="package-box">
+          <strong>Location</strong>
+          ${htmlSafe(rec.site || rec.axis_parent_project_name || rec.project_name || "-")}<br>
+          ${htmlSafe([rec.city, rec.state].filter(Boolean).join(", ") || "")}
+        </div>
+
+        <div class="package-box">
+          <strong>Package</strong>
+          Bid privately<br>
+          Other bids hidden
+        </div>
+      </div>
+
+      <hr>
+
+      <h3>Equipment Details</h3>
+      ${fieldRows(rec)}
+
+      <hr>
+
+      <h3>Images</h3>
+      ${imageHtml(images)}
+
+      <hr>
+
+      <h3>Submit Bid</h3>
+      <p class="small">
+        Your bid is submitted back to AXIS Trade Desk. Other bidders cannot see your amount.
+      </p>
+
+      <input id="bidderName" placeholder="Bidder / Company Name" value="${htmlSafe(bidderEmailParam || "")}">
+      <input id="bidAmount" type="number" placeholder="Bid Amount">
+      <textarea id="bidTerms" placeholder="Terms / pickup notes"></textarea>
+      <input id="bidExpires" type="date">
+
+      <button class="green" onclick="submitBid('${htmlSafe(pkg.bid_package_id || pkg.package_id || packageIdParam)}')">
+        Submit Bid
+      </button>
+    </div>
+  `;
+}
+
+window.addEventListener("storage", (e) => {
+  if (e.key === BIDDER_PORTAL_KEY || e.key === TRADE_DESK_KEY) {
+    render();
+  }
+});
+
+render();
+</script>
+
+</body>
+</html>
