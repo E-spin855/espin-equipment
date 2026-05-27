@@ -72,24 +72,49 @@ function buildImageSrc(photoUrl) {
   return isHttpUrl(raw) ? raw : null;
 }
 
-function buildEquipmentHtml(details = {}) {
-  const data =
-    details && typeof details.data === "object" && details.data !== null
-      ? details.data
-      : details;
+function buildEquipmentHtml(details = {}, fallbackModality = "") {
+  let data = {};
 
-  const modality = String(details.modality || data.modality || "").toLowerCase();
+  if (details && typeof details.data === "object" && details.data !== null) {
+    data = details.data;
+  } else if (typeof details.data === "string") {
+    try {
+      data = JSON.parse(details.data);
+    } catch {
+      data = {};
+    }
+  }
 
-  const prefixMap = {
-    ct: "ct_",
-    mri: "mri_",
-    xray: "xray_",
-    carm: "carm_",
-    pet: "pet_",
-    petct: "pet_",
-    mamo: "mamo_",
-    other: "other_"
-  };
+  const modalityRaw = String(
+    details.modality ||
+    data.modality ||
+    data.tradein_equipment_modality ||
+    fallbackModality ||
+    ""
+  ).trim();
+
+  const modality = modalityRaw.toLowerCase();
+
+ const prefixMap = {
+  ct: "ct_",
+  "computed-tomography": "ct_",
+  mri: "mri_",
+  mr: "mri_",
+  xray: "xray_",
+  "x-ray": "xray_",
+  x_ray: "xray_",
+  carm: "carm_",
+  "c-arm": "carm_",
+  c_arm: "carm_",
+  pet: "pet_",
+  petct: "pet_",
+  "pet/ct": "pet_",
+  "pet-ct": "pet_",
+  mamo: "mamo_",
+  mammo: "mamo_",
+  mammography: "mamo_",
+  other: "other_"
+};
 
   const activePrefix = prefixMap[modality] || "";
 
@@ -111,7 +136,10 @@ function buildEquipmentHtml(details = {}) {
     });
 
     for (const k of keys) {
-      const v = details[k] ?? data[k];
+      const v =
+  details[k] ??
+  data[k] ??
+  details.data?.[k];
       if (v !== undefined && v !== null && v !== "") return v;
     }
 
