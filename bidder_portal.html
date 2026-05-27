@@ -528,81 +528,133 @@ function tradeInFieldRows(rec){
     return "";
   };
 
-  const rows = [
-    ["Modality", getV("modality", "tradein_equipment_modality")],
-    ["Manufacturer", getV("make", "tradein_equipment_make")],
-    ["Model", getV("model", "tradein_equipment_model")],
-    ["Serial Number", getV("serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-    ["Additional Identifier", getV("hospital_asset_id", "additional_identifier")],
-    ["Date Manufactured / Year", getV("dom", "tradein_equipment_dom")],
-    ["Date Installed", getV("installed_date", "tradein_installed_date")],
-    ["System In Use", getV("in_use_status", "tradein_in_use_status")],
-    ["Date Removed From Service", getV("out_of_use_date", "tradein_out_of_use_date")],
-    ["Availability Time Frame", getV("availability_timeframe", "tradein_availability_timeframe")],
-    ["Removal Pathways", getV("removal_pathways", "tradein_removal_pathways")],
-    ["Loading Dock Available", getV("loading_dock", "tradein_loading_dock")],
-    ["Will Hard Drives Be Removed", getV("hard_drive_removed", "tradein_hard_drive_removed")],
-    ["Software Version", getV("software_version", "tradein_software_version")],
-    ["Upgrade Notes", getV("upgrade_notes", "tradein_upgrade_notes")]
-  ];
+  const yesNo = (v) => {
+    const s = String(v || "").trim().toLowerCase();
+    if (["yes", "y", "true", "1"].includes(s)) return "Yes";
+    if (["no", "n", "false", "0"].includes(s)) return "No";
+    return v;
+  };
 
-  const modality = String(getV("modality", "tradein_equipment_modality")).toUpperCase();
+  const city = getV("city");
+  const state = getV("state");
+  const zip = getV("zip_code", "zip");
+
+  const location = [city, state, zip].filter(Boolean).join(" ");
+
+  const modality = String(
+    getV("modality", "tradein_equipment_modality")
+  ).toUpperCase();
+
+  const rows = [
+    ["Location", location],
+    ["Modality", getV("modality", "tradein_equipment_modality")]
+  ];
 
   if (modality === "CT") {
     rows.push(
-      ["CT Number of Slices", getV("ct_slices")],
-      ["CT Tube mAs / Scan/sec", getV("ct_tube_mas")],
-      ["CT Tube Size (mHu)", getV("ct_mhu")],
-      ["CT Tube DOM", getV("ct_tube_dom")],
-      ["CT Tube Installation Date", getV("ct_tube_installation_date")],
-      ["CT GOC Version", getV("ct_goc_version")],
-      ["CT Upgrades", getV("ct_upgrades")],
-      ["CT Upgrades Description", getV("ct_upgrades_desc")],
-      ["CT Injector", getV("ct_injector")],
+      ["CT Model", getV("ct_model", "model", "tradein_equipment_model")],
+      ["CT Manufacturer", getV("ct_manufacturer", "make", "tradein_equipment_make")],
+      ["CT Serial", getV("ct_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["CT Installed", getV("ct_installed", "installed_date")],
+      ["CT Dom", getV("ct_dom", "dom", "tradein_equipment_dom")],
+      ["CT Tube Dom", getV("ct_tube_dom")],
+      ["CT Mhu", getV("ct_mhu")],
+      ["CT Tube Mas", getV("ct_tube_mas")],
+      ["CT Slices", getV("ct_slices")],
+      ["CT In Use", yesNo(getV("ct_in_use", "in_use_status", "tradein_in_use_status"))],
+      ["CT Out Of Use Date", getV("ct_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["CT Injector", yesNo(getV("ct_injector"))],
       ["CT Injector Model", getV("ct_injector_model")],
-      ["CT Chiller", getV("ct_chiller")]
+      ["CT Upgrades", yesNo(getV("ct_upgrades"))],
+      ["CT Upgrades Description", getV("ct_upgrades_desc", "upgrade_notes", "tradein_upgrade_notes")],
+      ["CT Hard Drives Removed", yesNo(getV("ct_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
+      ["CT Removal Pathways", getV("ct_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
+      ["CT Availability Time Frame", getV("ct_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
     );
   }
 
   if (modality === "MRI") {
     rows.push(
+      ["MRI Manufacturer", getV("mri_manufacturer", "make", "tradein_equipment_make")],
+      ["MRI Model", getV("mri_model", "model", "tradein_equipment_model")],
+      ["MRI Serial", getV("mri_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["MRI Year", getV("mri_yom", "dom", "tradein_equipment_dom")],
       ["MRI Magnet Type", getV("mri_magnet_type")],
       ["MRI Bore Size", getV("mri_bore_size_cm")],
-      ["MRI Number of Channels", getV("mri_num_channels")],
+      ["MRI Channels", getV("mri_num_channels")],
       ["MRI Gradient", getV("mri_gradient")],
+      ["MRI Software Version", getV("mri_sw_version", "software_version", "tradein_software_version")],
       ["MRI Coils", getV("mri_coils")],
-      ["MRI Service", getV("mri_service")],
-      ["MRI Service Company", getV("mri_service_name")]
-    );
-  }
-
-  if (modality === "MAMMO") {
-    rows.push(
-      ["Mammography 2D / 3D", getV("mamo_dimensionality")],
-      ["Mammography Stereotactic Options", getV("mamo_stereotactic_options")],
-      ["Mammography CAD", getV("mamo_cad")]
+      ["MRI Service", yesNo(getV("mri_service"))],
+      ["MRI Service Name", getV("mri_service_name")],
+      ["MRI In Use", yesNo(getV("mri_in_use", "in_use_status", "tradein_in_use_status"))],
+      ["MRI Out Of Use Date", getV("mri_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["MRI Hard Drives Removed", yesNo(getV("mri_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
+      ["MRI Removal Pathways", getV("mri_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
+      ["MRI Availability Time Frame", getV("mri_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
     );
   }
 
   if (modality === "XRAY") {
     rows.push(
-      ["X-Ray Floor Mounted", getV("xray_floor_mounted")],
-      ["X-Ray Ceiling Mounted", getV("xray_ceiling_mounted")]
+      ["X-Ray Manufacturer", getV("xray_manufacturer", "make", "tradein_equipment_make")],
+      ["X-Ray Model", getV("xray_model", "model", "tradein_equipment_model")],
+      ["X-Ray Serial", getV("xray_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["X-Ray DOM", getV("xray_dom", "dom", "tradein_equipment_dom")],
+      ["X-Ray Floor Mounted", yesNo(getV("xray_floor_mounted"))],
+      ["X-Ray Ceiling Mounted", yesNo(getV("xray_ceiling_mounted"))],
+      ["X-Ray In Use", yesNo(getV("xray_in_use", "in_use_status", "tradein_in_use_status"))],
+      ["X-Ray Out Of Use Date", getV("xray_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["X-Ray Loading Dock", getV("xray_loading_dock", "loading_dock", "tradein_loading_dock")],
+      ["X-Ray Availability Time Frame", getV("xray_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
     );
   }
 
   if (modality === "CARM" || modality === "C-ARM") {
     rows.push(
-      ["C-Arm Monitor Type", getV("carm_monitors")],
-      ["C-Arm Image Intensifier Size", getV("carm_image_intensifier")]
+      ["C-Arm Manufacturer", getV("carm_manufacturer", "make", "tradein_equipment_make")],
+      ["C-Arm Model", getV("carm_model", "model", "tradein_equipment_model")],
+      ["C-Arm Serial", getV("carm_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["C-Arm DOM", getV("carm_dom", "dom", "tradein_equipment_dom")],
+      ["C-Arm Monitors", getV("carm_monitors")],
+      ["C-Arm Image Intensifier", getV("carm_image_intensifier")],
+      ["C-Arm Software Version", getV("carm_sw_version", "software_version", "tradein_software_version")],
+      ["C-Arm In Use", yesNo(getV("carm_in_use", "in_use_status", "tradein_in_use_status"))],
+      ["C-Arm Out Of Use Date", getV("carm_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["C-Arm Hard Drives Removed", yesNo(getV("carm_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
+      ["C-Arm Availability Time Frame", getV("carm_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
     );
   }
 
   if (modality === "PET" || modality === "PETCT") {
     rows.push(
-      ["PET/CT Slice Count", getV("pet_ct_slices")],
-      ["PET/CT Tube DOM", getV("pet_tube_dom")],
-      ["PET/CT Tube mAs / Scan/sec", getV("pet_tube_mas")]
+      ["PET Manufacturer", getV("pet_manufacturer", "make", "tradein_equipment_make")],
+      ["PET Model", getV("pet_model", "model", "tradein_equipment_model")],
+      ["PET Serial", getV("pet_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["PET DOM", getV("pet_dom", "dom", "tradein_equipment_dom")],
+      ["PET Tube DOM", getV("pet_tube_dom")],
+      ["PET Out Of Use Date", getV("pet_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["PET Hard Drives Removed", yesNo(getV("pet_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
+      ["PET Loading Dock", getV("pet_loading_dock", "loading_dock", "tradein_loading_dock")],
+      ["PET Availability Time Frame", getV("pet_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+    );
+  }
+
+  if (modality === "MAMMO") {
+    rows.push(
+      ["Mammo Manufacturer", getV("mamo_manufacturer", "make", "tradein_equipment_make")],
+      ["Mammo Model", getV("mamo_model", "model", "tradein_equipment_model")],
+      ["Mammo Serial", getV("mamo_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
+      ["Mammo DOM", getV("mamo_dom", "dom", "tradein_equipment_dom")],
+      ["Mammo 2D/3D", getV("mamo_dimensionality")],
+      ["Mammo Stereotactic", getV("mamo_stereotactic_options")],
+      ["Mammo CAD", getV("mamo_cad")],
+      ["Mammo In Use", yesNo(getV("mamo_in_use", "in_use_status", "tradein_in_use_status"))],
+      ["Mammo Out Of Use Date", getV("mamo_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
+      ["Mammo Removal Pathways", getV("mamo_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
+      ["Mammo Hard Drives Removed", yesNo(getV("mamo_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
+      ["Mammo Loading Dock", getV("mamo_loading_dock", "loading_dock", "tradein_loading_dock")],
+      ["Mammo Availability Time Frame", getV("mamo_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
     );
   }
 
