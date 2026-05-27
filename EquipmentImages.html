@@ -554,36 +554,23 @@ function appendCard(p, badgeSet){
   };
 
   // ===== TITLE =====
-  title.oninput = async () => {
-    p.photo_title = title.value;
+  title.oninput = () => {
+  p.photo_title = title.value;
 
-    // 🔥 RED FRAME
-    if ((p.photo_title || "").trim()) {
-      card.classList.remove("missing-title");
-    } 
-    // 🔥 REMOVE NEW BADGE ON INTERACTION
-    const cur = getActiveBadges();
-    const idx = cur.indexOf(pid);
-    if (idx !== -1) {
-      cur.splice(idx, 1);
-      saveBadgesLocally(cur);
-    }
+  if ((p.photo_title || "").trim()) {
+    card.classList.remove("missing-title");
+  }
 
-    await fetch(`/api/equipment-photos/photo-update`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-email": userEmail
-      },
-      body: JSON.stringify({
-        photoId: p.id,
-        photo_title: p.photo_title
-      })
-    });
+  const cur = getActiveBadges();
+  const idx = cur.indexOf(pid);
 
-    updateBatchState();
-  };
+  if (idx !== -1) {
+    cur.splice(idx, 1);
+    saveBadgesLocally(cur);
+  }
 
+  updateBatchState();
+};
   // ===== NOTE =====
   note.oninput = async () => {
     p.photo_comment = note.value;
@@ -744,11 +731,6 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     localStorage.getItem("axis_parent_project_type") ||
     "";
 
-  const axisParentProjectName =
-    params.get("axis_parent_project_name") ||
-    localStorage.getItem("axis_parent_project_name") ||
-    "";
-
   const axisSource =
     params.get("axis_source") ||
     localStorage.getItem("axis_source") ||
@@ -757,37 +739,55 @@ function syncImagesToAxisDemo(sentPhotoIds) {
   const syncMode =
     params.get("sync_mode") ||
     localStorage.getItem("sync_mode") ||
-    (
-      axisRecordId || axisParentRecordId || axisProjectId
-        ? "update_existing_axis_record"
-        : "create_unmatched_tradein_lead"
-    );
+    "update_existing_axis_record";
 
+  const existingIndex = records.findIndex(r =>
+    String(r.axis_record_id || "") === String(axisRecordId || "") ||
+    String(r.axis_parent_record_id || "") === String(axisParentRecordId || "") ||
+    String(r.axis_project_id || "") === String(axisProjectId || "") ||
+    (
+      axisSerialNumber &&
+      String(r.axis_serial_number || r.serial_number || "") === String(axisSerialNumber)
+    )
+  );
+
+  const existing = existingIndex >= 0 ? records[existingIndex] : {};
+
+  const mergedImages = [
+    ...((existing.images || []).filter(img =>
+      !selectedPhotos.some(p => String(p.id) === String(img.id))
+    )),
+    ...selectedPhotos
+  ];
+if (!axisRecordId && !axisParentRecordId && !axisProjectId && !axisSerialNumber) {
+  console.warn("AXIS sync missing AXIS identity fields. Images will become unmatched lead.");
+}
   const imageSyncRecord = {
-    id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
+    ...existing,
+
+    // DO NOT replace the real AXIS id with image_sync id
     sync_event_id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
 
     sync_mode: syncMode,
-    unmatched_tradein_lead:
-      !(axisRecordId || axisParentRecordId || axisProjectId),
+    unmatched_tradein_lead: !(axisRecordId || axisParentRecordId || axisProjectId),
 
-    axis_record_id: axisRecordId,
-    axis_parent_record_id: axisParentRecordId,
-    axis_project_id: axisProjectId,
-    axis_serial_number: axisSerialNumber,
-    axis_parent_project_type: axisParentProjectType,
-    axis_parent_project_name: axisParentProjectName,
-    axis_source: axisSource,
+    axis_record_id: axisRecordId || existing.axis_record_id || "",
+    axis_parent_record_id: axisParentRecordId || existing.axis_parent_record_id || "",
+    axis_project_id: axisProjectId || existing.axis_project_id || "",
+    axis_serial_number: axisSerialNumber || existing.axis_serial_number || "",
+    axis_parent_project_type: axisParentProjectType || existing.axis_parent_project_type || "",
+    axis_source: axisSource || existing.axis_source || "",
 
     project_id: projectId,
     modality_id: modalityId,
 
     image_sync_received: true,
-    image_count: selectedPhotos.length,
-    images: selectedPhotos,
+    image_count: mergedImages.length,
+    images: mergedImages,
 
     last_image_update_by: userEmail,
     last_image_update_at: new Date().toISOString(),
+
     last_tradein_update_by: userEmail,
     last_tradein_update_at: new Date().toISOString(),
 
@@ -795,16 +795,15 @@ function syncImagesToAxisDemo(sentPhotoIds) {
     rep_notes: "Images were submitted from Espin Trade-In."
   };
 
-  records.unshift(imageSyncRecord);
+  if (existingIndex >= 0) {
+    records[existingIndex] = imageSyncRecord;
+  } else {
+    records.unshift(imageSyncRecord);
+  }
 
   localStorage.setItem(key, JSON.stringify(records));
   localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(imageSyncRecord));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-
-  window.dispatchEvent(new StorageEvent("storage", {
-    key: "axis_tradein_sync_records_v1",
-    newValue: JSON.stringify(records)
-  }));
 
   console.log("✅ AXIS IMAGE SYNC RECORD:", imageSyncRecord);
 }
@@ -842,19 +841,29 @@ sendBtn.onclick = async () => {
     const ids = [...selected];
     if (!ids.length) throw new Error("No images selected");
 
-    for (const id of ids) {
-      await fetch(`/api/equipment-photos/photo-update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-email": userEmail
-        },
-        body: JSON.stringify({
-          photoId: id,
-          queued_for_email: true
-        })
-      });
-    }
+   for (const id of ids) {
+  const photo = photos.find(p => getPrimaryId(p) === id);
+
+  const updateRes = await fetch(`/api/equipment-photos/photo-update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail
+    },
+    body: JSON.stringify({
+      photoId: id,
+      photo_title: photo?.photo_title || "",
+      photo_comment: photo?.photo_comment || "",
+      queued_for_email: true
+    })
+  });
+
+  const updateOut = await updateRes.json().catch(() => ({}));
+
+  if (!updateRes.ok) {
+    throw new Error(updateOut?.error || "Image update failed before sending");
+  }
+}
 
    const emailRes = await fetch(`/api/equipment-photos/photo-email`, {
   method: "POST",

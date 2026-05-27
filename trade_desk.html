@@ -226,7 +226,6 @@ pre{
 textarea#infoRequestNotes{
   min-height:90px;
 }
-<style>
 .high-bid-card{
   border:2px solid #22c55e !important;
   box-shadow:0 0 22px rgba(34,197,94,.35);
@@ -264,7 +263,6 @@ textarea#infoRequestNotes{
   color:#fff;
   font-weight:900;
 }
-</style>
 </style>
 </head>
 
@@ -996,7 +994,8 @@ function importAutomaticIntake(){
 
   const sources = [
     AXIS_TRADE_DESK_QUEUE_KEY,
-    AXIS_TRADE_DESK_INBOX_KEY
+    AXIS_TRADE_DESK_INBOX_KEY,
+    TRADEIN_SYNC_KEY
   ];
 
   sources.forEach(key => {
@@ -1005,11 +1004,39 @@ function importAutomaticIntake(){
     if (!incoming.length) return;
 
     incoming.forEach(item => {
+      const hasTradeDeskValue =
+        item.trade_desk_id ||
+        item.trade_desk_status ||
+        item.winning_bid_amount ||
+        item.trade_in_credit ||
+        item.tradein_credit ||
+        item.tradein_estimated_value ||
+        item.estimated_trade_in_value;
+
+      const hasImages =
+        item.image_sync_received ||
+        (Array.isArray(item.images) && item.images.length);
+
+      const isTradeDeskRelevant =
+        hasTradeDeskValue ||
+        hasImages ||
+        item.sync_mode === "update_existing_axis_record" ||
+        item.sync_mode === "sync_tradein_to_new_axis_project" ||
+        item.sync_mode === "create_unmatched_tradein_lead";
+
+      if (!isTradeDeskRelevant) return;
+
       deskData = mergeRecordIntoDesk(deskData, item);
       changed = true;
     });
 
-    localStorage.removeItem(key);
+    /*
+      Do NOT remove TRADEIN_SYNC_KEY.
+      AXIS manager/rep pages also need this same sync record.
+    */
+    if (key !== TRADEIN_SYNC_KEY) {
+      localStorage.removeItem(key);
+    }
   });
 
   if (changed) {
