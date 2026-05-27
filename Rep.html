@@ -869,7 +869,6 @@ td:nth-child(11){
   <button type="button" class="green" id="exportQuotePdfBtn">Save Quote PDF</button>
   <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
   <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
-  <button type="button" class="green" id="tradeDeskBtn">Send to Trade-In Desk</button>
   <button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
 <button type="button" class="red" id="deleteNewProjectBtn">Delete Lost Project</button>
 </div>
@@ -3092,7 +3091,6 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
 const isNewProject = rec.project_type === "new_sales_project";
 
 $("tradeBtn").style.display = isNewProject ? "none" : "inline-flex";
-$("tradeDeskBtn").style.display = isNewProject ? "none" : "inline-flex";
 $("connectBtn").style.display = isNewProject ? "none" : "inline-flex";
 
 $("quoteBtn").style.display = "inline-flex";
@@ -3116,11 +3114,6 @@ if (deleteNewProjectBtn) {
 $("tradeBtn").disabled =
   completed ||
   rec.submitted_to === "tradein_app" ||
-  rec.submitted_to === "tradein_desk";
-
-$("tradeDeskBtn").disabled =
-  completed ||
-  !rec.tradein_sync_received ||
   rec.submitted_to === "tradein_desk";
 
 $("connectBtn").disabled =
@@ -4997,7 +4990,6 @@ function closeNewProjectModal() {
   $("newProjectModal").style.display = "none";
 }
 function saveRepAction() {
-
   const rec = state.records.find(
     r => r.id === state.selectedId
   );
@@ -5028,25 +5020,18 @@ function saveRepAction() {
 
   rec.rep_action = action;
   rec.rep_notes = notes;
-
-  rec.rep_last_action_at =
-    new Date().toISOString();
-
+  rec.rep_last_action_at = new Date().toISOString();
   rec.rep_follow_up_date = followUpDate || "";
 
- rec.next_action_date =
-  action === "follow_up"
-    ? followUpDate
-    : "";
+  rec.next_action_date =
+    action === "follow_up"
+      ? followUpDate
+      : "";
 
   if (action === "completed") {
-
     rec.rep_status = "completed";
     rec.lifecycle_completed = true;
-
-    rec.completed_at =
-      new Date().toISOString();
-
+    rec.completed_at = new Date().toISOString();
     rec.completed_by =
       `${rec.sales_rep_first || rec.assigned_rep_name || ""} ${rec.sales_rep_last || ""}`.trim();
 
@@ -5054,40 +5039,54 @@ function saveRepAction() {
     rec.rep_hidden = false;
 
   } else if (action === "remove") {
-
     rec.rep_deleted = true;
     rec.rep_status = "acted";
 
   } else if (action === "follow_up") {
-
     rec.rep_status = "follow_up_scheduled";
     rec.rep_hidden = true;
 
   } else {
-
     rec.rep_status = action;
     rec.rep_hidden = false;
-
   }
 
+  // ✅ THIS IS THE MANAGER UPDATE ALERT
   rec.manager_unseen_update = true;
-rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_update_seen_at = "";
+  rec.manager_flash_text = "Rep updated action";
 
-if (action === "follow_up") {
-  rec.manager_flash_type = "follow_up";
-} else if (action === "completed") {
-  rec.manager_flash_type = "completed";
-} else if (action === "quote_created" || action === "quote_sent") {
-  rec.manager_flash_type = "quote_created";
-} else if (action === "trade_review") {
-  rec.manager_flash_type = "tradein_sync";
-} else {
-  rec.manager_flash_type = "rep_update";
-}
+  if (action === "follow_up") {
+    rec.manager_flash_type = "follow_up";
+    rec.manager_flash_text = "Rep scheduled follow-up";
+  } else if (action === "completed") {
+    rec.manager_flash_type = "completed";
+    rec.manager_flash_text = "Rep completed project";
+  } else if (action === "quote_created") {
+    rec.manager_flash_type = "quote_created";
+    rec.manager_flash_text = "Rep created quote";
+  } else if (action === "quote_sent") {
+    rec.manager_flash_type = "quote_sent";
+    rec.manager_flash_text = "Rep sent quote";
+  } else if (action === "trade_review") {
+    rec.manager_flash_type = "tradein_sync";
+    rec.manager_flash_text = "Rep started trade-in review";
+  } else {
+    rec.manager_flash_type = "rep_update";
+    rec.manager_flash_text = "Rep updated action";
+  }
 
-syncFeedStatus(rec);
-saveRecords();
-render();
+  rec.last_rep_action = action;
+  rec.last_rep_follow_up_date = followUpDate || "";
+  rec.last_rep_notes = notes || "";
+
+  syncFeedStatus(rec);
+  saveRecords();
+
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  render();
 
   const banner =
     document.getElementById("resultBanner");
@@ -6004,7 +6003,6 @@ $("axisShareToggle").addEventListener("change", () => {
 $("quoteBtn").addEventListener("click", () => openQuoteModal());
 $("addNewProjectBtn").addEventListener("click", () => openNewProjectModal());
 $("tradeBtn").addEventListener("click", () => submitRecord("tradein_app"));
-$("tradeDeskBtn").addEventListener("click", () => submitRecord("tradein_desk"));
 $("deleteNewProjectBtn").addEventListener("click", () => deleteLostNewProject());
 $("connectBtn").addEventListener("click", () => openDecisionModal());
 $("sendQuoteBtn").addEventListener("click", () => sendQuoteToCustomer());

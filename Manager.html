@@ -1027,6 +1027,15 @@ function getManagerStatusHtml(rec) {
     return `<span class="alert-badge alert-completed">COMPLETED</span>`;
   }
 
+  // ✅ REP ACTION UPDATE MUST SHOW FIRST ON MANAGER SIDE
+  if (hasManagerUnseenUpdate(rec)) {
+    return `
+      <span class="alert-badge alert-service manager-flash-pill">
+        ${rec.manager_flash_text || "REP UPDATE"}
+      </span>
+    `;
+  }
+
   if (rec.tradein_sync_received || rec.quote_status === "trade_in_credit_received") {
     return `<span class="pill submitted" style="background:#41ff9c;color:#03111b;">NEW TRADE-IN INFO RECEIVED</span>`;
   }
@@ -1051,10 +1060,6 @@ function getManagerStatusHtml(rec) {
     return `<span class="pill postponed">QUOTE LOST</span>`;
   }
 
-  if (hasManagerUnseenUpdate(rec)) {
-    return `<span class="alert-badge alert-service manager-flash-pill">UPDATE</span>`;
-  }
-
   const alerts = getAlerts(rec);
   const first = alerts[0];
 
@@ -1063,22 +1068,22 @@ function getManagerStatusHtml(rec) {
   }
 
   const statusMap = {
-  disposal: "Disposition Review Signal",
-  replacement: "Replacement Planning Review",
-  upgrade: "Upgrade Review Signal",
-  planning: "Budget Planning Review",
-  service: "SERVICE",
-  proactive: "PROACTIVE",
-  postponed: "Follow-Up Scheduled",
-  completed: "COMPLETED"
-};
+    disposal: "Disposition Review Signal",
+    replacement: "Replacement Planning Review",
+    upgrade: "Upgrade Review Signal",
+    planning: "Budget Planning Review",
+    service: "SERVICE",
+    proactive: "PROACTIVE",
+    postponed: "Follow-Up Scheduled",
+    completed: "COMPLETED"
+  };
+
   return `
     <span class="alert-badge alert-${first.type}">
       ${statusMap[first.type] || first.label}
     </span>
   `;
 }
-
 function getManagerNextActionHtml(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
     return `<span class="alert-badge alert-completed">COMPLETED</span>`;
@@ -1184,13 +1189,19 @@ function renderTable() {
   });
 
   tbody.innerHTML = sorted.map(rec => {
-    const selectedClass = [
-      String(rec.id) === String(state.selectedId) ? "selected" : "",
-      repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep
-        ? "manager-row-flash"
-        : ""
-    ].filter(Boolean).join(" ");
+   const selectedClass = [
+  String(rec.id) === String(state.selectedId) ? "selected" : "",
 
+  // ✅ MANAGER SIDE FLASH WHEN REP SAVES ACTION
+  !repMode && hasManagerUnseenUpdate(rec)
+    ? "manager-row-flash"
+    : "",
+
+  // ✅ REP SIDE FLASH WHEN MANAGER RESPONDS
+  repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep
+    ? "manager-row-flash"
+    : ""
+].filter(Boolean).join(" ");
     const alerts = getAlerts(rec);
     return `
       <tr class="${selectedClass}" data-id="${String(rec.id || "")}" style="cursor:pointer;">
