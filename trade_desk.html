@@ -364,21 +364,13 @@ let activeInfoRequestId = "";
 
 const APPROVED_BIDDERS = [
   {
-    company: "Northwest Imaging Buyers",
-    contact: "Mark Reynolds",
-    email: "buyer1@example.com",
-    modalities: ["CT", "MRI"],
-    region: "West"
-  },
-  {
-    company: "National Imaging Resale",
-    contact: "Sarah Klein",
-    email: "buyer2@example.com",
-    modalities: ["CT", "XRAY", "CARM"],
+    company: "Espin Medical",
+    contact: "George G",
+    email: "info@espinmedical.com",
+    modalities: ["ALL"],
     region: "National"
   }
 ];
-
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -1133,6 +1125,7 @@ function importAutomaticIntake(){
   return changed;
 }
 
+<script>
 function approveForBidding(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -1174,17 +1167,51 @@ function approveForBidding(id){
   rec.bidder_portal_visible = true;
 
   saveData(data);
-
-  const bidderEmails = matchedBidders.map(b => b.email).join(", ");
-
-  alert(
-    matchedBidders.length
-      ? `Asset released to approved bidders:\n\n${bidderEmails}`
-      : "Asset approved, but no matching approved bidders were found."
-  );
-
   render();
+
+  if (!matchedBidders.length) {
+    alert("Asset approved, but no matching approved bidders were found.");
+    return;
+  }
+
+  const bidderEmails = matchedBidders
+    .map(b => b.email)
+    .filter(Boolean)
+    .join(",");
+
+  const bidderPortalUrl =
+    `${window.location.origin}${window.location.pathname}#bidderPortal`;
+
+  const subject =
+    `Bid Opportunity – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
+
+  const body = [
+    `Hello,`,
+    ``,
+    `A new approved imaging equipment bid opportunity is available in the AXIS Bidder Portal.`,
+    ``,
+    `Equipment: ${rec.modality || "-"} – ${rec.make || "-"} ${rec.model || ""}`,
+    `Serial Number: ${rec.serial_number || rec.axis_serial_number || "-"}`,
+    `Facility: ${rec.site || rec.axis_parent_project_name || rec.project_name || "-"}`,
+    `Availability: ${rec.availability_timeframe || "-"}`,
+    ``,
+    `Open Bidder Portal:`,
+    bidderPortalUrl,
+    ``,
+    `Please review the equipment details, images, availability notes, and submit your bid through the portal.`,
+    ``,
+    `Thank you,`,
+    `AXIS Trade Desk`
+  ].join("\n");
+
+  const mailto =
+    `mailto:${encodeURIComponent(bidderEmails)}` +
+    `?subject=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(body)}`;
+
+  window.location.href = mailto;
 }
+</script>
 function openInfoRequestModal(id){
   const data = loadData();
   const rec = findById(data, id);
