@@ -226,6 +226,7 @@ pre{
 textarea#infoRequestNotes{
   min-height:90px;
 }
+
 .high-bid-card{
   border:2px solid #22c55e !important;
   box-shadow:0 0 22px rgba(34,197,94,.35);
@@ -252,6 +253,7 @@ textarea#infoRequestNotes{
   font-weight:800;
   margin-right:6px;
 }
+
 .low-bid-card{
   border:2px solid #c0392b !important;
   box-shadow:0 0 18px rgba(192,57,43,.25);
@@ -263,6 +265,107 @@ textarea#infoRequestNotes{
   color:#fff;
   font-weight:900;
 }
+
+.queue-card{
+  display:grid;
+  grid-template-columns:1.2fr .8fr .7fr .8fr .8fr;
+  gap:10px;
+  align-items:center;
+  border:1px solid #2b4a68;
+  background:#101f38;
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:10px;
+}
+
+.queue-title{
+  font-size:16px;
+  font-weight:900;
+}
+
+.queue-actions{
+  display:flex;
+  gap:8px;
+}
+
+.queue-actions button{
+  margin:0;
+  padding:9px 10px;
+  font-size:12px;
+}
+
+.package-panel{
+  display:none;
+  border:2px solid #1d8cff;
+  background:#0b1830;
+  border-radius:14px;
+  padding:14px;
+  margin-top:12px;
+}
+
+.package-panel.active{
+  display:block;
+}
+
+.package-header{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+
+.package-id{
+  color:#9db6d2;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+
+.package-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:10px;
+  margin-top:10px;
+}
+
+.package-box{
+  border:1px solid #2b4a68;
+  background:#07111f;
+  border-radius:10px;
+  padding:10px;
+}
+
+.package-box strong{
+  display:block;
+  margin-bottom:5px;
+}
+
+.tracker-row{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr 1fr;
+  gap:8px;
+  padding:8px;
+  border-bottom:1px solid #2b4a68;
+  font-size:13px;
+}
+
+.tracker-head{
+  color:#9db6d2;
+  font-weight:900;
+  text-transform:uppercase;
+  font-size:11px;
+}
+
+@media(max-width:900px){
+  .queue-card{
+    grid-template-columns:1fr;
+  }
+
+  .tracker-row{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 </head>
 
@@ -270,7 +373,7 @@ textarea#infoRequestNotes{
 
 <h1>AXIS Trade Desk Workflow Demo</h1>
 <p class="small">
-Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → Bidding Portal → Winning Bid → Rep Quote Sync
+Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → Digital Bid Package → Winning Bid → Rep Quote Sync
 </p>
 
 <div class="sync-banner">
@@ -371,6 +474,7 @@ const APPROVED_BIDDERS = [
     region: "National"
   }
 ];
+
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -472,6 +576,38 @@ function getWinningAmount(rec){
     rec.estimated_trade_in_value ||
     0
   );
+}
+
+function getBidCount(rec){
+  return Array.isArray(rec.bids) ? rec.bids.length : 0;
+}
+
+function getBidPackageId(rec){
+  return String(
+    rec.bid_package_id ||
+    `BID-${String(rec.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.id || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
+  );
+}
+
+function buildBidPackageUrl(rec){
+  const hash = `bidPackage_${encodeURIComponent(String(rec.id || ""))}`;
+  return `${window.location.origin}${window.location.pathname}#${hash}`;
+}
+
+function openBidPackage(id){
+  document.querySelectorAll(".package-panel").forEach(el => {
+    el.classList.remove("active");
+  });
+
+  const panel = document.getElementById(`bidPackage_${id}`);
+
+  if (panel) {
+    panel.classList.add("active");
+    panel.scrollIntoView({
+      behavior:"smooth",
+      block:"start"
+    });
+  }
 }
 
 function isSameAxisRecord(a, b){
@@ -763,50 +899,51 @@ function normalizeIncomingRecord(item){
         "images"
       ],
 
-  assigned_rep_first:
-  item.assigned_rep_first ||
-  item.sales_rep_first ||
-  item.rep_first_name ||
-  item.rep_first ||
-  "",
+    assigned_rep_first:
+      item.assigned_rep_first ||
+      item.sales_rep_first ||
+      item.rep_first_name ||
+      item.rep_first ||
+      "",
 
-assigned_rep_last:
-  item.assigned_rep_last ||
-  item.sales_rep_last ||
-  item.rep_last_name ||
-  item.rep_last ||
-  "",
+    assigned_rep_last:
+      item.assigned_rep_last ||
+      item.sales_rep_last ||
+      item.rep_last_name ||
+      item.rep_last ||
+      "",
 
-assigned_rep_name:
-  item.assigned_rep_name ||
-  item.rep_name ||
-  `${item.assigned_rep_first || item.sales_rep_first || item.rep_first_name || item.rep_first || ""} ${item.assigned_rep_last || item.sales_rep_last || item.rep_last_name || item.rep_last || ""}`.trim() ||
-  item.sales_rep_email ||
-  item.assigned_rep_email ||
-  "",
+    assigned_rep_name:
+      item.assigned_rep_name ||
+      item.rep_name ||
+      `${item.assigned_rep_first || item.sales_rep_first || item.rep_first_name || item.rep_first || ""} ${item.assigned_rep_last || item.sales_rep_last || item.rep_last_name || item.rep_last || ""}`.trim() ||
+      item.sales_rep_email ||
+      item.assigned_rep_email ||
+      "",
 
-assigned_rep_company:
-  item.assigned_rep_company ||
-  item.sales_rep_company ||
-  "",
+    assigned_rep_company:
+      item.assigned_rep_company ||
+      item.sales_rep_company ||
+      "",
 
-assigned_rep_email:
-  item.assigned_rep_email ||
-  item.sales_rep_email ||
-  item.rep_email ||
-  "",
+    assigned_rep_email:
+      item.assigned_rep_email ||
+      item.sales_rep_email ||
+      item.rep_email ||
+      "",
 
-assigned_rep_phone:
-  item.assigned_rep_phone ||
-  item.sales_rep_phone ||
-  item.rep_phone ||
-  "",
-   last_tradein_update_by:
-  item.last_tradein_update_by ||
-  item.assigned_rep_email ||
-  item.sales_rep_email ||
-  item.rep_email ||
-  "",
+    assigned_rep_phone:
+      item.assigned_rep_phone ||
+      item.sales_rep_phone ||
+      item.rep_phone ||
+      "",
+
+    last_tradein_update_by:
+      item.last_tradein_update_by ||
+      item.assigned_rep_email ||
+      item.sales_rep_email ||
+      item.rep_email ||
+      "",
 
     last_tradein_update_at:
       item.last_tradein_update_at ||
@@ -836,6 +973,20 @@ assigned_rep_phone:
     approved_by:
       item.approved_by ||
       "",
+
+    bidder_portal_visible:
+      item.bidder_portal_visible === true,
+
+    bid_package_id:
+      item.bid_package_id ||
+      "",
+
+    bid_package_url:
+      item.bid_package_url ||
+      "",
+
+    released_to_bidders:
+      Array.isArray(item.released_to_bidders) ? item.released_to_bidders : [],
 
     bids: Array.isArray(item.bids) ? item.bids : [],
 
@@ -936,49 +1087,46 @@ function mergeRecordIntoDesk(deskData, incoming){
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
 
-   deskData[matchIndex] = {
-  ...existing,
-  ...record,
+    deskData[matchIndex] = {
+      ...existing,
+      ...record,
 
-  // KEEP ORIGINAL DESK RECORD ID
-  id: existing.id,
+      id: existing.id,
 
-  // KEEP REP DETAILS FROM ORIGINAL SERIAL-MATCHED RECORD
-  assigned_rep_first:
-    record.assigned_rep_first ||
-    existing.assigned_rep_first ||
-    existing.sales_rep_first ||
-    "",
-
-  assigned_rep_last:
-    record.assigned_rep_last ||
-    existing.assigned_rep_last ||
-    existing.sales_rep_last ||
-    "",
-
-  assigned_rep_name:
-    record.assigned_rep_name ||
-    existing.assigned_rep_name ||
-    existing.rep_name ||
-    `${existing.assigned_rep_first || existing.sales_rep_first || ""} ${existing.assigned_rep_last || existing.sales_rep_last || ""}`.trim() ||
-    "",
-
-  assigned_rep_email:
-    record.assigned_rep_email && record.assigned_rep_email !== "axis@demo.com"
-      ? record.assigned_rep_email
-      : existing.assigned_rep_email ||
-        existing.sales_rep_email ||
-        existing.rep_email ||
+      assigned_rep_first:
+        record.assigned_rep_first ||
+        existing.assigned_rep_first ||
+        existing.sales_rep_first ||
         "",
 
-  assigned_rep_phone:
-    record.assigned_rep_phone ||
-    existing.assigned_rep_phone ||
-    existing.sales_rep_phone ||
-    existing.rep_phone ||
-    "",
+      assigned_rep_last:
+        record.assigned_rep_last ||
+        existing.assigned_rep_last ||
+        existing.sales_rep_last ||
+        "",
 
-      // DO NOT LET INCOMING SYNC RESET BIDDER RELEASE STATUS
+      assigned_rep_name:
+        record.assigned_rep_name ||
+        existing.assigned_rep_name ||
+        existing.rep_name ||
+        `${existing.assigned_rep_first || existing.sales_rep_first || ""} ${existing.assigned_rep_last || existing.sales_rep_last || ""}`.trim() ||
+        "",
+
+      assigned_rep_email:
+        record.assigned_rep_email && record.assigned_rep_email !== "axis@demo.com"
+          ? record.assigned_rep_email
+          : existing.assigned_rep_email ||
+            existing.sales_rep_email ||
+            existing.rep_email ||
+            "",
+
+      assigned_rep_phone:
+        record.assigned_rep_phone ||
+        existing.assigned_rep_phone ||
+        existing.sales_rep_phone ||
+        existing.rep_phone ||
+        "",
+
       trade_desk_status:
         existing.trade_desk_status &&
         existing.trade_desk_status !== "Submitted to Trade Desk"
@@ -1006,7 +1154,16 @@ function mergeRecordIntoDesk(deskData, incoming){
         existing.bidder_portal_visible === true ||
         record.bidder_portal_visible === true,
 
-      // KEEP BIDS / WINNER
+      bid_package_id:
+        existing.bid_package_id ||
+        record.bid_package_id ||
+        "",
+
+      bid_package_url:
+        existing.bid_package_url ||
+        record.bid_package_url ||
+        "",
+
       bids:
         existing.bids && existing.bids.length
           ? existing.bids
@@ -1039,7 +1196,6 @@ function mergeRecordIntoDesk(deskData, incoming){
           ? existing.quote_sync_status
           : record.quote_sync_status,
 
-      // KEEP UPDATED IMAGE LIST
       images:
         record.images && record.images.length
           ? record.images
@@ -1067,6 +1223,7 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   return deskData;
 }
+
 function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
@@ -1109,10 +1266,6 @@ function importAutomaticIntake(){
       changed = true;
     });
 
-    /*
-      Do NOT remove TRADEIN_SYNC_KEY.
-      AXIS manager/rep pages also need this same sync record.
-    */
     if (key !== TRADEIN_SYNC_KEY) {
       localStorage.removeItem(key);
     }
@@ -1124,6 +1277,7 @@ function importAutomaticIntake(){
 
   return changed;
 }
+
 function approveForBidding(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -1148,18 +1302,25 @@ function approveForBidding(id){
     );
   });
 
+  rec.bid_package_id = getBidPackageId(rec);
+  rec.bid_package_created_at = rec.bid_package_created_at || new Date().toISOString();
+  rec.bid_package_url = buildBidPackageUrl(rec);
+
   rec.trade_desk_status = "Released to Approved Bidders";
   rec.bid_status = "Open for Bids";
   rec.approved_for_bidding_at = new Date().toISOString();
   rec.approved_by = "trade.desk@demo.com";
-  rec.crm_status = "Bidder Portal Visibility Created";
+  rec.crm_status = "Bid Package Released";
 
   rec.released_to_bidders = matchedBidders.map(b => ({
     company: b.company,
     contact: b.contact,
     email: b.email,
     region: b.region,
-    released_at: new Date().toISOString()
+    bid_package_id: rec.bid_package_id,
+    bid_package_url: rec.bid_package_url,
+    released_at: new Date().toISOString(),
+    status: "Sent / Awaiting Bid"
   }));
 
   rec.bidder_portal_visible = true;
@@ -1177,26 +1338,24 @@ function approveForBidding(id){
     .filter(Boolean)
     .join(",");
 
-  const bidderPortalUrl =
-    `${window.location.origin}${window.location.pathname}#bidderPortal`;
-
   const subject =
-    `Bid Opportunity – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
+    `Bid Package ${rec.bid_package_id} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
 
   const body = [
     `Hello,`,
     ``,
-    `A new approved imaging equipment bid opportunity is available in the AXIS Bidder Portal.`,
+    `A new AXIS digital bid package has been released for review.`,
     ``,
+    `Bid Package: ${rec.bid_package_id}`,
     `Equipment: ${rec.modality || "-"} – ${rec.make || "-"} ${rec.model || ""}`,
     `Serial Number: ${rec.serial_number || rec.axis_serial_number || "-"}`,
     `Facility: ${rec.site || rec.axis_parent_project_name || rec.project_name || "-"}`,
     `Availability: ${rec.availability_timeframe || "-"}`,
     ``,
-    `Open Bidder Portal:`,
-    bidderPortalUrl,
+    `Open Bid Package:`,
+    rec.bid_package_url,
     ``,
-    `Please review the equipment details, images, availability notes, and submit your bid through the portal.`,
+    `The package includes equipment details, availability notes, logistics information, uploaded images, and the bid submission form.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1209,6 +1368,7 @@ function approveForBidding(id){
 
   window.location.href = mailto;
 }
+
 function openInfoRequestModal(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -1613,7 +1773,7 @@ function statusBadge(rec){
   const status = rec.trade_desk_status || "Submitted to Trade Desk";
 
   let cls = "pending";
-  if (status.includes("Approved")) cls = "blue";
+  if (status.includes("Released") || status.includes("Approved")) cls = "blue";
   if (status.includes("Winning")) cls = "win";
   if (status.includes("Needs")) cls = "redBadge";
 
@@ -1856,10 +2016,210 @@ function renderInfoRequestSummary(rec){
   `;
 }
 
+function renderReleaseTracker(rec){
+  const released = Array.isArray(rec.released_to_bidders)
+    ? rec.released_to_bidders
+    : [];
+
+  if (!released.length) {
+    return `<p class="small">Not released to bidders yet.</p>`;
+  }
+
+  return `
+    <div class="field-block">
+      <h3 class="section-title">Bidder Release Tracker</h3>
+
+      <div class="tracker-row tracker-head">
+        <div>Bidder</div>
+        <div>Email</div>
+        <div>Released</div>
+        <div>Status</div>
+      </div>
+
+      ${released.map(b => `
+        <div class="tracker-row">
+          <div>${htmlSafe(b.company || "-")}</div>
+          <div>${htmlSafe(b.email || "-")}</div>
+          <div>${htmlSafe(b.released_at ? new Date(b.released_at).toLocaleString() : "-")}</div>
+          <div>${getBidCount(rec) ? "Bid activity received" : "Awaiting bid"}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderBidCards(rec, safeId){
+  if (!rec.bids || !rec.bids.length) {
+    return "<p class='small'>No bids submitted yet.</p>";
+  }
+
+  const rankedBids = [...rec.bids]
+    .map((bid, originalIndex) => ({
+      ...bid,
+      originalIndex,
+      amountNumber: Number(bid.amount || 0)
+    }))
+    .sort((a, b) => b.amountNumber - a.amountNumber);
+
+  const highestAmount = rankedBids[0]?.amountNumber || 0;
+  const lowestAmount = rankedBids[rankedBids.length - 1]?.amountNumber || 0;
+
+  return rankedBids.map((b, rankIndex) => {
+    const isHighest =
+      b.amountNumber === highestAmount &&
+      highestAmount > 0;
+
+    const isLowest =
+      rankedBids.length > 1 &&
+      b.amountNumber === lowestAmount &&
+      lowestAmount > 0;
+
+    const isWinner =
+      rec.winningBid &&
+      rec.winningBid.bid_id === b.bid_id;
+
+    return `
+      <div class="card ${isHighest ? "high-bid-card" : isLowest ? "low-bid-card" : "lower-bid-card"}">
+        <span class="bid-rank">#${rankIndex + 1}</span>
+
+        ${
+          isHighest
+            ? `<span class="badge high-bid-badge">HIGHEST BID</span>`
+            : isLowest
+            ? `<span class="badge low-bid-badge">LOWEST BID</span>`
+            : `<span class="badge pending">MID BID</span>`
+        }
+
+        ${isWinner ? `<span class="badge win">SELECTED WINNER</span>` : ""}
+
+        <div class="kv" style="margin-top:10px;">
+          <strong>Bidder:</strong> ${htmlSafe(b.bidder || "-")}
+        </div>
+
+        <div class="kv" style="font-size:18px;">
+          <strong>Bid Amount:</strong>
+          <span style="
+            color:${isHighest ? "#41ff9c" : isLowest ? "#ff6b6b" : "#eef6ff"};
+            font-weight:900;
+          ">
+            ${money(b.amount)}
+          </span>
+        </div>
+
+        <div class="small">Terms: ${htmlSafe(b.terms || "-")}</div>
+        <div class="small">Expires: ${htmlSafe(b.expires || "-")}</div>
+
+        <button class="green" onclick="selectWinner('${safeId}',${b.originalIndex})">
+          Select Winning Bid
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderBidPackage(rec, safeId, rawId){
+  const packageId = getBidPackageId(rec);
+
+  return `
+    <div class="package-panel" id="bidPackage_${htmlSafe(rawId)}">
+      <div class="package-header">
+        <div>
+          <div class="package-id">${htmlSafe(packageId)}</div>
+          <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
+        </div>
+
+        <span class="badge blue">Digital Bid Package</span>
+      </div>
+
+      <div class="package-grid">
+        <div class="package-box">
+          <strong>Equipment</strong>
+          ${htmlSafe(rec.modality || "-")}<br>
+          ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}<br>
+          Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}
+        </div>
+
+        <div class="package-box">
+          <strong>Availability</strong>
+          ${htmlSafe(rec.availability_timeframe || "-")}<br>
+          Out of Use: ${htmlSafe(rec.out_of_use_date || "-")}
+        </div>
+
+        <div class="package-box">
+          <strong>Location</strong>
+          ${htmlSafe(rec.site || rec.axis_parent_project_name || "-")}<br>
+          ${htmlSafe([rec.city, rec.state].filter(Boolean).join(", ") || "")}
+        </div>
+
+        <div class="package-box">
+          <strong>Bid Status</strong>
+          ${htmlSafe(rec.bid_status || "Not Released")}<br>
+          Bids Received: ${getBidCount(rec)}
+        </div>
+      </div>
+
+      <hr>
+
+      <h3 class="section-title">Equipment Details</h3>
+      ${tradeInFieldRows(rec)}
+
+      <hr>
+
+      <h3 class="section-title">Images</h3>
+      ${imageHtml(rec)}
+
+      <hr>
+
+      <h3 class="section-title">Submit Bid</h3>
+
+      <input
+        id="bidder_${htmlSafe(rawId)}"
+        value="${htmlSafe(bidDrafts[rawId]?.bidder_name_input || "")}"
+        placeholder="Bidder Name"
+        autocomplete="off"
+        oninput="saveBidInput('${safeId}', 'bidder_name_input', this.value)"
+      >
+
+      <input
+        id="amount_${htmlSafe(rawId)}"
+        type="number"
+        value="${htmlSafe(bidDrafts[rawId]?.bid_amount_input || "")}"
+        placeholder="Bid Amount"
+        autocomplete="off"
+        oninput="saveBidInput('${safeId}', 'bid_amount_input', this.value)"
+      >
+
+      <input
+        id="terms_${htmlSafe(rawId)}"
+        value="${htmlSafe(bidDrafts[rawId]?.bid_terms_input || "")}"
+        placeholder="Terms / Pickup Notes"
+        autocomplete="off"
+        oninput="saveBidInput('${safeId}', 'bid_terms_input', this.value)"
+      >
+
+      <input
+        id="expires_${htmlSafe(rawId)}"
+        type="date"
+        value="${htmlSafe(bidDrafts[rawId]?.bid_expiration_input || "")}"
+        autocomplete="off"
+        oninput="saveBidInput('${safeId}', 'bid_expiration_input', this.value)"
+      >
+
+      <button onclick="addBid('${safeId}')">Submit Bid</button>
+
+      <hr>
+
+      <h3 class="section-title">Bids</h3>
+      ${renderBidCards(rec, safeId)}
+    </div>
+  `;
+}
+
 function render(){
   if (isBidInputFocused()) return;
 
   const data = loadData();
+
   tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No trade-ins submitted yet.</p>";
   bidderPortal.innerHTML = "";
   repQuotes.innerHTML = "";
@@ -1910,7 +2270,6 @@ function render(){
         <hr>
 
         <h3 class="section-title">Trade-In App Equipment Details</h3>
-
         ${tradeInFieldRows(rec)}
 
         <hr>
@@ -1930,6 +2289,7 @@ function render(){
         <div class="kv"><strong>Trade Desk Status:</strong> ${htmlSafe(rec.trade_desk_status || "-")}</div>
         <div class="kv"><strong>Bid Status:</strong> ${htmlSafe(rec.bid_status || "-")}</div>
         <div class="kv"><strong>Quote Sync Status:</strong> ${htmlSafe(rec.quote_sync_status || "-")}</div>
+        <div class="kv"><strong>Bid Package:</strong> ${htmlSafe(rec.bid_package_id || "Not created")}</div>
         <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
         ${renderInfoRequestSummary(rec)}
@@ -1940,9 +2300,11 @@ function render(){
 
         ${imageHtml(rec)}
 
+        ${renderReleaseTracker(rec)}
+
         <hr>
 
-        <button onclick="approveForBidding('${safeId}')">Release to Bidder Portal</button>
+        <button onclick="approveForBidding('${safeId}')">Release to Approved Bidders</button>
         <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
 
         <details>
@@ -1952,136 +2314,44 @@ function render(){
       </div>
     `;
 
-    if ((rec.trade_desk_status || "").includes("Approved") || (rec.bid_status || "") !== "Not Released") {
+    if (
+      rec.bidder_portal_visible === true ||
+      (rec.trade_desk_status || "").includes("Released") ||
+      (rec.bid_status || "") !== "Not Released"
+    ) {
       bidderPortal.innerHTML += `
-        <div class="card">
-          <h3>${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
-
-          <span class="badge">${htmlSafe(rec.modality || "-")}</span>
-          <span class="badge">Serial: ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</span>
-          <span class="badge">Available: ${htmlSafe(rec.availability_timeframe || "-")}</span>
-
-          ${imageHtml(rec)}
-
-          <hr>
-
-          <input
-            id="bidder_${htmlSafe(rawId)}"
-            value="${htmlSafe(bidDrafts[rawId]?.bidder_name_input || "")}"
-            placeholder="Bidder Name"
-            autocomplete="off"
-            oninput="saveBidInput('${safeId}', 'bidder_name_input', this.value)"
-          >
-
-          <input
-            id="amount_${htmlSafe(rawId)}"
-            type="number"
-            value="${htmlSafe(bidDrafts[rawId]?.bid_amount_input || "")}"
-            placeholder="Bid Amount"
-            autocomplete="off"
-            oninput="saveBidInput('${safeId}', 'bid_amount_input', this.value)"
-          >
-
-          <input
-            id="terms_${htmlSafe(rawId)}"
-            value="${htmlSafe(bidDrafts[rawId]?.bid_terms_input || "")}"
-            placeholder="Terms / Pickup Notes"
-            autocomplete="off"
-            oninput="saveBidInput('${safeId}', 'bid_terms_input', this.value)"
-          >
-
-          <input
-            id="expires_${htmlSafe(rawId)}"
-            type="date"
-            value="${htmlSafe(bidDrafts[rawId]?.bid_expiration_input || "")}"
-            autocomplete="off"
-            oninput="saveBidInput('${safeId}', 'bid_expiration_input', this.value)"
-          >
-
-          <button onclick="addBid('${safeId}')">Submit Bid</button>
-
-          <hr>
-
-         ${
-  rec.bids && rec.bids.length
-    ? (() => {
-        const rankedBids = [...rec.bids]
-          .map((bid, originalIndex) => ({
-            ...bid,
-            originalIndex,
-            amountNumber: Number(bid.amount || 0)
-          }))
-          .sort((a, b) => b.amountNumber - a.amountNumber);
-
-        const highestAmount = rankedBids[0]?.amountNumber || 0;
-        const lowestAmount = rankedBids[rankedBids.length - 1]?.amountNumber || 0;
-
-        return rankedBids.map((b, rankIndex) => {
-          const isHighest =
-            b.amountNumber === highestAmount &&
-            highestAmount > 0;
-
-          const isLowest =
-            rankedBids.length > 1 &&
-            b.amountNumber === lowestAmount &&
-            lowestAmount > 0;
-
-          const isWinner =
-            rec.winningBid &&
-            rec.winningBid.bid_id === b.bid_id;
-
-          return `
-            <div class="card ${isHighest ? "high-bid-card" : isLowest ? "low-bid-card" : "lower-bid-card"}">
-              <span class="bid-rank">
-                #${rankIndex + 1}
-              </span>
-
-              ${
-                isHighest
-                  ? `<span class="badge high-bid-badge">HIGHEST BID</span>`
-                  : isLowest
-                  ? `<span class="badge low-bid-badge">LOWEST BID</span>`
-                  : `<span class="badge pending">MID BID</span>`
-              }
-
-              ${
-                isWinner
-                  ? `<span class="badge win">SELECTED WINNER</span>`
-                  : ""
-              }
-
-              <div class="kv" style="margin-top:10px;">
-                <strong>Bidder:</strong> ${htmlSafe(b.bidder || "-")}
-              </div>
-
-              <div class="kv" style="font-size:18px;">
-                <strong>Bid Amount:</strong>
-                <span style="
-                  color:${isHighest ? "#41ff9c" : isLowest ? "#ff6b6b" : "#eef6ff"};
-                  font-weight:900;
-                ">
-                  ${money(b.amount)}
-                </span>
-              </div>
-
-              <div class="small">
-                Terms: ${htmlSafe(b.terms || "-")}
-              </div>
-
-              <div class="small">
-                Expires: ${htmlSafe(b.expires || "-")}
-              </div>
-
-              <button class="green" onclick="selectWinner('${safeId}',${b.originalIndex})">
-                Select Winning Bid
-              </button>
+        <div class="queue-card">
+          <div>
+            <div class="queue-title">
+              ${htmlSafe(getBidPackageId(rec))}
             </div>
-          `;
-        }).join("");
-      })()
-    : "<p class='small'>No bids submitted yet.</p>"
-}
+            <div class="small">
+              ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}
+            </div>
+          </div>
+
+          <div>
+            <span class="badge">${htmlSafe(rec.bid_status || "Open for Bids")}</span>
+          </div>
+
+          <div>
+            <strong>${getBidCount(rec)}</strong>
+            <div class="small">Bids Received</div>
+          </div>
+
+          <div>
+            <strong>${htmlSafe(rec.availability_timeframe || "-")}</strong>
+            <div class="small">Availability</div>
+          </div>
+
+          <div class="queue-actions">
+            <button onclick="openBidPackage('${htmlSafe(rawId)}')">
+              Open Package
+            </button>
+          </div>
         </div>
+
+        ${renderBidPackage(rec, safeId, rawId)}
       `;
     }
 
@@ -2141,6 +2411,11 @@ importAutomaticIntake();
 render();
 
 window.addEventListener("load", () => {
+  if (location.hash.startsWith("#bidPackage_")) {
+    const id = decodeURIComponent(location.hash.replace("#bidPackage_", ""));
+    setTimeout(() => openBidPackage(id), 300);
+  }
+
   if (location.hash === "#bidderPortal") {
     document.getElementById("bidderPortal")?.scrollIntoView({
       behavior: "smooth",
