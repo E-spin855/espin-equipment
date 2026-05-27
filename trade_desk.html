@@ -536,6 +536,20 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 
+function isTradeDeskInputFocused(){
+  const active = document.activeElement;
+
+  return (
+    active &&
+    (
+      active.id?.startsWith("bidDeadline_") ||
+      active.tagName === "INPUT" ||
+      active.tagName === "TEXTAREA" ||
+      active.tagName === "SELECT"
+    )
+  );
+}
+
 function getRecordKey(rec){
   return String(
     rec.axis_parent_record_id ||
@@ -2269,24 +2283,28 @@ window.addEventListener("storage", (e) => {
     activeBidPackageId = localStorage.getItem(ACTIVE_PACKAGE_KEY) || "";
   }
 
-  if (
-    e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
-    e.key === AXIS_TRADE_DESK_INBOX_KEY ||
-    e.key === MANAGER_PING_KEY ||
-    e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY ||
-    e.key === BIDDER_PORTAL_KEY ||
-    e.key === ACTIVE_PACKAGE_KEY
-  ) {
+ if (
+  e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
+  e.key === AXIS_TRADE_DESK_INBOX_KEY ||
+  e.key === MANAGER_PING_KEY ||
+  e.key === KEY ||
+  e.key === TRADEIN_SYNC_KEY ||
+  e.key === BIDDER_PORTAL_KEY ||
+  e.key === ACTIVE_PACKAGE_KEY
+) {
+  if (!isTradeDeskInputFocused()) {
     render();
   }
+}
 });
 
 setInterval(() => {
   importAutomaticIntake();
-  render();
-}, 2000);
 
+  if (!isTradeDeskInputFocused()) {
+    render();
+  }
+}, 2000);
 importAutomaticIntake();
 render();
 </script>
