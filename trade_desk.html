@@ -652,25 +652,43 @@ function buildBidPackageUrl(rec){
 }
 
 function openBidPackage(id){
-  activeBidPackageId = String(id || "").trim();
-  if (!activeBidPackageId) return;
+  const clickedId = String(id || "").trim();
+  if (!clickedId) return;
 
-  localStorage.setItem(ACTIVE_PACKAGE_KEY, activeBidPackageId);
+  const isSame =
+    String(activeBidPackageId || "") === clickedId;
+
+  // toggle close if already open
+  if (isSame) {
+    activeBidPackageId = "";
+    localStorage.removeItem(ACTIVE_PACKAGE_KEY);
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("packageId");
+    url.hash = "";
+    history.replaceState(null, "", url.toString());
+
+    render();
+    return;
+  }
+
+  // open selected package
+  activeBidPackageId = clickedId;
+  localStorage.setItem(ACTIVE_PACKAGE_KEY, clickedId);
 
   const url = new URL(window.location.href);
-  url.searchParams.set("packageId", activeBidPackageId);
-  url.hash = `bidPackage_${encodeURIComponent(activeBidPackageId)}`;
+  url.searchParams.set("packageId", clickedId);
+  url.hash = `bidPackage_${encodeURIComponent(clickedId)}`;
   history.replaceState(null, "", url.toString());
 
   render();
 
   setTimeout(() => {
     const panel =
-      document.getElementById(`bidPackage_${idSafe(activeBidPackageId)}`) ||
+      document.getElementById(`bidPackage_${idSafe(clickedId)}`) ||
       document.querySelector(".package-panel.active");
 
     if (panel) {
-      panel.classList.add("active");
       panel.scrollIntoView({
         behavior:"smooth",
         block:"start"
@@ -678,7 +696,6 @@ function openBidPackage(id){
     }
   }, 100);
 }
-
 function isSameAxisRecord(a, b){
   return (
     getRecordKey(a) === getRecordKey(b) ||
@@ -2317,7 +2334,12 @@ function renderBidPackage(rec, safeId, rawId){
           <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
         </div>
 
-        <span class="badge blue">Digital Bid Package</span>
+       <div style="min-width:150px;">
+  <span class="badge blue">Digital Bid Package</span>
+  <button class="secondary" style="margin-top:8px;" onclick="openBidPackage('${htmlSafe(rawId)}')">
+    Close Package
+  </button>
+</div>
       </div>
 
       <div class="package-grid">
@@ -2430,11 +2452,9 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
           <span class="badge">${htmlSafe(rec.bid_status || "Not Released")}</span>
           <span class="badge">${getBidCount(rec)} Bids</span>
         </div>
-
-        <div style="min-width:160px;">
-          <button onclick="openBidPackage('${htmlSafe(rawId)}')">
-            Open Bid Package
-          </button>
+<button onclick="openBidPackage('${htmlSafe(rawId)}')">
+  ${active ? "Close Bid Package" : "Open Bid Package"}
+</button>
         </div>
       </div>
 
@@ -2460,11 +2480,16 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
         </div>
       </div>
 
-      ${
-        active
-          ? `
-            <hr>
-            <h3 class="section-title">Trade-In App Equipment Details</h3>
+     ${
+  active
+    ? `
+      <hr>
+
+      <button class="secondary" onclick="openBidPackage('${htmlSafe(rawId)}')">
+        Close Bid Package
+      </button>
+
+      <h3 class="section-title">Trade-In App Equipment Details</h3>
             ${tradeInFieldRows(rec)}
 
             <hr>
