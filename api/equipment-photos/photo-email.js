@@ -266,11 +266,10 @@ function buildEquipmentHtml(details = {}) {
   ];
 
   const htmlRows = rows
-    .filter(([, value, rawKey]) => {
-      if (!activePrefix) return false;
-      if (!rawKey || !rawKey.startsWith(activePrefix)) return false;
-      return shouldShow(rawKey, value);
-    })
+  .filter(([, value, rawKey]) => {
+    if (!rawKey) return false;
+    return shouldShow(rawKey, value);
+  })
     .map(([label, value]) => `
       <tr style="border-bottom:1px solid #eee;">
         <td style="padding:12px 10px;font-weight:700;width:40%;color:#333;">
