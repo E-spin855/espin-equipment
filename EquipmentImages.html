@@ -681,11 +681,7 @@ filePicker.onchange = async () => {
       photo_comment: ""
     };
 
-   photos.unshift(p);
-
-gallery.innerHTML = "";
-photos.forEach(photo => appendCard(photo, new Set(getActiveBadges())));
-    updateBatchState();
+  await loadPhotos({ silent: true });
 
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
@@ -695,13 +691,40 @@ photos.forEach(photo => appendCard(photo, new Set(getActiveBadges())));
     filePicker.value = "";
   }
 };
-function syncImagesToAxisDemo(sentPhotoIds) {
+async function fetchCurrentEquipmentDetailsForAxisSync(){
+  try {
+    const res = await fetch(`/api/equipment-details?projectId=${encodeURIComponent(projectId)}&modalityId=${encodeURIComponent(modalityId)}`, {
+      headers: {
+        "x-user-email": userEmail
+      }
+    });
+
+    const out = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.warn("Could not fetch equipment details for AXIS image sync:", out);
+      return {};
+    }
+
+    const row = Array.isArray(out) ? out[0] : out;
+    const data = row?.data && typeof row.data === "object" ? row.data : {};
+
+    return {
+      ...data,
+      ...row
+    };
+  } catch (err) {
+    console.warn("Equipment detail fetch failed for AXIS image sync:", err);
+    return {};
+  }
+}
+async async function syncImagesToAxisDemo(sentPhotoIds) {
   const key = "axis_tradein_sync_records_v1";
   const lifecycleKey = "espin_lifecycle_demo_records_v1";
 
   let records = [];
   let lifecycleRecords = [];
-
+  const liveDetails = await fetchCurrentEquipmentDetailsForAxisSync();
   try {
     records = JSON.parse(localStorage.getItem(key) || "[]");
     if (!Array.isArray(records)) records = [];
@@ -843,7 +866,7 @@ function syncImagesToAxisDemo(sentPhotoIds) {
 
   const imageSyncRecord = {
     ...existing,
-
+    ...liveDetails,
     sync_event_id: `image_sync_${projectId}_${modalityId}_${Date.now()}`,
 
     sync_mode: syncMode,
@@ -1050,7 +1073,7 @@ if (!emailRes.ok) {
   throw new Error(emailOut?.error || "Image email failed");
 }
 
-syncImagesToAxisDemo(ids);
+await syncImagesToAxisDemo(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
       .forEach(cb => (cb.checked = false));
@@ -1127,8 +1150,7 @@ deleteBtn.onclick = async () => {
     deleteBtn.disabled = false;
   }
 };
-
-(async () => {
+async function loadPhotos({ silent = false } = {}) {
   try {
     const listUrl = new URL(`/api/equipment-photos/photo-list`, location.origin);
     if (modalityId) listUrl.searchParams.set("modalityId", modalityId);
@@ -1153,15 +1175,26 @@ deleteBtn.onclick = async () => {
 
     if (!listRes.ok) throw new Error(out?.error || "Failed");
 
+    const activeElement = document.activeElement;
+    const userEditing =
+      activeElement &&
+      (
+        activeElement.tagName === "INPUT" ||
+        activeElement.tagName === "TEXTAREA"
+      );
+
+    if (userEditing) return;
+
     photos = Array.isArray(out) ? out : [];
 
     let serverBadges = [];
 
     if (badgeJson?.value) {
       try {
-        const parsed = typeof badgeJson.value === "string"
-          ? JSON.parse(badgeJson.value)
-          : badgeJson.value;
+        const parsed =
+          typeof badgeJson.value === "string"
+            ? JSON.parse(badgeJson.value)
+            : badgeJson.value;
 
         if (Array.isArray(parsed)) {
           serverBadges = parsed.map(String);
@@ -1169,7 +1202,6 @@ deleteBtn.onclick = async () => {
       } catch {}
     }
 
-    // keep local in sync (used for removal on interaction)
     saveBadgesLocally(serverBadges);
 
     const badgeSet = new Set(serverBadges);
@@ -1177,12 +1209,30 @@ deleteBtn.onclick = async () => {
     gallery.innerHTML = "";
     photos.forEach(p => appendCard(p, badgeSet));
 
+    selected = new Set(
+      [...selected].filter(id =>
+        photos.some(p => getPrimaryId(p) === id)
+      )
+    );
+
     updateBatchState();
 
   } catch (err) {
-    console.error("LOAD ERROR:", err);
+    if (!silent) {
+      console.error("LOAD ERROR:", err);
+    }
   }
-})();
+}
+
+loadPhotos();
+
+setInterval(() => {
+  loadPhotos({ silent: true });
+}, 5000);
+
+window.addEventListener("focus", () => {
+  loadPhotos({ silent: true });
+});
 </script>
 
 </div>

@@ -95,9 +95,7 @@ function buildEquipmentHtml(details = {}) {
     return v !== undefined && v !== null && String(v).trim() !== "";
   };
 
-  let activePrefix = "";
-
-  const modalityRaw = String(
+   const modalityRaw = String(
     source.modality ||
     source.tradein_equipment_modality ||
     ""
@@ -121,18 +119,19 @@ function buildEquipmentHtml(details = {}) {
     other: "other_"
   };
 
-  activePrefix = prefixMap[modalityRaw] || "";
+  let activePrefix = prefixMap[modalityRaw] || "";
 
   if (!activePrefix) {
-    if (Object.keys(source).some(k => k.startsWith("ct_") && hasValue(k))) activePrefix = "ct_";
-    else if (Object.keys(source).some(k => k.startsWith("mri_") && hasValue(k))) activePrefix = "mri_";
-    else if (Object.keys(source).some(k => k.startsWith("xray_") && hasValue(k))) activePrefix = "xray_";
-    else if (Object.keys(source).some(k => k.startsWith("carm_") && hasValue(k))) activePrefix = "carm_";
-    else if (Object.keys(source).some(k => k.startsWith("pet_") && hasValue(k))) activePrefix = "pet_";
-    else if (Object.keys(source).some(k => k.startsWith("mamo_") && hasValue(k))) activePrefix = "mamo_";
-    else if (Object.keys(source).some(k => k.startsWith("other_") && hasValue(k))) activePrefix = "other_";
+    activePrefix =
+      ["ct_", "mri_", "xray_", "carm_", "pet_", "mamo_", "other_"].find(prefix =>
+        Object.keys(source).some(k =>
+          k.startsWith(prefix) &&
+          source[k] !== undefined &&
+          source[k] !== null &&
+          String(source[k]).trim() !== ""
+        )
+      ) || "";
   }
-
   const getV = (...keys) => {
     for (const key of keys) {
       const v = source[key];
@@ -265,11 +264,12 @@ function buildEquipmentHtml(details = {}) {
     ["Other Serial", getV("other_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "other_serial"]
   ];
 
-  const htmlRows = rows
-  .filter(([, value, rawKey]) => {
-    if (!rawKey) return false;
-    return shouldShow(rawKey, value);
-  })
+    const htmlRows = rows
+    .filter(([, value, rawKey]) => {
+      if (!activePrefix) return false;
+      if (!rawKey || !rawKey.startsWith(activePrefix)) return false;
+      return shouldShow(rawKey, value);
+    })
     .map(([label, value]) => `
       <tr style="border-bottom:1px solid #eee;">
         <td style="padding:12px 10px;font-weight:700;width:40%;color:#333;">
@@ -439,7 +439,6 @@ export default async function handler(req, res) {
 );
 
 const equipmentHtml = buildEquipmentHtml(detailsRes.rows[0] || {});
-
     const photosRes = await client.query(
       `
       SELECT id, photo_url, photo_title, photo_comment
