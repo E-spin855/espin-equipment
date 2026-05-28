@@ -1079,29 +1079,33 @@ function renderStats() {
   let postponed = 0;
   let submitted = 0;
 
-  let openPipeline = 0;
-  let wonRevenue = 0;
-  let lostRevenue = 0;
+  let totalPipeline = 0;
+  let wonEstimatedProfit = 0;
 
   state.records.forEach(r => {
+    const status = String(r.quote_status || "").toLowerCase();
+
+    const quoteAmount = Number(r.quote_amount || 0);
+    const tradeInCredit = getTradeInCreditValue(r);
+    const estimatedCost = Number(r.quote_estimated_cost || 0);
+
     const netQuote = Number(
       r.quote_net_amount ||
-      Math.max(0, Number(r.quote_amount || 0) - Number(r.quote_trade_in_credit || 0))
+      Math.max(0, quoteAmount - tradeInCredit)
     );
 
-    if (r.quote_amount) {
-  const status = String(r.quote_status || "").toLowerCase();
+    const estimatedProfit = Number(
+      r.quote_profit ||
+      (netQuote - estimatedCost)
+    );
 
-  if (status === "lost") {
-    lostRevenue += netQuote;
-  } else {
-    openPipeline += netQuote;
-  }
+    if (quoteAmount && status !== "lost") {
+      totalPipeline += netQuote;
+    }
 
-  if (status === "won") {
-    wonRevenue += netQuote;
-  }
-}
+    if (quoteAmount && status === "won") {
+      wonEstimatedProfit += estimatedProfit;
+    }
 
     if (r.submitted_to) {
       submitted++;
@@ -1122,8 +1126,8 @@ function renderStats() {
 
   $("statTotal").textContent = total;
   $("statReady").textContent = ready;
-  $("statPostponed").textContent = "$" + openPipeline.toLocaleString();
-  $("statSubmitted").textContent = "$" + wonRevenue.toLocaleString();
+  $("statPostponed").textContent = "$" + totalPipeline.toLocaleString();
+  $("statSubmitted").textContent = "$" + wonEstimatedProfit.toLocaleString();
 
   document.querySelector("#statPostponed")
     .closest(".stat")
@@ -1131,7 +1135,7 @@ function renderStats() {
 
   document.querySelector("#statSubmitted")
     .closest(".stat")
-    .querySelector(".k").textContent = "Won Quote Revenue";
+    .querySelector(".k").textContent = "Won Estimated Profit";
 }
 function renderRepMenu() {
   const container = document.getElementById("repFeed");
