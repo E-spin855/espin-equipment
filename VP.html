@@ -370,6 +370,59 @@ tbody tr:hover{
   color:#ffe890;
   border:1px solid rgba(255,216,77,.25);
 }
+.region-financial-row{
+  cursor:pointer;
+}
+
+.region-financial-row:hover{
+  background:rgba(14,31,63,.95);
+}
+
+.region-contact-row{
+  display:none;
+  background:rgba(7,17,31,.92);
+}
+
+.region-contact-row.open{
+  display:table-row;
+}
+
+.contact-box{
+  padding:18px;
+  border:1px solid rgba(88,184,255,.18);
+  border-radius:14px;
+  background:rgba(8,18,35,.86);
+  line-height:1.8;
+}
+
+.contact-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:12px;
+  margin-top:10px;
+}
+
+.contact-item{
+  padding:12px;
+  border:1px solid rgba(88,184,255,.16);
+  border-radius:12px;
+  background:rgba(9,18,35,.75);
+}
+
+.contact-label{
+  color:#9db6d2;
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  margin-bottom:6px;
+}
+
+.contact-value{
+  color:#eef6ff;
+  font-size:15px;
+  font-weight:800;
+}
 </style>
 </head>
 
@@ -951,7 +1004,11 @@ function renderExecutiveFeed(summary, grouped){
 
   el.innerHTML = cards.join("");
 }
-
+function toggleTerritoryDetails(id){
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.classList.toggle("open");
+}
 function renderRegionalTable(grouped){
   const tbody =
     document.getElementById("regionalFinancialBody");
@@ -972,7 +1029,7 @@ function renderRegionalTable(grouped){
   }
 
   tbody.innerHTML =
-    entries.map(([territory, rows]) => {
+    entries.map(([territory, rows], index) => {
       const summary =
         summarizeRows(rows);
 
@@ -981,8 +1038,33 @@ function renderRegionalTable(grouped){
           ? "bad"
           : "good";
 
+      const contact =
+        TERRITORY_DEFAULTS[territory] ||
+        TERRITORY_DEFAULTS["Unassigned Territory"] ||
+        {};
+
+      const detailId = `territoryDetails_${index}`;
+
+      const reps = [...new Set(
+        rows.map(r => r.repName).filter(Boolean)
+      )];
+
+      const quoteList = rows.map(row => `
+        <div class="contact-item">
+          <div class="contact-label">Quote / Equipment</div>
+          <div class="contact-value">
+            ${row.modality || "-"} — ${row.make || "-"} ${row.model || ""}
+          </div>
+          <div class="mini" style="margin-top:6px;">
+            Rep: ${row.repName || "Unassigned"}<br>
+            Status: ${statusLabel(row.quoteStatus)}<br>
+            Gross: ${money(row.grossQuote)} | Trade-In: ${money(row.tradeInCredit)} | Profit/Loss: ${money(row.profitLoss)}
+          </div>
+        </div>
+      `).join("");
+
       return `
-        <tr>
+        <tr class="region-financial-row" onclick="toggleTerritoryDetails('${detailId}')">
           <td>${territory}</td>
           <td class="good">${money(summary.grossQuote)}</td>
           <td class="warn">${money(summary.tradeInCredit)}</td>
@@ -991,6 +1073,40 @@ function renderRegionalTable(grouped){
           <td class="${profitClass}">${money(summary.profitLoss)}</td>
           <td>
             ${summary.won} / ${summary.lost} / ${summary.open}
+          </td>
+        </tr>
+
+        <tr id="${detailId}" class="region-contact-row">
+          <td colspan="7">
+            <div class="contact-box">
+              <strong>${territory} Contact / Quote Details</strong>
+
+              <div class="contact-grid">
+                <div class="contact-item">
+                  <div class="contact-label">Regional Manager</div>
+                  <div class="contact-value">${contact.manager || "Unassigned"}</div>
+                </div>
+
+                <div class="contact-item">
+                  <div class="contact-label">Email</div>
+                  <div class="contact-value">${contact.email || "-"}</div>
+                </div>
+
+                <div class="contact-item">
+                  <div class="contact-label">Phone</div>
+                  <div class="contact-value">${contact.phone || "-"}</div>
+                </div>
+
+                <div class="contact-item">
+                  <div class="contact-label">Assigned Reps</div>
+                  <div class="contact-value">${reps.length ? reps.join(", ") : "Unassigned"}</div>
+                </div>
+              </div>
+
+              <div class="contact-grid" style="margin-top:14px;">
+                ${quoteList}
+              </div>
+            </div>
           </td>
         </tr>
       `;
