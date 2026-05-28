@@ -693,30 +693,24 @@ function loadRecords() {
     managerQueue = {};
   }
 
-  const managerFromUrl =
-    new URLSearchParams(window.location.search).get("manager");
+  const allManagerRecords = [];
 
-  if (
-    managerFromUrl &&
-    Array.isArray(managerQueue[managerFromUrl])
-  ) {
-    state.records = managerQueue[managerFromUrl].map(r => ({
-      ...r,
-      key: getRecordKey(r),
-      __manager_bucket: managerFromUrl
-    }));
-    return;
-  }
+  Object.keys(managerQueue).forEach(managerName => {
+    const records = managerQueue[managerName];
 
-  state.records = Object.entries(managerQueue).flatMap(([managerName, records]) => {
-    if (!Array.isArray(records)) return [];
+    if (!Array.isArray(records)) return;
 
-    return records.map(r => ({
-      ...r,
-      key: getRecordKey(r),
-      __manager_bucket: managerName
-    }));
+    records.forEach(rec => {
+      allManagerRecords.push({
+        ...rec,
+        key: getRecordKey(rec),
+        manager_name: rec.manager_name || managerName,
+        __manager_bucket: managerName
+      });
+    });
   });
+
+  state.records = allManagerRecords;
 }
 function saveRecords() {
 function evaluateStatus(rec) {
@@ -1744,13 +1738,22 @@ function init() {
 
   const refreshBtn = $("refreshBtn");
 
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => {
-      state.selectedId = null;
-      state.selectedRep = null;
-      render();
-    });
-  }
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", () => {
+    state.selectedId = null;
+    state.selectedRep = null;
+
+    loadRecords();
+
+    renderStats();
+    renderRepMenu();
+    renderTable();
+    renderDetail();
+
+    console.log("MANAGER QUEUE:", localStorage.getItem(MANAGER_QUEUE_KEY));
+    console.log("MANAGER RECORDS LOADED:", state.records);
+  });
+}
 
   setInterval(() => {
     const active = document.activeElement;
