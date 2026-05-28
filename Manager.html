@@ -598,16 +598,18 @@ tr.manager-row-flash{
     <div class="grid">
       <div class="panel">
         <div class="panel-head">
-          <h2>Local Inputs</h2>
-          <span class="mini">OEM browser only</span>
+         <h2>Manager Queue</h2>
+<span class="mini">Fed by AXIS Hub</span>
         </div>
         <div class="panel-body">
           <div class="row">
-            <label for="csvInput">Upload CSV</label>
-<input id="csvInput" type="file" accept=".xlsx,.xls,.csv" />
+           <label>Source</label>
+<div class="mini" style="padding:12px;border:1px solid rgba(88,184,255,.18);border-radius:12px;background:#081223;">
+  Records are received from AXIS Distribution Hub.
+</div>
           </div>
           <div class="btns" style="margin-bottom:16px;">
-            <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+            <button type="button" class="secondary" id="clearBtn">Refresh Manager View</button>
           </div>         
 
 <div class="footer-note">
@@ -694,6 +696,12 @@ tr.manager-row-flash{
 
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
+const HUB_MASTER_KEY = "axis_hub_master_records_v1";
+const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
+const REP_QUEUE_KEY = "espin_rep_queue";
+const VP_QUEUE_KEY = "axis_vp_queue_v1";
+
+const MANAGER_NAME = "Default Manager";
 
 const state = {
   records: [],
@@ -746,12 +754,36 @@ function evaluateStatus(rec) {
 }
 
 function saveRecords() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
+  } catch {
+    managerQueue = {};
+  }
+
+  managerQueue[MANAGER_NAME] = state.records;
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 }
 
 function loadRecords() {
   try {
-    state.records = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    const managerQueue =
+      JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+
+    if (
+      managerQueue &&
+      typeof managerQueue === "object" &&
+      Array.isArray(managerQueue[MANAGER_NAME])
+    ) {
+      state.records = managerQueue[MANAGER_NAME];
+      return;
+    }
+
+    state.records = [];
   } catch {
     state.records = [];
   }
@@ -831,8 +863,8 @@ function renderRepMenu() {
 
     el.innerHTML = `
       <div class="mini">
-        Upload CSV to load reps.
-      </div>
+  Waiting for records from AXIS Distribution Hub.
+</div>
     `;
 
     return;
@@ -1717,7 +1749,7 @@ grid.innerHTML = `
         const label = getActionLabel(score);
 
         const color =
-          label === "ACT NOW"
+          label === "REVIEW NOW"
             ? "#ff6b6b"
             : label === "PLAN"
             ? "#ffd84d"
@@ -2152,21 +2184,25 @@ rec.manager_flash_type = "";
   render();
 } 
 function syncManagerResponseToStorage(updatedRec) {
- const key = getRecordKey(updatedRec);
-updatedRec.key = key;
+  const key = getRecordKey(updatedRec);
+  updatedRec.key = key;
 
-  let main = [];
+  let managerQueue = {};
 
   try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
   } catch {
-    main = [];
+    managerQueue = {};
   }
 
-  let foundInMain = false;
+  let managerRecords = Array.isArray(managerQueue[MANAGER_NAME])
+    ? managerQueue[MANAGER_NAME]
+    : [];
 
-  main = main.map(item => {
+  let foundInManager = false;
+
+  managerRecords = managerRecords.map(item => {
     const sameRecord =
       item.id === updatedRec.id ||
       item.key === key ||
@@ -2177,26 +2213,22 @@ updatedRec.key = key;
 
     if (!sameRecord) return item;
 
-    foundInMain = true;
+    foundInManager = true;
 
     return {
       ...item,
       ...updatedRec,
       key,
-
-      // rep side should flash
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-
-      // manager side should NOT flash from its own response
       manager_unseen_update: false,
       manager_flash_at: "",
       manager_flash_type: ""
     };
   });
 
-  if (!foundInMain) {
-    main.unshift({
+  if (!foundInManager) {
+    managerRecords.unshift({
       ...updatedRec,
       key,
       manager_response_seen_by_rep: false,
@@ -2207,20 +2239,22 @@ updatedRec.key = key;
     });
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
+  managerQueue[MANAGER_NAME] = managerRecords;
 
-  let queue = [];
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+
+  let repQueue = [];
 
   try {
-    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
-    if (!Array.isArray(queue)) queue = [];
+    repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(repQueue)) repQueue = [];
   } catch {
-    queue = [];
+    repQueue = [];
   }
 
-  let foundInQueue = false;
+  let foundInRep = false;
 
-  queue = queue.map(item => {
+  repQueue = repQueue.map(item => {
     const sameRecord =
       item.id === updatedRec.id ||
       item.key === key ||
@@ -2231,26 +2265,22 @@ updatedRec.key = key;
 
     if (!sameRecord) return item;
 
-    foundInQueue = true;
+    foundInRep = true;
 
     return {
       ...item,
       ...updatedRec,
       key,
-
-      // rep side flash trigger
       manager_response_seen_by_rep: false,
       manager_response_seen_at: "",
-
-      // do not use manager_unseen_update for manager response
       manager_unseen_update: false,
       manager_flash_at: "",
       manager_flash_type: "manager_response"
     };
   });
 
-  if (!foundInQueue) {
-    queue.unshift({
+  if (!foundInRep) {
+    repQueue.unshift({
       ...updatedRec,
       key,
       manager_response_seen_by_rep: false,
@@ -2261,10 +2291,10 @@ updatedRec.key = key;
     });
   }
 
-  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
-  state.records = main;
+  state.records = managerRecords;
 }
 // 🔥 allow re-send after short lock OR always allow (your choice)
 function markQuoteSeen(id) {
@@ -2292,19 +2322,12 @@ function markQuoteSeen(id) {
   render();
 }
 function render() {
-  let main = [];
-
-  try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
-  } catch {
-    main = [];
-  }
+  loadRecords();
 
   let queue = [];
 
   try {
-    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
     if (!Array.isArray(queue)) queue = [];
   } catch {
     queue = [];
@@ -2313,7 +2336,7 @@ function render() {
   queue.forEach(q => {
     const qKey = getRecordKey(q);
 
-    const idx = main.findIndex(r =>
+    const idx = state.records.findIndex(r =>
       String(r.id || "") === String(q.id || "") ||
       String(r.key || "") === String(qKey || "") ||
       String(getRecordKey(r) || "") === String(qKey || "") ||
@@ -2324,9 +2347,9 @@ function render() {
     );
 
     if (idx >= 0) {
-      const existing = main[idx];
+      const existing = state.records[idx];
 
-      main[idx] = {
+      state.records[idx] = {
         ...existing,
         ...q,
         key: qKey,
@@ -2357,10 +2380,6 @@ function render() {
       };
     }
   });
-
-  state.records = main;
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
 
   renderStats();
   renderRepMenu();
@@ -2455,53 +2474,37 @@ function init() {
   }, 1500);
 
   window.addEventListener("storage", (e) => {
-    if (
-      e.key === STORAGE_KEY ||
-      e.key === "espin_rep_queue" ||
-      e.key === "axis_manager_sync_ping_v1"
-    ) {
-      render();
-    }
+   if (
+  e.key === STORAGE_KEY ||
+  e.key === HUB_MASTER_KEY ||
+  e.key === MANAGER_QUEUE_KEY ||
+  e.key === REP_QUEUE_KEY ||
+  e.key === VP_QUEUE_KEY ||
+  e.key === "axis_manager_sync_ping_v1"
+) {
+  render();
+}
   });
 
   window.addEventListener("rep_feed_update", () => {
     render();
   });
 
-  const clearBtn = $("clearBtn");
+ const clearBtn = $("clearBtn");
 
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem("espin_rep_queue");
-      localStorage.removeItem("axis_manager_sync_ping_v1");
+if (clearBtn) {
+  clearBtn.addEventListener("click", () => {
+    state.selectedId = null;
+    state.selectedRep = null;
 
-      state.records = [];
-      state.selectedId = null;
-      state.selectedRep = null;
+    loadRecords();
 
-      const csvInput = $("csvInput");
-      if (csvInput) csvInput.value = "";
-
-      render();
-    });
-  }
-
-  const csvInput = $("csvInput");
-
-  if (csvInput) {
-    csvInput.addEventListener("change", function(e) {
-      const file = e.target.files[0];
-
-      if (!file) return;
-
-      try {
-        handleCSVUpload(file);
-      } catch (err) {
-        console.error("HANDLE UPLOAD FAILED:", err);
-      }
-    });
-  }
+    renderStats();
+    renderRepMenu();
+    renderTable();
+    renderDetail();
+  });
+}
 }
 function selectRow(id) {
   const selectedId = String(id || "").trim();
@@ -2511,33 +2514,14 @@ function selectRow(id) {
     return;
   }
 
-  let main = [];
-  let queue = [];
-
-  try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
-  } catch {
-    main = [];
-  }
-
-  try {
-    queue = JSON.parse(localStorage.getItem("espin_rep_queue") || "[]");
-    if (!Array.isArray(queue)) queue = [];
-  } catch {
-    queue = [];
-  }
-
-  const allRecords = [...state.records, ...main, ...queue];
-
-  const clickedRec = allRecords.find(r =>
+  const clickedRec = state.records.find(r =>
     String(r.id || "").trim() === selectedId ||
     String(r.key || "").trim() === selectedId
   );
 
   if (!clickedRec) {
     console.warn("Record not found for selected id:", selectedId);
-    alert("Record not found. Clear local data and reload CSV.");
+    alert("Record not found. Refresh manager view.");
     return;
   }
 
@@ -2554,9 +2538,7 @@ function selectRow(id) {
     quote_seen: true
   };
 
-  let foundInMain = false;
-
-  main = main.map(item => {
+  state.records = state.records.map(item => {
     const sameRecord =
       String(item.id || "").trim() === finalId ||
       String(item.id || "").trim() === selectedId ||
@@ -2566,14 +2548,16 @@ function selectRow(id) {
         String(item.serial_number || "") === String(cleanedRec.serial_number || "")
       );
 
-    if (!sameRecord) return item;
-
-    foundInMain = true;
-    return { ...item, ...cleanedRec };
+    return sameRecord ? { ...item, ...cleanedRec } : item;
   });
 
-  if (!foundInMain) {
-    main.unshift(cleanedRec);
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
   }
 
   queue = queue.map(item => {
@@ -2599,11 +2583,9 @@ function selectRow(id) {
     };
   });
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(main));
-  localStorage.setItem("espin_rep_queue", JSON.stringify(queue));
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(queue));
+  saveRecords();
 
-  state.records = main;
   state.selectedId = finalId;
 
   renderStats();
@@ -2611,7 +2593,7 @@ function selectRow(id) {
   renderTable();
   renderDetail();
 
-  console.log("OPENED RECORD:", cleanedRec);
+  console.log("OPENED MANAGER RECORD:", cleanedRec);
 }
 function getAlerts(rec) {
   if (rec.lifecycle_completed || rec.project_type === "new_sales_project") {
