@@ -957,6 +957,7 @@ td:nth-child(14){
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
+const REP_QUEUE_KEY = "espin_rep_queue";
 const state = {
   records: [],
   selectedId: null
@@ -4138,14 +4139,70 @@ function renderUnmatchedTradeInLeads() {
     `;
   }).join("");
 }
+function mergeManagerResponsesFromQueue() {
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  let changed = false;
+
+  state.records = state.records.map(rec => {
+    const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
+
+    const match = queue.find(q =>
+      String(q.id || "") === String(rec.id || "") ||
+      String(q.key || "") === String(key || "") ||
+      (
+        String(q.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(q.serial_number || "") === String(rec.serial_number || "")
+      )
+    );
+
+    if (!match) return rec;
+
+    const incomingManagerResponseAt = String(match.manager_response_at || "");
+    const currentManagerResponseAt = String(rec.manager_response_at || "");
+
+    if (
+      incomingManagerResponseAt &&
+      incomingManagerResponseAt !== currentManagerResponseAt
+    ) {
+      changed = true;
+
+      return {
+        ...rec,
+        manager_response_action: match.manager_response_action || "",
+        manager_response_date: match.manager_response_date || "",
+        manager_response_notes: match.manager_response_notes || "",
+        manager_response_at: match.manager_response_at || "",
+        manager_response_seen_by_rep:
+          match.manager_response_seen_by_rep !== undefined
+            ? match.manager_response_seen_by_rep
+            : false,
+        manager_response_seen_at: match.manager_response_seen_at || ""
+      };
+    }
+
+    return rec;
+  });
+
+  if (changed) {
+    saveRecords();
+  }
+
+  return changed;
+}
  function render() {
   importTradeInSyncRecords();
+  mergeManagerResponsesFromQueue();
 
   renderStats();
-
-  // ✅ REP SIDE MUST SHOW REP ALERT FEED, NOT REP MENU
-renderRepMenu();
-
+  renderRepMenu();
   renderFollowUpAlertCenter();
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
@@ -6106,18 +6163,19 @@ function init() {
 
  window.addEventListener("storage", (e) => {
   if (
-    e.key === STORAGE_KEY ||
-    e.key === "espin_rep_queue" ||
-    e.key === "axis_tradein_sync_records_v1" ||
-    e.key === "axis_manager_sync_ping_v1" ||
-   e.key === AXIS_SHARE_KEY ||
-e.key === UNMATCHED_TRADEIN_KEY
-  ) {
-    loadRecords();
-    importTradeInSyncRecords();
-    updateAxisShareStatus();
-    render();
-  }
+  e.key === STORAGE_KEY ||
+  e.key === REP_QUEUE_KEY ||
+  e.key === "axis_tradein_sync_records_v1" ||
+  e.key === "axis_manager_sync_ping_v1" ||
+  e.key === AXIS_SHARE_KEY ||
+  e.key === UNMATCHED_TRADEIN_KEY
+) {
+  loadRecords();
+  mergeManagerResponsesFromQueue();
+  importTradeInSyncRecords();
+  updateAxisShareStatus();
+  render();
+}
 });
 
 // ✅ ADD AUTO-REFRESH RIGHT HERE
@@ -6125,6 +6183,7 @@ setInterval(() => {
   const before = JSON.stringify(state.records);
 
   importTradeInSyncRecords();
+  mergeManagerResponsesFromQueue();
 
   const after = JSON.stringify(state.records);
 
