@@ -348,9 +348,15 @@ th,td{
 td:nth-child(3),
 td:nth-child(9),
 td:nth-child(10),
-td:nth-child(11){
+td:nth-child(11),
+td:nth-child(12){
   white-space:normal;
   line-height:1.35;
+}
+
+td:nth-child(3){
+  min-width:240px;
+  max-width:280px;
 }
 
 td:nth-child(9){
@@ -361,28 +367,48 @@ td:nth-child(10){
   min-width:170px;
 }
 
+td:nth-child(11){
+  min-width:260px;
+  max-width:340px;
+}
+
+td:nth-child(12){
+  min-width:160px;
+  max-width:190px;
+}
+
 td:nth-child(13){
   min-width:120px;
-}
-td:nth-child(11){
-  min-width:210px;
   white-space:nowrap;
 }
 
+td:nth-child(14){
+  min-width:90px;
+  white-space:nowrap;
+}
 .next-action-label{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  padding:11px 22px;
+  padding:10px 14px;
   border-radius:999px;
-  font-size:12px;
+  font-size:11px;
   font-weight:900;
-  letter-spacing:.05em;
+  letter-spacing:.04em;
   text-transform:uppercase;
-  white-space:nowrap;
-  line-height:1.05;
+  white-space:normal;
+  line-height:1.15;
   text-align:center;
+  max-width:170px;
+  min-width:135px;
 
+  background:
+    linear-gradient(#07111f,#07111f) padding-box,
+    linear-gradient(90deg,rgba(255,255,255,.18),rgba(255,255,255,.08)) border-box;
+
+  border:2px solid transparent;
+  box-shadow:none;
+}
   background:
     linear-gradient(#07111f,#07111f) padding-box,
     linear-gradient(90deg,rgba(255,255,255,.18),rgba(255,255,255,.08)) border-box;
@@ -1071,14 +1097,18 @@ function renderStats() {
     );
 
     if (r.quote_amount) {
-      if (r.quote_status === "won") {
-        wonRevenue += netQuote;
-      } else if (r.quote_status === "lost") {
-        lostRevenue += netQuote;
-      } else {
-        openPipeline += netQuote;
-      }
-    }
+  const status = String(r.quote_status || "").toLowerCase();
+
+  if (status === "lost") {
+    lostRevenue += netQuote;
+  } else {
+    openPipeline += netQuote;
+  }
+
+  if (status === "won") {
+    wonRevenue += netQuote;
+  }
+}
 
     if (r.submitted_to) {
       submitted++;
@@ -1104,7 +1134,7 @@ function renderStats() {
 
   document.querySelector("#statPostponed")
     .closest(".stat")
-    .querySelector(".k").textContent = "Open Quote Pipeline";
+    .querySelector(".k").textContent = "Total Quote Pipeline";
 
   document.querySelector("#statSubmitted")
     .closest(".stat")
@@ -1404,16 +1434,20 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
           ${
             rec.quote_status === "lost"
               ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
-              : rec.tradein_sync_received
-              ? '<span class="next-action-label next-action-quote">Finalize Quote / Submit Trade-In</span>'
-              : '<span class="next-action-label next-action-proactive">Send to Trade-In App</span>'
+             rec.tradein_sync_received
+  ? '<span class="next-action-label next-action-quote">Finalize Quote</span>'
+  : '<span class="next-action-label next-action-proactive">Send Trade-In</span>'
           }
         </td>
 
         <td>
-          <button type="button" onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}');">
-            Open
-          </button>
+         <button
+  type="button"
+  style="min-width:72px;padding:10px 14px;"
+  onclick="event.preventDefault(); event.stopPropagation(); selectRow('${rec.id}');"
+>
+  Open
+</button>
         </td>
       </tr>
     `;
@@ -5894,31 +5928,137 @@ function markNewProjectWon(id) {
   const rec = state.records.find(r => r.id === id);
   if (!rec) return;
 
-  rec.quote_status = "won";
-  rec.lifecycle_completed = true;
-  rec.completed_at = new Date().toISOString();
-  rec.completed_by = `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
+  if (!confirm("Mark this project as won and move it into lifecycle records?")) {
+    return;
+  }
 
+  const now = new Date().toISOString();
+
+  const tradeInCredit = getTradeInCreditValue(rec);
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const netQuote = Number(
+    rec.quote_net_amount ||
+    Math.max(0, quoteAmount - tradeInCredit)
+  );
+  const profit = netQuote - estimatedCost;
+
+  rec.quote_status = "won";
+  rec.rep_status = "won";
+  rec.rep_action = "won";
+  rec.rep_last_action_at = now;
+
+  // ✅ DO NOT mark completed here.
+  // Won means it moves into lifecycle/project workflow, not finished.
+  rec.lifecycle_completed = false;
+  rec.completed_at = "";
+  rec.completed_by = "";
+
+  // ✅ Convert new sales project into lifecycle-side record
+  rec.project_type = "lifecycle_project";
+  rec.source = "Converted From Won New AXIS Project";
+  rec.lifecycle_converted_at = now;
+
+  // ✅ Preserve financials
+  rec.quote_amount = quoteAmount;
+  rec.quote_estimated_cost = estimatedCost;
+  rec.quote_trade_in_credit = tradeInCredit;
+  rec.tradein_credit = tradeInCredit;
+  rec.trade_in_credit = tradeInCredit;
+  rec.tradein_estimated_value = tradeInCredit;
+  rec.estimated_trade_in_value = tradeInCredit;
+  rec.quote_net_amount = netQuote;
+  rec.quote_profit = profit;
+  rec.quote_margin =
+    netQuote > 0
+      ? Math.round((profit / netQuote) * 100)
+      : 0;
+
+  // ✅ Mirror trade-in equipment into lifecycle fields
+  rec.make =
+    rec.tradein_equipment_make ||
+    rec.make ||
+    "Converted Project";
+
+  rec.model =
+    rec.tradein_equipment_model ||
+    rec.model ||
+    "";
+
+  rec.modality =
+    rec.tradein_equipment_modality ||
+    rec.modality ||
+    "OTHER";
+
+  rec.serial_number =
+    rec.tradein_equipment_serial_number ||
+    rec.serial_number ||
+    "";
+
+  rec.dom =
+    rec.tradein_equipment_dom ||
+    rec.dom ||
+    "";
+
+  // ✅ Project management should receive it, but lifecycle should still show it
   rec.project_management_ready = true;
   rec.project_management_status = "Pending PM Review";
-  rec.project_management_created_at = new Date().toISOString();
+  rec.project_management_created_at = now;
 
+  // ✅ Manager should see CONVERTED / WON, not COMPLETED
   rec.manager_unseen_update = true;
-  rec.manager_flash_at = new Date().toISOString();
-  rec.manager_flash_type = "completed";
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "won_project_converted";
+  rec.manager_flash_text = "Won project converted to lifecycle record";
+
+  rec.next_action_date = "";
+  rec.rep_hidden = false;
+  rec.rep_deleted = false;
 
   saveRecords();
   syncFeedStatus(rec);
   render();
 }
-
 function markNewProjectLost(id) {
   const rec = state.records.find(r => r.id === id);
   if (!rec) return;
 
+  if (!confirm("Mark this project as lost? This will remove its value from pipeline totals.")) {
+    return;
+  }
+
   rec.quote_status = "lost";
   rec.rep_status = "lost";
   rec.lifecycle_completed = false;
+
+  // ✅ Preserve quote history but remove from active financial pipeline totals
+  rec.lost_quote_amount = Number(rec.quote_amount || 0);
+  rec.lost_quote_trade_in_credit = getTradeInCreditValue(rec);
+  rec.lost_quote_net_amount = Number(
+    rec.quote_net_amount ||
+    Math.max(0, Number(rec.quote_amount || 0) - getTradeInCreditValue(rec))
+  );
+  rec.lost_quote_estimated_cost = Number(rec.quote_estimated_cost || 0);
+  rec.lost_quote_profit = Number(rec.quote_profit || 0);
+  rec.lost_at = new Date().toISOString();
+
+  // ✅ Clear active financial fields so rep/manager/VP totals do not count it
+  rec.quote_amount = "";
+  rec.quote_estimated_cost = "";
+  rec.quote_trade_in_credit = "";
+  rec.quote_net_amount = "";
+  rec.quote_profit = "";
+  rec.quote_margin = "";
+
+  // ✅ Keep trade-in value history, but do not let it count as active quote credit
+  rec.tradein_credit = rec.lost_quote_trade_in_credit;
+  rec.trade_in_credit = rec.lost_quote_trade_in_credit;
+  rec.tradein_estimated_value = rec.lost_quote_trade_in_credit;
+  rec.estimated_trade_in_value = rec.lost_quote_trade_in_credit;
+
+  rec.project_management_ready = false;
+  rec.project_management_status = "";
+  rec.project_management_created_at = "";
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
