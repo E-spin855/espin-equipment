@@ -4724,29 +4724,54 @@ alert_enabled: r.alert_enabled || "",
  // no auto demo load
 
 function selectRow(id) {
-  if (state.selectedId === id) {
-    state.selectedId = null;
-  } else {
-    state.selectedId = id;
+  const selectedId = String(id || "").trim();
+
+  if (!selectedId) {
+    console.warn("Missing row id");
+    return;
   }
 
-  const rec = state.records.find(r => r.id === id);
+  const rec = state.records.find(r =>
+    String(r.id || "").trim() === selectedId ||
+    String(r.key || "").trim() === selectedId ||
+    String(`${r.oem_project_id || ""}_${r.serial_number || ""}`).trim() === selectedId
+  );
 
-  if (rec?.tradein_sync_received && !rec.tradein_seen_by_rep) {
+  if (!rec) {
+    console.warn("Record not found for selected id:", selectedId);
+    alert("Record not found. Refresh or reload data from Hub.");
+    return;
+  }
+
+  // ✅ Always open. Do NOT toggle closed.
+  state.selectedId = rec.id;
+
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
     rec.tradein_seen_by_rep = true;
   }
 
-  if (rec?.manager_response_action && !rec.manager_response_seen_by_rep) {
+  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
     rec.manager_response_seen_by_rep = true;
     rec.manager_response_seen_at = new Date().toISOString();
   }
 
-  if (rec) {
-    saveRecords();
-    syncFeedStatus(rec);
+  saveRecords();
+  syncFeedStatus(rec);
+
+  renderStats();
+  renderRepMenu();
+  renderFollowUpAlertCenter();
+  renderUnmatchedTradeInLeads();
+  renderNewProjectsTable();
+  renderTable();
+  renderDetail();
+
+  const panel = document.getElementById("lifecycleDetailPanel");
+  if (panel) {
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  render();
+  console.log("OPENED REP RECORD:", rec);
 }
 function getProactiveSignal(rec) {
   if (rec.proactive_enabled === "no") return null;
