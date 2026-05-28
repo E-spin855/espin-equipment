@@ -1370,9 +1370,10 @@ function renderNewProjectsTable() {
     const assignedRep =
       `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() || "-";
 
-    const tradeInEquipment =
-      `${rec.tradein_equipment_make || ""} ${rec.tradein_equipment_model || ""}`.trim() || "-";
-
+ const tradeInEquipment =
+  rec.tradein_required === "no"
+    ? "Not Required"
+    : `${rec.tradein_equipment_make || ""} ${rec.tradein_equipment_model || ""}`.trim() || "-";
   const tradeInCreditRaw =
   rec.tradein_credit ||
   rec.trade_in_credit ||
@@ -1415,9 +1416,16 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
       : ""
   }
 </td>
-        <td>${tradeInCreditRaw ? `$${tradeInCredit.toLocaleString()}` : "Pending Quote"}</td>
-
         <td>
+  ${
+    rec.tradein_required === "no"
+      ? "Not Required"
+      : tradeInCreditRaw
+      ? `$${tradeInCredit.toLocaleString()}`
+      : "Pending Quote"
+  }
+</td>
+                <td>
           ${
             rec.quote_status === "lost"
               ? '<span class="pill postponed">LOST</span>'
@@ -1425,17 +1433,21 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
               ? '<span class="pill submitted">WON</span>'
               : '<span class="pill local">OPEN</span>'
           }
-       <td>
-  ${
-    rec.quote_status === "lost"
-      ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
-      : rec.quote_status === "won"
-      ? '<span class="next-action-label next-action-completed">Moved to Lifecycle</span>'
-      : rec.tradein_sync_received
-      ? '<span class="next-action-label next-action-quote">Finalize Quote</span>'
-      : '<span class="next-action-label next-action-proactive">Send Trade-In</span>'
-  }
-</td>
+        </td>
+
+        <td>
+          ${
+            rec.quote_status === "lost"
+              ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
+              : rec.quote_status === "won"
+              ? '<span class="next-action-label next-action-completed">Moved to Lifecycle</span>'
+              : rec.tradein_required === "no"
+              ? '<span class="next-action-label next-action-quote">Create Quote</span>'
+              : rec.tradein_sync_received
+              ? '<span class="next-action-label next-action-quote">Finalize Quote</span>'
+              : '<span class="next-action-label next-action-proactive">Send Trade-In</span>'
+          }
+        </td>
 
         <td>
          <button
@@ -2311,8 +2323,10 @@ function renderNewProjectDetail(rec) {
       <div class="v">${(rec.quote_status || "open").toUpperCase()}</div>
     </div>
 
-    ${
-      rec.tradein_sync_received
+      ${
+      rec.tradein_required === "no"
+        ? ""
+        : rec.tradein_sync_received
         ? `
           <div class="detail-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
             <div class="k">Associated Trade-In Equipment</div>
@@ -2355,7 +2369,7 @@ function renderNewProjectDetail(rec) {
         `
     }
 ${
-  rec.image_sync_received
+  rec.tradein_required !== "no" && rec.image_sync_received
     ? `
       <div class="detail-card" style="
         border:1px solid rgba(0,229,255,.35);
@@ -2507,12 +2521,18 @@ ${
           Create / Update Quote
         </button>
 
-       <button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">
-  Send to Trade-In App
-</button>
-
         ${
-          rec.tradein_sync_received
+          rec.tradein_required === "no"
+            ? ""
+            : `
+              <button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">
+                Send to Trade-In App
+              </button>
+            `
+        }
+
+                      ${
+          rec.tradein_required !== "no" && rec.tradein_sync_received
             ? `
               <button type="button" class="green" onclick="submitAssociatedTradeIn('tradein_desk')">
                 Send Associated Trade-In to Desk
@@ -5010,9 +5030,10 @@ function openNewProjectModal() {
   $("newProjectContactPhone").value = "";
   $("newProjectContactEmail").value = "";
 
-  $("newProjectName").value = "";
+ $("newProjectName").value = "";
+$("newProjectTradeInRequired").value = "yes";
 
-  $("newProjectRepFirst").value = "";
+$("newProjectRepFirst").value = "";
   $("newProjectRepLast").value = "";
 
   $("newProjectModal").style.display = "flex";
@@ -5145,10 +5166,11 @@ function saveNewProject() {
   const contactPhone = $("newProjectContactPhone").value.trim();
   const contactEmail = $("newProjectContactEmail").value.trim();
 
-  const projectName = $("newProjectName").value.trim();
-  const closeDate = "";
+ const projectName = $("newProjectName").value.trim();
+const tradeInRequired = $("newProjectTradeInRequired").value;
+const closeDate = "";
 
-  const repFirst = $("newProjectRepFirst").value.trim();
+const repFirst = $("newProjectRepFirst").value.trim();
   const repLast = $("newProjectRepLast").value.trim();
 
  if (!customer || !projectName || !repFirst || !repLast) {
@@ -5212,11 +5234,13 @@ function saveNewProject() {
     quote_notes: "",
     quote_created_at: "",
     quote_updated_at: "",
+tradein_required: tradeInRequired,
+disposal_required: tradeInRequired === "yes",
 
-    tradein_sync_received: false,
-    tradein_credit: "",
-    tradein_estimated_value: "",
-    tradein_synced_to_axis_at: "",
+tradein_sync_received: false,
+tradein_credit: "",
+tradein_estimated_value: "",
+tradein_synced_to_axis_at: "",
 
     rep_status: "new_project",
     rep_action: "new_project_created",
@@ -5289,10 +5313,17 @@ $("quoteAmount").previousElementSibling.textContent = isNewProject
   ? "Projected Revenue / New Equipment Cost"
   : "Quote Amount";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
- const syncedTradeInCredit = getTradeInCreditValue(rec);
+const syncedTradeInCredit =
+  rec.tradein_required === "no" ? 0 : getTradeInCreditValue(rec);
 
 $("quoteTradeInCredit").value =
   syncedTradeInCredit > 0 ? syncedTradeInCredit : "";
+
+$("quoteTradeInCredit").disabled = rec.tradein_required === "no";
+$("quoteTradeInCredit").previousElementSibling.textContent =
+  rec.tradein_required === "no"
+    ? "Trade-In Credit - Not Required"
+    : "Trade-In Credit";
   $("quoteStatus").value = rec.quote_status || "draft";
   $("quotePriority").value = rec.quote_priority || "medium";
   $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
@@ -5323,11 +5354,14 @@ const rec = state.records.find(r => r.id === state.selectedId);
 if (!rec) return;
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
- const tradeInCredit = Number(
-  $("quoteTradeInCredit").value ||
-  getTradeInCreditValue(rec) ||
-  0
-);
+const tradeInCredit =
+  rec.tradein_required === "no"
+    ? 0
+    : Number(
+        $("quoteTradeInCredit").value ||
+        getTradeInCreditValue(rec) ||
+        0
+      );
   const netQuote = Math.max(0, amount - tradeInCredit);
   const profit = netQuote - cost;
 
@@ -5406,11 +5440,14 @@ function saveQuote() {
 
   const amount = Number($("quoteAmount").value || 0);
   const cost = Number($("quoteEstimatedCost").value || 0);
-  const tradeInCredit = Number(
-  $("quoteTradeInCredit").value ||
-  getTradeInCreditValue(rec) ||
-  0
-);
+ const tradeInCredit =
+  rec.tradein_required === "no"
+    ? 0
+    : Number(
+        $("quoteTradeInCredit").value ||
+        getTradeInCreditValue(rec) ||
+        0
+      );
   const netQuote = Math.max(0, amount - tradeInCredit);
 
   const status = $("quoteStatus").value;
@@ -6214,10 +6251,16 @@ document.addEventListener("DOMContentLoaded", init);
     <label>Email</label>
     <input id="newProjectContactEmail" type="email" />
 
-    <label>New System / Project Name</label>
-    <input id="newProjectName" type="text" placeholder="Example: New MRI Replacement Project" />
+   <label>New System / Project Name</label>
+<input id="newProjectName" type="text" placeholder="Example: New MRI Replacement Project" />
 
-    <label>Assigned Rep First Name</label>
+<label>Trade-In / Removal Involved?</label>
+<select id="newProjectTradeInRequired">
+  <option value="yes">Yes</option>
+  <option value="no">No</option>
+</select>
+
+<label>Assigned Rep First Name</label>
     <input id="newProjectRepFirst" type="text" />
 
     <label>Assigned Rep Last Name</label>
