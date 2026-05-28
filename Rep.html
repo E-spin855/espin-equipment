@@ -717,25 +717,46 @@ td:nth-child(14){
     </div>
 
 <div class="grid">
- <!-- LEFT SIDE -->
-<div class="panel">
-  <div class="panel-head">
-    <h2>Rep Work Queue</h2>
-    <span class="mini">Assigned lifecycle opportunities</span>
-  </div>
+  <!-- LEFT SIDE -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Local Inputs</h2>
+      <span class="mini">OEM browser only</span>
+    </div>
+    <div class="panel-body">
+      <div class="row">
+        <label for="csvInput">Upload CSV</label>
+       <input id="csvInput" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+      <div class="btns" style="margin-bottom:16px;">
+        <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+      </div>
+<button type="button" class="green" id="addNewProjectBtn">
+  Add New Project
+</button>
+<div class="row">
+  <label for="axisShareToggle">Share With AXIS</label>
 
-  <div class="panel-body">
-    <button type="button" class="green" id="addNewProjectBtn">
-      Add New Project
-    </button>
+  <select id="axisShareToggle">
+    <option value="on">On — receive Trade-In sync updates</option>
+    <option value="off">Off — do not receive Trade-In sync updates</option>
+  </select>
+</div>
 
-    <div class="footer-note">
-      This view displays lifecycle opportunities assigned to your account.
-      <br><br>
-      Follow-up actions, quote activity, trade-in updates, and escalation activity are managed through the OEM lifecycle workflow.
+<div class="footer-note" id="axisShareStatus">
+  AXIS sharing is currently on.
+</div>
+      <div class="footer-note">
+
+  This view displays lifecycle opportunities assigned to your account.
+
+  <br><br>
+
+  Follow-up actions, scheduling, and escalation activity are managed through the OEM lifecycle workflow.
+
+</div>
     </div>
   </div>
-</div>
 
   <!-- RIGHT SIDE -->
   <div>
@@ -936,7 +957,6 @@ td:nth-child(14){
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
-const REP_QUEUE_KEY = "espin_rep_queue";
 const state = {
   records: [],
   selectedId: null
@@ -4118,70 +4138,14 @@ function renderUnmatchedTradeInLeads() {
     `;
   }).join("");
 }
-function mergeManagerResponsesFromQueue() {
-  let queue = [];
-
-  try {
-    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
-    if (!Array.isArray(queue)) queue = [];
-  } catch {
-    queue = [];
-  }
-
-  let changed = false;
-
-  state.records = state.records.map(rec => {
-    const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
-
-    const match = queue.find(q =>
-      String(q.id || "") === String(rec.id || "") ||
-      String(q.key || "") === String(key || "") ||
-      (
-        String(q.oem_project_id || "") === String(rec.oem_project_id || "") &&
-        String(q.serial_number || "") === String(rec.serial_number || "")
-      )
-    );
-
-    if (!match) return rec;
-
-    const incomingManagerResponseAt = String(match.manager_response_at || "");
-    const currentManagerResponseAt = String(rec.manager_response_at || "");
-
-    if (
-      incomingManagerResponseAt &&
-      incomingManagerResponseAt !== currentManagerResponseAt
-    ) {
-      changed = true;
-
-      return {
-        ...rec,
-        manager_response_action: match.manager_response_action || "",
-        manager_response_date: match.manager_response_date || "",
-        manager_response_notes: match.manager_response_notes || "",
-        manager_response_at: match.manager_response_at || "",
-        manager_response_seen_by_rep:
-          match.manager_response_seen_by_rep !== undefined
-            ? match.manager_response_seen_by_rep
-            : false,
-        manager_response_seen_at: match.manager_response_seen_at || ""
-      };
-    }
-
-    return rec;
-  });
-
-  if (changed) {
-    saveRecords();
-  }
-
-  return changed;
-}
  function render() {
   importTradeInSyncRecords();
-  mergeManagerResponsesFromQueue();
 
   renderStats();
-  renderRepMenu();
+
+  // ✅ REP SIDE MUST SHOW REP ALERT FEED, NOT REP MENU
+renderRepMenu();
+
   renderFollowUpAlertCenter();
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
@@ -4275,12 +4239,12 @@ container.innerHTML = queue.map(item => `
     const t = a.toLowerCase();
 
     const cls =
-  t.includes("proactive") ? "alert-proactive" :
-  t.includes("disposal") ? "alert-disposal" :
-  t.includes("replace") ? "alert-replacement" :
-  t.includes("upgrade") ? "alert-upgrade" :
-  t.includes("planning") ? "alert-planning" :
-  "alert-service";
+      t.includes("disposal") ? "alert-disposal" :
+      t.includes("replace") ? "alert-replacement" :
+      t.includes("upgrade") ? "alert-upgrade" :
+      t.includes("planning") ? "alert-planning" :
+      "alert-service";
+
     return `<span class="alert-badge ${cls}">${a.trim()}</span>`;
   }).join("")}
       </div>
@@ -4724,54 +4688,29 @@ alert_enabled: r.alert_enabled || "",
  // no auto demo load
 
 function selectRow(id) {
-  const selectedId = String(id || "").trim();
-
-  if (!selectedId) {
-    console.warn("Missing row id");
-    return;
+  if (state.selectedId === id) {
+    state.selectedId = null;
+  } else {
+    state.selectedId = id;
   }
 
-  const rec = state.records.find(r =>
-    String(r.id || "").trim() === selectedId ||
-    String(r.key || "").trim() === selectedId ||
-    String(`${r.oem_project_id || ""}_${r.serial_number || ""}`).trim() === selectedId
-  );
+  const rec = state.records.find(r => r.id === id);
 
-  if (!rec) {
-    console.warn("Record not found for selected id:", selectedId);
-    alert("Record not found. Refresh or reload data from Hub.");
-    return;
-  }
-
-  // ✅ Always open. Do NOT toggle closed.
-  state.selectedId = rec.id;
-
-  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+  if (rec?.tradein_sync_received && !rec.tradein_seen_by_rep) {
     rec.tradein_seen_by_rep = true;
   }
 
-  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+  if (rec?.manager_response_action && !rec.manager_response_seen_by_rep) {
     rec.manager_response_seen_by_rep = true;
     rec.manager_response_seen_at = new Date().toISOString();
   }
 
-  saveRecords();
-  syncFeedStatus(rec);
-
-  renderStats();
-  renderRepMenu();
-  renderFollowUpAlertCenter();
-  renderUnmatchedTradeInLeads();
-  renderNewProjectsTable();
-  renderTable();
-  renderDetail();
-
-  const panel = document.getElementById("lifecycleDetailPanel");
-  if (panel) {
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (rec) {
+    saveRecords();
+    syncFeedStatus(rec);
   }
 
-  console.log("OPENED REP RECORD:", rec);
+  render();
 }
 function getProactiveSignal(rec) {
   if (rec.proactive_enabled === "no") return null;
@@ -4851,22 +4790,19 @@ function getAlerts(rec) {
   }
 
   const proactiveSignal =
-  String(rec.proactive_enabled || "yes").toLowerCase().trim() !== "no" &&
-  (
-    String(rec.proactive_signal || "").toLowerCase().trim() === "yes" ||
-    String(rec.proactive_signal || "").toLowerCase().trim() === "true" ||
-    String(rec.proactive_signal || "").trim() === "1" ||
-    String(rec.proactive_type || "").trim() ||
-    String(rec.proactive_date || "").trim() ||
-    String(rec.proactive_reason || "").trim()
-  );
+    rec.proactive_enabled !== "no" &&
+    (
+      rec.proactive_signal === "yes" ||
+      rec.proactive_signal === "true" ||
+      rec.proactive_signal === "1"
+    );
 
-if (proactiveSignal) {
-  return [{
-    type: "proactive",
-    label: "PROACTIVE"
-  }];
-}
+  if (proactiveSignal) {
+    return [{
+      type: "proactive",
+      label: "Proactive"
+    }];
+  }
 
   const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
   const condition = String(rec.condition || "").toLowerCase().trim();
@@ -5591,7 +5527,8 @@ if (status === "won") {
       : status === "lost"
       ? "lost"
       : "quote_follow_up_set";
-if (status === "won") {
+
+  if (status === "won") {
   if (rec.project_type === "new_sales_project") {
     rec.project_type = "lifecycle_project";
     rec.source = "Converted From New AXIS Project";
@@ -5604,18 +5541,15 @@ if (status === "won") {
     rec.dom = rec.tradein_equipment_dom || rec.dom || "";
   }
 
-  rec.lifecycle_completed = false;
-  rec.completed_at = "";
-  rec.completed_by = "";
+  rec.lifecycle_completed = true;
+  rec.completed_at = new Date().toISOString();
+    rec.completed_by =
+      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
 
-  rec.project_management_ready = true;
-  rec.project_management_status = "Pending PM Review";
-  rec.project_management_created_at = new Date().toISOString();
-
-  rec.manager_flash_type = "won_project_converted";
-  rec.manager_flash_text = "Won project converted to lifecycle record";
-
-} else if (status === "lost") {
+    rec.project_management_ready = true;
+    rec.project_management_status = "Pending PM Review";
+    rec.project_management_created_at = new Date().toISOString();
+ } else if (status === "lost") {
   rec.lifecycle_completed = false;
   rec.project_management_ready = false;
   rec.project_management_status = "";
@@ -5631,6 +5565,7 @@ if (status === "won") {
   rec.project_management_status = "";
   rec.project_management_created_at = "";
 }
+
   syncFeedStatus(rec);
   saveRecords();
   closeQuoteModal();
@@ -6171,19 +6106,18 @@ function init() {
 
  window.addEventListener("storage", (e) => {
   if (
-  e.key === STORAGE_KEY ||
-  e.key === REP_QUEUE_KEY ||
-  e.key === "axis_tradein_sync_records_v1" ||
-  e.key === "axis_manager_sync_ping_v1" ||
-  e.key === AXIS_SHARE_KEY ||
-  e.key === UNMATCHED_TRADEIN_KEY
-) {
-  loadRecords();
-  mergeManagerResponsesFromQueue();
-  importTradeInSyncRecords();
-  updateAxisShareStatus();
-  render();
-}
+    e.key === STORAGE_KEY ||
+    e.key === "espin_rep_queue" ||
+    e.key === "axis_tradein_sync_records_v1" ||
+    e.key === "axis_manager_sync_ping_v1" ||
+   e.key === AXIS_SHARE_KEY ||
+e.key === UNMATCHED_TRADEIN_KEY
+  ) {
+    loadRecords();
+    importTradeInSyncRecords();
+    updateAxisShareStatus();
+    render();
+  }
 });
 
 // ✅ ADD AUTO-REFRESH RIGHT HERE
@@ -6191,7 +6125,6 @@ setInterval(() => {
   const before = JSON.stringify(state.records);
 
   importTradeInSyncRecords();
-  mergeManagerResponsesFromQueue();
 
   const after = JSON.stringify(state.records);
 
@@ -6210,6 +6143,23 @@ setInterval(() => {
   updateAxisShareStatus();
 }, 5000);
 window.addEventListener("rep_feed_update", () => {
+  render();
+});
+
+$("axisShareToggle").addEventListener("change", () => {
+  const value = $("axisShareToggle").value;
+
+  localStorage.setItem(
+    AXIS_SHARE_KEY,
+    value === "off" ? "off" : "on"
+  );
+
+  updateAxisShareStatus();
+
+  if (value === "on") {
+    importTradeInSyncRecords();
+  }
+
   render();
 });
 $("quoteBtn").addEventListener("click", () => openQuoteModal());
@@ -6233,7 +6183,7 @@ $("quoteInstallRequired").addEventListener("change", updateQuotePreview);
 $("quoteRemovalRequired").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertDate").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertNote").addEventListener("input", updateQuotePreview);
-if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
+$("clearBtn").addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("espin_rep_queue");
   localStorage.removeItem("axis_manager_sync_ping_v1");
@@ -6247,7 +6197,7 @@ if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
   $("csvInput").value = "";
   render();
 });
-  if ($("csvInput")) $("csvInput").addEventListener("change", (e) => {
+  $("csvInput").addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
     handleCSVUpload(file);
