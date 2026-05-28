@@ -599,7 +599,7 @@ tbody tr:hover{
 
 <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
-
+let openTerritoryId = "";
 const TERRITORY_DEFAULTS = {
   "Pacific Northwest": {
     manager: "Sarah Collins",
@@ -1005,10 +1005,10 @@ function renderExecutiveFeed(summary, grouped){
   el.innerHTML = cards.join("");
 }
 function toggleTerritoryDetails(id){
-  const row = document.getElementById(id);
-  if (!row) return;
-  row.classList.toggle("open");
+  openTerritoryId = openTerritoryId === id ? "" : id;
+  renderVP();
 }
+
 function renderRegionalTable(grouped){
   const tbody =
     document.getElementById("regionalFinancialBody");
@@ -1029,7 +1029,7 @@ function renderRegionalTable(grouped){
   }
 
   tbody.innerHTML =
-    entries.map(([territory, rows], index) => {
+    entries.map(([territory, rows]) => {
       const summary =
         summarizeRows(rows);
 
@@ -1043,11 +1043,25 @@ function renderRegionalTable(grouped){
         TERRITORY_DEFAULTS["Unassigned Territory"] ||
         {};
 
-      const detailId = `territoryDetails_${index}`;
+      const detailId =
+        `territoryDetails_${territory.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+      const isOpen =
+        openTerritoryId === detailId;
 
       const reps = [...new Set(
         rows.map(r => r.repName).filter(Boolean)
       )];
+
+      const emailHtml = contact.email
+        ? `<a href="mailto:${contact.email}" onclick="event.stopPropagation();" style="color:#43b0ff;text-decoration:none;font-weight:900;">${contact.email}</a>`
+        : "-";
+
+      const phoneDigits = String(contact.phone || "").replace(/\D/g, "");
+
+      const phoneHtml = contact.phone
+        ? `<a href="tel:${phoneDigits}" onclick="event.stopPropagation();" style="color:#43b0ff;text-decoration:none;font-weight:900;">${contact.phone}</a>`
+        : "-";
 
       const quoteList = rows.map(row => `
         <div class="contact-item">
@@ -1076,7 +1090,7 @@ function renderRegionalTable(grouped){
           </td>
         </tr>
 
-        <tr id="${detailId}" class="region-contact-row">
+        <tr id="${detailId}" class="region-contact-row ${isOpen ? "open" : ""}">
           <td colspan="7">
             <div class="contact-box">
               <strong>${territory} Contact / Quote Details</strong>
@@ -1089,12 +1103,12 @@ function renderRegionalTable(grouped){
 
                 <div class="contact-item">
                   <div class="contact-label">Email</div>
-                  <div class="contact-value">${contact.email || "-"}</div>
+                  <div class="contact-value">${emailHtml}</div>
                 </div>
 
                 <div class="contact-item">
                   <div class="contact-label">Phone</div>
-                  <div class="contact-value">${contact.phone || "-"}</div>
+                  <div class="contact-value">${phoneHtml}</div>
                 </div>
 
                 <div class="contact-item">
