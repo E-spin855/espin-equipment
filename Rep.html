@@ -4275,12 +4275,12 @@ container.innerHTML = queue.map(item => `
     const t = a.toLowerCase();
 
     const cls =
-      t.includes("disposal") ? "alert-disposal" :
-      t.includes("replace") ? "alert-replacement" :
-      t.includes("upgrade") ? "alert-upgrade" :
-      t.includes("planning") ? "alert-planning" :
-      "alert-service";
-
+  t.includes("proactive") ? "alert-proactive" :
+  t.includes("disposal") ? "alert-disposal" :
+  t.includes("replace") ? "alert-replacement" :
+  t.includes("upgrade") ? "alert-upgrade" :
+  t.includes("planning") ? "alert-planning" :
+  "alert-service";
     return `<span class="alert-badge ${cls}">${a.trim()}</span>`;
   }).join("")}
       </div>
@@ -4826,19 +4826,22 @@ function getAlerts(rec) {
   }
 
   const proactiveSignal =
-    rec.proactive_enabled !== "no" &&
-    (
-      rec.proactive_signal === "yes" ||
-      rec.proactive_signal === "true" ||
-      rec.proactive_signal === "1"
-    );
+  String(rec.proactive_enabled || "yes").toLowerCase().trim() !== "no" &&
+  (
+    String(rec.proactive_signal || "").toLowerCase().trim() === "yes" ||
+    String(rec.proactive_signal || "").toLowerCase().trim() === "true" ||
+    String(rec.proactive_signal || "").trim() === "1" ||
+    String(rec.proactive_type || "").trim() ||
+    String(rec.proactive_date || "").trim() ||
+    String(rec.proactive_reason || "").trim()
+  );
 
-  if (proactiveSignal) {
-    return [{
-      type: "proactive",
-      label: "Proactive"
-    }];
-  }
+if (proactiveSignal) {
+  return [{
+    type: "proactive",
+    label: "PROACTIVE"
+  }];
+}
 
   const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
   const condition = String(rec.condition || "").toLowerCase().trim();
@@ -6205,7 +6208,7 @@ $("quoteInstallRequired").addEventListener("change", updateQuotePreview);
 $("quoteRemovalRequired").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertDate").addEventListener("change", updateQuotePreview);
 $("quoteFollowUpAlertNote").addEventListener("input", updateQuotePreview);
-$("clearBtn").addEventListener("click", () => {
+if ($("clearBtn")) $("clearBtn").addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("espin_rep_queue");
   localStorage.removeItem("axis_manager_sync_ping_v1");
@@ -6219,7 +6222,7 @@ $("clearBtn").addEventListener("click", () => {
   $("csvInput").value = "";
   render();
 });
-  $("csvInput").addEventListener("change", (e) => {
+  if ($("csvInput")) $("csvInput").addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
     handleCSVUpload(file);

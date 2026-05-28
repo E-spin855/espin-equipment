@@ -1138,14 +1138,15 @@ function getManagerNextActionHtml(rec) {
   }
 
   const nextMap = {
-    disposal: "TRADE-IN / DISPOSAL REVIEW",
-    replacement: "REPLACEMENT PLANNING",
-    upgrade: "UPGRADE REVIEW",
-    planning: "BUDGET PLANNING",
-    service: "SERVICE REVIEW",
-    postponed: "FOLLOW-UP SCHEDULED",
-    completed: "COMPLETED"
-  };
+  disposal: "TRADE-IN / DISPOSAL REVIEW",
+  replacement: "REPLACEMENT PLANNING",
+  upgrade: "UPGRADE REVIEW",
+  planning: "BUDGET PLANNING",
+  service: "SERVICE REVIEW",
+  proactive: "EARLY CUSTOMER OUTREACH",
+  postponed: "FOLLOW-UP SCHEDULED",
+  completed: "COMPLETED"
+};
 
   return `
     <span class="pill pending" style="border:1px solid rgba(255,216,77,.55);color:#fff4cc;background:transparent;">
@@ -1424,6 +1425,20 @@ alert_enabled: (obj.alert_enabled || "yes").toLowerCase().trim(),
 utilization: isNaN(Number(obj.utilization)) ? 0 : Number(obj.utilization),
 condition: String(obj.condition || "").toLowerCase().trim(),
 service_cost_trend: String(obj.service_cost_trend || "").toLowerCase().trim(),
+proactive_signal:
+  String(obj.proactive_signal || "").toLowerCase().trim(),
+
+proactive_type:
+  String(obj.proactive_type || "").toLowerCase().trim(),
+
+proactive_date:
+  excelDateToISO(obj.proactive_date),
+
+proactive_reason:
+  obj.proactive_reason || "",
+
+proactive_enabled:
+  String(obj.proactive_enabled || "yes").toLowerCase().trim(),
 planning_offset: obj.planning_offset ? Number(obj.planning_offset) : "",
 upgrade_offset: obj.upgrade_offset ? Number(obj.upgrade_offset) : "",
 replacement_offset: obj.replacement_offset ? Number(obj.replacement_offset) : "",
@@ -1490,7 +1505,11 @@ manager_response_notes: existing.manager_response_notes || newRec.manager_respon
 manager_response_at: existing.manager_response_at || newRec.manager_response_at || "",
 manager_response_seen_by_rep: existing.manager_response_seen_by_rep ?? false,
 manager_response_seen_at: existing.manager_response_seen_at || "",
-            }
+proactive_signal: existing.proactive_signal || newRec.proactive_signal || "",
+proactive_type: existing.proactive_type || newRec.proactive_type || "",
+proactive_date: existing.proactive_date || newRec.proactive_date || "",
+proactive_reason: existing.proactive_reason || newRec.proactive_reason || "",
+proactive_enabled: existing.proactive_enabled || newRec.proactive_enabled || "yes",            }
           : newRec
       );
     });
@@ -2655,19 +2674,22 @@ function getAlerts(rec) {
   }
 
   const proactiveSignal =
-    rec.proactive_enabled !== "no" &&
-    (
-      rec.proactive_signal === "yes" ||
-      rec.proactive_signal === "true" ||
-      rec.proactive_signal === "1"
-    );
+  String(rec.proactive_enabled || "yes").toLowerCase().trim() !== "no" &&
+  (
+    String(rec.proactive_signal || "").toLowerCase().trim() === "yes" ||
+    String(rec.proactive_signal || "").toLowerCase().trim() === "true" ||
+    String(rec.proactive_signal || "").trim() === "1" ||
+    String(rec.proactive_type || "").trim() ||
+    String(rec.proactive_date || "").trim() ||
+    String(rec.proactive_reason || "").trim()
+  );
 
-  if (proactiveSignal) {
-    return [{
-      type: "proactive",
-      label: "Proactive"
-    }];
-  }
+if (proactiveSignal) {
+  return [{
+    type: "proactive",
+    label: "PROACTIVE"
+  }];
+}
 
   const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
   const condition = String(rec.condition || "").toLowerCase().trim();
@@ -2918,9 +2940,10 @@ function getActionScore(rec) {
   if (alerts.some(a => a.type === "replacement")) return 75;
   if (alerts.some(a => a.type === "upgrade")) return 60;
   if (alerts.some(a => a.type === "service")) return 50;
-  if (alerts.some(a => a.type === "planning")) return 40;
+ if (alerts.some(a => a.type === "planning")) return 40;
+if (alerts.some(a => a.type === "proactive")) return 35;
 
-  return 20;
+return 20;
 }
 
 function getActionLabel(score) {
