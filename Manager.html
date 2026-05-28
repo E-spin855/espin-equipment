@@ -684,26 +684,6 @@ function sameRecord(a, b) {
 }
 
 function loadRecords() {
-  try {
-    const managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-
-    if (
-      managerQueue &&
-      typeof managerQueue === "object" &&
-      Array.isArray(managerQueue[MANAGER_NAME])
-    ) {
-      state.records = managerQueue[MANAGER_NAME].map(r => ({
-        ...r,
-        key: getRecordKey(r)
-      }));
-      return;
-    }
-  } catch {}
-
-  state.records = [];
-}
-
-function saveRecords() {
   let managerQueue = {};
 
   try {
@@ -713,15 +693,32 @@ function saveRecords() {
     managerQueue = {};
   }
 
-  managerQueue[MANAGER_NAME] = state.records.map(r => ({
-    ...r,
-    key: getRecordKey(r)
-  }));
+  const managerFromUrl =
+    new URLSearchParams(window.location.search).get("manager");
 
-  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  if (
+    managerFromUrl &&
+    Array.isArray(managerQueue[managerFromUrl])
+  ) {
+    state.records = managerQueue[managerFromUrl].map(r => ({
+      ...r,
+      key: getRecordKey(r),
+      __manager_bucket: managerFromUrl
+    }));
+    return;
+  }
+
+  state.records = Object.entries(managerQueue).flatMap(([managerName, records]) => {
+    if (!Array.isArray(records)) return [];
+
+    return records.map(r => ({
+      ...r,
+      key: getRecordKey(r),
+      __manager_bucket: managerName
+    }));
+  });
 }
-
+function saveRecords() {
 function evaluateStatus(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed" || rec.quote_status === "won") return "submitted";
   if (rec.submitted_to || rec.quote_status === "sent" || rec.quote_status === "draft" || rec.quote_status === "follow_up") return "submitted";
@@ -1360,18 +1357,67 @@ function saveManagerResponse() {
 
 function syncManagerResponseToStorage(updatedRec) {
   const key = getRecordKey(updatedRec);
-  updatedRec.key = key;
 
-  state.records = upsertByRecord(state.records, {
+  updatedRec = {
     ...updatedRec,
+    key,
     manager_response_seen_by_rep: false,
     manager_response_seen_at: "",
     manager_unseen_update: false,
     manager_flash_at: "",
     manager_flash_type: ""
+  };
+
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
+  } catch {
+    managerQueue = {};
+  }
+
+  let foundInAnyManager = false;
+
+  Object.keys(managerQueue).forEach(managerName => {
+    if (!Array.isArray(managerQueue[managerName])) return;
+
+    managerQueue[managerName] = managerQueue[managerName].map(item => {
+      if (!sameRecord(item, updatedRec)) return item;
+
+      foundInAnyManager = true;
+
+      return {
+        ...item,
+        ...updatedRec,
+        key,
+        __manager_bucket: managerName
+      };
+    });
   });
 
-  saveRecords();
+  if (!foundInAnyManager) {
+    const bucket =
+      updatedRec.__manager_bucket ||
+      updatedRec.manager_name ||
+      updatedRec.assigned_manager_name ||
+      updatedRec.regional_manager ||
+      updatedRec.manager ||
+      MANAGER_NAME ||
+      "Default Manager";
+
+    if (!Array.isArray(managerQueue[bucket])) {
+      managerQueue[bucket] = [];
+    }
+
+    managerQueue[bucket].unshift({
+      ...updatedRec,
+      key,
+      __manager_bucket: bucket
+    });
+  }
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
 
   let repQueue = [];
 
@@ -1394,8 +1440,9 @@ function syncManagerResponseToStorage(updatedRec) {
 
   localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-}
 
+  loadRecords();
+}
 function upsertByRecord(list, rec) {
   let found = false;
 
