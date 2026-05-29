@@ -449,6 +449,38 @@ textarea#infoRequestNotes{
   background:#1d8cff;
   color:#fff;
 }
+.trade-estimate-box{
+  margin-top:14px;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid rgba(255,216,77,.35);
+  background:rgba(255,216,77,.07);
+}
+
+.trade-estimate-value{
+  font-size:22px;
+  font-weight:900;
+  color:#ffd84d;
+  margin-top:6px;
+}
+
+.trade-estimate-detail{
+  margin-top:8px;
+  font-size:13px;
+  line-height:1.45;
+  color:#d8ebff;
+}
+
+.trade-estimate-disclaimer{
+  margin-top:12px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(255,77,77,.28);
+  background:rgba(255,77,77,.08);
+  color:#ffcccc;
+  font-size:12px;
+  line-height:1.45;
+}
 </style>
 </head>
 
@@ -590,7 +622,110 @@ function openImagePreview(url, title){
   titleEl.textContent = title || "Equipment Image";
   overlay.style.display = "flex";
 }
+function ageFromDom(dom){
+  if (!dom) return 0;
 
+  const raw = String(dom).trim();
+
+  const yearMatch = raw.match(/\b(19|20)\d{2}\b/);
+  if (!yearMatch) return 0;
+
+  const year = Number(yearMatch[0]);
+  const currentYear = new Date().getFullYear();
+
+  if (!year || year > currentYear) return 0;
+
+  return currentYear - year;
+}
+function getTradeDeskBenchmarkEstimate(rec) {
+  const modality = String(rec.modality || "").toUpperCase().trim();
+  const make = String(rec.make || "").toUpperCase().trim();
+  const age = Number(ageFromDom(rec.dom) || 0);
+  const condition = String(rec.condition || "").toLowerCase().trim();
+
+  const tubeCount = Number(
+    rec.tube_count ||
+    rec.scan_count ||
+    rec.exposure_count ||
+    rec.usage_count ||
+    0
+  );
+
+  let baseValue = 50000;
+
+  if (modality === "MRI") baseValue = 90000;
+else if (modality === "CT") baseValue = 70000;
+else if (modality === "XRAY") baseValue = 25000;
+else if (modality === "CARM") baseValue = 60000;
+else if (modality === "PETCT") baseValue = 85000;
+else if (modality === "MAMMO") baseValue = 30000;
+  let ageFactor = 1;
+
+  if (age >= 25) ageFactor = 0.12;
+  else if (age >= 20) ageFactor = 0.18;
+  else if (age >= 15) ageFactor = 0.35;
+  else if (age >= 10) ageFactor = 0.55;
+  else if (age >= 7) ageFactor = 0.75;
+
+  let conditionFactor = 1;
+
+  if (condition === "poor") conditionFactor = 0.45;
+  else if (condition === "fair") conditionFactor = 0.70;
+  else if (condition === "good") conditionFactor = 1;
+  else if (condition === "excellent") conditionFactor = 1.15;
+
+  let usageFactor = 1;
+
+const usageSensitiveModalities = ["CT", "PET", "PETCT", "XRAY", "MAMMO"];
+
+if (usageSensitiveModalities.includes(modality)) {
+  if (tubeCount >= 500000000) usageFactor = 0.35;
+  else if (tubeCount >= 1000000) usageFactor = 0.55;
+  else if (tubeCount >= 500000) usageFactor = 0.75;
+}
+
+  let demandFactor = 1;
+
+  if (make.includes("GE")) demandFactor = 1;
+  else if (make.includes("SIEMENS")) demandFactor = 1.05;
+  else if (make.includes("PHILIPS")) demandFactor = 1;
+  else if (make.includes("CANON") || make.includes("TOSHIBA")) demandFactor = 0.95;
+
+  const midpoint =
+    baseValue *
+    ageFactor *
+    conditionFactor *
+    usageFactor *
+    demandFactor;
+
+  const estimatedLow = Math.max(0, Math.round(midpoint * 0.75 / 1000) * 1000);
+  const estimatedHigh = Math.max(0, Math.round(midpoint * 1.25 / 1000) * 1000);
+
+  let confidence = "Medium";
+
+  if (!rec.dom || !rec.modality || !rec.make) confidence = "Low";
+ if (
+  age >= 20 ||
+  condition === "poor" ||
+  (usageSensitiveModalities.includes(modality) && tubeCount >= 500000000)
+) {
+  confidence = "Low";
+}
+  if (age > 0 && condition && tubeCount > 0 && age < 15) confidence = "Medium";
+
+  return {
+    estimatedLow,
+    estimatedHigh,
+    confidence,
+    basis: [
+      `Modality: ${modality || "Unknown"}`,
+      `Make: ${rec.make || "Unknown"}`,
+      `Age: ${age || "Unknown"} years`,
+      `Condition: ${condition || "Not provided"}`,
+      `Usage / tube count: ${tubeCount ? tubeCount.toLocaleString() : "Not provided"}`
+    ]
+  };
+}
 function closeImagePreview(){
   const overlay = document.getElementById("imagePreviewOverlay");
   const img = document.getElementById("imagePreviewImg");
@@ -936,6 +1071,33 @@ function normalizeIncomingRecord(item){
 
     software_version: item.software_version || item.tradein_software_version || item.ct_sw_version || item.mri_sw_version || "",
     upgrade_notes: item.upgrade_notes || item.tradein_upgrade_notes || item.ct_upgrades_desc || item.mri_coils || "",
+condition:
+  src.condition ||
+  src.tradein_condition ||
+  src.equipment_condition ||
+  src.overall_condition ||
+  "",
+
+tube_count:
+  src.tube_count ||
+  src.scan_count ||
+  src.exposure_count ||
+  src.usage_count ||
+  src.ct_tube_mas ||
+  src.pet_tube_mas ||
+  "",
+
+scan_count:
+  src.scan_count ||
+  src.ct_tube_mas ||
+  src.pet_tube_mas ||
+  "",
+
+usage_count:
+  src.usage_count ||
+  src.ct_tube_mas ||
+  src.pet_tube_mas ||
+  "",
 // FULL MODALITY FIELD STORAGE — keeps Trade Desk + Bidder Portal identical to Trade-In App
 
 // CT
@@ -2386,6 +2548,8 @@ function saveBidDeadline(id){
 }
 function renderTradeDeskPackageCard(rec, safeId, rawId){
   const packageId = getBidPackageId(rec);
+  const estimate = getTradeDeskBenchmarkEstimate(rec);
+
   const active =
     String(activeBidPackageId || "") === String(rawId || "") ||
     String(activeBidPackageId || "") === String(packageId || "") ||
@@ -2450,6 +2614,32 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
             <hr>
 
 <div class="field-block" style="border:none;background:transparent;padding:0;">
+<div class="trade-estimate-box">
+  <div class="k">Trade Desk Benchmark Estimate</div>
+
+  <div class="trade-estimate-value">
+    ${money(estimate.estimatedLow)} – ${money(estimate.estimatedHigh)}
+  </div>
+
+  <div class="trade-estimate-detail">
+    <strong>Confidence:</strong> ${htmlSafe(estimate.confidence)}
+    <br><br>
+    <strong>Basis:</strong><br>
+    ${estimate.basis.map(item => htmlSafe(item)).join("<br>")}
+  </div>
+
+  <div class="trade-estimate-detail">
+    <strong>Internal Use:</strong>
+    This estimate gives Trade Desk a benchmark range to compare against incoming buyer bids. If no acceptable bid comes in, Trade Desk can use this range as a discussion point before deciding whether to offer credit, request more information, or assign no trade-in value.
+  </div>
+
+  <div class="trade-estimate-disclaimer">
+    <strong>Demo Disclaimer:</strong>
+    These benchmark values are demo estimates only. They are not appraisals, confirmed market values, bids, offers, financial advice, resale guarantees, or guaranteed trade-in credits.
+    Production estimates must be calibrated using Trade Desk historical sales data, previous buyer bids, modality-specific resale trends, age, condition, usage data, removal cost history, parts demand, equipment completeness, inspection findings, and current market demand.
+    Final trade-in value must be determined by authorized Trade Desk review and actual buyer response.
+  </div>
+</div>
   <h3 class="section-title">Trade-In App Equipment Details</h3>
   ${tradeInFieldRows({
     ...rec,
