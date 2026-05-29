@@ -955,8 +955,13 @@ td:nth-child(14){
 
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
+const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
+
+const MANAGER_NAME =
+  new URLSearchParams(window.location.search).get("manager") ||
+  "Default Manager";
 const state = {
   records: [],
   selectedId: null
@@ -2638,13 +2643,44 @@ function renderDetail() {
   document.getElementById("repFollowUpDate").value =
     rec.rep_follow_up_date || rec.next_action_date || "";
 const grid = $("detailGrid");
+const axisRec = getAxisRecommendation(rec);
 
 grid.innerHTML = `
+  <div class="detail-card" style="grid-column:1 / -1;border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.08);">
+    <div class="k">AXIS Recommendation</div>
+
+    <div class="v" style="line-height:1.6;">
+      <div style="color:#41ff9c;font-weight:900;margin-bottom:8px;">
+        Recommended Action
+      </div>
+      ${axisRec.recommendedAction}
+
+      <div style="color:#ffd84d;font-weight:900;margin-top:14px;margin-bottom:6px;">
+        Why Flagged
+      </div>
+      <div class="mini">${axisRec.whyFlagged}</div>
+
+      <div style="color:#43b0ff;font-weight:900;margin-top:14px;margin-bottom:6px;">
+        Why Now
+      </div>
+      <div class="mini">${axisRec.whyNow}</div>
+
+      <div style="color:#a2f5ff;font-weight:900;margin-top:14px;margin-bottom:6px;">
+        Suggested Rep Message
+      </div>
+      <div class="mini" style="font-style:italic;">${axisRec.suggestedRepMessage}</div>
+
+      <div style="color:#ffb86b;font-weight:900;margin-top:14px;margin-bottom:6px;">
+        Manager Note
+      </div>
+      <div class="mini">${axisRec.managerNote}</div>
+    </div>
+  </div>
+
   <div class="detail-card">
     <div class="k">Hospital</div>
     <div class="v">${rec.site || ""}</div>
   </div>
-
   <div class="detail-card">
   <div class="k">Street Address</div>
   <div class="v">${rec.site_address || ""}</div>
@@ -3248,6 +3284,56 @@ function evaluateAndPush(rec) {
 
   rec._pushed_to_feed = true;
 }
+function syncToManagerQueue(rec) {
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
+  } catch {
+    managerQueue = {};
+  }
+
+  let managerRecords = Array.isArray(managerQueue[MANAGER_NAME])
+    ? managerQueue[MANAGER_NAME]
+    : [];
+
+  const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
+
+  let found = false;
+
+  managerRecords = managerRecords.map(item => {
+    const sameRecord =
+      item.id === rec.id ||
+      item.key === key ||
+      (
+        String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(rec.serial_number || "")
+      );
+
+    if (!sameRecord) return item;
+
+    found = true;
+
+    return {
+      ...item,
+      ...rec,
+      key
+    };
+  });
+
+  if (!found) {
+    managerRecords.unshift({
+      ...rec,
+      key
+    });
+  }
+
+  managerQueue[MANAGER_NAME] = managerRecords;
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+}
 function syncFeedStatus(rec) {
   const key = `${rec.oem_project_id}_${rec.serial_number}`;
 
@@ -3332,7 +3418,7 @@ function syncFeedStatus(rec) {
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   state.records = main;
-
+syncToManagerQueue(rec);
   window.dispatchEvent(new Event("rep_feed_update"));
 }
 function saveAsUnmatchedTradeInLead(item) {
@@ -4729,6 +4815,72 @@ function getProactiveSignal(rec) {
       rec.proactive_reason ||
       "This record was flagged before the normal lifecycle threshold."
   };
+}
+function getAxisRecommendation(rec) {
+  const alerts = getAlerts(rec);
+  const first = alerts[0];
+  const age = ageFromDom(rec.dom);
+  const modality = normalizeModality(rec.modality);
+  const threshold = Number(rec.threshold_years || 0) || 8;
+
+  if (!first) {
+    return {
+      whyFlagged: "No active lifecycle trigger is currently detected.",
+      whyNow: "Continue monitoring this asset until a lifecycle, service, utilization, or proactive signal becomes active.",
+      recommendedAction: "Monitor asset status.",
+      suggestedRepMessage: "Hi, we are continuing to monitor your equipment lifecycle and will reach out if a planning window becomes active.",
+      managerNote: "No active rep action required at this time."
+    };
+  }
+
+  const assetLabel = `${modality || "Asset"}${age ? ` is ${age} years old` : ""}`;
+
+  const map = {
+    disposal: {
+      whyFlagged: `${assetLabel} and has reached the disposition review window.`,
+      whyNow: "The asset may be past its strongest trade-in or reuse window. Waiting may reduce value and increase removal or service exposure.",
+      recommendedAction: "Start trade-in or disposal review with the customer now.",
+      suggestedRepMessage: "Hi, we are reviewing lifecycle planning for your system and noticed it may be entering a disposition review window. Would it make sense to schedule a quick review?",
+      managerNote: "High-priority disposition opportunity. Rep follow-up should be visible immediately."
+    },
+    replacement: {
+      whyFlagged: `${assetLabel} and exceeds the ${threshold}-year lifecycle threshold.`,
+      whyNow: "Replacement planning window is active. Waiting may reduce trade-in value and increase service exposure.",
+      recommendedAction: "Start replacement planning conversation with customer within 30 days.",
+      suggestedRepMessage: "Hi, we are reviewing lifecycle planning for your system and noticed it is entering a replacement planning window. Would it make sense to schedule a quick review?",
+      managerNote: "High-priority lifecycle opportunity assigned to rep. Follow-up should be visible within 30 days."
+    },
+    upgrade: {
+      whyFlagged: `${assetLabel} and is entering an upgrade review window.`,
+      whyNow: "Upgrade timing may help extend useful life or prepare the customer for replacement planning.",
+      recommendedAction: "Review upgrade options with the customer.",
+      suggestedRepMessage: "Hi, we are reviewing your system lifecycle and noticed it may be a good time to evaluate upgrade options. Would a quick review be useful?",
+      managerNote: "Upgrade opportunity assigned to rep. Manager should verify follow-up activity."
+    },
+    planning: {
+      whyFlagged: `${assetLabel} and is entering the budget planning window.`,
+      whyNow: "Early planning gives the customer time to budget before replacement pressure increases.",
+      recommendedAction: "Start budget planning conversation.",
+      suggestedRepMessage: "Hi, we are reviewing upcoming lifecycle planning and wanted to help you prepare early for future equipment needs. Would it make sense to discuss timing?",
+      managerNote: "Planning-stage opportunity. Rep should begin early customer engagement."
+    },
+    service: {
+      whyFlagged: "Service, condition, utilization, or cost trend signals indicate this asset may need review.",
+      whyNow: "Service exposure may increase if the issue is not reviewed early.",
+      recommendedAction: "Review service history and customer impact.",
+      suggestedRepMessage: "Hi, we are reviewing recent service and lifecycle indicators for your system. Would it be helpful to discuss current performance and planning options?",
+      managerNote: "Service-driven opportunity. Rep should confirm customer impact and next step."
+    },
+    proactive: {
+      whyFlagged: rec.proactive_reason || "A proactive lifecycle signal was provided.",
+      whyNow: "This signal was entered before the normal lifecycle trigger, creating an early customer engagement opportunity.",
+      recommendedAction: "Start early customer outreach.",
+      suggestedRepMessage: "Hi, we are reviewing your equipment planning timeline and noticed an early planning signal. Would it make sense to schedule a quick lifecycle review?",
+      managerNote: "Proactive opportunity. Rep should document outreach and customer response."
+    }
+  };
+
+  return map[first.type] || map.planning;
 }
 function getAlerts(rec) {
   if (rec.lifecycle_completed || rec.project_type === "new_sales_project") {
