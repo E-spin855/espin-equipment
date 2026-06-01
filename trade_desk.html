@@ -48,20 +48,16 @@ button{
 button.green{background:#18a558}
 button.red{background:#c0392b}
 button.gold{background:#b8860b}
+button.secondary{background:#263f5f}
 button.emerald{
   background:#18a558;
   color:#ffffff;
   box-shadow:none;
 }
-
 button.emerald:hover{
   background:#20c66b;
-}
-
-button.emerald:hover{
   filter:brightness(1.08);
 }
-button.secondary{background:#263f5f}
 
 .grid{
   display:grid;
@@ -373,18 +369,6 @@ textarea#infoRequestNotes{
   text-transform:uppercase;
   font-size:11px;
 }
-.bidding-ends-box{
-  border:2px solid #34d399 !important;
-  background:linear-gradient(90deg,#064e3b,#059669,#10b981) !important;
-  color:#ecfdf5 !important;
-  box-shadow:0 0 24px rgba(16,185,129,.45);
-  text-shadow:0 0 8px rgba(52,211,153,.45);
-}
-
-.bidding-ends-box label,
-.bidding-ends-box .small{
-  color:#ecfdf5 !important;
-}
 
 .bidding-ends-badge{
   background:linear-gradient(90deg,#064e3b,#059669,#10b981) !important;
@@ -393,19 +377,7 @@ textarea#infoRequestNotes{
   box-shadow:0 0 16px rgba(16,185,129,.4);
   font-weight:900;
 }
-@media(max-width:1100px){
-  .grid{
-    grid-template-columns:1fr;
-  }
 
-  .tracker-row{
-    grid-template-columns:1fr;
-  }
-
-  .package-card-head{
-    flex-direction:column;
-  }
-}
 .image-preview-overlay{
   position:fixed;
   inset:0;
@@ -449,19 +421,13 @@ textarea#infoRequestNotes{
   background:#1d8cff;
   color:#fff;
 }
+
 .trade-estimate-box{
   margin-top:14px;
   padding:14px;
   border-radius:14px;
   border:1px solid rgba(255,216,77,.35);
   background:rgba(255,216,77,.07);
-}
-
-.trade-estimate-value{
-  font-size:22px;
-  font-weight:900;
-  color:#ffd84d;
-  margin-top:6px;
 }
 
 .trade-estimate-detail{
@@ -481,6 +447,20 @@ textarea#infoRequestNotes{
   font-size:12px;
   line-height:1.45;
 }
+
+@media(max-width:1100px){
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  .tracker-row{
+    grid-template-columns:1fr;
+  }
+
+  .package-card-head{
+    flex-direction:column;
+  }
+}
 </style>
 </head>
 
@@ -488,11 +468,11 @@ textarea#infoRequestNotes{
 
 <h1>AXIS Trade Desk Workflow Demo</h1>
 <p class="small">
-Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → External Bidder Portal → Bid Progress → Winning Bid → Rep Quote Sync
+Trade-In App / AXIS Rep Workflow → Manual Trade Desk Review → Optional Bidder Release → Manual Bid Selection → Manual Credit Posting
 </p>
 
 <div class="sync-banner">
-  Automatic intake only. Records appear here after the Trade-In app or AXIS rep workflow syncs them. Bidder package links open a separate bidder page.
+  Manual Trade Desk review queue. Records appear here after field intake or AXIS sync. No trade-in credit is final until Trade Desk reviews the record, releases it when appropriate, reviews buyer responses, and manually selects an approved credit.
 </div>
 
 <div class="grid">
@@ -502,12 +482,12 @@ Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → External Bidder Portal 
   </div>
 
   <div class="panel">
-    <h2>2. Bid Progress</h2>
+    <h2>2. Buyer Response Progress</h2>
     <div id="bidderPortal"></div>
   </div>
 
   <div class="panel">
-    <h2>3. Rep Quote Sync</h2>
+    <h2>3. Manual Credit Posting</h2>
     <div id="repQuotes"></div>
   </div>
 </div>
@@ -562,6 +542,7 @@ Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → External Bidder Portal 
     </div>
   </div>
 </div>
+
 <div id="imagePreviewOverlay" class="image-preview-overlay" onclick="closeImagePreview()">
   <div class="image-preview-box" onclick="event.stopPropagation();">
     <img id="imagePreviewImg" src="" alt="Image preview">
@@ -569,6 +550,7 @@ Trade-In App / AXIS Rep Workflow → Trade Desk AXIS → External Bidder Portal 
     <button class="image-preview-close" onclick="closeImagePreview()">Close Preview</button>
   </div>
 </div>
+
 <script>
 const KEY = "axis_trade_desk_demo_v1";
 const BIDDER_PORTAL_KEY = "axis_bidder_portal_packages_v1";
@@ -578,6 +560,7 @@ const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
 const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
 const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 const ACTIVE_PACKAGE_KEY = "axis_trade_desk_active_package_id_v1";
+const LIFECYCLE_KEY = "espin_lifecycle_demo_records_v1";
 
 let activeInfoRequestId = "";
 let activeBidPackageId =
@@ -611,128 +594,7 @@ function htmlSafe(v){
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-function openImagePreview(url, title){
-  const overlay = document.getElementById("imagePreviewOverlay");
-  const img = document.getElementById("imagePreviewImg");
-  const titleEl = document.getElementById("imagePreviewTitle");
 
-  if (!overlay || !img || !titleEl) return;
-
-  img.src = url || "";
-  titleEl.textContent = title || "Equipment Image";
-  overlay.style.display = "flex";
-}
-function ageFromDom(dom){
-  if (!dom) return 0;
-
-  const raw = String(dom).trim();
-
-  const yearMatch = raw.match(/\b(19|20)\d{2}\b/);
-  if (!yearMatch) return 0;
-
-  const year = Number(yearMatch[0]);
-  const currentYear = new Date().getFullYear();
-
-  if (!year || year > currentYear) return 0;
-
-  return currentYear - year;
-}
-function getTradeDeskBenchmarkEstimate(rec) {
-  const modality = String(rec.modality || "").toUpperCase().trim();
-  const make = String(rec.make || "").toUpperCase().trim();
-  const age = Number(ageFromDom(rec.dom) || 0);
-  const condition = String(rec.condition || "").toLowerCase().trim();
-
-  const tubeCount = Number(
-    rec.tube_count ||
-    rec.scan_count ||
-    rec.exposure_count ||
-    rec.usage_count ||
-    0
-  );
-
-  let baseValue = 50000;
-
-  if (modality === "MRI") baseValue = 90000;
-else if (modality === "CT") baseValue = 70000;
-else if (modality === "XRAY") baseValue = 25000;
-else if (modality === "CARM") baseValue = 60000;
-else if (modality === "PETCT") baseValue = 85000;
-else if (modality === "MAMMO") baseValue = 30000;
-  let ageFactor = 1;
-
-  if (age >= 25) ageFactor = 0.12;
-  else if (age >= 20) ageFactor = 0.18;
-  else if (age >= 15) ageFactor = 0.35;
-  else if (age >= 10) ageFactor = 0.55;
-  else if (age >= 7) ageFactor = 0.75;
-
-  let conditionFactor = 1;
-
-  if (condition === "poor") conditionFactor = 0.45;
-  else if (condition === "fair") conditionFactor = 0.70;
-  else if (condition === "good") conditionFactor = 1;
-  else if (condition === "excellent") conditionFactor = 1.15;
-
-  let usageFactor = 1;
-
-const usageSensitiveModalities = ["CT", "PET", "PETCT", "XRAY", "MAMMO"];
-
-if (usageSensitiveModalities.includes(modality)) {
-  if (tubeCount >= 500000000) usageFactor = 0.35;
-  else if (tubeCount >= 1000000) usageFactor = 0.55;
-  else if (tubeCount >= 500000) usageFactor = 0.75;
-}
-
-  let demandFactor = 1;
-
-  if (make.includes("GE")) demandFactor = 1;
-  else if (make.includes("SIEMENS")) demandFactor = 1.05;
-  else if (make.includes("PHILIPS")) demandFactor = 1;
-  else if (make.includes("CANON") || make.includes("TOSHIBA")) demandFactor = 0.95;
-
-  const midpoint =
-    baseValue *
-    ageFactor *
-    conditionFactor *
-    usageFactor *
-    demandFactor;
-
-  const estimatedLow = Math.max(0, Math.round(midpoint * 0.75 / 1000) * 1000);
-  const estimatedHigh = Math.max(0, Math.round(midpoint * 1.25 / 1000) * 1000);
-
-  let confidence = "Medium";
-
-  if (!rec.dom || !rec.modality || !rec.make) confidence = "Low";
- if (
-  age >= 20 ||
-  condition === "poor" ||
-  (usageSensitiveModalities.includes(modality) && tubeCount >= 500000000)
-) {
-  confidence = "Low";
-}
-  if (age > 0 && condition && tubeCount > 0 && age < 15) confidence = "Medium";
-
-  return {
-    estimatedLow,
-    estimatedHigh,
-    confidence,
-    basis: [
-      `Modality: ${modality || "Unknown"}`,
-      `Make: ${rec.make || "Unknown"}`,
-      `Age: ${age || "Unknown"} years`,
-      `Condition: ${condition || "Not provided"}`,
-      `Usage / tube count: ${tubeCount ? tubeCount.toLocaleString() : "Not provided"}`
-    ]
-  };
-}
-function closeImagePreview(){
-  const overlay = document.getElementById("imagePreviewOverlay");
-  const img = document.getElementById("imagePreviewImg");
-
-  if (img) img.src = "";
-  if (overlay) overlay.style.display = "none";
-}
 function jsSafe(v){
   return String(v || "")
     .replace(/\\/g, "\\\\")
@@ -768,6 +630,26 @@ function loadData(){
 function saveData(data){
   saveArray(KEY, data);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+}
+
+function openImagePreview(url, title){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+  const titleEl = document.getElementById("imagePreviewTitle");
+
+  if (!overlay || !img || !titleEl) return;
+
+  img.src = url || "";
+  titleEl.textContent = title || "Equipment Image";
+  overlay.style.display = "flex";
+}
+
+function closeImagePreview(){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+
+  if (img) img.src = "";
+  if (overlay) overlay.style.display = "none";
 }
 
 function isTradeDeskInputFocused(){
@@ -813,7 +695,9 @@ function getHighestBid(rec){
 
 function getLowestBid(rec){
   if (!Array.isArray(rec.bids) || !rec.bids.length) return 0;
-  return Math.min(...rec.bids.map(b => Number(b.amount || 0)).filter(n => n > 0));
+  const nums = rec.bids.map(b => Number(b.amount || 0)).filter(n => n > 0);
+  if (!nums.length) return 0;
+  return Math.min(...nums);
 }
 
 function getAverageBid(rec){
@@ -829,8 +713,6 @@ function getWinningAmount(rec){
     rec.winningBid?.amount ||
     rec.trade_in_credit ||
     rec.tradein_credit ||
-    rec.tradein_estimated_value ||
-    rec.estimated_trade_in_value ||
     0
   );
 }
@@ -841,6 +723,7 @@ function getBidPackageId(rec){
     `PKG-${String(rec.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.id || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
   );
 }
+
 function getDefaultBidDeadline(){
   const d = new Date();
   d.setDate(d.getDate() + 7);
@@ -860,7 +743,6 @@ function getBidDeadline(rec){
 
 function formatBidDeadline(rec){
   const raw = getBidDeadline(rec);
-
   if (!raw) return "Not set";
 
   const d = new Date(raw);
@@ -871,6 +753,7 @@ function formatBidDeadline(rec){
 
   return raw;
 }
+
 function buildBidderUrl(rec, bidderEmail = ""){
   const packageId = getBidPackageId(rec);
   const url = new URL("bidder_portal.html", window.location.href);
@@ -899,6 +782,25 @@ function isSameAxisRecord(a, b){
   );
 }
 
+function getManualReviewChecklist(rec) {
+  const missing = [];
+
+  if (!rec.modality) missing.push("Modality needs confirmation");
+  if (!rec.make) missing.push("Manufacturer needs confirmation");
+  if (!rec.model) missing.push("Model needs confirmation");
+  if (!rec.serial_number && !rec.axis_serial_number && !rec.hospital_asset_id) missing.push("Serial number or asset identifier needed");
+  if (!rec.dom) missing.push("Date manufactured / year not provided");
+  if (!rec.availability_timeframe) missing.push("Availability timeframe not provided");
+  if (!rec.in_use_status) missing.push("System in-use status not provided");
+  if (!rec.removal_pathways) missing.push("Removal pathway details not provided");
+  if (!Array.isArray(rec.images) || !rec.images.length) missing.push("Photos not included");
+
+  return {
+    readyForReview: missing.length === 0,
+    missing
+  };
+}
+
 function normalizeIncomingRecord(item){
   const projectId =
     item.project_id ||
@@ -920,10 +822,10 @@ function normalizeIncomingRecord(item){
     item.axis_serial_number ||
     "";
 
-    const id =
+  const id =
     item.trade_desk_id ||
     item.id ||
-    uid("tradein");
+    uid("manual_review");
 
   const rawData =
     item.data && typeof item.data === "object" && !Array.isArray(item.data)
@@ -935,6 +837,40 @@ function normalizeIncomingRecord(item){
     ...item
   };
 
+  const modality = normalizeModality(src.modality || src.tradein_equipment_modality || "");
+
+  const make =
+    src.make ||
+    src.tradein_equipment_make ||
+    src.ct_manufacturer ||
+    src.mri_manufacturer ||
+    src.mamo_manufacturer ||
+    src.xray_manufacturer ||
+    src.carm_manufacturer ||
+    src.pet_manufacturer ||
+    "";
+
+  const model =
+    src.model ||
+    src.tradein_equipment_model ||
+    src.ct_model ||
+    src.mri_model ||
+    src.mamo_model ||
+    src.xray_model ||
+    src.carm_model ||
+    src.pet_model ||
+    "";
+
+  const serialNumber =
+    serial ||
+    src.ct_serial ||
+    src.mri_serial ||
+    src.mamo_serial ||
+    src.xray_serial ||
+    src.carm_serial ||
+    src.pet_serial ||
+    "";
+
   return {
     ...src,
     id,
@@ -942,7 +878,7 @@ function normalizeIncomingRecord(item){
       item.key ||
       item.axis_parent_record_id ||
       item.axis_record_id ||
-      `${projectId}_${modalityId}_${serial || item.hospital_asset_id || ""}`,
+      `${projectId}_${modalityId}_${serialNumber || item.hospital_asset_id || ""}`,
 
     axis_record_id: item.axis_record_id || item.axis_parent_record_id || item.id || "",
     axis_project_id: item.axis_project_id || item.oem_project_id || projectId || "",
@@ -956,48 +892,20 @@ function normalizeIncomingRecord(item){
       item.facility ||
       item.customer ||
       item.model ||
-      "AXIS Trade-In Review",
+      "AXIS Manual Trade Desk Review",
 
-    axis_serial_number: item.axis_serial_number || serial || item.hospital_asset_id || item.additional_identifier || "",
-    axis_source: item.axis_source || item.source || "espin_trade_in_app",
-    sync_mode: item.sync_mode || item.axis_sync_mode || "create_or_update_axis_trade_desk_record",
+    axis_serial_number: item.axis_serial_number || serialNumber || item.hospital_asset_id || item.additional_identifier || "",
+    axis_source: item.axis_source || item.source || "field_trade_in_intake",
+    sync_mode: item.sync_mode || item.axis_sync_mode || "create_manual_trade_desk_review_record",
 
-    project_id: projectId || `QUOTE-${Date.now()}`,
+    project_id: projectId || `REVIEW-${Date.now()}`,
     modality_id: modalityId || uid("modality"),
-    modality: normalizeModality(item.modality || item.tradein_equipment_modality || ""),
+    modality,
 
     hospital_asset_id: item.hospital_asset_id || item.additional_identifier || "",
-    make:
-      item.make ||
-      item.tradein_equipment_make ||
-      item.ct_manufacturer ||
-      item.mri_manufacturer ||
-      item.mamo_manufacturer ||
-      item.xray_manufacturer ||
-      item.carm_manufacturer ||
-      item.pet_manufacturer ||
-      "",
-
-    model:
-      item.model ||
-      item.tradein_equipment_model ||
-      item.ct_model ||
-      item.mri_model ||
-      item.mamo_model ||
-      item.xray_model ||
-      item.carm_model ||
-      item.pet_model ||
-      "",
-
-    serial_number:
-      serial ||
-      item.ct_serial ||
-      item.mri_serial ||
-      item.mamo_serial ||
-      item.xray_serial ||
-      item.carm_serial ||
-      item.pet_serial ||
-      "",
+    make,
+    model,
+    serial_number: serialNumber,
 
     dom: item.dom || item.tradein_equipment_dom || item.ct_dom || item.mri_yom || item.mamo_dom || item.pet_tube_dom || "",
     installed_date: item.installed_date || item.ct_installed || "",
@@ -1071,147 +979,101 @@ function normalizeIncomingRecord(item){
 
     software_version: item.software_version || item.tradein_software_version || item.ct_sw_version || item.mri_sw_version || "",
     upgrade_notes: item.upgrade_notes || item.tradein_upgrade_notes || item.ct_upgrades_desc || item.mri_coils || "",
-condition:
-  src.condition ||
-  src.tradein_condition ||
-  src.equipment_condition ||
-  src.overall_condition ||
-  "",
 
-tube_count:
-  src.tube_count ||
-  src.scan_count ||
-  src.exposure_count ||
-  src.usage_count ||
-  src.ct_tube_mas ||
-  src.pet_tube_mas ||
-  "",
+    ct_manufacturer: src.ct_manufacturer || "",
+    ct_model: src.ct_model || "",
+    ct_serial: src.ct_serial || "",
+    ct_installed: src.ct_installed || "",
+    ct_dom: src.ct_dom || "",
+    ct_tube_dom: src.ct_tube_dom || "",
+    ct_mhu: src.ct_mhu || "",
+    ct_tube_mas: src.ct_tube_mas || "",
+    ct_slices: src.ct_slices || "",
+    ct_in_use: src.ct_in_use || "",
+    ct_out_of_use_date: src.ct_out_of_use_date || "",
+    ct_injector: src.ct_injector || "",
+    ct_injector_model: src.ct_injector_model || "",
+    ct_upgrades: src.ct_upgrades || "",
+    ct_upgrades_desc: src.ct_upgrades_desc || "",
+    ct_hard_drive_removed: src.ct_hard_drive_removed || "",
+    ct_removal_pathways: src.ct_removal_pathways || "",
+    ct_availability_timeframe: src.ct_availability_timeframe || "",
+    ct_loading_dock: src.ct_loading_dock || "",
+    ct_sw_version: src.ct_sw_version || "",
+    ct_goc_version: src.ct_goc_version || "",
+    ct_chiller: src.ct_chiller || "",
 
-scan_count:
-  src.scan_count ||
-  src.ct_tube_mas ||
-  src.pet_tube_mas ||
-  "",
+    mri_manufacturer: src.mri_manufacturer || "",
+    mri_model: src.mri_model || "",
+    mri_serial: src.mri_serial || "",
+    mri_yom: src.mri_yom || "",
+    mri_magnet_type: src.mri_magnet_type || "",
+    mri_bore_size_cm: src.mri_bore_size_cm || "",
+    mri_num_channels: src.mri_num_channels || "",
+    mri_gradient: src.mri_gradient || "",
+    mri_sw_version: src.mri_sw_version || "",
+    mri_coils: src.mri_coils || "",
+    mri_service: src.mri_service || "",
+    mri_service_name: src.mri_service_name || "",
+    mri_in_use: src.mri_in_use || "",
+    mri_out_of_use_date: src.mri_out_of_use_date || "",
+    mri_hard_drive_removed: src.mri_hard_drive_removed || "",
+    mri_removal_pathways: src.mri_removal_pathways || "",
+    mri_availability_timeframe: src.mri_availability_timeframe || "",
 
-usage_count:
-  src.usage_count ||
-  src.ct_tube_mas ||
-  src.pet_tube_mas ||
-  "",
-// FULL MODALITY FIELD STORAGE — keeps Trade Desk + Bidder Portal identical to Trade-In App
+    xray_manufacturer: src.xray_manufacturer || "",
+    xray_model: src.xray_model || "",
+    xray_serial: src.xray_serial || "",
+    xray_dom: src.xray_dom || "",
+    xray_floor_mounted: src.xray_floor_mounted || "",
+    xray_ceiling_mounted: src.xray_ceiling_mounted || "",
+    xray_in_use: src.xray_in_use || "",
+    xray_out_of_use_date: src.xray_out_of_use_date || "",
+    xray_removal_pathways: src.xray_removal_pathways || "",
+    xray_loading_dock: src.xray_loading_dock || "",
+    xray_availability_timeframe: src.xray_availability_timeframe || "",
 
-// CT
-ct_manufacturer: src.ct_manufacturer || src.make || src.tradein_equipment_make || "",
-ct_model: src.ct_model || src.model || src.tradein_equipment_model || "",
-ct_serial: src.ct_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-ct_installed: src.ct_installed || src.installed_date || "",
-ct_dom: src.ct_dom || src.dom || src.tradein_equipment_dom || "",
-ct_tube_dom: src.ct_tube_dom || "",
-ct_mhu: src.ct_mhu || "",
-ct_tube_mas: src.ct_tube_mas || "",
-ct_slices: src.ct_slices || "",
-ct_in_use: src.ct_in_use || src.in_use_status || src.tradein_in_use_status || "",
-ct_out_of_use_date: src.ct_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-ct_injector: src.ct_injector || "",
-ct_injector_model: src.ct_injector_model || "",
-ct_upgrades: src.ct_upgrades || "",
-ct_upgrades_desc: src.ct_upgrades_desc || src.upgrade_notes || src.tradein_upgrade_notes || "",
-ct_hard_drive_removed: src.ct_hard_drive_removed || src.hard_drive_removed || src.tradein_hard_drive_removed || "",
-ct_removal_pathways: src.ct_removal_pathways || src.removal_pathways || src.tradein_removal_pathways || "",
-ct_availability_timeframe: src.ct_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
-ct_loading_dock: src.ct_loading_dock || src.loading_dock || src.tradein_loading_dock || "",
-ct_sw_version: src.ct_sw_version || src.software_version || src.tradein_software_version || "",
-ct_goc_version: src.ct_goc_version || "",
-ct_chiller: src.ct_chiller || "",
+    carm_manufacturer: src.carm_manufacturer || "",
+    carm_model: src.carm_model || "",
+    carm_serial: src.carm_serial || "",
+    carm_dom: src.carm_dom || "",
+    carm_monitors: src.carm_monitors || "",
+    carm_image_intensifier: src.carm_image_intensifier || "",
+    carm_sw_version: src.carm_sw_version || "",
+    carm_in_use: src.carm_in_use || "",
+    carm_out_of_use_date: src.carm_out_of_use_date || "",
+    carm_hard_drive_removed: src.carm_hard_drive_removed || "",
+    carm_availability_timeframe: src.carm_availability_timeframe || "",
 
-// MRI
-mri_manufacturer: src.mri_manufacturer || src.make || src.tradein_equipment_make || "",
-mri_model: src.mri_model || src.model || src.tradein_equipment_model || "",
-mri_serial: src.mri_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-mri_yom: src.mri_yom || src.dom || src.tradein_equipment_dom || "",
-mri_magnet_type: src.mri_magnet_type || "",
-mri_bore_size_cm: src.mri_bore_size_cm || "",
-mri_num_channels: src.mri_num_channels || "",
-mri_gradient: src.mri_gradient || "",
-mri_sw_version: src.mri_sw_version || src.software_version || src.tradein_software_version || "",
-mri_sw_options: src.mri_sw_options || "",
-mri_tim: src.mri_tim || "",
-mri_coils: src.mri_coils || src.upgrade_notes || src.tradein_upgrade_notes || "",
-mri_service: src.mri_service || "",
-mri_service_name: src.mri_service_name || "",
-mri_under_contract: src.mri_under_contract || "",
-mri_last_pm: src.mri_last_pm || "",
-mri_in_use: src.mri_in_use || src.in_use_status || src.tradein_in_use_status || "",
-mri_out_of_use_date: src.mri_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-mri_hard_drive_removed: src.mri_hard_drive_removed || src.hard_drive_removed || src.tradein_hard_drive_removed || "",
-mri_removal_pathways: src.mri_removal_pathways || src.removal_pathways || src.tradein_removal_pathways || "",
-mri_availability_timeframe: src.mri_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
+    pet_manufacturer: src.pet_manufacturer || "",
+    pet_model: src.pet_model || "",
+    pet_serial: src.pet_serial || "",
+    pet_dom: src.pet_dom || "",
+    pet_tube_dom: src.pet_tube_dom || "",
+    pet_tube_mas: src.pet_tube_mas || "",
+    pet_ct_slices: src.pet_ct_slices || "",
+    pet_in_use: src.pet_in_use || "",
+    pet_out_of_use_date: src.pet_out_of_use_date || "",
+    pet_removal_pathways: src.pet_removal_pathways || "",
+    pet_hard_drive_removed: src.pet_hard_drive_removed || "",
+    pet_loading_dock: src.pet_loading_dock || "",
+    pet_availability_timeframe: src.pet_availability_timeframe || "",
 
-// XRAY
-xray_manufacturer: src.xray_manufacturer || src.make || src.tradein_equipment_make || "",
-xray_model: src.xray_model || src.model || src.tradein_equipment_model || "",
-xray_serial: src.xray_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-xray_dom: src.xray_dom || src.dom || src.tradein_equipment_dom || "",
-xray_floor_mounted: src.xray_floor_mounted || "",
-xray_ceiling_mounted: src.xray_ceiling_mounted || "",
-xray_is_rf: src.xray_is_rf || "",
-xray_in_use: src.xray_in_use || src.in_use_status || src.tradein_in_use_status || "",
-xray_out_of_use_date: src.xray_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-xray_removal_pathways: src.xray_removal_pathways || src.removal_pathways || src.tradein_removal_pathways || "",
-xray_loading_dock: src.xray_loading_dock || src.loading_dock || src.tradein_loading_dock || "",
-xray_availability_timeframe: src.xray_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
+    mamo_manufacturer: src.mamo_manufacturer || "",
+    mamo_model: src.mamo_model || "",
+    mamo_serial: src.mamo_serial || "",
+    mamo_dom: src.mamo_dom || "",
+    mamo_dimensionality: src.mamo_dimensionality || "",
+    mamo_stereotactic_options: src.mamo_stereotactic_options || "",
+    mamo_cad: src.mamo_cad || "",
+    mamo_in_use: src.mamo_in_use || "",
+    mamo_out_of_use_date: src.mamo_out_of_use_date || "",
+    mamo_removal_pathways: src.mamo_removal_pathways || "",
+    mamo_hard_drive_removed: src.mamo_hard_drive_removed || "",
+    mamo_loading_dock: src.mamo_loading_dock || "",
+    mamo_availability_timeframe: src.mamo_availability_timeframe || "",
 
-// C-ARM
-carm_manufacturer: src.carm_manufacturer || src.make || src.tradein_equipment_make || "",
-carm_model: src.carm_model || src.model || src.tradein_equipment_model || "",
-carm_serial: src.carm_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-carm_dom: src.carm_dom || src.dom || src.tradein_equipment_dom || "",
-carm_monitors: src.carm_monitors || "",
-carm_image_intensifier: src.carm_image_intensifier || "",
-carm_sw_version: src.carm_sw_version || src.software_version || src.tradein_software_version || "",
-carm_servicing: src.carm_servicing || "",
-carm_service_name: src.carm_service_name || "",
-carm_in_use: src.carm_in_use || src.in_use_status || src.tradein_in_use_status || "",
-carm_out_of_use_date: src.carm_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-carm_hard_drive_removed: src.carm_hard_drive_removed || src.hard_drive_removed || src.tradein_hard_drive_removed || "",
-carm_availability_timeframe: src.carm_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
-
-// PET / PETCT
-pet_manufacturer: src.pet_manufacturer || src.make || src.tradein_equipment_make || "",
-pet_model: src.pet_model || src.model || src.tradein_equipment_model || "",
-pet_serial: src.pet_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-pet_dom: src.pet_dom || src.dom || src.tradein_equipment_dom || "",
-pet_tube_dom: src.pet_tube_dom || "",
-pet_tube_mas: src.pet_tube_mas || "",
-pet_ct_slices: src.pet_ct_slices || "",
-pet_in_use: src.pet_in_use || src.in_use_status || src.tradein_in_use_status || "",
-pet_out_of_use_date: src.pet_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-pet_removal_pathways: src.pet_removal_pathways || src.removal_pathways || src.tradein_removal_pathways || "",
-pet_hard_drive_removed: src.pet_hard_drive_removed || src.hard_drive_removed || src.tradein_hard_drive_removed || "",
-pet_loading_dock: src.pet_loading_dock || src.loading_dock || src.tradein_loading_dock || "",
-pet_availability_timeframe: src.pet_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
-
-// MAMMO
-mamo_manufacturer: src.mamo_manufacturer || src.make || src.tradein_equipment_make || "",
-mamo_model: src.mamo_model || src.model || src.tradein_equipment_model || "",
-mamo_serial: src.mamo_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-mamo_dom: src.mamo_dom || src.dom || src.tradein_equipment_dom || "",
-mamo_dimensionality: src.mamo_dimensionality || "",
-mamo_stereotactic_options: src.mamo_stereotactic_options || "",
-mamo_cad: src.mamo_cad || "",
-mamo_in_use: src.mamo_in_use || src.in_use_status || src.tradein_in_use_status || "",
-mamo_out_of_use_date: src.mamo_out_of_use_date || src.out_of_use_date || src.tradein_out_of_use_date || "",
-mamo_removal_pathways: src.mamo_removal_pathways || src.removal_pathways || src.tradein_removal_pathways || "",
-mamo_hard_drive_removed: src.mamo_hard_drive_removed || src.hard_drive_removed || src.tradein_hard_drive_removed || "",
-mamo_loading_dock: src.mamo_loading_dock || src.loading_dock || src.tradein_loading_dock || "",
-mamo_availability_timeframe: src.mamo_availability_timeframe || src.availability_timeframe || src.tradein_availability_timeframe || "",
-
-// OTHER
-other_manufacturer: src.other_manufacturer || src.make || src.tradein_equipment_make || "",
-other_model: src.other_model || src.model || src.tradein_equipment_model || "",
-other_serial: src.other_serial || src.serial_number || src.axis_serial_number || src.tradein_equipment_serial_number || "",
-
-images: Array.isArray(src.images) ? src.images : [],
+    images: Array.isArray(src.images) ? src.images : [],
     image_sync_received: Boolean(item.images && item.images.length),
     image_count: Array.isArray(item.images) ? item.images.length : 0,
 
@@ -1232,9 +1094,9 @@ images: Array.isArray(src.images) ? src.images : [],
     last_tradein_update_by: item.last_tradein_update_by || item.assigned_rep_email || item.sales_rep_email || item.rep_email || "",
     last_tradein_update_at: item.last_tradein_update_at || item.sent_to_trade_desk_at || new Date().toISOString(),
 
-    crm_status: item.crm_status || "Received From Trade-In App",
-    rep_notes: item.rep_notes || "Trade-in synced automatically into AXIS Trade Desk.",
-    trade_desk_status: item.trade_desk_status || "Submitted to Trade Desk",
+    crm_status: item.crm_status || "Field Intake Received",
+    rep_notes: item.rep_notes || "Field intake record received for manual Trade Desk review.",
+    trade_desk_status: item.trade_desk_status || "Manual Review Needed",
     bid_status: item.bid_status || "Not Released",
 
     approved_for_bidding_at: item.approved_for_bidding_at || "",
@@ -1252,12 +1114,12 @@ images: Array.isArray(src.images) ? src.images : [],
     winning_bidder: item.winning_bidder || "",
     winning_bid_terms: item.winning_bid_terms || "",
     winning_bid_selected_at: item.winning_bid_selected_at || "",
-    quote_sync_status: item.quote_sync_status || "Pending Bid",
+    quote_sync_status: item.quote_sync_status || "Waiting on Manual Trade Desk Review",
     quote_id: item.quote_id || projectId || "",
     trade_in_credit: item.trade_in_credit || item.tradein_credit || "",
     tradein_credit: item.tradein_credit || item.trade_in_credit || "",
-    tradein_estimated_value: item.tradein_estimated_value || item.estimated_trade_in_value || item.trade_in_credit || item.tradein_credit || "",
-    estimated_trade_in_value: item.estimated_trade_in_value || item.tradein_estimated_value || item.trade_in_credit || item.tradein_credit || "",
+    tradein_estimated_value: "",
+    estimated_trade_in_value: "",
     createdAt: item.createdAt || new Date().toISOString(),
     received_from_axis_at: item.received_from_axis_at || new Date().toISOString()
   };
@@ -1296,6 +1158,7 @@ function mergeRecordIntoDesk(deskData, incoming){
 
       trade_desk_status:
         existing.trade_desk_status &&
+        existing.trade_desk_status !== "Manual Review Needed" &&
         existing.trade_desk_status !== "Submitted to Trade Desk"
           ? existing.trade_desk_status
           : record.trade_desk_status,
@@ -1327,8 +1190,11 @@ function mergeRecordIntoDesk(deskData, incoming){
       winning_bid_selected_at: existing.winning_bid_selected_at || record.winning_bid_selected_at || "",
       trade_in_credit: existing.trade_in_credit || record.trade_in_credit || "",
       tradein_credit: existing.tradein_credit || record.tradein_credit || "",
+      tradein_estimated_value: "",
+      estimated_trade_in_value: "",
       quote_sync_status:
         existing.quote_sync_status &&
+        existing.quote_sync_status !== "Waiting on Manual Trade Desk Review" &&
         existing.quote_sync_status !== "Pending Bid"
           ? existing.quote_sync_status
           : record.quote_sync_status,
@@ -1364,11 +1230,11 @@ function importBidderSubmissions(){
       bids: Array.isArray(pkg.bids) ? pkg.bids : existing.bids || [],
       bid_status:
         Array.isArray(pkg.bids) && pkg.bids.length
-          ? "Bids Received"
+          ? "Buyer Responses Received"
           : existing.bid_status,
       crm_status:
         Array.isArray(pkg.bids) && pkg.bids.length
-          ? "Bid Received"
+          ? "Buyer Response Received"
           : existing.crm_status,
       last_tradein_update_at: pkg.last_bid_at || existing.last_tradein_update_at || new Date().toISOString()
     };
@@ -1399,9 +1265,7 @@ function importAutomaticIntake(){
         item.trade_desk_status ||
         item.winning_bid_amount ||
         item.trade_in_credit ||
-        item.tradein_credit ||
-        item.tradein_estimated_value ||
-        item.estimated_trade_in_value;
+        item.tradein_credit;
 
       const hasImages =
         item.image_sync_received ||
@@ -1410,6 +1274,9 @@ function importAutomaticIntake(){
       const isTradeDeskRelevant =
         hasTradeDeskValue ||
         hasImages ||
+        item.sync_mode === "attach_field_intake_to_existing_record" ||
+        item.sync_mode === "attach_field_intake_to_project_review" ||
+        item.sync_mode === "create_manual_trade_desk_review_record" ||
         item.sync_mode === "update_existing_axis_record" ||
         item.sync_mode === "sync_tradein_to_new_axis_project" ||
         item.sync_mode === "create_unmatched_tradein_lead";
@@ -1437,7 +1304,7 @@ function approveForBidding(id){
   const rec = findById(data, id);
 
   if (!rec) {
-    alert("Record not found for approval.");
+    alert("Record not found for manual release.");
     return;
   }
 
@@ -1457,7 +1324,7 @@ function approveForBidding(id){
   });
 
   if (!matchedBidders.length) {
-    alert("No matching approved bidders were found.");
+    alert("No matching approved buyers were found.");
     return;
   }
 
@@ -1466,12 +1333,12 @@ function approveForBidding(id){
     getDefaultBidDeadline();
 
   const deadlineInput = prompt(
-    "Enter bidding end date:",
+    "Enter buyer response deadline:",
     currentDeadline
   );
 
   if (!deadlineInput) {
-    alert("Bidding release cancelled. End date is required.");
+    alert("Manual release cancelled. Deadline is required.");
     return;
   }
 
@@ -1493,11 +1360,11 @@ function approveForBidding(id){
   rec.bidding_ends_at = bidDeadline;
   rec.bid_expires_at = bidDeadline;
 
-  rec.trade_desk_status = "Released to Approved Bidders";
-  rec.bid_status = "Open for Bids";
+  rec.trade_desk_status = "Manually Released to Approved Buyers";
+  rec.bid_status = "Open for Manual Buyer Review";
   rec.approved_for_bidding_at = new Date().toISOString();
   rec.approved_by = "trade.desk@demo.com";
-  rec.crm_status = "Bid Package Released";
+  rec.crm_status = "Manual Review Package Released";
   rec.bidder_portal_visible = true;
   rec.bid_package_open = true;
 
@@ -1520,7 +1387,7 @@ function approveForBidding(id){
     package_id: packageId,
     package_url: packageUrl,
     trade_desk_record_id: rec.id,
-    status: "Open for Bids",
+    status: "Open for Manual Buyer Review",
     released_at: rec.approved_for_bidding_at,
     released_by: rec.approved_by,
     trade_desk_email: TRADE_DESK_EMAIL,
@@ -1567,7 +1434,7 @@ function approveForBidding(id){
   const bidderEmails = matchedBidders.map(b => b.email).filter(Boolean).join(",");
   const ccEmail = TRADE_DESK_EMAIL;
 
-  const bidderList = matchedBidders
+  const buyerList = matchedBidders
     .map(b => `- ${b.company} / ${b.contact} / ${b.email}`)
     .join("\n");
 
@@ -1577,18 +1444,18 @@ function approveForBidding(id){
       : "No images included yet.";
 
   const subject =
-    `Bid Package ${packageId} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
+    `Review Package ${packageId} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
 
   const body = [
     `Hello,`,
     ``,
-    `A new approved trade-in bid package has been released through AXIS Trade Desk.`,
+    `Trade Desk has manually released the attached equipment review package for buyer response.`,
     ``,
-    `BID PACKAGE`,
+    `REVIEW PACKAGE`,
     `Package ID: ${packageId}`,
-    `Package Status: Open for Bids`,
-    `Bidding Ends: ${formatBidDeadline({ bid_deadline: bidDeadline })}`,
-    `Bid Package Link: ${packageUrl}`,
+    `Package Status: Open for Manual Buyer Review`,
+    `Response Deadline: ${formatBidDeadline({ bid_deadline: bidDeadline })}`,
+    `Package Link: ${packageUrl}`,
     ``,
     `EQUIPMENT SUMMARY`,
     `Modality: ${rec.modality || "-"}`,
@@ -1614,10 +1481,10 @@ function approveForBidding(id){
     `IMAGES`,
     imageLines,
     ``,
-    `APPROVED BIDDERS ON THIS RELEASE`,
-    bidderList,
+    `APPROVED BUYERS ON THIS RELEASE`,
+    buyerList,
     ``,
-    `Please open the Bid Package link, review the equipment details and images, and submit your bid before the bidding end date.`,
+    `Please open the package link, review the equipment details and images, and submit your buyer response before the deadline.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1631,6 +1498,7 @@ function approveForBidding(id){
 
   window.location.href = mailto;
 }
+
 function openTradeDeskPackage(id){
   const clickedId = String(id || "").trim();
   if (!clickedId) return;
@@ -1728,8 +1596,8 @@ function sendInfoRequestToRep(){
   }
 
   rec.trade_desk_status = "Needs More Information";
-  rec.bid_status = "Hold";
-  rec.quote_sync_status = "Waiting on Trade Desk";
+  rec.bid_status = "Manual Review Hold";
+  rec.quote_sync_status = "Waiting on Manual Trade Desk Review";
   rec.crm_status = "Trade Desk Needs More Information";
   rec.info_request_items = checked;
   rec.info_request_notes = notes;
@@ -1738,12 +1606,12 @@ function sendInfoRequestToRep(){
 
   saveData(data);
 
-  const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
+  const subject = `Additional information needed for manual trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
   const body = [
     `Hi ${getRepName(rec)},`,
     ``,
-    `Trade Desk reviewed the submitted trade-in record and needs a few items before releasing it for bidding.`,
+    `Trade Desk reviewed the submitted field intake record and needs a few items before continuing manual review.`,
     ``,
     `Equipment:`,
     `${rec.modality || "-"} – ${rec.make || "-"} ${rec.model || ""}`,
@@ -1757,7 +1625,7 @@ function sendInfoRequestToRep(){
     `Notes:`,
     notes || "-",
     ``,
-    `Please update the Trade-In App record and resend the equipment update. Once received, Trade Desk can continue the bidding review.`,
+    `Please update the Trade-In App record and resend the equipment update. Once received, Trade Desk can continue manual review.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1778,7 +1646,7 @@ function syncWinningBidToRepAndManager(rec){
   const winningAmount = getWinningAmount(rec);
 
   if (!winningAmount) {
-    alert("No winning bid amount found.");
+    alert("No manually selected buyer response amount found.");
     return;
   }
 
@@ -1786,11 +1654,12 @@ function syncWinningBidToRepAndManager(rec){
     rec.axis_parent_project_type === "new_sales_project" ||
     rec.project_type === "new_sales_project" ||
     rec.axis_source === "new_axis_project" ||
-    rec.sync_mode === "sync_tradein_to_new_axis_project";
+    rec.sync_mode === "sync_tradein_to_new_axis_project" ||
+    rec.sync_mode === "attach_field_intake_to_project_review";
 
   const syncMode = isNewSalesProject
-    ? "sync_tradein_to_new_axis_project"
-    : "update_existing_axis_record";
+    ? "attach_field_intake_to_project_review"
+    : "attach_field_intake_to_existing_record";
 
   const payload = {
     ...rec,
@@ -1800,17 +1669,18 @@ function syncWinningBidToRepAndManager(rec){
     axis_project_id: rec.axis_project_id || rec.oem_project_id || rec.project_id || "",
     axis_serial_number: rec.axis_serial_number || rec.serial_number || "",
     axis_parent_project_type: isNewSalesProject ? "new_sales_project" : "lifecycle_equipment",
-    axis_source: isNewSalesProject ? "new_axis_project" : "existing_axis_equipment",
+    axis_source: isNewSalesProject ? "manual_project_review" : "manual_existing_record_review",
     sync_mode: syncMode,
 
     trade_in_value: winningAmount,
     trade_in_credit: winningAmount,
     tradein_credit: winningAmount,
-    tradein_estimated_value: winningAmount,
-    estimated_trade_in_value: winningAmount,
     quote_trade_in_credit: winningAmount,
     associated_trade_in_credit: winningAmount,
     associatedTradeInCredit: winningAmount,
+
+    tradein_estimated_value: "",
+    estimated_trade_in_value: "",
 
     winning_bid_amount: winningAmount,
     winning_bidder: rec.winning_bidder || rec.winningBid?.bidder || "",
@@ -1818,16 +1688,16 @@ function syncWinningBidToRepAndManager(rec){
 
     tradein_sync_received: true,
     tradein_seen_by_rep: false,
-    quote_status: "trade_in_credit_received",
-    quote_sync_status: "Synced to Rep Quote",
+    quote_status: "manual_trade_desk_credit_posted",
+    quote_sync_status: "Manual Trade Desk Credit Posted",
     manager_unseen_update: true,
     manager_flash_at: new Date().toISOString(),
-    manager_flash_type: "trade_in_credit",
-    rep_action: rec.rep_action || "trade_review",
-    rep_status: rec.rep_status || "acted",
+    manager_flash_type: "manual_trade_desk_credit",
+    rep_action: rec.rep_action || "manual_trade_review",
+    rep_status: rec.rep_status || "manual_review_complete",
     rep_last_action_at: new Date().toISOString(),
     submitted_to: "AXIS Trade Desk",
-    source: "AXIS Trade Desk Sync",
+    source: "Manual Trade Desk Credit Posting",
     last_tradein_update_at: new Date().toISOString()
   };
 
@@ -1848,7 +1718,7 @@ function syncWinningBidToRepAndManager(rec){
 
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
-  let lifecycleRecords = loadArray("espin_lifecycle_demo_records_v1");
+  let lifecycleRecords = loadArray(LIFECYCLE_KEY);
   let foundLifecycleRecord = false;
 
   lifecycleRecords = lifecycleRecords.map(item => {
@@ -1863,9 +1733,9 @@ function syncWinningBidToRepAndManager(rec){
       tradein_modality_id: payload.modality_id || "",
       tradein_credit: winningAmount,
       trade_in_credit: winningAmount,
-      tradein_estimated_value: winningAmount,
-      estimated_trade_in_value: winningAmount,
       quote_trade_in_credit: winningAmount,
+      tradein_estimated_value: "",
+      estimated_trade_in_value: "",
       tradein_equipment_make: payload.make || item.tradein_equipment_make || item.make || "",
       tradein_equipment_model: payload.model || item.tradein_equipment_model || item.model || "",
       tradein_equipment_modality: payload.modality || item.tradein_equipment_modality || item.modality || "",
@@ -1874,10 +1744,10 @@ function syncWinningBidToRepAndManager(rec){
       winning_bid_amount: winningAmount,
       winning_bidder: payload.winning_bidder || "",
       winning_bid_terms: payload.winning_bid_terms || "",
-      quote_sync_status: "Synced to Rep Quote",
+      quote_sync_status: "Manual Trade Desk Credit Posted",
       manager_unseen_update: true,
       manager_flash_at: new Date().toISOString(),
-      manager_flash_type: "trade_in_credit",
+      manager_flash_type: "manual_trade_desk_credit",
       last_tradein_update_at: new Date().toISOString()
     };
   });
@@ -1886,7 +1756,7 @@ function syncWinningBidToRepAndManager(rec){
     lifecycleRecords.unshift(payload);
   }
 
-  saveArray("espin_lifecycle_demo_records_v1", lifecycleRecords);
+  saveArray(LIFECYCLE_KEY, lifecycleRecords);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 
@@ -1895,7 +1765,7 @@ function selectWinner(id, index){
   const rec = findById(data, id);
 
   if (!rec || !rec.bids || !rec.bids[index]) {
-    alert("Bid not found.");
+    alert("Buyer response not found.");
     return;
   }
 
@@ -1903,20 +1773,20 @@ function selectWinner(id, index){
 
   rec.winningBid = winning;
   rec.winning_bid_amount = winning.amount;
-  rec.winning_bidder = winning.bidder;
-  rec.winning_bid_terms = winning.terms;
+  rec.winning_bidder = winning.bidder || winning.bidder_company || winning.company || "";
+  rec.winning_bid_terms = winning.terms || "";
   rec.winning_bid_selected_at = new Date().toISOString();
 
   rec.trade_in_credit = winning.amount;
   rec.tradein_credit = winning.amount;
-  rec.tradein_estimated_value = winning.amount;
-  rec.estimated_trade_in_value = winning.amount;
   rec.quote_trade_in_credit = winning.amount;
+  rec.tradein_estimated_value = "";
+  rec.estimated_trade_in_value = "";
 
-  rec.trade_desk_status = "Winning Bid Selected";
-  rec.bid_status = "Awarded";
-  rec.quote_sync_status = "Synced to Rep Quote";
-  rec.crm_status = "Winning Bid Synced to Quote";
+  rec.trade_desk_status = "Manual Credit Selected";
+  rec.bid_status = "Manual Selection Complete";
+  rec.quote_sync_status = "Manual Trade Desk Credit Posted";
+  rec.crm_status = "Manual Trade Desk Credit Posted";
   rec.last_tradein_update_at = new Date().toISOString();
 
   saveData(data);
@@ -1930,9 +1800,9 @@ function selectWinner(id, index){
       bids: rec.bids,
       winningBid: winning,
       winning_bid_amount: winning.amount,
-      winning_bidder: winning.bidder,
-      winning_bid_terms: winning.terms,
-      status: "Awarded"
+      winning_bidder: rec.winning_bidder,
+      winning_bid_terms: rec.winning_bid_terms,
+      status: "Manual Selection Complete"
     };
   });
 
@@ -1980,178 +1850,26 @@ function imageHtml(rec){
     </div>
   `;
 }
+
 function statusBadge(rec){
-  const status = rec.trade_desk_status || "Submitted to Trade Desk";
+  const status = rec.trade_desk_status || "Manual Review Needed";
 
   let cls = "pending";
   if (status.includes("Released") || status.includes("Approved")) cls = "blue";
-  if (status.includes("Winning")) cls = "win";
+  if (status.includes("Selected") || status.includes("Posted")) cls = "win";
   if (status.includes("Needs")) cls = "redBadge";
 
   return `<span class="badge ${cls}">${htmlSafe(status)}</span>`;
 }
 
-function formatTradeInFieldLabel(key){
-  const labels = {
-    ct_manufacturer: "CT Manufacturer",
-    ct_model: "CT Model",
-    ct_serial: "CT Serial Number",
-    ct_dom: "CT Date Manufactured",
-    ct_installed: "CT Date Installed",
-    ct_slices: "CT Number of Slices",
-    ct_tube_mas: "CT Tube mAs / Scan/sec",
-    ct_mhu: "CT Tube Size (mHu)",
-    ct_tube_dom: "CT Tube DOM",
-    ct_tube_installation_date: "CT Tube Installation Date",
-    ct_sw_version: "CT Software Version",
-    ct_goc_version: "CT GOC Version",
-    ct_upgrades: "CT Upgrades",
-    ct_upgrades_desc: "CT Upgrades Description",
-    ct_injector: "CT Injector",
-    ct_injector_model: "CT Injector Model",
-    ct_chiller: "CT Chiller",
-    ct_in_use: "CT System In Use",
-    ct_out_of_use_date: "CT Date Removed From Service",
-    ct_removal_pathways: "CT Removal Pathways",
-    ct_loading_dock: "CT Loading Dock Available",
-    ct_hard_drive_removed: "CT Hard Drives Removed",
-    ct_availability_timeframe: "CT Availability Time Frame",
-
-    mri_manufacturer: "MRI Manufacturer",
-    mri_model: "MRI Model",
-    mri_serial: "MRI Serial Number",
-    mri_yom: "MRI Year of Manufacture",
-    mri_magnet_type: "MRI Magnet Type",
-    mri_bore_size_cm: "MRI Bore Size",
-    mri_num_channels: "MRI Number of Channels",
-    mri_gradient: "MRI Gradient",
-    mri_sw_version: "MRI Software Version",
-    mri_coils: "MRI Coils",
-    mri_service: "MRI Service",
-    mri_service_name: "MRI Service Company",
-    mri_in_use: "MRI System In Use",
-    mri_out_of_use_date: "MRI Date Removed From Service",
-    mri_removal_pathways: "MRI Removal Pathways",
-    mri_hard_drive_removed: "MRI Hard Drives Removed",
-    mri_availability_timeframe: "MRI Availability Time Frame",
-
-    mamo_manufacturer: "Mammography Manufacturer",
-    mamo_model: "Mammography Model",
-    mamo_serial: "Mammography Serial Number",
-    mamo_dom: "Mammography Date Manufactured",
-    mamo_dimensionality: "Mammography 2D / 3D",
-    mamo_stereotactic_options: "Mammography Stereotactic Options",
-    mamo_cad: "Mammography CAD",
-    mamo_in_use: "Mammography System In Use",
-    mamo_out_of_use_date: "Mammography Date Removed From Service",
-    mamo_removal_pathways: "Mammography Removal Pathways",
-    mamo_loading_dock: "Mammography Loading Dock Available",
-    mamo_hard_drive_removed: "Mammography Hard Drives Removed",
-    mamo_availability_timeframe: "Mammography Availability Time Frame",
-
-    xray_manufacturer: "X-Ray Manufacturer",
-    xray_model: "X-Ray Model",
-    xray_serial: "X-Ray Serial Number",
-    xray_floor_mounted: "X-Ray Floor Mounted",
-    xray_ceiling_mounted: "X-Ray Ceiling Mounted",
-    xray_in_use: "X-Ray System In Use",
-    xray_out_of_use_date: "X-Ray Date Removed From Service",
-    xray_removal_pathways: "X-Ray Removal Pathways",
-    xray_loading_dock: "X-Ray Loading Dock Available",
-    xray_availability_timeframe: "X-Ray Availability Time Frame",
-
-    carm_manufacturer: "C-Arm Manufacturer",
-    carm_model: "C-Arm Model",
-    carm_serial: "C-Arm Serial Number",
-    carm_monitors: "C-Arm Monitor Type",
-    carm_image_intensifier: "C-Arm Image Intensifier Size",
-    carm_in_use: "C-Arm System In Use",
-    carm_out_of_use_date: "C-Arm Date Removed From Service",
-    carm_hard_drive_removed: "C-Arm Hard Drives Removed",
-    carm_availability_timeframe: "C-Arm Availability Time Frame",
-
-    pet_manufacturer: "PET/CT Manufacturer",
-    pet_model: "PET/CT Model",
-    pet_serial: "PET/CT Serial Number",
-    pet_ct_slices: "PET/CT Slice Count",
-    pet_tube_dom: "PET/CT Tube DOM",
-    pet_tube_mas: "PET/CT Tube mAs / Scan/sec",
-    pet_in_use: "PET/CT System In Use",
-    pet_out_of_use_date: "PET/CT Date Removed From Service",
-    pet_removal_pathways: "PET/CT Removal Pathways",
-    pet_loading_dock: "PET/CT Loading Dock Available",
-    pet_hard_drive_removed: "PET/CT Hard Drives Removed",
-    pet_availability_timeframe: "PET/CT Availability Time Frame"
-  };
-
-  if (labels[key]) return labels[key];
-
-  return String(key || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
+function yesNo(v){
+  const s = String(v || "").trim().toLowerCase();
+  if (["yes", "y", "true", "1"].includes(s)) return "Yes";
+  if (["no", "n", "false", "0"].includes(s)) return "No";
+  return v;
 }
 
-function modalityRawFieldRows(rec){
-  const modality = String(rec.modality || "").toUpperCase();
-
-  const modalityFields = {
-    CT: [
-      "ct_slices",
-      "ct_tube_mas",
-      "ct_mhu",
-      "ct_tube_dom",
-      "ct_tube_installation_date",
-      "ct_goc_version",
-      "ct_upgrades",
-      "ct_upgrades_desc",
-      "ct_injector",
-      "ct_injector_model",
-      "ct_chiller"
-    ],
-    MRI: [
-      "mri_magnet_type",
-      "mri_bore_size_cm",
-      "mri_num_channels",
-      "mri_gradient",
-      "mri_coils",
-      "mri_service",
-      "mri_service_name"
-    ],
-    MAMMO: [
-      "mamo_dimensionality",
-      "mamo_stereotactic_options",
-      "mamo_cad"
-    ],
-    XRAY: [
-      "xray_floor_mounted",
-      "xray_ceiling_mounted"
-    ],
-    CARM: [
-      "carm_monitors",
-      "carm_image_intensifier"
-    ],
-    PETCT: [
-      "pet_ct_slices",
-      "pet_tube_dom",
-      "pet_tube_mas"
-    ]
-  };
-
-  const keys = modalityFields[modality] || [];
-
-  return keys
-    .filter(key => String(rec[key] || "").trim())
-    .map(key => `
-      <div class="kv">
-        <strong>${htmlSafe(formatTradeInFieldLabel(key))}:</strong>
-        ${htmlSafe(rec[key])}
-      </div>
-    `)
-    .join("");
-}
-
-function tradeInFieldRows(rec){
-  const getV = (...keys) => {
+function getV(rec, ...keys) {
   const sources = [
     rec,
     rec.data,
@@ -2170,135 +1888,86 @@ function tradeInFieldRows(rec){
   }
 
   return "";
-};
+}
 
-  const yesNo = (v) => {
-    const s = String(v || "").trim().toLowerCase();
-    if (["yes", "y", "true", "1"].includes(s)) return "Yes";
-    if (["no", "n", "false", "0"].includes(s)) return "No";
-    return v;
-  };
-
-  const city = getV("city");
-  const state = getV("state");
-  const zip = getV("zip_code", "zip");
-
+function tradeInFieldRows(rec){
+  const city = getV(rec, "city");
+  const state = getV(rec, "state");
+  const zip = getV(rec, "zip_code", "zip");
   const location = [city, state, zip].filter(Boolean).join(" ");
 
-  const modality = String(
-    getV("modality", "tradein_equipment_modality")
-  ).toUpperCase();
+  const modality = String(getV(rec, "modality", "tradein_equipment_modality")).toUpperCase();
 
   const rows = [
     ["Location", location],
-    ["Modality", getV("modality", "tradein_equipment_modality")]
+    ["Modality", getV(rec, "modality", "tradein_equipment_modality")],
+    ["Manufacturer", getV(rec, "make", "tradein_equipment_make", "ct_manufacturer", "mri_manufacturer", "mamo_manufacturer", "xray_manufacturer", "carm_manufacturer", "pet_manufacturer")],
+    ["Model", getV(rec, "model", "tradein_equipment_model", "ct_model", "mri_model", "mamo_model", "xray_model", "carm_model", "pet_model")],
+    ["Serial", getV(rec, "serial_number", "axis_serial_number", "tradein_equipment_serial_number", "ct_serial", "mri_serial", "mamo_serial", "xray_serial", "carm_serial", "pet_serial")],
+    ["Additional Identifier", getV(rec, "hospital_asset_id", "additional_identifier")],
+    ["Date Manufactured / Year", getV(rec, "dom", "tradein_equipment_dom", "ct_dom", "mri_yom", "mamo_dom", "pet_tube_dom")],
+    ["Installed Date", getV(rec, "installed_date", "ct_installed")],
+    ["System In Use", yesNo(getV(rec, "in_use_status", "tradein_in_use_status", "ct_in_use", "mri_in_use", "mamo_in_use", "xray_in_use", "carm_in_use", "pet_in_use"))],
+    ["Out Of Use Date", getV(rec, "out_of_use_date", "tradein_out_of_use_date", "ct_out_of_use_date", "mri_out_of_use_date", "mamo_out_of_use_date", "xray_out_of_use_date", "carm_out_of_use_date", "pet_out_of_use_date")],
+    ["Availability Timeframe", getV(rec, "availability_timeframe", "tradein_availability_timeframe", "ct_availability_timeframe", "mri_availability_timeframe", "mamo_availability_timeframe", "xray_availability_timeframe", "carm_availability_timeframe", "pet_availability_timeframe")],
+    ["Removal Pathways", getV(rec, "removal_pathways", "tradein_removal_pathways", "ct_removal_pathways", "mri_removal_pathways", "mamo_removal_pathways", "xray_removal_pathways", "pet_removal_pathways")],
+    ["Loading Dock", yesNo(getV(rec, "loading_dock", "tradein_loading_dock", "ct_loading_dock", "mamo_loading_dock", "xray_loading_dock", "pet_loading_dock"))],
+    ["Hard Drives Removed", yesNo(getV(rec, "hard_drive_removed", "tradein_hard_drive_removed", "ct_hard_drive_removed", "mri_hard_drive_removed", "mamo_hard_drive_removed", "carm_hard_drive_removed", "pet_hard_drive_removed"))],
+    ["Software Version", getV(rec, "software_version", "tradein_software_version", "ct_sw_version", "mri_sw_version", "carm_sw_version")],
+    ["Upgrade / Configuration Notes", getV(rec, "upgrade_notes", "tradein_upgrade_notes", "ct_upgrades_desc", "mri_coils")]
   ];
 
   if (modality === "CT") {
     rows.push(
-      ["CT Model", getV("ct_model", "model", "tradein_equipment_model")],
-      ["CT Manufacturer", getV("ct_manufacturer", "make", "tradein_equipment_make")],
-      ["CT Serial", getV("ct_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["CT Installed", getV("ct_installed", "installed_date")],
-      ["CT Dom", getV("ct_dom", "dom", "tradein_equipment_dom")],
-      ["CT Tube Dom", getV("ct_tube_dom")],
-      ["CT Mhu", getV("ct_mhu")],
-      ["CT Tube Mas", getV("ct_tube_mas")],
-      ["CT Slices", getV("ct_slices")],
-      ["CT In Use", yesNo(getV("ct_in_use", "in_use_status", "tradein_in_use_status"))],
-      ["CT Out Of Use Date", getV("ct_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["CT Injector", yesNo(getV("ct_injector"))],
-      ["CT Injector Model", getV("ct_injector_model")],
-      ["CT Upgrades", yesNo(getV("ct_upgrades"))],
-      ["CT Upgrades Description", getV("ct_upgrades_desc", "upgrade_notes", "tradein_upgrade_notes")],
-      ["CT Hard Drives Removed", yesNo(getV("ct_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
-      ["CT Removal Pathways", getV("ct_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
-      ["CT Availability Time Frame", getV("ct_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["CT Slices", getV(rec, "ct_slices")],
+      ["CT Tube mAs / Scan/sec", getV(rec, "ct_tube_mas")],
+      ["CT Tube Size", getV(rec, "ct_mhu")],
+      ["CT Tube DOM", getV(rec, "ct_tube_dom")],
+      ["CT Injector", yesNo(getV(rec, "ct_injector"))],
+      ["CT Injector Model", getV(rec, "ct_injector_model")],
+      ["CT Upgrades", yesNo(getV(rec, "ct_upgrades"))],
+      ["CT Chiller", yesNo(getV(rec, "ct_chiller"))]
     );
   }
 
   if (modality === "MRI") {
     rows.push(
-      ["MRI Manufacturer", getV("mri_manufacturer", "make", "tradein_equipment_make")],
-      ["MRI Model", getV("mri_model", "model", "tradein_equipment_model")],
-      ["MRI Serial", getV("mri_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["MRI Year", getV("mri_yom", "dom", "tradein_equipment_dom")],
-      ["MRI Magnet Type", getV("mri_magnet_type")],
-      ["MRI Bore Size", getV("mri_bore_size_cm")],
-      ["MRI Channels", getV("mri_num_channels")],
-      ["MRI Gradient", getV("mri_gradient")],
-      ["MRI Software Version", getV("mri_sw_version", "software_version", "tradein_software_version")],
-      ["MRI Coils", getV("mri_coils")],
-      ["MRI Service", yesNo(getV("mri_service"))],
-      ["MRI Service Name", getV("mri_service_name")],
-      ["MRI In Use", yesNo(getV("mri_in_use", "in_use_status", "tradein_in_use_status"))],
-      ["MRI Out Of Use Date", getV("mri_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["MRI Hard Drives Removed", yesNo(getV("mri_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
-      ["MRI Removal Pathways", getV("mri_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
-      ["MRI Availability Time Frame", getV("mri_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["MRI Magnet Type", getV(rec, "mri_magnet_type")],
+      ["MRI Bore Size", getV(rec, "mri_bore_size_cm")],
+      ["MRI Channels", getV(rec, "mri_num_channels")],
+      ["MRI Gradient", getV(rec, "mri_gradient")],
+      ["MRI Service", getV(rec, "mri_service")],
+      ["MRI Service Company", getV(rec, "mri_service_name")]
     );
   }
 
   if (modality === "XRAY") {
     rows.push(
-      ["X-Ray Manufacturer", getV("xray_manufacturer", "make", "tradein_equipment_make")],
-      ["X-Ray Model", getV("xray_model", "model", "tradein_equipment_model")],
-      ["X-Ray Serial", getV("xray_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["X-Ray DOM", getV("xray_dom", "dom", "tradein_equipment_dom")],
-      ["X-Ray Floor Mounted", yesNo(getV("xray_floor_mounted"))],
-      ["X-Ray Ceiling Mounted", yesNo(getV("xray_ceiling_mounted"))],
-      ["X-Ray In Use", yesNo(getV("xray_in_use", "in_use_status", "tradein_in_use_status"))],
-      ["X-Ray Out Of Use Date", getV("xray_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["X-Ray Loading Dock", getV("xray_loading_dock", "loading_dock", "tradein_loading_dock")],
-      ["X-Ray Availability Time Frame", getV("xray_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["X-Ray Floor Mounted", yesNo(getV(rec, "xray_floor_mounted"))],
+      ["X-Ray Ceiling Mounted", yesNo(getV(rec, "xray_ceiling_mounted"))]
     );
   }
 
   if (modality === "CARM" || modality === "C-ARM") {
     rows.push(
-      ["C-Arm Manufacturer", getV("carm_manufacturer", "make", "tradein_equipment_make")],
-      ["C-Arm Model", getV("carm_model", "model", "tradein_equipment_model")],
-      ["C-Arm Serial", getV("carm_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["C-Arm DOM", getV("carm_dom", "dom", "tradein_equipment_dom")],
-      ["C-Arm Monitors", getV("carm_monitors")],
-      ["C-Arm Image Intensifier", getV("carm_image_intensifier")],
-      ["C-Arm Software Version", getV("carm_sw_version", "software_version", "tradein_software_version")],
-      ["C-Arm In Use", yesNo(getV("carm_in_use", "in_use_status", "tradein_in_use_status"))],
-      ["C-Arm Out Of Use Date", getV("carm_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["C-Arm Hard Drives Removed", yesNo(getV("carm_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
-      ["C-Arm Availability Time Frame", getV("carm_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["C-Arm Monitors", getV(rec, "carm_monitors")],
+      ["C-Arm Image Intensifier", getV(rec, "carm_image_intensifier")]
     );
   }
 
   if (modality === "PET" || modality === "PETCT") {
     rows.push(
-      ["PET Manufacturer", getV("pet_manufacturer", "make", "tradein_equipment_make")],
-      ["PET Model", getV("pet_model", "model", "tradein_equipment_model")],
-      ["PET Serial", getV("pet_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["PET DOM", getV("pet_dom", "dom", "tradein_equipment_dom")],
-      ["PET Tube DOM", getV("pet_tube_dom")],
-      ["PET Out Of Use Date", getV("pet_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["PET Hard Drives Removed", yesNo(getV("pet_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
-      ["PET Loading Dock", getV("pet_loading_dock", "loading_dock", "tradein_loading_dock")],
-      ["PET Availability Time Frame", getV("pet_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["PET/CT Slice Count", getV(rec, "pet_ct_slices")],
+      ["PET/CT Tube DOM", getV(rec, "pet_tube_dom")],
+      ["PET/CT Tube mAs / Scan/sec", getV(rec, "pet_tube_mas")]
     );
   }
 
   if (modality === "MAMMO") {
     rows.push(
-      ["Mammo Manufacturer", getV("mamo_manufacturer", "make", "tradein_equipment_make")],
-      ["Mammo Model", getV("mamo_model", "model", "tradein_equipment_model")],
-      ["Mammo Serial", getV("mamo_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number")],
-      ["Mammo DOM", getV("mamo_dom", "dom", "tradein_equipment_dom")],
-      ["Mammo 2D/3D", getV("mamo_dimensionality")],
-      ["Mammo Stereotactic", getV("mamo_stereotactic_options")],
-      ["Mammo CAD", getV("mamo_cad")],
-      ["Mammo In Use", yesNo(getV("mamo_in_use", "in_use_status", "tradein_in_use_status"))],
-      ["Mammo Out Of Use Date", getV("mamo_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date")],
-      ["Mammo Removal Pathways", getV("mamo_removal_pathways", "removal_pathways", "tradein_removal_pathways")],
-      ["Mammo Hard Drives Removed", yesNo(getV("mamo_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed"))],
-      ["Mammo Loading Dock", getV("mamo_loading_dock", "loading_dock", "tradein_loading_dock")],
-      ["Mammo Availability Time Frame", getV("mamo_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe")]
+      ["Mammo 2D / 3D", getV(rec, "mamo_dimensionality")],
+      ["Mammo Stereotactic Options", getV(rec, "mamo_stereotactic_options")],
+      ["Mammo CAD", getV(rec, "mamo_cad")]
     );
   }
 
@@ -2311,6 +1980,7 @@ function tradeInFieldRows(rec){
     `)
     .join("");
 }
+
 function renderInfoRequestSummary(rec){
   const items = Array.isArray(rec.info_request_items) ? rec.info_request_items : [];
 
@@ -2348,15 +2018,15 @@ function renderReleaseTracker(rec){
     : [];
 
   if (!released.length) {
-    return `<p class="small">Not released to bidders yet.</p>`;
+    return `<p class="small">Not released to approved buyers yet.</p>`;
   }
 
   return `
     <div class="field-block">
-      <h3 class="section-title">Bidder Release Tracker</h3>
+      <h3 class="section-title">Buyer Release Tracker</h3>
 
       <div class="tracker-row tracker-head">
-        <div>Bidder</div>
+        <div>Buyer</div>
         <div>Email</div>
         <div>Released</div>
         <div>Status</div>
@@ -2367,59 +2037,16 @@ function renderReleaseTracker(rec){
           <div>${htmlSafe(b.company || "-")}</div>
           <div>${htmlSafe(b.email || "-")}</div>
           <div>${htmlSafe(b.released_at ? new Date(b.released_at).toLocaleString() : "-")}</div>
-          <div>${getBidCount(rec) ? "Bid activity received" : "Awaiting bid"}</div>
+          <div>${getBidCount(rec) ? "Buyer response received" : "Awaiting response"}</div>
         </div>
       `).join("")}
     </div>
   `;
 }
-function getBidderName(bid){
-  return String(
-    bid.bidder_company ||
-    bid.bidder ||
-    bid.company ||
-    bid.bidder_name ||
-    bid.bidder_email ||
-    "-"
-  ).trim();
-}
 
-function getHighBidObject(rec){
-  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
-
-  return [...rec.bids]
-    .map(b => ({
-      ...b,
-      amountNumber: Number(b.amount || 0)
-    }))
-    .filter(b => b.amountNumber > 0)
-    .sort((a, b) => b.amountNumber - a.amountNumber)[0] || null;
-}
-
-function getLowBidObject(rec){
-  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
-
-  return [...rec.bids]
-    .map(b => ({
-      ...b,
-      amountNumber: Number(b.amount || 0)
-    }))
-    .filter(b => b.amountNumber > 0)
-    .sort((a, b) => a.amountNumber - b.amountNumber)[0] || null;
-}
-function getLastBidObject(rec){
-  if (!Array.isArray(rec.bids) || !rec.bids.length) return null;
-
-  return [...rec.bids]
-    .sort((a, b) => {
-      const da = new Date(a.submitted_at || 0).getTime();
-      const db = new Date(b.submitted_at || 0).getTime();
-      return db - da;
-    })[0] || null;
-}
 function renderBidCards(rec, safeId){
   if (!rec.bids || !rec.bids.length) {
-    return "<p class='small'>No bids submitted yet.</p>";
+    return "<p class='small'>No buyer responses submitted yet.</p>";
   }
 
   const rankedBids = [...rec.bids]
@@ -2444,20 +2071,20 @@ function renderBidCards(rec, safeId){
 
         ${
           isHighest
-            ? `<span class="badge high-bid-badge">HIGHEST BID</span>`
+            ? `<span class="badge high-bid-badge">HIGHEST RESPONSE</span>`
             : isLowest
-            ? `<span class="badge low-bid-badge">LOWEST BID</span>`
-            : `<span class="badge pending">MID BID</span>`
+            ? `<span class="badge low-bid-badge">LOWEST RESPONSE</span>`
+            : `<span class="badge pending">OTHER RESPONSE</span>`
         }
 
-        ${isWinner ? `<span class="badge win">SELECTED WINNER</span>` : ""}
+        ${isWinner ? `<span class="badge win">MANUALLY SELECTED</span>` : ""}
 
         <div class="kv" style="margin-top:10px;">
-          <strong>Bidder:</strong> ${htmlSafe(b.bidder || "-")}
+          <strong>Buyer:</strong> ${htmlSafe(b.bidder || b.bidder_company || b.company || "-")}
         </div>
 
         <div class="kv" style="font-size:18px;">
-          <strong>Bid Amount:</strong>
+          <strong>Buyer Response Amount:</strong>
           <span style="
             color:${isHighest ? "#41ff9c" : isLowest ? "#ff6b6b" : "#eef6ff"};
             font-weight:900;
@@ -2470,12 +2097,13 @@ function renderBidCards(rec, safeId){
         <div class="small">Expires: ${htmlSafe(b.expires || "-")}</div>
 
         <button class="green" onclick="selectWinner('${safeId}',${b.originalIndex})">
-          Select Winning Bid
+          Manually Post Credit
         </button>
       </div>
     `;
   }).join("");
 }
+
 function saveBidDeadline(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -2489,7 +2117,7 @@ function saveBidDeadline(id){
   const value = String(input?.value || "").trim();
 
   if (!value) {
-    alert("Enter bidding end date.");
+    alert("Enter buyer response deadline.");
     return;
   }
 
@@ -2546,9 +2174,10 @@ function saveBidDeadline(id){
 
   render();
 }
+
 function renderTradeDeskPackageCard(rec, safeId, rawId){
   const packageId = getBidPackageId(rec);
-  const estimate = getTradeDeskBenchmarkEstimate(rec);
+  const reviewChecklist = getManualReviewChecklist(rec);
 
   const active =
     String(activeBidPackageId || "") === String(rawId || "") ||
@@ -2560,12 +2189,12 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
     rec.bid_package_open === true ||
     String(rec.trade_desk_status || "").includes("Released") ||
     String(rec.trade_desk_status || "").includes("Approved") ||
-    String(rec.bid_status || "") === "Open for Bids" ||
-    String(rec.bid_status || "") === "Bids Received" ||
-    String(rec.bid_status || "") === "Awarded";
+    String(rec.bid_status || "") === "Open for Manual Buyer Review" ||
+    String(rec.bid_status || "") === "Buyer Responses Received" ||
+    String(rec.bid_status || "") === "Manual Selection Complete";
 
-  const packageLink = rec.bid_package_url || buildBidderUrl(rec, rec.released_to_bidders?.[0]?.email || "");
-const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
   return `
     <div class="package-card ${active ? "active" : ""}">
       <div class="package-card-head">
@@ -2574,7 +2203,7 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
           <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
           ${statusBadge(rec)}
           <span class="badge">${htmlSafe(rec.bid_status || "Not Released")}</span>
-          <span class="badge">${getBidCount(rec)} Bids</span>
+          <span class="badge">${getBidCount(rec)} Buyer Responses</span>
         </div>
 
         <button onclick="openTradeDeskPackage('${htmlSafe(rawId)}')">
@@ -2600,12 +2229,13 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
 
         <div class="package-meta-box">
           <div class="label">Package</div>
-          <div>${isReleased ? "Released" : "Not Released"}</div>
+          <div>${isReleased ? "Manually Released" : "Not Released"}</div>
         </div>
-<div class="package-meta-box">
-  <div class="label">Bidding Ends</div>
-  <div>${htmlSafe(formatBidDeadline(rec))}</div>
-</div>
+
+        <div class="package-meta-box">
+          <div class="label">Response Deadline</div>
+          <div>${htmlSafe(formatBidDeadline(rec))}</div>
+        </div>
       </div>
 
       ${
@@ -2613,45 +2243,43 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
           ? `
             <hr>
 
-<div class="field-block" style="border:none;background:transparent;padding:0;">
-<div class="trade-estimate-box">
-  <div class="k">Trade Desk Benchmark Estimate</div>
+            <div class="field-block" style="border:none;background:transparent;padding:0;">
+              <div class="trade-estimate-box">
+                <div class="k">Manual Trade Desk Review Checklist</div>
 
-  <div class="trade-estimate-value">
-    ${money(estimate.estimatedLow)} – ${money(estimate.estimatedHigh)}
-  </div>
+                <div class="trade-estimate-detail">
+                  <strong>Review Status:</strong>
+                  ${reviewChecklist.readyForReview ? "Ready for manual Trade Desk review" : "Additional review items may be needed"}
+                </div>
 
-  <div class="trade-estimate-detail">
-    <strong>Confidence:</strong> ${htmlSafe(estimate.confidence)}
-    <br><br>
-    <strong>Basis:</strong><br>
-    ${estimate.basis.map(item => htmlSafe(item)).join("<br>")}
-  </div>
+                <div class="trade-estimate-detail">
+                  <strong>Items to Check:</strong><br>
+                  ${
+                    reviewChecklist.missing.length
+                      ? reviewChecklist.missing.map(item => htmlSafe(item)).join("<br>")
+                      : "Core intake fields and images are present."
+                  }
+                </div>
 
-  <div class="trade-estimate-detail">
-    <strong>Internal Use:</strong>
-    This estimate gives Trade Desk a benchmark range to compare against incoming buyer bids. If no acceptable bid comes in, Trade Desk can use this range as a discussion point before deciding whether to offer credit, request more information, or assign no trade-in value.
-  </div>
+                <div class="trade-estimate-disclaimer">
+                  <strong>Internal Review Notice:</strong>
+                  This screen does not generate an appraisal, offer, estimated trade-in value, resale guarantee, quote recommendation, or automatic credit.
+                  Any credit shown later must come from manual Trade Desk review and a manually selected buyer response.
+                </div>
+              </div>
 
-  <div class="trade-estimate-disclaimer">
-    <strong>Demo Disclaimer:</strong>
-    These benchmark values are demo estimates only. They are not appraisals, confirmed market values, bids, offers, financial advice, resale guarantees, or guaranteed trade-in credits.
-    Production estimates must be calibrated using Trade Desk historical sales data, previous buyer bids, modality-specific resale trends, age, condition, usage data, removal cost history, parts demand, equipment completeness, inspection findings, and current market demand.
-    Final trade-in value must be determined by authorized Trade Desk review and actual buyer response.
-  </div>
-</div>
-  <h3 class="section-title">Trade-In App Equipment Details</h3>
-  ${tradeInFieldRows({
-    ...rec,
-    ...(rec.data || {}),
-    ...(rec.record || {}),
-    ...(rec.equipment || {}),
-    ...(rec.bid_package?.record || {}),
-    ...(rec.bid_package?.equipment || {})
-  })}
-</div>
+              <h3 class="section-title">Trade-In App Equipment Details</h3>
+              ${tradeInFieldRows({
+                ...rec,
+                ...(rec.data || {}),
+                ...(rec.record || {}),
+                ...(rec.equipment || {}),
+                ...(rec.bid_package?.record || {}),
+                ...(rec.bid_package?.equipment || {})
+              })}
+            </div>
 
-<hr>
+            <hr>
 
             <h3 class="section-title">Rep Information</h3>
             <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(rec.assigned_rep_first || rec.sales_rep_first || rec.rep_first || "-")}</div>
@@ -2662,29 +2290,31 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
 
             <hr>
 
-<div class="field-block" style="border:none;background:transparent;padding:0;">
- <h3 class="section-title" style="margin-top:0;">Bidding Ends</h3>
+            <div class="field-block" style="border:none;background:transparent;padding:0;">
+              <h3 class="section-title" style="margin-top:0;">Buyer Response Deadline</h3>
 
- <input
-  id="${deadlineInputId}"
-  type="date"
-  value="${htmlSafe(getBidDeadline(rec) || "")}"
-  style="
-    font-size:22px;
-    font-weight:900;
-    padding:18px 20px;
-    min-height:66px;
-  "
->
-  <button class="emerald" onclick="saveBidDeadline('${safeId}')">
-    Save Bidding End Date
-  </button>
+              <input
+                id="${deadlineInputId}"
+                type="date"
+                value="${htmlSafe(getBidDeadline(rec) || "")}"
+                style="
+                  font-size:22px;
+                  font-weight:900;
+                  padding:18px 20px;
+                  min-height:66px;
+                "
+              >
 
-  <div class="small">
-    This date syncs to the bidder portal and bidder package payload.
-  </div>
-</div>
-<div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
+              <button class="emerald" onclick="saveBidDeadline('${safeId}')">
+                Save Response Deadline
+              </button>
+
+              <div class="small">
+                This date updates the buyer portal package payload.
+              </div>
+            </div>
+
+            <div class="kv"><strong>Last Update:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
             ${renderInfoRequestSummary(rec)}
 
@@ -2698,7 +2328,7 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
 
             <hr>
 
-            <button onclick="approveForBidding('${safeId}')">Release to Approved Bidders</button>
+            <button onclick="approveForBidding('${safeId}')">Manually Release to Approved Buyers</button>
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
 
             <details>
@@ -2708,7 +2338,7 @@ const deadlineInputId = `bidDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9
           `
           : `
             <hr>
-            <button onclick="approveForBidding('${safeId}')">Release to Approved Bidders</button>
+            <button onclick="approveForBidding('${safeId}')">Manually Release to Approved Buyers</button>
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
           `
       }
@@ -2728,67 +2358,68 @@ function renderBidProgressCard(rec){
       <div class="package-id">${htmlSafe(packageId)}</div>
       <h3>${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</h3>
 
-      <span class="badge">${htmlSafe(rec.bid_status || "Open for Bids")}</span>
-      <span class="badge">${getBidCount(rec)} Bids Received</span>
-      <span class="badge bidding-ends-badge">Bidding Ends: ${htmlSafe(formatBidDeadline(rec))}</span>
+      <span class="badge">${htmlSafe(rec.bid_status || "Open for Manual Buyer Review")}</span>
+      <span class="badge">${getBidCount(rec)} Buyer Responses Received</span>
+      <span class="badge bidding-ends-badge">Response Deadline: ${htmlSafe(formatBidDeadline(rec))}</span>
       ${
         win
-          ? `<span class="badge win">Winner Selected</span>`
-          : `<span class="badge pending">No Winner Yet</span>`
+          ? `<span class="badge win">Manual Credit Selected</span>`
+          : `<span class="badge pending">No Manual Credit Yet</span>`
       }
 
       <div class="progress-grid">
         <div class="progress-box">
-          <div class="label">High Bid</div>
+          <div class="label">Highest Buyer Response</div>
           <div>${high ? money(high) : "-"}</div>
         </div>
 
         <div class="progress-box">
-          <div class="label">Low Bid</div>
+          <div class="label">Lowest Buyer Response</div>
           <div>${low ? money(low) : "-"}</div>
         </div>
 
         <div class="progress-box">
-          <div class="label">Average Bid</div>
+          <div class="label">Average Buyer Response</div>
           <div>${avg ? money(avg) : "-"}</div>
         </div>
 
         <div class="progress-box">
-          <div class="label">Winning Bid</div>
+          <div class="label">Manual Credit Selection</div>
           <div>${win ? money(win) : "Pending"}</div>
         </div>
       </div>
 
       <hr>
 
-      <h3 class="section-title">Bid Details</h3>
+      <h3 class="section-title">Buyer Response Details</h3>
       ${renderBidCards(rec, jsSafe(rec.id))}
     </div>
   `;
 }
+
 function renderQuoteCard(rec){
   return `
     <div class="card">
-      <h3>Quote: ${htmlSafe(rec.quote_id || rec.project_id || "-")}</h3>
+      <h3>Review Ref: ${htmlSafe(rec.quote_id || rec.project_id || "-")}</h3>
 
-      <span class="badge">${htmlSafe(rec.quote_sync_status || "Pending Bid")}</span>
+      <span class="badge">${htmlSafe(rec.quote_sync_status || "Waiting on Manual Trade Desk Review")}</span>
       <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
       <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
       <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
-      <div class="kv"><strong>Trade-In Credit:</strong> ${
+      <div class="kv"><strong>Posted Trade-In Credit:</strong> ${
         rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount
           ? money(rec.trade_in_credit || rec.tradein_credit || rec.winning_bid_amount)
-          : "Pending Trade Desk Bid"
+          : "Pending manual Trade Desk review"
       }</div>
-      <div class="kv"><strong>Winning Bidder:</strong> ${htmlSafe(rec.winning_bidder || "-")}</div>
-      <div class="kv"><strong>Winning Terms:</strong> ${htmlSafe(rec.winning_bid_terms || "-")}</div>
-      <div class="kv"><strong>Last Sync:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
+      <div class="kv"><strong>Selected Buyer:</strong> ${htmlSafe(rec.winning_bidder || "-")}</div>
+      <div class="kv"><strong>Selected Terms:</strong> ${htmlSafe(rec.winning_bid_terms || "-")}</div>
+      <div class="kv"><strong>Last Update:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
       <hr>
 
       <p class="small">
-        Winning bid is automatically written back as trade-in credit for the rep quote and manager view.
+        Credit is posted only after Trade Desk manually reviews buyer responses and manually selects the amount to show to the rep and manager view.
       </p>
     </div>
   `;
@@ -2797,7 +2428,7 @@ function renderQuoteCard(rec){
 function render(){
   const data = loadData();
 
-  tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No trade-ins submitted yet.</p>";
+  tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No field intake records submitted yet.</p>";
   bidderPortal.innerHTML = "";
   repQuotes.innerHTML = "";
 
@@ -2807,16 +2438,16 @@ function render(){
 
     tradeDesk.innerHTML += renderTradeDeskPackageCard(rec, safeId, rawId);
 
-    const isReleasedToBidders =
+    const isReleasedToBuyers =
       rec.bidder_portal_visible === true ||
       rec.bid_package_open === true ||
       String(rec.trade_desk_status || "").includes("Released") ||
       String(rec.trade_desk_status || "").includes("Approved") ||
-      String(rec.bid_status || "") === "Open for Bids" ||
-      String(rec.bid_status || "") === "Bids Received" ||
-      String(rec.bid_status || "") === "Awarded";
+      String(rec.bid_status || "") === "Open for Manual Buyer Review" ||
+      String(rec.bid_status || "") === "Buyer Responses Received" ||
+      String(rec.bid_status || "") === "Manual Selection Complete";
 
-    if (isReleasedToBidders) {
+    if (isReleasedToBuyers) {
       bidderPortal.innerHTML += renderBidProgressCard(rec);
     }
 
@@ -2824,7 +2455,7 @@ function render(){
   });
 
   if (!bidderPortal.innerHTML.trim()) {
-    bidderPortal.innerHTML = "<p class='small'>No released bid packages yet.</p>";
+    bidderPortal.innerHTML = "<p class='small'>No manually released buyer review packages yet.</p>";
   }
 
   repQuotes.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
@@ -2835,19 +2466,20 @@ window.addEventListener("storage", (e) => {
     activeBidPackageId = localStorage.getItem(ACTIVE_PACKAGE_KEY) || "";
   }
 
- if (
-  e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
-  e.key === AXIS_TRADE_DESK_INBOX_KEY ||
-  e.key === MANAGER_PING_KEY ||
-  e.key === KEY ||
-  e.key === TRADEIN_SYNC_KEY ||
-  e.key === BIDDER_PORTAL_KEY ||
-  e.key === ACTIVE_PACKAGE_KEY
-) {
-  if (!isTradeDeskInputFocused()) {
-    render();
+  if (
+    e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
+    e.key === AXIS_TRADE_DESK_INBOX_KEY ||
+    e.key === MANAGER_PING_KEY ||
+    e.key === KEY ||
+    e.key === TRADEIN_SYNC_KEY ||
+    e.key === BIDDER_PORTAL_KEY ||
+    e.key === ACTIVE_PACKAGE_KEY
+  ) {
+    if (!isTradeDeskInputFocused()) {
+      importAutomaticIntake();
+      render();
+    }
   }
-}
 });
 
 setInterval(() => {
@@ -2857,6 +2489,7 @@ setInterval(() => {
     render();
   }
 }, 2000);
+
 importAutomaticIntake();
 render();
 </script>
