@@ -1,19 +1,43 @@
-import { kv } from "@vercel/kv";
+// FILE: /api/verify-pin.js
+// PATH: /api/verify-pin.js
 
-const TEST_MODE = false; // 🔥 TOGGLE
+import { kv } from "@vercel/kv";
+import crypto from "crypto";
+
+const TEST_MODE = false;
+
+const ALLOWED_ORIGIN = "https://espin-medical-app.vercel.app";
+
+function cleanEmail(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function cleanPin(v) {
+  return String(v || "").trim();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function safeEqual(a, b) {
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+
+  if (aBuf.length !== bBuf.length) return false;
+
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
 
 export default async function handler(req, res) {
-  // ✅ STRICT, WKWebView-SAFE CORS
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "https://espin-medical-app.vercel.app"
-  );
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type, X-Requested-With"
   );
   res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -24,18 +48,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    let { email, pin } = req.body || {};
+    const body =
+      typeof req.body === "string"
+        ? JSON.parse(req.body || "{}")
+        : req.body || {};
 
-    if (!email || pin === undefined || pin === null) {
+    const normalizedEmail = cleanEmail(body.email);
+    const normalizedPin = cleanPin(body.pin);
+
+    if (!normalizedEmail || !normalizedPin) {
       return res.status(400).json({ error: "Missing email or PIN" });
     }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedPin = String(pin).trim();
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: "Invalid email" });
+    }
 
-    // ===============================
-    // TEST MODE BYPASS
-    // ===============================
+    if (!/^\d{6}$/.test(normalizedPin)) {
+      return res.status(401).json({ error: "Invalid PIN" });
+    }
+
     if (TEST_MODE) {
       if (normalizedPin !== "123455") {
         return res.status(401).json({ error: "Invalid PIN" });
@@ -48,26 +80,33 @@ export default async function handler(req, res) {
       });
     }
 
-    // ===============================
-    // NORMAL FLOW
-    // ===============================
-    if (normalizedPin.length !== 6) {
-      return res.status(401).json({ error: "Invalid PIN" });
+    const pinKey = `pin:${normalizedEmail}`;
+    const attemptsKey = `pin_attempts:${normalizedEmail}`;
+
+    const attempts = Number(await kv.get(attemptsKey)) || 0;
+
+    if (attempts >= 5) {
+      return res.status(429).json({
+        error: "Too many failed attempts. Request a new PIN."
+      });
     }
 
-    const key = `pin:${normalizedEmail}`;
-    const storedPin = await kv.get(key);
+    const storedPin = await kv.get(pinKey);
 
     if (!storedPin) {
       return res.status(401).json({ error: "PIN expired or not found" });
     }
 
-    if (String(storedPin) !== normalizedPin) {
+    if (!safeEqual(storedPin, normalizedPin)) {
+      await kv.set(attemptsKey, attempts + 1, { ex: 900 });
+
       return res.status(401).json({ error: "Invalid PIN" });
     }
 
-    // ✅ Single-use PIN
-    await kv.del(key);
+    await Promise.all([
+      kv.del(pinKey),
+      kv.del(attemptsKey)
+    ]);
 
     return res.status(200).json({
       success: true,
