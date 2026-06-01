@@ -898,6 +898,7 @@ td:nth-child(14){
 <th>Review Signal</th>
 <th>Rep-Selected Next Action</th>
 <th>Source</th>
+<th>Actions</th>
                 </tr>
               </thead>
               <tbody id="tableBody"></tbody>
@@ -1581,6 +1582,61 @@ function renderRepSelectedNextActionControl(rec) {
     </div>
   `;
 }
+function renderReviewSignalCell(rec) {
+  if (rec.lifecycle_completed) {
+    return `<span class="alert-badge alert-completed">Completed</span>`;
+  }
+
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+    return `
+      <span class="pill submitted tradein-flash">
+        NEW TRADE-IN INFO RECEIVED
+      </span>
+    `;
+  }
+
+  if (rec.tradein_sync_received && rec.tradein_seen_by_rep) {
+    return `
+      <span class="pill pending">
+        TRADE-IN IN PROGRESS
+      </span>
+    `;
+  }
+
+  if (rec.quote_amount) {
+    const status = String(rec.quote_status || "draft").toUpperCase();
+
+    return `
+      <div class="quote-status-wrap">
+        <span class="quote-main-badge">Quote ${status}</span>
+        ${getQuoteFollowUpAlertBadge(rec)}
+      </div>
+    `;
+  }
+
+  const alerts = getAlerts(rec);
+
+  if (!alerts.length) {
+    return `<span class="mini">No Active Signal</span>`;
+  }
+
+  return alerts.map(a => {
+    const cls =
+      a.type === "disposal"
+        ? "alert-badge alert-disposal"
+        : a.type === "replacement"
+        ? "alert-badge alert-replacement"
+        : a.type === "upgrade"
+        ? "alert-badge alert-upgrade"
+        : a.type === "planning"
+        ? "alert-badge alert-planning"
+        : a.type === "proactive"
+        ? "alert-badge alert-proactive"
+        : "alert-badge alert-service";
+
+    return `<span class="${cls}">${a.label}</span>`;
+  }).join("");
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1719,7 +1775,11 @@ function renderTable() {
 
 <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
-               <td>
+                     <td>
+          ${renderReviewSignalCell(rec)}
+        </td>
+
+        <td>
           ${
             rec.lifecycle_completed
               ? `<span class="next-action-label next-action-completed">Completed</span>`
@@ -2131,7 +2191,7 @@ function getInitialTriggerInfo(rec) {
   return {
     type: trigger.type,
     label: trigger.label,
-    action: actionMap[trigger.type] || trigger.label,
+    action: trigger.label,
     priority
   };
 }
@@ -2839,7 +2899,7 @@ ${
         border:2px solid rgba(255,216,77,.35);
         background:rgba(255,216,77,.06);
       ">
-        <div class="k">Initial Review Step</div>
+        <div class="k">Initial Lifecycle Signal</div>
 
         <div class="v" style="margin-bottom:10px;">
           ${initial.action}
