@@ -1029,26 +1029,25 @@ function getManagerStatusHtml(rec) {
     return `<span class="pill submitted" style="background:#41ff9c;color:#03111b;">NEW TRADE-IN INFO RECEIVED</span>`;
   }
 
-  if (rec.quote_status === "draft" || rec.quote_amount) {
-    return `
-      <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
-        QUOTE DRAFT
-      </span>
-    `;
-  }
-
   if (rec.quote_status === "sent") {
-    return `<span class="pill quote-sent">QUOTE SENT</span>`;
-  }
+  return `<span class="pill quote-sent">QUOTE SENT</span>`;
+}
 
-  if (rec.quote_status === "won") {
-    return `<span class="pill submitted">QUOTE WON</span>`;
-  }
+if (rec.quote_status === "won") {
+  return `<span class="pill submitted">QUOTE WON</span>`;
+}
 
-  if (rec.quote_status === "lost") {
-    return `<span class="pill postponed">QUOTE LOST</span>`;
-  }
+if (rec.quote_status === "lost") {
+  return `<span class="pill postponed">QUOTE LOST</span>`;
+}
 
+if (rec.quote_status === "draft" || rec.quote_amount) {
+  return `
+    <span class="pill quote-draft-pill ${rec.quote_seen ? "quote-seen" : ""}">
+      QUOTE DRAFT
+    </span>
+  `;
+}
   const alerts = getAlerts(rec);
   const first = alerts[0];
 
@@ -1082,21 +1081,21 @@ function getManagerNextActionHtml(rec) {
     return `<span class="pill pending" style="border:1px solid #ffd84d;color:#ffe890;background:transparent;">FINALIZE QUOTE</span>`;
   }
 
-  if (rec.quote_status === "draft" || rec.quote_amount) {
-    return `<span class="pill pending" style="border:1px solid #ffd84d;color:#ffe890;background:transparent;">REVIEW QUOTE</span>`;
-  }
+ if (rec.quote_status === "sent") {
+  return `<span class="pill quote-sent">FOLLOW QUOTE</span>`;
+}
 
-  if (rec.quote_status === "sent") {
-    return `<span class="pill quote-sent">FOLLOW QUOTE</span>`;
-  }
+if (rec.quote_status === "won") {
+  return `<span class="pill submitted">CLOSE WON</span>`;
+}
 
-  if (rec.quote_status === "won") {
-    return `<span class="pill submitted">CLOSE WON</span>`;
-  }
+if (rec.quote_status === "lost") {
+  return `<span class="pill postponed">REVIEW LOSS</span>`;
+}
 
-  if (rec.quote_status === "lost") {
-    return `<span class="pill postponed">REVIEW LOSS</span>`;
-  }
+if (rec.quote_status === "draft" || rec.quote_amount) {
+  return `<span class="pill pending" style="border:1px solid #ffd84d;color:#ffe890;background:transparent;">REVIEW QUOTE</span>`;
+}
 
   const alerts = getAlerts(rec);
   const first = alerts[0];
@@ -1474,11 +1473,20 @@ manager_response_seen_at: existing.manager_response_seen_at || "",
       }
     });
 
-    state.records = merged;
-    state.selectedId = null;
+   state.records = merged;
+state.selectedId = null;
 
-    saveRecords();
-    render();
+state.records.forEach(rec => {
+  const alerts = getAlerts(rec);
+
+  if (alerts.length && !rec.submitted_to && !rec.lifecycle_completed) {
+    pushToRepFeed(rec);
+  }
+});
+
+saveRecords();
+render();
+
   };
 
   reader.readAsArrayBuffer(file);
