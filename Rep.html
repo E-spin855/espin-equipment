@@ -445,6 +445,43 @@ td:nth-child(14){
   border:2px solid transparent;
   box-shadow:0 0 12px rgba(47,125,77,.14);
 }
+.rep-next-action-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:240px;
+}
+
+.rep-next-action-select{
+  width:100%;
+  min-width:220px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.28);
+  background:#081223;
+  color:#eef6ff;
+  font-size:12px;
+  font-weight:800;
+}
+
+.rep-next-action-note{
+  width:100%;
+  min-width:220px;
+  min-height:54px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.22);
+  background:#081223;
+  color:#eef6ff;
+  font-size:12px;
+}
+
+.axis-signal-note{
+  margin-top:6px;
+  color:#9db6d2;
+  font-size:11px;
+  line-height:1.35;
+}
     th{position:sticky;top:0;background:rgba(9,18,35,.98);color:#a8c8e7;font-size:12px;text-transform:uppercase;letter-spacing:.09em}
     tbody tr{background:rgba(9,18,35,.45)}
     tbody tr:hover{background:rgba(14,31,63,.8)}
@@ -865,8 +902,8 @@ td:nth-child(14){
 		<th>Pressure</th>
 <th>Trade-In Value</th>
 <th>Facility</th>
-<th>Status</th>
-<th>Workflow Review Step</th>
+<th>Review Signal</th>
+<th>Rep-Selected Next Action</th>
 <th>Source</th>
                 </tr>
               </thead>
@@ -1461,6 +1498,117 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
     `;
   }).join("");
 }
+function getRepSelectedActionOptions(selected = "") {
+  const options = [
+    ["", "Select next action"],
+    ["review_customer_status", "Review customer status"],
+    ["contact_customer", "Contact customer"],
+    ["schedule_follow_up", "Schedule follow-up"],
+    ["review_budget_timing", "Review budget timing"],
+    ["review_service_history", "Review service history"],
+    ["review_upgrade_path", "Review upgrade path"],
+    ["review_replacement_timing", "Review replacement timing"],
+    ["send_to_trade_in", "Send to Trade-In App"],
+    ["send_to_disposal", "Send to Disposal"],
+    ["quote_review", "Quote Review"],
+    ["monitor_no_action", "Monitor / no action now"],
+    ["other", "Other"]
+  ];
+
+  return options.map(([value, label]) => `
+    <option value="${value}" ${String(selected || "") === value ? "selected" : ""}>
+      ${label}
+    </option>
+  `).join("");
+}
+
+function getRepSelectedActionLabel(value) {
+  const map = {
+    review_customer_status: "Review customer status",
+    contact_customer: "Contact customer",
+    schedule_follow_up: "Schedule follow-up",
+    review_budget_timing: "Review budget timing",
+    review_service_history: "Review service history",
+    review_upgrade_path: "Review upgrade path",
+    review_replacement_timing: "Review replacement timing",
+    send_to_trade_in: "Send to Trade-In App",
+    send_to_disposal: "Send to Disposal",
+    quote_review: "Quote Review",
+    monitor_no_action: "Monitor / no action now",
+    other: "Other"
+  };
+
+  return map[value] || "";
+}
+
+function saveRepSelectedNextAction(recordId) {
+  const rec = state.records.find(r => String(r.id) === String(recordId));
+
+  if (!rec) return;
+
+  const select = document.getElementById(`repNextAction_${recordId}`);
+  const note = document.getElementById(`repNextActionNote_${recordId}`);
+
+  const action = select ? select.value : "";
+  const notes = note ? note.value.trim() : "";
+
+  rec.rep_selected_next_action = action;
+  rec.rep_selected_next_action_label = getRepSelectedActionLabel(action);
+  rec.rep_selected_next_action_notes = notes;
+  rec.rep_selected_next_action_at = action ? new Date().toISOString() : "";
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "rep_selected_next_action";
+  rec.manager_flash_text = "Rep selected next action";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  renderStats();
+  renderRepMenu();
+  renderFollowUpAlertCenter();
+}
+
+function renderRepSelectedNextActionControl(rec) {
+  const selected = rec.rep_selected_next_action || "";
+  const notes = rec.rep_selected_next_action_notes || "";
+
+  return `
+    <div class="rep-next-action-wrap" onclick="event.stopPropagation();">
+      <select
+        id="repNextAction_${rec.id}"
+        class="rep-next-action-select"
+        onchange="saveRepSelectedNextAction('${rec.id}')"
+      >
+        ${getRepSelectedActionOptions(selected)}
+      </select>
+
+      ${
+        selected === "other"
+          ? `
+            <textarea
+              id="repNextActionNote_${rec.id}"
+              class="rep-next-action-note"
+              placeholder="Enter rep-selected next action..."
+              oninput="saveRepSelectedNextAction('${rec.id}')"
+            >${notes}</textarea>
+          `
+          : `
+            <textarea
+              id="repNextActionNote_${rec.id}"
+              class="rep-next-action-note"
+              placeholder="Optional rep notes..."
+              oninput="saveRepSelectedNextAction('${rec.id}')"
+            >${notes}</textarea>
+          `
+      }
+
+      <div class="axis-signal-note">
+        AXIS surfaced the review signal. Rep selects the next action manually.
+      </div>
+    </div>
+  `;
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1599,144 +1747,11 @@ function renderTable() {
 
 <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
-        <td>
+               <td>
           ${
-            (() => {
-              if (hasUnseenManagerResponse) {
-                return `
-                  <span class="pill pending tradein-flash">
-                    MANAGER UPDATE
-                  </span>
-                `;
-              }
-
-              if (rec.lifecycle_completed) {
-                return `<span class="pill submitted">COMPLETED</span>`;
-              }
-
-              if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-                return `
-                  <span class="pill submitted tradein-flash">
-                    NEW TRADE-IN INFO RECEIVED
-                  </span>
-                `;
-              }
-
-              if (rec.tradein_sync_received && rec.tradein_seen_by_rep) {
-                return `
-                  <span class="pill pending">
-                    TRADE-IN IN PROGRESS
-                  </span>
-                `;
-              }
-
-              if (rec.project_type === "new_sales_project") {
-                if (rec.quote_status === "lost") {
-                  return `<span class="pill postponed">LOST - DELETE AVAILABLE</span>`;
-                }
-
-                return `<span class="pill local">NEW PROJECT OPEN</span>`;
-              }
-
-              if (rec.quote_amount) {
-                const status = String(rec.quote_status || "draft").toUpperCase();
-
-                return `
-                  <div class="quote-status-wrap">
-                    <span class="quote-main-badge">Quote ${status}</span>
-                    ${getQuoteFollowUpAlertBadge(rec)}
-                  </div>
-                `;
-              }
-
-              const alerts = getAlerts(rec);
-
-              if (!alerts.length) {
-                return `<span class="mini">No Action</span>`;
-              }
-
-              const urgency = getUrgencyLevel(rec);
-
-return alerts.map(a => {
-  const cls =
-    a.type === "disposal"
-      ? "alert-badge alert-disposal"
-      : a.type === "replacement"
-      ? "alert-badge alert-replacement"
-      : a.type === "upgrade"
-      ? "alert-badge alert-upgrade"
-      : a.type === "planning"
-      ? "alert-badge alert-planning"
-      : a.type === "proactive"
-      ? "alert-badge alert-proactive"
-      : "alert-badge alert-service";
-
-  return `<span class="${cls}">${a.label}</span>`;
-}).join("");
-            })()
-          }
-        </td>
-
-        <td>
-          ${
-            (() => {
-              if (hasUnseenManagerResponse) {
-                return `<span class="next-action-label next-action-quote">Open Manager Update</span>`;
-              }
-
-              if (rec.lifecycle_completed) {
-                return `<span class="next-action-label next-action-completed">Completed</span>`;
-              }
-
-              if (rec.project_type === "new_sales_project" || rec.tradein_sync_received) {
-                if (rec.quote_status === "lost") {
-                  return `<span class="next-action-label next-action-disposition">Delete or Archive</span>`;
-                }
-
-                if (rec.tradein_sync_received) {
-                  return `<span class="next-action-label next-action-quote">Quote Follow-Up Review</span>`;
-                }
-
-                return `<span class="next-action-label next-action-proactive">Send to Trade-In App</span>`;
-              }
-
-              if (rec.quote_amount) {
-                return `<span class="next-action-label next-action-quote">Quote Follow-Up Review</span>`;
-              }
-
-              const alerts = getAlerts(rec);
-
-              if (!alerts.length) {
-                return "-";
-              }
-
-const type = alerts[0].type;
-
-if (type === "disposal") {
-  return `<span class="next-action-label next-action-disposition">Disposition Review</span>`;
-}
-
-if (type === "replacement") {
-  return `<span class="next-action-label next-action-replacement">Replacement Planning</span>`;
-}
-
-if (type === "upgrade") {
-  return `<span class="next-action-label next-action-upgrade">Upgrade Review</span>`;
-}
-
-if (type === "planning") {
-  return `<span class="next-action-label next-action-planning">Budget Planning</span>`;
-}
-
-if (type === "proactive") {
-  return `<span class="next-action-label next-action-proactive">Early Planning Review</span>`;
-}
-
-if (type === "service") {
-  return `<span class="next-action-label next-action-service">Service Review</span>`;
-}
-              return `<span class="next-action-label next-action-service">${alerts[0].label}</span>`;
-            })()
+            rec.lifecycle_completed
+              ? `<span class="next-action-label next-action-completed">Completed</span>`
+              : renderRepSelectedNextActionControl(rec)
           }
         </td>
 
@@ -1846,6 +1861,11 @@ rep_status: "needed",
 rep_hidden: false,
 rep_deleted: false,
 rep_follow_up_date: "",
+
+rep_selected_next_action: "",
+rep_selected_next_action_label: "",
+rep_selected_next_action_notes: "",
+rep_selected_next_action_at: "",
     oem_project_id: obj.oem_project_id || obj.project_id || "",
     make: obj.make || "",
     model: obj.model || "",
@@ -2007,9 +2027,14 @@ manager_response_seen_at: ""
         next_action_date:
           existing.next_action_date || newRec.next_action_date,
 
-        rep_action: existing.rep_action || newRec.rep_action || "",
-        rep_notes: existing.rep_notes || newRec.rep_notes || "",
-        rep_status: existing.rep_status || newRec.rep_status || "needed",
+       rep_action: existing.rep_action || newRec.rep_action || "",
+rep_notes: existing.rep_notes || newRec.rep_notes || "",
+rep_status: existing.rep_status || newRec.rep_status || "needed",
+
+rep_selected_next_action: existing.rep_selected_next_action || newRec.rep_selected_next_action || "",
+rep_selected_next_action_label: existing.rep_selected_next_action_label || newRec.rep_selected_next_action_label || "",
+rep_selected_next_action_notes: existing.rep_selected_next_action_notes || newRec.rep_selected_next_action_notes || "",
+rep_selected_next_action_at: existing.rep_selected_next_action_at || newRec.rep_selected_next_action_at || "",
         rep_last_action_at: existing.rep_last_action_at || newRec.rep_last_action_at || "",
         lifecycle_completed: existing.lifecycle_completed || false,
         completed_at: existing.completed_at || "",
