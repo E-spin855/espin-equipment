@@ -886,7 +886,7 @@ td:nth-child(14){
       <div class="detail-grid" id="detailGrid"></div>
       <div class="btns" style="margin-top:2px;">
   <button type="button" class="green" id="quoteBtn">Create Quote</button>
-  <button type="button" class="green" id="exportQuotePdfBtn">Save Quote PDF</button>
+  <button type="button" class="green" id="exportQuotePdfBtn">Submit Quote for Approval</button>
   <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
   <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
   <button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
@@ -1371,13 +1371,14 @@ function renderNewProjectsTable() {
   rec.tradein_required === "no"
     ? "Not Required"
     : `${rec.tradein_equipment_make || ""} ${rec.tradein_equipment_model || ""}`.trim() || "-";
-  const tradeInCreditRaw =
+ const tradeInCreditRaw =
   rec.tradein_credit ||
   rec.trade_in_credit ||
   rec.quote_trade_in_credit ||
-  rec.tradein_estimated_value ||
-  rec.estimated_trade_in_value ||
   "";
+
+const externalTradeInRaw =
+  rec.external_tradein_value || "";
 
 const tradeInCredit = Number(tradeInCreditRaw || 0);
 
@@ -1415,12 +1416,14 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
 </td>
         <td>
   ${
-    rec.tradein_required === "no"
-      ? "Not Required"
-      : tradeInCreditRaw
-      ? `$${tradeInCredit.toLocaleString()}`
-      : "Pending Quote"
-  }
+  rec.tradein_required === "no"
+    ? "Not Required"
+    : tradeInCreditRaw
+    ? `$${tradeInCredit.toLocaleString()} Applied`
+    : externalTradeInRaw
+    ? `$${Number(externalTradeInRaw).toLocaleString()} External - Not Applied`
+    : "Pending Quote"
+}
 </td>
                 <td>
           ${
@@ -2272,18 +2275,26 @@ function renderNewProjectDetail(rec) {
   $("detailArea")?.classList.add("hidden");
   $("emptyState")?.classList.add("hidden");
 
-  const tradeInCredit = Number(
+   const appliedTradeInCredit = Number(
     rec.tradein_credit ||
     rec.quote_trade_in_credit ||
     0
   );
 
+  const externalTradeInValue = Number(
+    rec.external_tradein_value || 0
+  );
+
+  const tradeInCredit = appliedTradeInCredit;
+
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
+
   const netQuote = Number(
     rec.quote_net_amount ||
     Math.max(0, quoteAmount - tradeInCredit)
   );
+
   const profit = netQuote - estimatedCost;
   const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
 
@@ -2333,8 +2344,11 @@ function renderNewProjectDetail(rec) {
               Modality: <strong>${rec.tradein_equipment_modality || "-"}</strong><br>
               Serial: <strong>${rec.tradein_equipment_serial_number || "-"}</strong><br>
               DOM: <strong>${rec.tradein_equipment_dom || "-"}</strong><br>
-              Trade-In Credit:
-              <strong>$${tradeInCredit.toLocaleString()}</strong>
+              External Trade-In Value:
+<strong>$${externalTradeInValue.toLocaleString()}</strong><br>
+
+Applied Quote Credit:
+<strong>$${tradeInCredit.toLocaleString()}</strong>
             </div>
 
             <label style="display:block;margin-top:12px;">Trade-In Desk Value</label>
@@ -2353,6 +2367,14 @@ function renderNewProjectDetail(rec) {
             >
               Save Trade-In Value
             </button>
+<button
+  type="button"
+  class="green"
+  style="margin-top:10px;"
+  onclick="applyExternalTradeInToQuote('${rec.id}')"
+>
+  Manually Apply External Trade-In Value to Quote
+</button>
           </div>
         `
         : `
@@ -2587,14 +2609,14 @@ function saveNewProjectTradeInCredit(id) {
   const value = Number(input.value || 0);
 
   rec.tradein_credit = value;
-rec.trade_in_credit = value;
-rec.trade_in_value = value;
-rec.trade_desk_value = value;
-rec.tradein_estimated_value = value;
-rec.estimated_trade_in_value = value;
-rec.quote_trade_in_credit = value;
-rec.associated_trade_in_credit = value;
-rec.associatedTradeInCredit = value;
+  rec.trade_in_credit = value;
+  rec.trade_in_value = value;
+  rec.trade_desk_value = value;
+  rec.tradein_estimated_value = value;
+  rec.estimated_trade_in_value = value;
+  rec.quote_trade_in_credit = value;
+  rec.associated_trade_in_credit = value;
+  rec.associatedTradeInCredit = value;
 
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
@@ -2614,6 +2636,56 @@ rec.associatedTradeInCredit = value;
   render();
 
   alert("Trade-in value saved");
+}
+function applyExternalTradeInToQuote(id = null) {
+  const rec =
+    state.records.find(r => r.id === id) ||
+    state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  const externalValue = Number(rec.external_tradein_value || 0);
+
+  if (!externalValue || externalValue <= 0) {
+    alert("No external trade-in value available to apply.");
+    return;
+  }
+
+  if (!confirm(`Apply external trade-in value of $${externalValue.toLocaleString()} to this quote?`)) {
+    return;
+  }
+
+  rec.quote_trade_in_credit = externalValue;
+  rec.tradein_credit = externalValue;
+  rec.trade_in_credit = externalValue;
+
+  rec.external_tradein_status = "manually_applied_to_quote";
+  rec.external_tradein_applied_at = new Date().toISOString();
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const netQuote = Math.max(0, quoteAmount - externalValue);
+  const profit = netQuote - estimatedCost;
+
+  rec.quote_net_amount = quoteAmount ? netQuote : "";
+  rec.quote_profit = quoteAmount ? profit : "";
+  rec.quote_margin =
+    quoteAmount && netQuote > 0
+      ? Math.round((profit / netQuote) * 100)
+      : "";
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "external_tradein_manually_applied";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
+
+  alert("External trade-in value manually applied to quote.");
 }
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
@@ -2822,15 +2894,23 @@ ${
           value="${rec.tradein_credit || rec.quote_trade_in_credit || ""}"
           placeholder="Enter trade-in value"
         />
+<button
+  type="button"
+  class="green"
+  style="margin-top:10px;"
+  onclick="saveNewProjectTradeInCredit('${rec.id}')"
+>
+  Save Trade-In Value
+</button>
 
-        <button
-          type="button"
-          class="green"
-          style="margin-top:10px;"
-          onclick="saveNewProjectTradeInCredit('${rec.id}')"
-        >
-          Save Trade-In Value
-        </button>
+<button
+  type="button"
+  class="green"
+  style="margin-top:10px;"
+  onclick="applyExternalTradeInToQuote('${rec.id}')"
+>
+  Manually Apply External Trade-In Value to Quote
+</button>
       </div>
     `
     : ""
@@ -3562,28 +3642,24 @@ function importTradeInSyncRecords() {
       existingNewProject.tradein_equipment_serial_number = serial;
       existingNewProject.tradein_equipment_dom = item.dom || item.tradein_equipment_dom || "";
 
-      existingNewProject.tradein_credit = tradeInValue;
-      existingNewProject.trade_in_credit = tradeInValue;
-      existingNewProject.trade_in_value = tradeInValue;
-      existingNewProject.trade_desk_value = tradeInValue;
-      existingNewProject.tradein_estimated_value = tradeInValue;
-      existingNewProject.estimated_trade_in_value = tradeInValue;
-      existingNewProject.quote_trade_in_credit = tradeInValue;
-      existingNewProject.associated_trade_in_credit = tradeInValue;
-      existingNewProject.associatedTradeInCredit = tradeInValue;
+     existingNewProject.external_tradein_value = tradeInValue;
+existingNewProject.external_tradein_source =
+  item.external_tradein_source ||
+  item.tradein_source ||
+  "OEM Trade Desk";
 
-      const quoteAmount = Number(existingNewProject.quote_amount || 0);
-      const estimatedCost = Number(existingNewProject.quote_estimated_cost || 0);
-      const netQuote = Math.max(0, quoteAmount - tradeInValue);
-      const profit = netQuote - estimatedCost;
+existingNewProject.external_tradein_status = "pending_rep_review";
+existingNewProject.external_tradein_received_at =
+  item.last_tradein_update_at || new Date().toISOString();
 
-      existingNewProject.quote_net_amount = quoteAmount ? netQuote : "";
-      existingNewProject.quote_profit = quoteAmount ? profit : "";
-      existingNewProject.quote_margin =
-        quoteAmount && netQuote > 0
-          ? Math.round((profit / netQuote) * 100)
-          : "";
+existingNewProject.tradein_sync_received = true;
+existingNewProject.tradein_seen_by_rep = false;
 
+/*
+  IMPORTANT:
+  Do not auto-write external trade-in value into quote_trade_in_credit.
+  Rep must manually apply it to quote.
+*/
       existingNewProject.tradein_synced_to_axis_at =
         item.last_tradein_update_at || new Date().toISOString();
 
@@ -3643,15 +3719,23 @@ function importTradeInSyncRecords() {
     existingLifecycle.tradein_project_id = projectId;
     existingLifecycle.tradein_modality_id = modalityId;
 
-    existingLifecycle.tradein_credit = tradeInValue;
-    existingLifecycle.trade_in_credit = tradeInValue;
-    existingLifecycle.trade_in_value = tradeInValue;
-    existingLifecycle.trade_desk_value = tradeInValue;
-    existingLifecycle.tradein_estimated_value = tradeInValue;
-    existingLifecycle.estimated_trade_in_value = tradeInValue;
-    existingLifecycle.quote_trade_in_credit = tradeInValue;
-    existingLifecycle.associated_trade_in_credit = tradeInValue;
-    existingLifecycle.associatedTradeInCredit = tradeInValue;
+   existingLifecycle.external_tradein_value = tradeInValue;
+existingLifecycle.external_tradein_source =
+  item.external_tradein_source ||
+  item.tradein_source ||
+  "OEM Trade Desk";
+
+existingLifecycle.external_tradein_status = "pending_rep_review";
+existingLifecycle.external_tradein_received_at =
+  item.last_tradein_update_at || new Date().toISOString();
+
+existingLifecycle.tradein_sync_received = true;
+existingLifecycle.tradein_seen_by_rep = false;
+
+/*
+  Do not auto-apply to quote.
+  Rep must manually apply external trade-in value.
+*/
 
     existingLifecycle.tradein_equipment_make = item.make || existingLifecycle.tradein_equipment_make || "";
     existingLifecycle.tradein_equipment_model = item.model || existingLifecycle.tradein_equipment_model || "";
@@ -4051,21 +4135,23 @@ function attachUnmatchedTradeInToProject(leadId) {
   project.tradein_equipment_serial_number = lead.serial_number || "";
   project.tradein_equipment_dom = lead.dom || "";
 
-  project.tradein_credit = tradeInValue;
-  project.tradein_estimated_value = tradeInValue;
-  project.quote_trade_in_credit = tradeInValue;
+ project.external_tradein_value = tradeInValue;
+project.external_tradein_source =
+  lead.external_tradein_source ||
+  lead.tradein_source ||
+  "OEM Trade Desk";
 
-  const quoteAmount = Number(project.quote_amount || 0);
-  const estimatedCost = Number(project.quote_estimated_cost || 0);
-  const netQuote = Math.max(0, quoteAmount - tradeInValue);
-  const profit = netQuote - estimatedCost;
+project.external_tradein_status = "pending_rep_review";
+project.external_tradein_received_at =
+  lead.last_tradein_update_at || new Date().toISOString();
 
-  project.quote_net_amount = netQuote;
-  project.quote_profit = profit;
-  project.quote_margin = netQuote > 0
-    ? Math.round((profit / netQuote) * 100)
-    : 0;
+project.tradein_sync_received = true;
+project.tradein_seen_by_rep = false;
 
+/*
+  Do not auto-apply unmatched trade-in value to quote.
+  Rep must manually apply it.
+*/
   project.tradein_synced_to_axis_at =
     lead.last_tradein_update_at || new Date().toISOString();
 
@@ -5396,17 +5482,6 @@ function getTradeInCreditValue(rec) {
     rec.quote_trade_in_credit ||
     rec.tradein_credit ||
     rec.trade_in_credit ||
-    rec.tradeInCredit ||
-    rec.tradein_estimated_value ||
-    rec.estimated_trade_in_value ||
-    rec.trade_in_value ||
-    rec.tradeDeskValue ||
-    rec.trade_desk_value ||
-    rec.quoteTradeInCredit ||
-    rec.associated_trade_in_credit ||
-    rec.associatedTradeInCredit ||
-    rec.winning_bid_amount ||
-    rec.winningBid?.amount ||
     0
   );
 }
@@ -5424,11 +5499,11 @@ $("quoteAmount").previousElementSibling.textContent = isNewProject
   ? "Projected Revenue / New Equipment Cost"
   : "Quote Amount";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
-const syncedTradeInCredit =
+const appliedTradeInCredit =
   rec.tradein_required === "no" ? 0 : getTradeInCreditValue(rec);
 
 $("quoteTradeInCredit").value =
-  syncedTradeInCredit > 0 ? syncedTradeInCredit : "";
+  appliedTradeInCredit > 0 ? appliedTradeInCredit : "";
 
 $("quoteTradeInCredit").disabled = rec.tradein_required === "no";
 $("quoteTradeInCredit").previousElementSibling.textContent =
@@ -5627,18 +5702,31 @@ rec.manager_unseen_update = true;
 rec.manager_flash_at = new Date().toISOString();
 
 if (status === "won") {
-  rec.manager_flash_type = "completed";
-} else if (status === "lost") {
-  rec.manager_flash_type = "quote_updated";
-} else if (isNewQuote) {
-  rec.manager_flash_type = "quote_created";
-} else {
-  rec.manager_flash_type = "quote_updated";
-}
+  if (rec.project_type === "new_sales_project") {
+    rec.project_type = "lifecycle_project";
+    rec.source = "Converted From Won New AXIS Project";
+    rec.lifecycle_converted_at = new Date().toISOString();
 
-  rec.rep_action = "quote_sent";
-  rec.rep_last_action_at = new Date().toISOString();
+    rec.make = rec.tradein_equipment_make || rec.make || "Converted Project";
+    rec.model = rec.tradein_equipment_model || rec.model || "";
+    rec.modality = rec.tradein_equipment_modality || rec.modality || "OTHER";
+    rec.serial_number = rec.tradein_equipment_serial_number || rec.serial_number || "";
+    rec.dom = rec.tradein_equipment_dom || rec.dom || "";
+  }
 
+  rec.lifecycle_completed = false;
+  rec.completed_at = "";
+  rec.completed_by = "";
+
+  rec.rep_status = "won";
+  rec.rep_action = "won";
+
+  rec.project_management_ready = true;
+  rec.project_management_status = "Pending PM Review";
+  rec.project_management_created_at = new Date().toISOString();
+
+  rec.manager_flash_type = "won_project_converted";
+  rec.manager_flash_text = "Won project converted to lifecycle record";
   if (followUpDate) {
     rec.rep_follow_up_date = followUpDate;
     rec.next_action_date = followUpDate;
@@ -5811,12 +5899,17 @@ function buildQuotePDF(rec, shouldSave = true) {
 
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
-  const tradeInCredit = Number(
-  rec.quote_trade_in_credit ||
+  const appliedTradeInCredit = Number(
   rec.tradein_credit ||
-  rec.tradein_estimated_value ||
+  rec.quote_trade_in_credit ||
   0
 );
+
+const externalTradeInValue = Number(
+  rec.external_tradein_value || 0
+);
+
+const tradeInCredit = appliedTradeInCredit;
   const netQuote = Number(
     rec.quote_net_amount ||
     Math.max(0, quoteAmount - tradeInCredit)
@@ -5965,26 +6058,27 @@ function exportQuotePDF() {
   const result = buildQuotePDF(rec, true);
   if (!result) return;
 
- rec.quote_delivery_status = "pdf_saved";
-rec.quote_pdf_saved_at = new Date().toISOString();
+  rec.quote_delivery_status = "pdf_saved";
+  rec.quote_pdf_saved_at = new Date().toISOString();
 
-rec.manager_unseen_update = true;
-rec.manager_flash_at = new Date().toISOString();
-rec.manager_flash_type = "quote_pdf_saved";
+  submitQuoteForApproval(rec);
 
-saveRecords();
-syncFeedStatus(rec);
-render();
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "quote_submitted_for_approval";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
 
   const banner = $("resultBanner");
-banner.style.display = "block";
-banner.textContent = "✅ Quote submitted to Quote Approval";
+  banner.style.display = "block";
+  banner.textContent = "✅ Quote submitted to Quote Approval";
 
-setTimeout(() => {
-  banner.style.display = "none";
-}, 2500);
+  setTimeout(() => {
+    banner.style.display = "none";
+  }, 2500);
 }
-
 function sendQuoteToCustomer() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -6353,9 +6447,9 @@ function init() {
     e.key === "espin_rep_queue" ||
     e.key === "axis_tradein_sync_records_v1" ||
     e.key === "axis_manager_sync_ping_v1" ||
-   e.key === AXIS_SHARE_KEY ||
-e.key === UNMATCHED_TRADEIN_KEY
-e.key === QUOTE_APPROVAL_SYNC_KEY ||
+    e.key === AXIS_SHARE_KEY ||
+    e.key === UNMATCHED_TRADEIN_KEY ||
+    e.key === QUOTE_APPROVAL_SYNC_KEY
   ) {
     loadRecords();
     importTradeInSyncRecords();
@@ -6363,7 +6457,6 @@ e.key === QUOTE_APPROVAL_SYNC_KEY ||
     render();
   }
 });
-
 // ✅ ADD AUTO-REFRESH RIGHT HERE
 setInterval(() => {
   const before = JSON.stringify(state.records);
@@ -6387,7 +6480,16 @@ setInterval(() => {
   updateAxisShareStatus();
 }, 5000);
 window.addEventListener("rep_feed_update", () => {
-  render();
+  renderStats();
+  renderRepMenu();
+  renderFollowUpAlertCenter();
+  renderUnmatchedTradeInLeads();
+  renderNewProjectsTable();
+  renderTable();
+
+  if (!document.activeElement || document.activeElement.tagName === "BODY") {
+    renderDetail();
+  }
 });
 
 $("axisShareToggle").addEventListener("change", () => {
