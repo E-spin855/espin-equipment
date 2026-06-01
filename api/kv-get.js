@@ -1,28 +1,83 @@
+// FILE: /api/kv-get.js
+// PATH: /api/kv-get.js
+
 import { kv } from "@vercel/kv";
 
 export const config = {
   runtime: "nodejs",
 };
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+const ALLOWED_ORIGINS = new Set([
+  "https://your-app-domain.com",
+  "https://www.your-app-domain.com"
+]);
+
+function cleanEmail(v) {
+  return String(v || "").toLowerCase().trim();
+}
+
+function cleanKey(v) {
+  return String(v || "").trim();
+}
+
+function setCors(req, res) {
+  const origin = req.headers.origin || "";
+
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email, Authorization");
   res.setHeader("Access-Control-Max-Age", "86400");
+}
+
+function isAllowedUserKey(key, userEmail) {
+  if (!key || !userEmail) return false;
+
+  const allowedPrefixes = [
+    `project:unread:${userEmail}:`,
+    `project:unread_images:${userEmail}:`,
+    `user:badge:${userEmail}`,
+    `device:badge:${userEmail}`
+  ];
+
+  return allowedPrefixes.some(prefix => key.startsWith(prefix) || key === prefix);
+}
+
+export default async function handler(req, res) {
+  setCors(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  try {
-    let key = req.query.key;
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      ok: false,
+      value: null,
+      error: "Method not allowed"
+    });
+  }
 
-    if (!key && req.method === "POST") {
-      const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
-      key = body?.key;
+  try {
+    const userEmail = cleanEmail(req.headers["x-user-email"]);
+
+    if (!userEmail) {
+      return res.status(401).json({
+        ok: false,
+        value: null,
+        error: "Unauthorized"
+      });
     }
 
-    key = String(key || "").trim();
+    const body =
+      typeof req.body === "string"
+        ? JSON.parse(req.body || "{}")
+        : req.body || {};
+
+    const key = cleanKey(body.key);
 
     if (!key) {
       return res.status(400).json({
@@ -32,18 +87,27 @@ export default async function handler(req, res) {
       });
     }
 
+    if (!isAllowedUserKey(key, userEmail)) {
+      return res.status(403).json({
+        ok: false,
+        value: null,
+        error: "Forbidden"
+      });
+    }
+
     const value = await kv.get(key);
 
     return res.status(200).json({
       ok: true,
-      value: value === undefined ? null : value
+      value: value ?? null
     });
   } catch (err) {
-    console.error("KV Error:", err);
+    console.error("KV Get Error:", err);
+
     return res.status(500).json({
       ok: false,
       value: null,
-      error: err?.message || "Internal error"
+      error: "Internal error"
     });
   }
 }

@@ -1,22 +1,23 @@
+// FILE: /api/kv-set.js
+// PATH: /api/kv-set.js
+
 import { kv } from "@vercel/kv";
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || "";
 
-  if (
-    origin &&
-    (
-      origin.includes("vercel.app") ||
-      origin.includes("espin-medical-app") ||
-      origin.includes("espin-equipment") ||
-      origin.includes("espinmedical.com")
-    )
-  ) {
+  const allowedOrigins = new Set([
+    "https://espinmedical.com",
+    "https://www.espinmedical.com",
+    "https://espin-medical-app.vercel.app",
+    "https://espin-equipment.vercel.app"
+  ]);
+
+  if (allowedOrigins.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
   }
 
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email");
 
@@ -24,15 +25,27 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  if (!allowedOrigins.has(origin)) {
+    return res.status(403).json({ error: "Origin not allowed" });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
+    const userEmail = String(req.headers["x-user-email"] || "")
+      .toLowerCase()
+      .trim();
+
+    if (!userEmail || !userEmail.includes("@")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const body =
       typeof req.body === "string"
         ? JSON.parse(req.body || "{}")
-        : (req.body || {});
+        : req.body || {};
 
     const key = String(body.key || "").trim();
     const value = body.value;
@@ -41,24 +54,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing key" });
     }
 
-    const protectedPrefixes = [
-      "project:unread:",
-      "project:unread_images:",
-      "stats:total_unread:",
-      "user:badge_total:",
-      "app:badge:",
-      "ios:badge:",
-      "equipment:unread:project:",
-      "equipment:unread:details:",
-      "equipment:unread:images:",
-      "app:badge:equipment:",
-      "ios:badge:counter:equipment:"
-    ];
+    function allowedWriteKey(key, email) {
+      const allowedExact = [
+        `user:settings:${email}`,
+        `user:last_seen:${email}`
+      ];
 
-    if (protectedPrefixes.some(prefix => key.startsWith(prefix))) {
-      return res.status(403).json({
-        error: "Write blocked for protected badge key"
-      });
+      const allowedPrefixes = [
+        `project:draft:${email}:`,
+        `equipment:draft:${email}:`,
+        `user:local_state:${email}:`
+      ];
+
+      return (
+        allowedExact.includes(key) ||
+        allowedPrefixes.some(prefix => key.startsWith(prefix))
+      );
+    }
+
+    if (!allowedWriteKey(key, userEmail)) {
+      return res.status(403).json({ error: "Forbidden key" });
     }
 
     let valToSave = value;
@@ -71,11 +86,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, deleted: true });
       }
 
-      if (!Number.isNaN(Number(trimmed)) && trimmed !== "") {
+      if (!Number.isNaN(Number(trimmed))) {
         valToSave = Number(trimmed);
+      } else {
+        valToSave = trimmed;
       }
-    } else if (typeof value === "number") {
-      valToSave = value;
     }
 
     await kv.set(key, valToSave);
