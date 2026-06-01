@@ -958,7 +958,8 @@ const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
-
+const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
+const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
   "Default Manager";
@@ -1324,9 +1325,12 @@ function submitAssociatedTradeIn(kind) {
       ? "associated_tradein_sent_to_desk"
       : "associated_tradein_sent_to_disposal";
 
-  syncFeedStatus(rec);
-  saveRecords();
-  render();
+  submitQuoteForApproval(rec);
+
+syncFeedStatus(rec);
+saveRecords();
+closeQuoteModal();
+render();
 
   alert(
     kind === "tradein_desk"
@@ -4194,11 +4198,10 @@ function renderUnmatchedTradeInLeads() {
 }
  function render() {
   importTradeInSyncRecords();
+  importQuoteApprovalDecisions();
 
   renderStats();
-
-  // ✅ REP SIDE MUST SHOW REP ALERT FEED, NOT REP MENU
-renderRepMenu();
+  renderRepMenu();
 
   renderFollowUpAlertCenter();
   renderUnmatchedTradeInLeads();
@@ -5974,12 +5977,12 @@ syncFeedStatus(rec);
 render();
 
   const banner = $("resultBanner");
-  banner.style.display = "block";
-  banner.textContent = "✅ Quote PDF saved";
+banner.style.display = "block";
+banner.textContent = "✅ Quote submitted to Quote Approval";
 
-  setTimeout(() => {
-    banner.style.display = "none";
-  }, 2500);
+setTimeout(() => {
+  banner.style.display = "none";
+}, 2500);
 }
 
 function sendQuoteToCustomer() {
@@ -5995,6 +5998,11 @@ function sendQuoteToCustomer() {
     return;
   }
 
+  if (rec.quote_customer_release_allowed !== true) {
+    alert("Quote is not approved yet. Customer email is locked until Quote Approval approves it.");
+    return;
+  }
+
   const recipient =
     rec.quote_recipient_email ||
     rec.contact_email ||
@@ -6005,25 +6013,25 @@ function sendQuoteToCustomer() {
     return;
   }
 
- rec.quote_delivery_status = "email_draft_opened";
-rec.quote_sent_at = new Date().toISOString();
-rec.quote_sent_to = recipient;
-rec.quote_sent_cc = rec.quote_cc_email || "";
+  rec.quote_delivery_status = "email_draft_opened";
+  rec.quote_sent_at = new Date().toISOString();
+  rec.quote_sent_to = recipient;
+  rec.quote_sent_cc = rec.quote_cc_email || "";
 
-rec.manager_unseen_update = true;
-rec.manager_flash_at = new Date().toISOString();
-rec.manager_flash_type = "quote_sent";
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "quote_sent";
 
-saveRecords();
-syncFeedStatus(rec);
-render();
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
 
   const subject = encodeURIComponent(
     `Quote ${rec.oem_project_id || rec.serial_number || ""}`
   );
 
   const body = encodeURIComponent(
-    `Hello,\n\nPlease see the quote for the equipment below.\n\nFacility: ${rec.site || ""}\nEquipment: ${rec.make || ""} ${rec.model || ""}\nSerial: ${rec.serial_number || ""}\n\nPlease let me know if you have any questions.\n\nThank you.`
+    `Hello,\n\nPlease see the approved quote for the equipment below.\n\nFacility: ${rec.site || ""}\nEquipment: ${rec.make || ""} ${rec.model || ""}\nSerial: ${rec.serial_number || ""}\n\nPlease let me know if you have any questions.\n\nThank you.`
   );
 
   const cc = rec.quote_cc_email
@@ -6035,7 +6043,7 @@ render();
 
   const banner = $("resultBanner");
   banner.style.display = "block";
-  banner.textContent = "✅ Email draft opened";
+  banner.textContent = "✅ Approved quote email draft opened";
 
   setTimeout(() => {
     banner.style.display = "none";
@@ -6210,6 +6218,121 @@ function markNewProjectLost(id) {
   syncFeedStatus(rec);
   render();
 }
+function submitQuoteForApproval(rec) {
+  if (!rec || !rec.quote_amount) return;
+
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  const approvalId =
+    rec.quote_approval_id ||
+    `QAPP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+  rec.quote_approval_id = approvalId;
+  rec.quote_approval_status = "pending_review";
+  rec.quote_status = "submitted_for_approval";
+  rec.quote_customer_release_allowed = false;
+  rec.rep_quote_release_alert = false;
+  rec.quote_approval_requested = true;
+  rec.quote_approval_submitted_at = new Date().toISOString();
+
+  const packet = {
+    ...rec,
+    id: approvalId,
+    quote_approval_id: approvalId,
+    approval_packet_id: approvalId,
+    axis_record_id: rec.id,
+    axis_parent_record_id: rec.id,
+    axis_project_id: rec.oem_project_id || rec.project_id || "",
+    axis_serial_number: rec.serial_number || "",
+    quote_approval_status: "pending_review",
+    quote_status: "submitted_for_approval",
+    quote_approval_submitted_at: rec.quote_approval_submitted_at
+  };
+
+  const existingIndex = queue.findIndex(item =>
+    String(item.quote_approval_id || "") === String(approvalId) ||
+    String(item.axis_record_id || "") === String(rec.id)
+  );
+
+  if (existingIndex >= 0) {
+    queue[existingIndex] = {
+      ...queue[existingIndex],
+      ...packet
+    };
+  } else {
+    queue.unshift(packet);
+  }
+
+  localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+}
+
+function importQuoteApprovalDecisions() {
+  let sync = [];
+
+  try {
+    sync = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_SYNC_KEY) || "[]");
+    if (!Array.isArray(sync)) sync = [];
+  } catch {
+    sync = [];
+  }
+
+  if (!sync.length) return;
+
+  let changed = false;
+
+  sync.forEach(item => {
+    const rec = state.records.find(r =>
+      String(r.id || "") === String(item.axis_record_id || item.axis_parent_record_id || "") ||
+      String(r.quote_approval_id || "") === String(item.quote_approval_id || "")
+    );
+
+    if (!rec) return;
+
+    rec.quote_approval_id = item.quote_approval_id || rec.quote_approval_id || "";
+    rec.quote_approval_status = item.quote_approval_status || rec.quote_approval_status || "";
+    rec.quote_approval_notes = item.quote_approval_notes || "";
+    rec.quote_approval_decision_at = item.quote_approval_decision_at || "";
+    rec.quote_approval_decision_by = item.quote_approval_decision_by || "";
+
+    rec.quote_customer_release_allowed =
+      item.quote_approval_status === "approved";
+
+    rec.rep_quote_release_alert = true;
+
+    if (item.quote_approval_status === "approved") {
+      rec.quote_status = "approved_for_customer_release";
+      rec.manager_flash_type = "quote_approved";
+    }
+
+    if (item.quote_approval_status === "revision_needed") {
+      rec.quote_status = "revision_needed";
+      rec.manager_flash_type = "quote_revision_needed";
+    }
+
+    if (item.quote_approval_status === "rejected") {
+      rec.quote_status = "rejected";
+      rec.manager_flash_type = "quote_rejected";
+    }
+
+    rec.manager_unseen_update = true;
+    rec.manager_flash_at = new Date().toISOString();
+
+    changed = true;
+  });
+
+  if (changed) {
+    saveRecords();
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
+}
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
   loadRecords();
@@ -6232,6 +6355,7 @@ function init() {
     e.key === "axis_manager_sync_ping_v1" ||
    e.key === AXIS_SHARE_KEY ||
 e.key === UNMATCHED_TRADEIN_KEY
+e.key === QUOTE_APPROVAL_SYNC_KEY ||
   ) {
     loadRecords();
     importTradeInSyncRecords();
