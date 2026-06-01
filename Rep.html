@@ -6476,11 +6476,18 @@ function importQuoteApprovalDecisions() {
     changed = true;
   });
 
- if (changed) {
-  saveRecords();
-  localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-}
+   if (changed) {
+    saveRecords();
+
+    state.records.forEach(rec => {
+      if (rec.rep_quote_release_alert) {
+        syncToManagerQueue(rec);
+      }
+    });
+
+    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
 }
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
@@ -6514,9 +6521,11 @@ function init() {
 });
 // ✅ ADD AUTO-REFRESH RIGHT HERE
 setInterval(() => {
+  setInterval(() => {
   const before = JSON.stringify(state.records);
 
   importTradeInSyncRecords();
+  importQuoteApprovalDecisions();
 
   const after = JSON.stringify(state.records);
 
