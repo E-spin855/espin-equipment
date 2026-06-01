@@ -1500,8 +1500,8 @@ function getRepSelectedActionOptions(selected = "") {
     ["schedule_follow_up", "Schedule follow-up"],
     ["review_budget_timing", "Review budget timing"],
     ["review_service_history", "Review service history"],
-    ["review_upgrade_path", "Review upgrade path"],
-    ["review_replacement_timing", "Review replacement timing"],
+    ["review_upgrade_path", "Evaluate upgrade path"],
+    ["review_replacement_timing", "Evaluate replacement timing"],
     ["send_to_trade_in", "Send to Trade-In App"],
     ["send_to_disposal", "Send to Disposal"],
     ["quote_review", "Quote Review"],
@@ -1515,7 +1515,6 @@ function getRepSelectedActionOptions(selected = "") {
     </option>
   `).join("");
 }
-
 function getRepSelectedActionLabel(value) {
   const map = {
     review_customer_status: "Review customer status",
@@ -1523,8 +1522,8 @@ function getRepSelectedActionLabel(value) {
     schedule_follow_up: "Schedule follow-up",
     review_budget_timing: "Review budget timing",
     review_service_history: "Review service history",
-    review_upgrade_path: "Review upgrade path",
-    review_replacement_timing: "Review replacement timing",
+   review_upgrade_path: "Evaluate upgrade path",
+review_replacement_timing: "Evaluate replacement timing",
     send_to_trade_in: "Send to Trade-In App",
     send_to_disposal: "Send to Disposal",
     quote_review: "Quote Review",
@@ -5046,14 +5045,14 @@ function getAlerts(rec) {
   if (validOverrides.includes(String(rec.alert_override || "").toLowerCase().trim())) {
     const type = String(rec.alert_override || "").toLowerCase().trim();
 
-    const labelMap = {
-      disposal: "Disposition Review",
-      replacement: "Replacement Planning Review",
-      upgrade: "Upgrade Review Signal",
-      planning: "Budget Planning Review",
-      service: "Service Review",
-      proactive: "Proactive Review"
-    };
+   const labelMap = {
+  disposal: "Disposition Condition",
+  replacement: "Replacement Timing Condition",
+  upgrade: "Upgrade Timing Condition",
+  planning: "Budget Timing Condition",
+  service: "Service Condition",
+  proactive: "Proactive Lifecycle Signal"
+};
 
     return [{
       type,
@@ -5069,14 +5068,14 @@ function getAlerts(rec) {
       rec.proactive_signal === "1"
     );
 
-  if (proactiveSignal) {
-    return [{
-      type: "proactive",
-      label: "Proactive Review"
-    }];
-  }
+ if (proactiveSignal) {
+  return [{
+    type: "proactive",
+    label: "Proactive Lifecycle Signal"
+  }];
+}
 
-  const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
+const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
   const condition = String(rec.condition || "").toLowerCase().trim();
   const utilization = Number(rec.utilization || 0);
 
@@ -5114,30 +5113,30 @@ function getAlerts(rec) {
 
   if (age === null || age === undefined) {
     if (serviceTriggered) {
-      return [{ type: "service", label: "Service Review" }];
+      return [{ type: "service", label: "Service Condition" }];
     }
 
     return [];
   }
 
   if (age >= threshold + disposalOffset) {
-    return [{ type: "disposal", label: "Disposition Review" }];
+    return [{ type: "disposal", label: "Disposition Condition" }];
   }
 
   if (age >= threshold + replacementOffset) {
-    return [{ type: "replacement", label: "Replacement Planning Review" }];
+    return [{ type: "replacement", label: "Replacement Timing Condition" }];
   }
 
   if (age >= threshold + upgradeOffset) {
-    return [{ type: "upgrade", label: "Upgrade Review Signal" }];
+    return [{ type: "upgrade", label: "Upgrade Timing Condition" }];
   }
 
   if (age >= threshold + planningOffset) {
-    return [{ type: "planning", label: "Budget Planning Review" }];
-  }
+  return [{ type: "planning", label: "Budget Timing Condition" }];
+}
 
   if (serviceTriggered) {
-    return [{ type: "service", label: "Service Review" }];
+    return [{ type: "service", label: "Service Condition" }];
   }
 
   return [];
@@ -6477,10 +6476,11 @@ function importQuoteApprovalDecisions() {
     changed = true;
   });
 
-  if (changed) {
-    saveRecords();
-    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-  }
+ if (changed) {
+  saveRecords();
+  localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+}
 }
 // ✅ INIT (moved OUT of HTML — where it belongs)
 function init() {
