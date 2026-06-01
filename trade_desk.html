@@ -92,6 +92,13 @@ button.emerald:hover{
 .blue{background:#1d8cff}
 .redBadge{background:#c0392b}
 
+.highest-response-badge{
+  background:#0ea5e9;
+  color:#ffffff;
+  font-weight:900;
+  box-shadow:0 0 14px rgba(14,165,233,.35);
+}
+
 .kv{
   margin:5px 0;
   font-size:14px;
@@ -2083,6 +2090,10 @@ function renderBuyerResponses(rec, safeId){
     return "<p class='small'>No buyer responses recorded yet.</p>";
   }
 
+  const highestAmount = Math.max(
+    ...rec.bids.map(b => Number(b.amount || 0))
+  );
+
   const responses = [...rec.bids]
     .map((response, originalIndex) => ({
       ...response,
@@ -2103,9 +2114,14 @@ function renderBuyerResponses(rec, safeId){
         String(rec.winning_bid_amount || "") === String(b.amount || "")
       );
 
+    const isHighestResponse =
+      Number(b.amount || 0) > 0 &&
+      Number(b.amount || 0) === highestAmount;
+
     return `
       <div class="response-card ${isSelected ? "selected" : ""}">
         <span class="badge">Response ${index + 1}</span>
+        ${isHighestResponse ? `<span class="badge highest-response-badge">HIGHEST BUYER RESPONSE</span>` : ""}
         ${isSelected ? `<span class="badge win">SELECTED FOR MANUAL CREDIT REFERENCE</span>` : ""}
 
         <div class="kv" style="margin-top:10px;">
@@ -2417,7 +2433,10 @@ function renderBuyerResponseCard(rec){
 
       <hr>
 
-      <h3 class="section-title">Buyer Response Records</h3>
+           <h3 class="section-title">Buyer Response Records</h3>
+      <p class="small">
+        Highest buyer response is highlighted for visual reference only. Trade Desk must manually review terms, pickup conditions, and rep requirements before creating any pending credit reference.
+      </p>
       ${renderBuyerResponses(rec, jsSafe(rec.id))}
     </div>
   `;
