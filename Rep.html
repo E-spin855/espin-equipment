@@ -726,7 +726,29 @@ td:nth-child(14){
       <p class="subtitle">
         OEM-controlled lifecycle review workspace. This demo runs entirely in the browser — no data leaves the OEM environment until a trigger is manually executed (Trade-In or Disposal). Use the Network tab to verify.
       </p>
+<div class="footer-note" style="
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid rgba(255,216,77,.22);
+  background:rgba(255,216,77,.07);
+  border-radius:14px;
+  color:#d9c98a;
+">
+  AXIS does not automatically generate sales opportunities, recommend offers,
+  select buyers, determine equipment value, determine replacement decisions,
+  determine disposal decisions, or automatically apply trade-in credits.
 
+  <br><br>
+
+  AXIS organizes OEM-defined review conditions, rep-entered quote activity,
+  manual trade-in references, quote approval status, follow-up visibility,
+  and manager workflow review for human decision-making.
+
+  <br><br>
+
+  Final decisions remain with authorized OEM, customer, finance, legal,
+  compliance, procurement, service, sales, and operational stakeholders.
+</div>
       <div class="strip">
         <div class="chip">Client-side only until explicit action</div>
         <div class="chip">Demo table + review rules</div>
@@ -829,7 +851,7 @@ td:nth-child(14){
           <th>Model</th>
           <th>Modality</th>
           <th>Serial</th>
-          <th>Value</th>
+          <th>Manual Reference</th>
           <th>Status</th>
 <th>Actions</th>
         </tr>
@@ -851,11 +873,11 @@ td:nth-child(14){
          <th>Project ID</th>
 <th>Customer / Facility</th>
 <th>New System / Project Name</th>
-<th>Projected Revenue</th>
+<th>Gross Quote Amount</th>
 <th>Expected Close</th>
 <th>Assigned Rep</th>
 <th>Associated Trade-In Equipment</th>
-<th>Trade-In Credit</th>
+<th>Rep-Applied Trade-In Credit</th>
 <th>Status</th>
 <th>Workflow Review Step</th>
 <th>Actions</th>
@@ -892,10 +914,10 @@ td:nth-child(14){
                   <th>Serial</th>
                   <th>DOM</th>
                   <th>Age</th>
-		<th>Pressure</th>
-<th>Trade-In Value</th>
+		<th>Review Priority</th>
+<th>Manual Trade-In Reference</th>
 <th>Facility</th>
-<th>Review Signal</th>
+<th>Review Condition</th>
 <th>Rep-Selected Next Action</th>
 <th>Source</th>
 <th>Actions</th>
@@ -906,9 +928,9 @@ td:nth-child(14){
           </div>
 <div class="panel hidden" id="lifecycleDetailPanel">
   <div class="panel-head">
-    <h2>Selected Record</h2>
-    <span class="mini">Trigger → Trade-In details → Quote finalization</span>
-  </div>
+  <h2>Selected Record</h2>
+  <span class="mini">Review condition → Trade-In details → Quote review</span>
+</div>
 
   <div class="panel-body">
     <div id="emptyState" class="mini">Select a record in the table above.</div>
@@ -1015,8 +1037,7 @@ function getRecordGroupKey(rec) {
     ""
   ).trim();
 }
-const ageFromDom = window.AxisUtils.ageFromDomNull;
-function getPressureScore(rec) {
+function getReviewPriorityScore(rec) {
   let score = 0;
 
   const age = Number(ageFromDom(rec.dom)) || 0;
@@ -1026,7 +1047,7 @@ function getPressureScore(rec) {
   const condition = String(rec.condition || "").toLowerCase().trim();
   const service = String(rec.service_cost_trend || "").toLowerCase().trim();
 
-  // AGE PRESSURE
+  // AGE REVIEW PRIORITY
   if (age >= threshold) score += 2;
   if (age >= threshold + 2) score += 2;
 
@@ -1042,7 +1063,7 @@ function getPressureScore(rec) {
   if (service === "high") score += 2;
   else if (service === "rising") score += 1;
 
-  // 🔥 HARD TRIGGER BOOST (critical override)
+  // Review condition priority boost
   const alerts = getAlerts(rec);
   if (alerts.some(a => a.type === "disposal")) score += 3;
   if (alerts.some(a => a.type === "replacement")) score += 2;
@@ -1256,7 +1277,7 @@ function getPrimaryTrigger(rec) {
   return alerts[0] || null;
 }
 
-function getQuotePressureLevel(rec) {
+function getQuoteReviewPriorityLevel(rec) {
   const status = String(rec.quote_status || "").toLowerCase();
   const priority = String(rec.quote_priority || "").toLowerCase();
   const closeDate = rec.quote_expected_close_date || "";
@@ -1284,7 +1305,7 @@ function getQuoteSignalLabel(rec) {
   if (!rec.quote_amount) return "";
 
   const status = String(rec.quote_status || "draft").toUpperCase();
-  const priority = getQuotePressureLevel(rec);
+  const priority = getQuoteReviewPriorityLevel(rec);
 
   return `
     <span class="pill pending">
@@ -1296,7 +1317,7 @@ function getQuoteSignalLabel(rec) {
   `;
 }
 
-function getPressureBadge(label) {
+function getReviewPriorityBadge(label) {
   if (label === "HIGH") return '<span class="pill ready">HIGH</span>';
   if (label === "MED") return '<span class="pill pending">MED</span>';
   if (label === "LOW") return '<span class="pill local">LOW</span>';
@@ -1320,7 +1341,7 @@ function getUrgencyLevel(rec) {
     return "low";
   }
 
-  const score = getPressureScore(rec);
+  const score = getReviewPriorityScore(rec);
 
   if (score >= 6) return "urgent";
   if (score >= 3) return "medium";
@@ -1616,7 +1637,7 @@ function renderReviewSignalCell(rec) {
   const alerts = getAlerts(rec);
 
   if (!alerts.length) {
-    return `<span class="mini">No Active Signal</span>`;
+    return `<span class="mini">No Active Condition</span>`;
   }
 
   return alerts.map(a => {
@@ -1667,16 +1688,6 @@ function renderTable() {
 
     return "MED";
   };
-
-  const getPressureBadge = (level) => {
-    if (level === "HIGH") return '<span class="pill ready">HIGH</span>';
-    if (level === "MED") return '<span class="pill pending">MED</span>';
-    if (level === "LOW") return '<span class="pill local">LOW</span>';
-    if (level === "WON") return '<span class="pill submitted">WON</span>';
-    if (level === "LOST") return '<span class="pill postponed">LOST</span>';
-    return '<span class="pill local">LOW</span>';
-  };
-
   let visibleRecords = state.records.filter(r =>
     r.project_type !== "new_sales_project"
   );
@@ -1711,14 +1722,14 @@ function renderTable() {
       }
 
       const alerts = getAlerts(rec);
-      const pressure = getPressureScore(rec);
+      const reviewPriorityScore = getReviewPriorityScore(rec);
 
-      if (alerts.some(a => a.type === "disposal")) return 100 + pressure;
-      if (alerts.some(a => a.type === "replacement")) return 80 + pressure;
-      if (alerts.some(a => a.type === "upgrade")) return 60 + pressure;
-      if (alerts.some(a => a.type === "planning")) return 40 + pressure;
+if (alerts.some(a => a.type === "disposal")) return 100 + reviewPriorityScore;
+if (alerts.some(a => a.type === "replacement")) return 80 + reviewPriorityScore;
+if (alerts.some(a => a.type === "upgrade")) return 60 + reviewPriorityScore;
+if (alerts.some(a => a.type === "planning")) return 40 + reviewPriorityScore;
 
-      return pressure;
+return reviewPriorityScore;
     };
 
     return score(b) - score(a);
@@ -1754,9 +1765,9 @@ function renderTable() {
     rec.project_type === "new_sales_project"
       ? "-"
       : rec.quote_amount
-      ? getPressureBadge(getQuotePriority(rec))
+      ? getReviewPriorityBadge(getQuotePriority(rec))
       : (() => {
-          const p = getPressureScore(rec);
+          const p = getReviewPriorityScore(rec);
           if (p >= 6) return '<span class="pill ready">HIGH</span>';
           if (p >= 3) return '<span class="pill pending">MED</span>';
           return '<span class="pill local">LOW</span>';
@@ -2166,7 +2177,7 @@ function getInitialTriggerInfo(rec) {
     };
   }
 
-  const pressure = getPressureScore({
+  const pressure = getReviewPriorityScore({
     ...rec,
     quote_amount: "",
     quote_status: "",
@@ -2399,14 +2410,14 @@ function renderNewProjectDetail(rec) {
               Modality: <strong>${rec.tradein_equipment_modality || "-"}</strong><br>
               Serial: <strong>${rec.tradein_equipment_serial_number || "-"}</strong><br>
               DOM: <strong>${rec.tradein_equipment_dom || "-"}</strong><br>
-              External Trade-In Value:
+              External Trade-In Reference:
 <strong>$${externalTradeInValue.toLocaleString()}</strong><br>
 
-Applied Quote Credit:
+Rep Applied Quote Credit:
 <strong>$${tradeInCredit.toLocaleString()}</strong>
             </div>
 
-            <label style="display:block;margin-top:12px;">Trade-In Desk Value</label>
+            <label style="display:block;margin-top:12px;">Manual Trade-In Reference</label>
             <input
               id="newProjectTradeInCreditInput"
               type="number"
@@ -2428,7 +2439,7 @@ Applied Quote Credit:
   style="margin-top:10px;"
   onclick="applyExternalTradeInToQuote('${rec.id}')"
 >
-  Manually Apply External Trade-In Value to Quote
+  Apply Trade-In Credit to Quote
 </button>
           </div>
         `
@@ -2529,10 +2540,10 @@ ${
     </div>
 
     <div class="detail-card" style="border:1px solid rgba(0,229,255,.32);background:rgba(0,229,255,.07);">
-      <div class="k">Smart Timeline</div>
+      <div class="k">Activity Timeline</div>
       <div class="v" style="font-size:14px;line-height:1.45;">
         <div class="timeline">
-          ${buildSmartTimeline(rec)}
+          ${buildActivityTimeline(rec)}
         </div>
       </div>
     </div>
@@ -2690,7 +2701,7 @@ function saveNewProjectTradeInCredit(id) {
   syncFeedStatus(rec);
   render();
 
-  alert("Trade-in value saved");
+  alert("Manual trade-in reference saved");
 }
 function applyExternalTradeInToQuote(id = null) {
   const rec =
@@ -2709,7 +2720,7 @@ function applyExternalTradeInToQuote(id = null) {
     return;
   }
 
-  if (!confirm(`Apply external trade-in value of $${externalValue.toLocaleString()} to this quote?`)) {
+  if (!confirm(`Manually apply trade-in credit of $${externalValue.toLocaleString()} to this quote?`)) {
     return;
   }
 
@@ -2740,7 +2751,7 @@ function applyExternalTradeInToQuote(id = null) {
   syncFeedStatus(rec);
   render();
 
-  alert("External trade-in value manually applied to quote.");
+  alert("Trade-in credit manually applied to quote.");
 }
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
@@ -2855,7 +2866,7 @@ ${
         background:linear-gradient(180deg,rgba(0,229,255,.10),rgba(8,18,35,.82));
         box-shadow:0 0 24px rgba(0,229,255,.16);
       ">
-        <div class="k">Initial Trigger</div>
+        <div class="k">Initial Review Condition</div>
 
         <div class="v">
           <span class="alert-badge ${triggerClass}">
@@ -2898,7 +2909,7 @@ ${
         border:2px solid rgba(255,216,77,.35);
         background:rgba(255,216,77,.06);
       ">
-        <div class="k">Initial Lifecycle Signal</div>
+        <div class="k">Initial Lifecycle Review Condition</div>
 
         <div class="v" style="margin-bottom:10px;">
           ${initial.action}
@@ -2942,7 +2953,7 @@ ${
           Trade-In Credit:
           <strong>$${Number(rec.tradein_credit || rec.quote_trade_in_credit || 0).toLocaleString()}</strong>
         </div>
-        <label style="display:block;margin-top:12px;">Trade-In Desk Value</label>
+        <label style="display:block;margin-top:12px;">Manual Trade-In Reference</label>
         <input
           id="newProjectTradeInCreditInput"
           type="number"
@@ -2964,7 +2975,7 @@ ${
   style="margin-top:10px;"
   onclick="applyExternalTradeInToQuote('${rec.id}')"
 >
-  Manually Apply External Trade-In Value to Quote
+  Apply Trade-In Credit to Quote
 </button>
       </div>
     `
@@ -3157,11 +3168,11 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
   border:1px solid rgba(0,229,255,.32);
   background:rgba(0,229,255,.07);
 ">
-  <div class="k">Smart Timeline</div>
+  <div class="k">Activity Timeline</div>
 
   <div class="v" style="font-size:14px;line-height:1.45;">
     <div class="timeline">
-      ${buildSmartTimeline(rec)}
+      ${buildActivityTimeline(rec)}
     </div>
 
     ${buildManagerEscalation(rec)}
@@ -3332,22 +3343,22 @@ function pushToRepFeed(rec) {
   const now = Date.now();
   const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
 
-  const pressure = getPressureScore(rec);
+  const reviewPriorityScore = getReviewPriorityScore(rec);
   const alerts = getAlerts(rec).map(a => a.label).join(", ");
 
   const exists = queue.find(q => q.key === key);
 
   if (exists) {
     const lastTime = new Date(exists.timestamp).getTime();
-    const oldPressure = Number(exists.pressure || 0);
+    const oldReviewPriorityScore = Number(exists.reviewPriorityScore || exists.pressure || 0);
 
     const timePassed = now - lastTime >= THIRTY_DAYS;
-    const pressureIncreased = pressure > oldPressure;
+const reviewPriorityIncreased = reviewPriorityScore > oldReviewPriorityScore;
 
-    if (!timePassed && !pressureIncreased) return;
+if (!timePassed && !reviewPriorityIncreased) return;
 
-    exists.timestamp = new Date().toISOString();
-    exists.pressure = pressure;
+exists.timestamp = new Date().toISOString();
+    exists.reviewPriorityScore = reviewPriorityScore;
     exists.alert = alerts;
 exists.status = rec.rep_status || "needed";
 
@@ -3363,7 +3374,7 @@ exists.status = rec.rep_status || "needed";
   model: rec.model,
   modality: rec.modality,
   alert: alerts,
-  pressure,
+  reviewPriorityScore,
   status: rec.rep_status || "needed",
   rep: rec.sales_rep_first
     ? `${rec.sales_rep_first} ${rec.sales_rep_last || ""}`
@@ -3971,7 +3982,7 @@ function renderFollowUpAlertCenter() {
   `;
 }
 
-function buildSmartTimeline(rec) {
+function buildActivityTimeline(rec) {
   if (rec.project_type === "new_sales_project") {
     const items = [];
 
@@ -5051,7 +5062,7 @@ function getAlerts(rec) {
   upgrade: "Upgrade Timing Condition",
   planning: "Budget Timing Condition",
   service: "Service Condition",
-  proactive: "Proactive Lifecycle Signal"
+  proactive: "Early Planning Review Signal"
 };
 
     return [{
@@ -5071,7 +5082,7 @@ function getAlerts(rec) {
  if (proactiveSignal) {
   return [{
     type: "proactive",
-    label: "Proactive Lifecycle Signal"
+    label: "Early Planning Review Signal"
   }];
 }
 
@@ -5554,8 +5565,8 @@ const isNewProject = rec?.project_type === "new_sales_project";
 
   $("quoteAmount").value = rec.quote_amount || "";
 $("quoteAmount").previousElementSibling.textContent = isNewProject
-  ? "Projected Revenue / New Equipment Cost"
-  : "Quote Amount";
+  ? "Gross Quote Amount"
+  : "Gross Quote Amount";
   $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
 const appliedTradeInCredit =
   rec.tradein_required === "no" ? 0 : getTradeInCreditValue(rec);
@@ -6519,9 +6530,8 @@ function init() {
     render();
   }
 });
-// ✅ ADD AUTO-REFRESH RIGHT HERE
+// ✅ AUTO-REFRESH
 setInterval(() => {
-  setInterval(() => {
   const before = JSON.stringify(state.records);
 
   importTradeInSyncRecords();
