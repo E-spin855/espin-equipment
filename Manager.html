@@ -1308,16 +1308,27 @@ function getRepActionLabel(action) {
 
   return map[action] || String(action || "").replace(/_/g, " ").toUpperCase();
 }
+function getRepSelectedAction(rec) {
+  return (
+    rec.rep_selected_next_action ||
+    rec.selected_next_action ||
+    rec.next_action_selected ||
+    rec.rep_next_action ||
+    rec.rep_action ||
+    ""
+  );
+}
 function getManagerNextActionHtml(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
     return `<span class="alert-badge alert-completed">COMPLETED</span>`;
   }
 
-  // ✅ REP SELECTION OVERRIDES ORIGINAL LIFECYCLE SIGNAL
-  if (rec.rep_action && rec.rep_action !== "remove") {
+  const repSelectedAction = getRepSelectedAction(rec);
+
+  if (repSelectedAction && repSelectedAction !== "remove") {
     return `
       <span class="pill pending" style="border:1px solid rgba(255,216,77,.55);color:#fff4cc;background:transparent;">
-        ${getRepActionLabel(rec.rep_action)}
+        ${getRepActionLabel(repSelectedAction)}
       </span>
     `;
   }
@@ -1705,7 +1716,22 @@ function handleCSVUpload(file) {
               submitted_at: existing.submitted_at || "",
               next_action_date: existing.next_action_date || newRec.next_action_date,
 
-              rep_action: existing.rep_action || newRec.rep_action || "",
+              rep_action:
+  existing.rep_action ||
+  existing.rep_selected_next_action ||
+  existing.selected_next_action ||
+  existing.next_action_selected ||
+  existing.rep_next_action ||
+  newRec.rep_action ||
+  "",
+
+rep_selected_next_action:
+  existing.rep_selected_next_action ||
+  existing.rep_action ||
+  existing.selected_next_action ||
+  existing.next_action_selected ||
+  existing.rep_next_action ||
+  "",
               rep_notes: existing.rep_notes || newRec.rep_notes || "",
               rep_status: existing.rep_status || newRec.rep_status || "new",
               rep_last_action_at: existing.rep_last_action_at || "",
@@ -2579,7 +2605,6 @@ function readManagerQueueRecords() {
     return [];
   }
 }
-
 function mergeRecordsByKey(...groups) {
   const map = new Map();
 
@@ -2595,20 +2620,40 @@ function mergeRecordsByKey(...groups) {
 
     const existing = map.get(key) || {};
 
+    const repSelectedAction =
+      rec.rep_selected_next_action ||
+      rec.selected_next_action ||
+      rec.next_action_selected ||
+      rec.rep_next_action ||
+      rec.rep_action ||
+      existing.rep_selected_next_action ||
+      existing.selected_next_action ||
+      existing.next_action_selected ||
+      existing.rep_next_action ||
+      existing.rep_action ||
+      "";
+
     map.set(key, {
       ...existing,
       ...rec,
       key,
+
+      rep_action: repSelectedAction,
+      rep_selected_next_action: repSelectedAction,
+
       quote_seen:
         existing.quote_seen === true || rec.quote_seen === true,
+
       manager_unseen_update:
         rec.manager_flash_type === "manager_response"
           ? false
           : rec.manager_unseen_update ?? existing.manager_unseen_update ?? false,
+
       manager_flash_type:
         rec.manager_flash_type === "manager_response"
           ? ""
           : rec.manager_flash_type ?? existing.manager_flash_type ?? "",
+
       manager_flash_at:
         rec.manager_flash_type === "manager_response"
           ? ""
@@ -2618,7 +2663,6 @@ function mergeRecordsByKey(...groups) {
 
   return Array.from(map.values());
 }
-
 function render() {
   const main = readArrayKey(STORAGE_KEY);
   const repQueue = readArrayKey(espin_rep_queue);
