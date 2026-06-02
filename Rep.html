@@ -828,7 +828,7 @@ with authorized OEM and customer stakeholders.
 <div class="panel" style="margin-bottom:18px;">
   <div class="panel-head">
     <h2>Follow-Up Alert Center</h2>
-    <span class="mini">Active quote and rep follow-ups</span>
+    <span class="mini">Rep-entered quote follow-up visibility</span>
   </div>
 
   <div class="panel-body">
@@ -1422,7 +1422,7 @@ function renderNewProjectsTable() {
     const projectId = rec.oem_project_id || rec.id || "-";
     const customer = rec.site || "-";
     const projectName = rec.model || "-";
-    const projectedRevenue = rec.quote_amount ? Number(rec.quote_amount) : null;
+    const grossQuoteAmount = rec.quote_amount ? Number(rec.quote_amount) : null;
     const expectedClose = rec.quote_expected_close_date || "-";
 
     const assignedRep =
@@ -1448,7 +1448,7 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
         <td>${projectId}</td>
         <td>${customer}</td>
         <td>${projectName}</td>
-        <td>${projectedRevenue !== null ? "$" + projectedRevenue.toLocaleString() : "Quote not created"}</td>
+        <td>${grossQuoteAmount !== null ? "$" + grossQuoteAmount.toLocaleString() : "Quote not created"}</td>
         <td>${expectedClose}</td>
         <td>${assignedRep}</td>
         <td>
@@ -3894,16 +3894,24 @@ function hideForFollowUp() {
   const rec = state.records.find(r => r.id === state.selectedId);
   if (!rec) return;
 
-  const date = $("snoozeDate").value;
+  const date = $("repFollowUpDate").value;
   if (!date) return alert("Select follow-up date first");
 
-  rec.rep_status = "acted";
+  rec.rep_status = "follow_up_scheduled";
+  rec.rep_action = "follow_up";
   rec.rep_hidden = true;
   rec.rep_follow_up_date = date;
   rec.next_action_date = date;
+  rec.rep_last_action_at = new Date().toISOString();
 
-  syncFeedStatus(rec); // 🔥 REQUIRED
-  upsertRecord(rec);
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "follow_up";
+  rec.manager_flash_text = "Rep scheduled follow-up";
+
+  syncFeedStatus(rec);
+  saveRecords();
+  render();
 }
 function deleteFromRepOnly() {
   const rec = state.records.find(r => r.id === state.selectedId);
