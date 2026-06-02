@@ -568,7 +568,7 @@
 
     <div class="stats">
       <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">OEM-Defined Review Matches</div><div class="v" id="statReady">0</div></div>
+      <div class="stat"><div class="k">OEM-Provided Review Notes</div><div class="v" id="statReady">0</div></div>
       <div class="stat"><div class="k">Postponed</div><div class="v" id="statPostponed">0</div></div>
       <div class="stat"><div class="k">Submitted</div><div class="v" id="statSubmitted">0</div></div>
     </div>
@@ -901,8 +901,8 @@
         </select>
 
         <label>Rep Follow-Up Tag</label>
-        <select id="quotePriority">
-          <option value="high">Rep Marked: High Visibility</option>
+        <select id="quoteFollowUpTag">
+          <option value="high">Rep Marked: Follow-Up Attention</option>
           <option value="medium">Rep Marked: Standard Visibility</option>
           <option value="low">Rep Marked: Monitor</option>
         </select>
@@ -1091,9 +1091,9 @@ function getAlerts(rec) {
   ) {
    return [{
   type: "lifecycle",
-  label: `Equipment age is ${age} years. Review threshold is ${threshold} years.`,
-  displayType: "Age Review Window",
-  source: "Age threshold"
+  label: `OEM-defined age note: equipment age is ${age} years; OEM-provided review field is ${threshold} years.`,
+  displayType: "OEM Age Note",
+source: "OEM-defined age field"
 }];
   }
 
@@ -1265,17 +1265,37 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     .replace(/\brecommendation\b/gi, "review context")
     .replace(/\binstruction\b/gi, "review context");
 }
-    function getReviewVisibilityLevel(rec) {
-      if (!getAlerts(rec).length) return "NORMAL";
+    function getOemDisplayTag(rec) {
+  /*
+    OEM display tag only.
+    This does not create a priority, score, ranking, recommendation,
+    next-best-action, opportunity, offer, or sales instruction.
+  */
 
-      const importedLevel = lower(rec.oem_review_level || rec.review_level || rec.visibility_level || rec.priority || "");
+  if (!getAlerts(rec).length) return "NORMAL";
 
-      if (["high", "high_visibility", "urgent"].includes(importedLevel)) return "HIGH";
-      if (["standard", "medium", "standard_visibility"].includes(importedLevel)) return "STANDARD";
+  const importedTag = lower(
+    rec.oem_review_level ||
+    rec.review_level ||
+    rec.visibility_level ||
+    rec.oem_display_tag ||
+    ""
+  );
 
-      return "MONITOR";
-    }
+  if (["high", "high_visibility", "urgent", "follow_up_attention"].includes(importedTag)) {
+    return "FOLLOW_UP_ATTENTION";
+  }
 
+  if (["standard", "medium", "standard_visibility"].includes(importedTag)) {
+    return "STANDARD_VISIBILITY";
+  }
+
+  if (["low", "monitor"].includes(importedTag)) {
+    return "MONITOR";
+  }
+
+  return "OEM_NOTE";
+}
     function getDaysUntil(dateValue) {
       if (!dateValue) return null;
       const today = new Date(todayISO());
@@ -1641,7 +1661,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
         </div>
 
         <div class="followup-card open">
-          <div class="mini">Open Quote Alerts</div>
+          <div class="mini">Open Quote Follow-Ups</div>
           <div class="followup-number" style="color:#00e5ff;">${openQuoteAlerts}</div>
         </div>
       `;
@@ -1730,33 +1750,39 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
       }).join("");
     }
 
-    function getReviewSortWeight(rec) {
-      if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 999;
-      if (rec.lifecycle_completed) return 0;
-      if (rec.submitted_to) return 0;
-      if (rec.next_action_date && rec.next_action_date > todayISO()) return 1;
+    function getDisplayOrderWeight(rec) {
+  /*
+    Display ordering only.
+    This is not a recommendation, ranking, score, offer prioritization,
+    customer prioritization, next-best-action calculation, or opportunity engine.
+  */
 
-      const status = lower(rec.quote_status);
-      const priority = lower(rec.quote_priority);
+  if (!rec) return 0;
 
-      if (status === "won") return 20;
-      if (status === "lost") return 10;
+  // Unseen manager responses are shown first so the rep can view manager feedback.
+  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 50;
 
-      if (rec.quote_amount) {
-        if (priority === "high") return 120;
-        if (priority === "medium") return 90;
-        if (priority === "low") return 60;
-        return 70;
-      }
+  // Completed/submitted/postponed items are lower because no immediate display attention is needed.
+  if (rec.lifecycle_completed) return 0;
+  if (rec.submitted_to) return 0;
+  if (rec.next_action_date && rec.next_action_date > todayISO()) return 5;
 
-      const level = getReviewVisibilityLevel(rec);
-      if (level === "HIGH") return 50;
-      if (level === "STANDARD") return 40;
-      if (level === "MONITOR") return 30;
+  const status = lower(rec.quote_status);
 
-      return 0;
-    }
+  // Closed outcomes remain visible but are not elevated.
+  if (status === "won") return 10;
+  if (status === "lost") return 10;
 
+  // Open quote records are grouped for visibility only.
+  // No quote value, margin, customer value, probability, or recommended action is used.
+  if (rec.quote_amount) return 30;
+
+  // OEM-provided review notes are grouped for display only.
+  // AXIS does not decide importance or recommend action.
+  if (getAlerts(rec).length) return 20;
+
+  return 0;
+}
     function renderTable() {
       const tbody = $("tableBody");
 
@@ -1774,7 +1800,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
         return;
       }
 
-      const sorted = [...visibleRecords].sort((a, b) => getReviewSortWeight(b) - getReviewSortWeight(a));
+      const sorted = [...visibleRecords].sort((a, b) => getDisplayOrderWeight(b) - getDisplayOrderWeight(a));
 
       tbody.innerHTML = sorted.map(rec => {
         const hasUnseenManagerResponse = rec.manager_response_action && !rec.manager_response_seen_by_rep;
@@ -1878,20 +1904,20 @@ function getReviewNoteStyle(type) {
     "background:rgba(120,144,170,.12);" +
     "color:#f4f8ff;";
 }
-    function renderRawSignalDataCard(rec) {
+   function renderRawSignalDataCard(rec) {
   const alerts = getAlerts(rec);
   const primary = alerts[0] || null;
 
- const importedType = clean(
-  primary?.displayType ||
-  rec.oem_review_display_type ||
-  rec.review_display_type ||
-  rec.oem_review_type ||
-  rec.review_type ||
-  rec.alert_override ||
-  rec.proactive_type ||
-  ""
-);
+  const importedType = clean(
+    primary?.displayType ||
+    rec.oem_review_display_type ||
+    rec.review_display_type ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    ""
+  );
 
   const importedLabel = getSafeReviewLabel(
     rec,
@@ -1919,12 +1945,12 @@ function getReviewNoteStyle(type) {
   );
 
   const hasImportedReview =
-    primary ||
-    importedType ||
-    importedLabel ||
-    importedReason ||
-    importedDate ||
-    importedLevel;
+    Boolean(primary) ||
+    Boolean(importedType) ||
+    Boolean(importedLabel) ||
+    Boolean(importedReason) ||
+    Boolean(importedDate) ||
+    Boolean(importedLevel);
 
   if (!hasImportedReview) {
     return `
@@ -1954,15 +1980,12 @@ function getReviewNoteStyle(type) {
         ${
           importedLabel
             ? `
-            ${
-  importedLabel
-    ? `
-      <div style="${getReviewNoteStyle(primary?.type || importedType)}">
-        ${escapeHtml(importedLabel)}
-      </div>
-    `
-    : ""
-}
+              <div style="${getReviewNoteStyle(primary?.type || importedType)}">
+                ${escapeHtml(importedLabel)}
+              </div>
+            `
+            : ""
+        }
 
         ${
           importedType
@@ -1979,7 +2002,7 @@ function getReviewNoteStyle(type) {
           importedLevel
             ? `
               <div class="mini">
-                OEM Visibility Tag:
+                OEM Display Tag:
                 <strong>${escapeHtml(formatReviewText(importedLevel))}</strong>
               </div>
             `
@@ -2473,7 +2496,7 @@ function getReviewNoteStyle(type) {
             quote_profit: "",
             quote_margin: "",
             quote_status: "",
-            quote_priority: "",
+            quote_follow_up_tag: "",
             quote_expected_close_date: "",
             quote_expiration_date: "",
             quote_recipient_email: "",
@@ -2612,7 +2635,7 @@ function getReviewNoteStyle(type) {
         quote_profit: "",
         quote_margin: "",
         quote_status: "",
-        quote_priority: "high",
+        quote_follow_up_tag: "high",
         quote_expected_close_date: "",
         quote_expiration_date: "",
         quote_recipient_email: contactEmail,
@@ -2692,7 +2715,7 @@ function getReviewNoteStyle(type) {
       $("quoteTradeInCredit").value = rec.tradein_required === "no" ? "" : (getTradeInCreditValue(rec) || "");
       $("quoteTradeInCredit").disabled = rec.tradein_required === "no";
       $("quoteStatus").value = rec.quote_status || "draft";
-      $("quotePriority").value = rec.quote_priority || "medium";
+      $("quoteFollowUpTag").value = rec.quote_follow_up_tag || "medium";
       $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
       $("quoteExpirationDate").value = rec.quote_expiration_date || "";
       $("quoteRecipientEmail").value = rec.quote_recipient_email || rec.contact_email || "";
@@ -2721,7 +2744,7 @@ function getReviewNoteStyle(type) {
       const netQuote = Math.max(0, amount - tradeInCredit);
       const profit = netQuote - cost;
       const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
-      const priority = $("quotePriority").value || "medium";
+      const followUpTag = $("quoteFollowUpTag").value || "medium";
 
       $("quotePreview").innerHTML = `
         <strong>Gross Quote:</strong> ${money(amount)}<br>
@@ -2732,9 +2755,9 @@ function getReviewNoteStyle(type) {
         <span style="color:${profit >= 0 ? "#0a7a3a" : "#b00020"};">${money(profit)}</span><br>
         <strong>Estimated Margin:</strong> ${margin}%<br><br>
         <strong>Rep Follow-Up Tag:</strong> ${
-          priority === "high"
-            ? "REP MARKED: HIGH VISIBILITY"
-            : priority === "medium"
+          followUpTag === "high"
+            ? "Rep Marked: Follow-Up Attention"
+            : followUpTag === "medium"
             ? "REP MARKED: STANDARD VISIBILITY"
             : "REP MARKED: MONITOR"
         }<br>
@@ -2798,7 +2821,7 @@ function getReviewNoteStyle(type) {
       rec.quote_margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
 
       rec.quote_status = status;
-      rec.quote_priority = $("quotePriority").value;
+      rec.quote_follow_up_tag = $("quoteFollowUpTag").value;
       rec.quote_expected_close_date = $("quoteExpectedCloseDate").value;
       rec.quote_expiration_date = $("quoteExpirationDate").value;
       rec.quote_recipient_email = clean($("quoteRecipientEmail").value);
@@ -3899,7 +3922,11 @@ function getReviewNoteStyle(type) {
         localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
       }
     }
-
+/*
+  Reads only trade-in sync records already pushed into AXIS-controlled browser storage.
+  AXIS does not connect to, crawl, mine, or pull OEM CRM, ERP, service,
+  pricing, contract, utilization, customer-success, or installed-base systems.
+*/
     function importTradeInSyncRecords() {
       const shareEnabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
       if (!shareEnabled) return;
@@ -4256,7 +4283,7 @@ function getReviewNoteStyle(type) {
         "quoteEstimatedCost",
         "quoteTradeInCredit",
         "quoteStatus",
-        "quotePriority",
+        "quoteFollowUpTag",
         "quoteExpectedCloseDate",
         "quoteExpirationDate",
         "quoteRecipientEmail",
