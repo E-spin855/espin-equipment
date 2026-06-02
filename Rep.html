@@ -765,7 +765,7 @@ with authorized OEM and customer stakeholders.
 
     <div class="stats">
       <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">Items Matching Review Conditions</div><div class="v" id="statReady">0</div></div>
+      <div class="stat"><div class="k">Items Matching OEM Rules</div><div class="v" id="statReady">0</div></div>
       <div class="stat"><div class="k">Postponed</div><div class="v" id="statPostponed">0</div></div>
       <div class="stat"><div class="k">Submitted</div><div class="v" id="statSubmitted">0</div></div>
     </div>
@@ -919,8 +919,8 @@ with authorized OEM and customer stakeholders.
 		<th>Review Level</th>
 <th>Manual Trade-In Reference</th>
 <th>Facility</th>
-<th>Review Condition</th>
-<th>Rep-Selected Next Action</th>
+<th>OEM Rule Match</th>
+<th><th>Rep-Selected Manual Follow-Up</th></th>
 <th>Source</th>
 <th>Actions</th>
                 </tr>
@@ -1203,11 +1203,11 @@ function renderStats() {
 
   document.querySelector("#statPostponed")
   .closest(".stat")
-  .querySelector(".k").textContent = "Rep-Entered Open Quote Total";
+  .querySelector(".k").textContent = "Open Quote Financial Review";
 
 document.querySelector("#statSubmitted")
   .closest(".stat")
-  .querySelector(".k").textContent = "Rep-Entered Won Profit";
+  .querySelector(".k").textContent = "Won Quote Financial Review";
 }
 function renderRepMenu() {
   const container = document.getElementById("repFeed");
@@ -3010,7 +3010,7 @@ ${
   style="margin-top:10px;"
   onclick="applyExternalTradeInToQuote('${rec.id}')"
 >
-Manually Apply Trade-In Reference to QuoteManually Apply Trade-In Reference to Quote
+Manually Apply Trade-In Reference to Quote
 </button>
       </div>
     `
@@ -3043,7 +3043,7 @@ Manually Apply Trade-In Reference to QuoteManually Apply Trade-In Reference to Q
               </span>
 
               <div class="mini" style="margin-top:6px;line-height:1.45;">
-                This lifecycle review item has been surfaced, but the rep has not created quoted pipeline yet.
+                This lifecycle review item is visible, but the rep has not entered quote details yet.
               </div>
 
               <div class="mini" style="margin-top:8px;line-height:1.45;">
@@ -4110,7 +4110,7 @@ if (rec.image_sync_received) {
 
   items.push({
     date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
-    label: `Review condition surfaced: ${initial.label}`
+    label: `OEM rule match visible: ${initial.label}`
   });
 
   if (rec.tradein_sync_received) {
@@ -5117,12 +5117,12 @@ function getAlerts(rec) {
   if (validOverrides.includes(String(rec.alert_override || "").toLowerCase().trim())) {
     const type = String(rec.alert_override || "").toLowerCase().trim();
 const labelMap = {
-  disposal: "OEM Rule Match: Disposition Window",
-  replacement: "OEM Rule Match: Replacement Window",
-  upgrade: "OEM Rule Match: Upgrade Window",
-  planning: "OEM Rule Match: Budget Window",
-  service: "OEM Rule Match: Service Review",
-  proactive: "OEM Rule Match: Early Planning"
+  disposal: "Disposition Window",
+  replacement: "Replacement Window",
+  upgrade: "Upgrade Window",
+  planning: "Budget Window",
+  service: "Service Review",
+  proactive: "Early Planning"
 };
 
     return [{
@@ -5140,12 +5140,10 @@ const labelMap = {
     );
 
  if (proactiveSignal) {
-  return [{
-    type: "proactive",
-    label: "OEM Rule Match: Early Planning"
-  }];
-}
-
+ return [{
+  type: "proactive",
+  label: "Early Planning"
+}];
 const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
   const condition = String(rec.condition || "").toLowerCase().trim();
   const utilization = Number(rec.utilization || 0);
@@ -5184,34 +5182,33 @@ const serviceTrend = String(rec.service_cost_trend || "").toLowerCase().trim();
 
   if (age === null || age === undefined) {
     if (serviceTriggered) {
-      return [{ type: "service", label: "OEM Rule Match: Service Review" }];
+      return [{ type: "service", label: "Service Review" }];
     }
 
     return [];
   }
 
-  if (age >= threshold + disposalOffset) {
-    return [{ type: "disposal", label: "OEM Rule Match: Disposition Window" }];
-  }
-
-  if (age >= threshold + replacementOffset) {
-    return [{ type: "replacement", label: "OEM Rule Match: Replacement Window" }];
-  }
-
-  if (age >= threshold + upgradeOffset) {
-    return [{ type: "upgrade", label: "OEM Rule Match: Upgrade Window" }];
-  }
-
-  if (age >= threshold + planningOffset) {
-  return [{ type: "planning", label: "Budget Timing Condition" }];
+ if (age >= threshold + disposalOffset) {
+  return [{ type: "disposal", label: "Disposition Window" }];
 }
 
-  if (serviceTriggered) {
-    return [{ type: "service", label: "OEM Rule Match: Service Review" }];
-  }
-
-  return [];
+if (age >= threshold + replacementOffset) {
+  return [{ type: "replacement", label: "Replacement Window" }];
 }
+
+if (age >= threshold + upgradeOffset) {
+  return [{ type: "upgrade", label: "Upgrade Window" }];
+}
+
+if (age >= threshold + planningOffset) {
+  return [{ type: "planning", label: "Budget Window" }];
+}
+
+if (serviceTriggered) {
+  return [{ type: "service", label: "Service Review" }];
+}
+
+return [];
 function openDecisionModal() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
