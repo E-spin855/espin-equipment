@@ -1630,7 +1630,7 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
 }
 function renderReviewSignalCell(rec) {
   if (rec.lifecycle_completed) {
-    return `<span class="alert-badge alert-completed">Completed</span>`;
+    return `<span class="alert-badge alert-completed">Reviewed</span>`;
   }
 
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
@@ -1638,14 +1638,9 @@ function renderReviewSignalCell(rec) {
       <span class="pill submitted tradein-flash">
         NEW TRADE-IN INFO RECEIVED
       </span>
-    `;
-  }
-
-  if (rec.tradein_sync_received && rec.tradein_seen_by_rep) {
-    return `
-      <span class="pill pending">
-        TRADE-IN IN PROGRESS
-      </span>
+      <div class="mini" style="margin-top:6px;">
+        Open record to review received trade-in reference.
+      </div>
     `;
   }
 
@@ -1663,25 +1658,92 @@ function renderReviewSignalCell(rec) {
   const alerts = getAlerts(rec);
 
   if (!alerts.length) {
-    return `<span class="mini">No Active Condition</span>`;
+    return `<span class="mini">No active signal</span>`;
   }
 
-  return alerts.map(a => {
-    const cls =
-      a.type === "disposal"
-        ? "alert-badge alert-disposal"
-        : a.type === "replacement"
-        ? "alert-badge alert-replacement"
-        : a.type === "upgrade"
-        ? "alert-badge alert-upgrade"
-        : a.type === "planning"
-        ? "alert-badge alert-planning"
-        : a.type === "proactive"
-        ? "alert-badge alert-proactive"
-        : "alert-badge alert-service";
+  const primary = alerts[0];
+  const type = String(primary.type || "").toLowerCase();
 
-    return `<span class="${cls}">${a.label}</span>`;
-  }).join("");
+  if (
+    type === "proactive" ||
+    type.includes("service_contract") ||
+    type.includes("warranty") ||
+    type.includes("lease") ||
+    type.includes("refresh")
+  ) {
+    return `
+      <span class="alert-badge alert-proactive">
+        Proactive Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined proactive review field visible.
+      </div>
+    `;
+  }
+
+  if (type === "planning") {
+    return `
+      <span class="alert-badge alert-planning">
+        Planning Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined planning review field visible.
+      </div>
+    `;
+  }
+
+  if (type === "upgrade") {
+    return `
+      <span class="alert-badge alert-upgrade">
+        Utilization Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined utilization review field visible.
+      </div>
+    `;
+  }
+
+  if (type === "service") {
+    return `
+      <span class="alert-badge alert-service">
+        Service Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined service review field visible.
+      </div>
+    `;
+  }
+
+  if (type === "replacement") {
+    return `
+      <span class="alert-badge alert-replacement">
+        Lifecycle Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined lifecycle review field visible.
+      </div>
+    `;
+  }
+
+  if (type === "disposal") {
+    return `
+      <span class="alert-badge alert-disposal">
+        Disposition Review
+      </span>
+      <div class="mini" style="margin-top:6px;">
+        OEM-defined disposition review field visible.
+      </div>
+    `;
+  }
+
+  return `
+    <span class="alert-badge alert-planning">
+      Review Visible
+    </span>
+    <div class="mini" style="margin-top:6px;">
+      OEM-defined review field visible.
+    </div>
+  `;
 }
 function getReviewSortBucket(rec) {
   const level = getReviewVisibilityLevel(rec);
@@ -1794,15 +1856,8 @@ if (quotePriority === "LOST") return 10;
         <td>${rec.project_type === "new_sales_project" ? rec.tradein_equipment_dom || "-" : rec.dom || ""}</td>
 
         <td>${rec.project_type === "new_sales_project" ? "-" : ageFromDom(rec.dom) ?? "-"}</td>
-
-      <td>
-  ${
-    rec.lifecycle_completed
-      ? '<span class="alert-badge alert-completed">Reviewed</span>'
-      : getAlerts(rec).length || rec.tradein_sync_received || rec.quote_amount
-      ? '<span class="pill ready">ATTENTION NEEDED</span><div class="mini" style="margin-top:6px;">Open record to review raw imported signal data.</div>'
-      : '<span class="mini">No active signal</span>'
-  }
+<td>
+  ${renderReviewSignalCell(rec)}
 </td>
 
 <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
@@ -2634,7 +2689,9 @@ function applyExternalTradeInToQuote(id = null) {
 }
 function renderRawSignalDataCard(rec) {
   const alerts = getAlerts(rec);
-  const activeTypes = new Set(alerts.map(a => a.type));
+  const activeTypes = new Set(
+    alerts.map(a => String(a.type || "").toLowerCase())
+  );
 
   const age = Number(ageFromDom(rec.dom)) || 0;
   const threshold = Number(rec.threshold_years) || 8;
@@ -2648,60 +2705,122 @@ function renderRawSignalDataCard(rec) {
 
   const lines = [];
 
-  function addLine(text, green = false) {
-    lines.push({ text, green });
+  function addLine(text, tone = "standard") {
+    lines.push({ text, tone });
   }
 
-  if (activeTypes.has("replacement") || activeTypes.has("planning")) {
-    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`);
+  const hasProactive =
+    String(rec.proactive_enabled || "yes").toLowerCase() !== "no" &&
+    (
+      String(rec.proactive_signal || "").toLowerCase() === "yes" ||
+      String(rec.proactive_signal || "").toLowerCase() === "true" ||
+      proactiveType ||
+      proactiveReason ||
+      proactiveDate ||
+      activeTypes.has("proactive")
+    );
+
+  if (hasProactive) {
+    if (
+      proactiveType.includes("service") ||
+      proactiveReason.toLowerCase().includes("service")
+    ) {
+      addLine(
+        proactiveDate
+          ? `OEM-defined service contract review date: ${proactiveDate}`
+          : `OEM-defined service contract expiration: review visible`,
+        "green"
+      );
+    } else if (
+      proactiveType.includes("warranty") ||
+      proactiveReason.toLowerCase().includes("warranty")
+    ) {
+      addLine(
+        proactiveDate
+          ? `OEM-defined warranty review date: ${proactiveDate}`
+          : `OEM-defined warranty expiration: review visible`,
+        "green"
+      );
+    } else if (
+      proactiveType.includes("lease") ||
+      proactiveReason.toLowerCase().includes("lease")
+    ) {
+      addLine(
+        proactiveDate
+          ? `OEM-defined lease review date: ${proactiveDate}`
+          : `OEM-defined lease expiration: review visible`,
+        "green"
+      );
+    } else if (proactiveReason) {
+      addLine(`OEM-defined proactive review: ${proactiveReason}`, "green");
+    } else if (proactiveDate) {
+      addLine(`OEM-defined proactive review date: ${proactiveDate}`, "green");
+    } else {
+      addLine(`OEM-defined proactive review field visible`, "green");
+    }
+  }
+
+  if (activeTypes.has("planning")) {
+    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`, "green");
+  }
+
+  if (activeTypes.has("replacement")) {
+    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`, "red");
   }
 
   if (activeTypes.has("upgrade")) {
-    addLine(`Utilization ${utilization}%, OEM-defined utilization review threshold 85%`);
+    addLine(`Utilization ${utilization}%, OEM-defined utilization review threshold 85%`, "yellow");
   }
 
   if (activeTypes.has("service")) {
-    addLine(`Service trend ${service || "not provided"}, OEM-defined service review condition`);
+    addLine(`Service trend ${service || "not provided"}, OEM-defined service review condition`, "yellow");
   }
 
   if (activeTypes.has("disposal")) {
-    addLine(`Condition ${condition || "not provided"}, OEM-defined disposition review condition`);
-  }
-
-  if (proactiveType || proactiveReason || proactiveDate || activeTypes.has("proactive")) {
-    let proactiveText = "OEM-defined proactive review";
-
-    if (proactiveType.includes("service") || proactiveReason.toLowerCase().includes("service")) {
-      proactiveText = proactiveDate
-        ? `OEM-defined service contract review date: ${proactiveDate}`
-        : `OEM-defined service contract expiration: review required`;
-    } else if (proactiveType.includes("warranty") || proactiveReason.toLowerCase().includes("warranty")) {
-      proactiveText = proactiveDate
-        ? `OEM-defined warranty review date: ${proactiveDate}`
-        : `OEM-defined warranty expiration: review required`;
-    } else if (proactiveType.includes("lease") || proactiveReason.toLowerCase().includes("lease")) {
-      proactiveText = proactiveDate
-        ? `OEM-defined lease review date: ${proactiveDate}`
-        : `OEM-defined lease expiration: review required`;
-    } else if (proactiveType.includes("refresh") || proactiveReason.toLowerCase().includes("refresh")) {
-      proactiveText = `OEM-defined refresh planning review: ${proactiveReason || proactiveDate || "review required"}`;
-    } else if (proactiveReason) {
-      proactiveText = `OEM-defined proactive review: ${proactiveReason}`;
-    } else if (proactiveDate) {
-      proactiveText = `OEM-defined proactive review date: ${proactiveDate}`;
-    }
-
-    addLine(proactiveText, true);
+    addLine(`Condition ${condition || "not provided"}, OEM-defined disposition review condition`, "red");
   }
 
   if (rec.tradein_sync_received) {
     addLine(
-      `Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}`
+      `Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}`,
+      "green"
     );
   }
 
   if (!lines.length) {
-    addLine("No active imported signal fields for this record.");
+    addLine("No active imported signal fields for this record.", "standard");
+  }
+
+  function styleForTone(tone) {
+    if (tone === "green") {
+      return `
+        border:1px solid rgba(65,255,156,.42);
+        background:rgba(65,255,156,.10);
+        color:#b8ffd7;
+      `;
+    }
+
+    if (tone === "yellow") {
+      return `
+        border:1px solid rgba(255,216,77,.42);
+        background:rgba(255,216,77,.10);
+        color:#fff4cc;
+      `;
+    }
+
+    if (tone === "red") {
+      return `
+        border:1px solid rgba(255,77,77,.42);
+        background:rgba(255,77,77,.10);
+        color:#ffe5e5;
+      `;
+    }
+
+    return `
+      border:1px solid rgba(88,184,255,.18);
+      background:rgba(8,18,35,.62);
+      color:#eef6ff;
+    `;
   }
 
   return `
@@ -2710,10 +2829,11 @@ function renderRawSignalDataCard(rec) {
       background:linear-gradient(180deg,rgba(0,229,255,.10),rgba(8,18,35,.82));
       box-shadow:0 0 24px rgba(0,229,255,.16);
     ">
-      <div class="k">Raw Imported Signal Data</div>
+      <div class="k">Imported Review Signal</div>
 
       <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
         AXIS displays only the imported field connected to this record’s active review condition.
+        Color indicates review visibility only, not a recommendation or decision.
       </div>
 
       <div style="display:grid;gap:10px;">
@@ -2721,12 +2841,10 @@ function renderRawSignalDataCard(rec) {
           <div style="
             padding:12px 14px;
             border-radius:12px;
-            border:1px solid ${item.green ? "rgba(65,255,156,.42)" : "rgba(88,184,255,.18)"};
-            background:${item.green ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.62)"};
-            color:${item.green ? "#b8ffd7" : "#eef6ff"};
             font-size:14px;
             font-weight:900;
             line-height:1.4;
+            ${styleForTone(item.tone)}
           ">
             ${item.text}
           </div>
