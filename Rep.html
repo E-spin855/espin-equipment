@@ -1069,6 +1069,82 @@ const ageFromDom =
 
     return nowYear() - year;
   };
+const ageFromDom =
+  window.AxisUtils.ageFromDom ||
+  function ageFromDom(dom) {
+    if (!dom) return null;
+
+    const value = String(dom).trim();
+
+    const yearMatch = value.match(/\b(19|20)\d{2}\b/);
+    if (!yearMatch) return null;
+
+    const year = Number(yearMatch[0]);
+    if (!year || year < 1900 || year > nowYear()) return null;
+
+    return nowYear() - year;
+  };
+
+const getAlerts =
+  window.AxisUtils.getAlerts ||
+  function getAlerts(rec) {
+    const alerts = [];
+
+    if (rec.alert_enabled === "no") return alerts;
+
+    const override = String(rec.alert_override || "").toLowerCase().trim();
+
+    if (override) {
+      alerts.push({
+        type: override,
+        label: override.replace(/_/g, " ").toUpperCase()
+      });
+      return alerts;
+    }
+
+    const age = Number(ageFromDom(rec.dom)) || 0;
+    const threshold = Number(rec.threshold_years) || 8;
+
+    const utilization = Number(rec.utilization || 0);
+    const condition = String(rec.condition || "").toLowerCase().trim();
+    const service = String(rec.service_cost_trend || "").toLowerCase().trim();
+
+    if (rec.next_action_date && rec.next_action_date > todayISO()) {
+      alerts.push({ type: "postponed", label: "Postponed" });
+      return alerts;
+    }
+
+    if (String(rec.proactive_enabled || "yes").toLowerCase() !== "no") {
+      if (rec.proactive_signal === "yes" || rec.proactive_signal === "true") {
+        alerts.push({
+          type: rec.proactive_type || "proactive",
+          label: rec.proactive_reason || "Proactive Review"
+        });
+      }
+    }
+
+    if (condition === "poor") {
+      alerts.push({ type: "disposal", label: "Disposition Review" });
+    } else if (condition === "fair") {
+      alerts.push({ type: "replacement", label: "Replacement Review" });
+    }
+
+    if (service === "high" || service === "rising") {
+      alerts.push({ type: "service", label: "Service Cost Review" });
+    }
+
+    if (utilization >= 85) {
+      alerts.push({ type: "upgrade", label: "Utilization Review" });
+    }
+
+    if (age >= threshold) {
+      alerts.push({ type: "replacement", label: "Lifecycle Review" });
+    } else if (age >= threshold - 2) {
+      alerts.push({ type: "planning", label: "Planning Review" });
+    }
+
+    return alerts;
+  };
 function getRecordGroupKey(rec) {
   return String(
     rec.axis_project_id ||
