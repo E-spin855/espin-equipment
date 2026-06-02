@@ -2633,6 +2633,9 @@ function applyExternalTradeInToQuote(id = null) {
   alert("Trade-in reference manually applied to quote.");
 }
 function renderRawSignalDataCard(rec) {
+  const alerts = getAlerts(rec);
+  const activeTypes = new Set(alerts.map(a => a.type));
+
   const rawSignals = [];
 
   const addSignal = (field, value, source) => {
@@ -2645,29 +2648,67 @@ function renderRawSignalDataCard(rec) {
     });
   };
 
-  addSignal("threshold_years", rec.threshold_years, rec.source);
-  addSignal("alert_override", rec.alert_override, rec.source);
-  addSignal("alert_enabled", rec.alert_enabled, rec.source);
-  addSignal("proactive_signal", rec.proactive_signal, rec.source);
-  addSignal("proactive_type", rec.proactive_type, rec.source);
-  addSignal("proactive_date", rec.proactive_date, rec.source);
-  addSignal("proactive_reason", rec.proactive_reason, rec.source);
-  addSignal("utilization", rec.utilization, rec.source);
-  addSignal("condition", rec.condition, rec.source);
-  addSignal("service_cost_trend", rec.service_cost_trend, rec.source);
-  addSignal("planning_offset", rec.planning_offset, rec.source);
-  addSignal("upgrade_offset", rec.upgrade_offset, rec.source);
-  addSignal("replacement_offset", rec.replacement_offset, rec.source);
-  addSignal("disposal_offset", rec.disposal_offset, rec.source);
-  addSignal("next_action_date", rec.next_action_date, rec.source);
-  addSignal("external_tradein_value", rec.external_tradein_value, rec.external_tradein_source);
-  addSignal("tradein_sync_received", rec.tradein_sync_received, rec.external_tradein_source);
+  const age = Number(ageFromDom(rec.dom)) || 0;
+  const threshold = Number(rec.threshold_years) || 8;
+  const utilization = Number(rec.utilization || 0);
+  const condition = String(rec.condition || "").toLowerCase().trim();
+  const service = String(rec.service_cost_trend || "").toLowerCase().trim();
+
+  if (String(rec.alert_override || "").trim()) {
+    addSignal("alert_override", rec.alert_override, rec.source);
+  }
+
+  if (rec.next_action_date && rec.next_action_date > todayISO()) {
+    addSignal("next_action_date", rec.next_action_date, rec.source);
+  }
+
+  if (activeTypes.has("proactive")) {
+    addSignal("proactive_signal", rec.proactive_signal, rec.source);
+    addSignal("proactive_type", rec.proactive_type, rec.source);
+    addSignal("proactive_date", rec.proactive_date, rec.source);
+    addSignal("proactive_reason", rec.proactive_reason, rec.source);
+  }
+
+  if (activeTypes.has("disposal") && condition === "poor") {
+    addSignal("condition", rec.condition, rec.source);
+  }
+
+  if (activeTypes.has("replacement")) {
+    if (condition === "fair") {
+      addSignal("condition", rec.condition, rec.source);
+    }
+
+    if (age >= threshold) {
+      addSignal("dom", rec.dom, rec.source);
+      addSignal("calculated_age", age, rec.source);
+      addSignal("threshold_years", rec.threshold_years || threshold, rec.source);
+    }
+  }
+
+  if (activeTypes.has("planning") && age >= threshold - 2 && age < threshold) {
+    addSignal("dom", rec.dom, rec.source);
+    addSignal("calculated_age", age, rec.source);
+    addSignal("threshold_years", rec.threshold_years || threshold, rec.source);
+  }
+
+  if (activeTypes.has("service") && (service === "high" || service === "rising")) {
+    addSignal("service_cost_trend", rec.service_cost_trend, rec.source);
+  }
+
+  if (activeTypes.has("upgrade") && utilization >= 85) {
+    addSignal("utilization", rec.utilization, rec.source);
+  }
+
+  if (rec.tradein_sync_received) {
+    addSignal("tradein_sync_received", rec.tradein_sync_received, rec.external_tradein_source);
+    addSignal("external_tradein_value", rec.external_tradein_value, rec.external_tradein_source);
+  }
 
   if (!rawSignals.length) {
     return `
       <div class="detail-card">
         <div class="k">Raw Imported Signal Data</div>
-        <div class="v">No raw signal fields were imported for this record.</div>
+        <div class="v">No active imported signal fields for this record.</div>
       </div>
     `;
   }
@@ -2681,10 +2722,7 @@ function renderRawSignalDataCard(rec) {
       <div class="k">Raw Imported Signal Data</div>
 
       <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-        AXIS displays these imported/user-entered fields for review visibility only.
-        AXIS does not combine these fields into a recommendation, score, ranking,
-        next-best action, replacement decision, trade-in decision, disposal decision,
-        price, or offer.
+        AXIS displays only the imported fields connected to this record’s active review condition.
       </div>
 
       <div style="display:grid;gap:10px;">
@@ -2696,7 +2734,7 @@ function renderRawSignalDataCard(rec) {
             background:rgba(8,18,35,.62);
           ">
             <div class="mini" style="color:#a2f5ff;font-weight:900;">
-              Signal ${index + 1}
+              Active Signal ${index + 1}
             </div>
 
             <div style="margin-top:4px;font-size:13px;line-height:1.45;">
