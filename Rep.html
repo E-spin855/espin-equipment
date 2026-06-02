@@ -1072,62 +1072,68 @@ const ageFromDom =
 const getAlerts =
   window.AxisUtils.getAlerts ||
   function getAlerts(rec) {
-    const alerts = [];
-
-    if (rec.alert_enabled === "no") return alerts;
-
-    const override = String(rec.alert_override || "").toLowerCase().trim();
-
-    if (override) {
-      alerts.push({
-        type: override,
-        label: override.replace(/_/g, " ").toUpperCase()
-      });
-      return alerts;
-    }
-
-    const age = Number(ageFromDom(rec.dom)) || 0;
-    const threshold = Number(rec.threshold_years) || 8;
-
-    const utilization = Number(rec.utilization || 0);
-    const condition = String(rec.condition || "").toLowerCase().trim();
-    const service = String(rec.service_cost_trend || "").toLowerCase().trim();
+    if (rec.alert_enabled === "no") return [];
 
     if (rec.next_action_date && rec.next_action_date > todayISO()) {
-      alerts.push({ type: "postponed", label: "Postponed" });
-      return alerts;
+      return [{ type: "postponed", label: "Follow-Up Scheduled" }];
     }
 
-    if (String(rec.proactive_enabled || "yes").toLowerCase() !== "no") {
-      if (rec.proactive_signal === "yes" || rec.proactive_signal === "true") {
-        alerts.push({
-          type: rec.proactive_type || "proactive",
-          label: rec.proactive_reason || "Proactive Review"
-        });
-      }
-    }
+    const importedType = String(
+      rec.oem_review_type ||
+      rec.review_type ||
+      rec.alert_override ||
+      ""
+    ).toLowerCase().trim();
 
-    if (condition === "poor") {
-      alerts.push({ type: "disposal", label: "Disposition Review" });
-    } else if (condition === "fair") {
-      alerts.push({ type: "replacement", label: "Replacement Review" });
-    }
+    const importedLabel = String(
+      rec.oem_review_label ||
+      rec.review_label ||
+      rec.proactive_reason ||
+      ""
+    ).trim();
 
-    if (service === "high" || service === "rising") {
-      alerts.push({ type: "service", label: "Service Cost Review" });
-    }
+    const importedReason = String(
+      rec.oem_review_reason ||
+      rec.review_reason ||
+      ""
+    ).trim();
 
-    if (utilization >= 85) {
-      alerts.push({ type: "upgrade", label: "Utilization Review" });
-    }
+    const importedDate =
+      rec.oem_review_date ||
+      rec.review_date ||
+      rec.proactive_date ||
+      "";
 
-    if (age >= threshold) {
-      alerts.push({ type: "replacement", label: "Lifecycle Review" });
-    } else if (age >= threshold - 2) {
-      alerts.push({ type: "planning", label: "Planning Review" });
-    }
+    const hasImportedReview =
+      importedType ||
+      importedLabel ||
+      importedReason ||
+      importedDate ||
+      String(rec.proactive_signal || "").toLowerCase().trim() === "yes" ||
+      String(rec.proactive_signal || "").toLowerCase().trim() === "true";
 
-    return alerts;
+    if (!hasImportedReview) return [];
+
+    const allowedTypes = [
+      "planning",
+      "service",
+      "utilization",
+      "lifecycle",
+      "tradein",
+      "quote",
+      "project",
+      "proactive",
+      "review"
+    ];
+
+    const safeType = allowedTypes.includes(importedType)
+      ? importedType
+      : "review";
+
+    return [{
+      type: safeType,
+      label: importedLabel || importedReason || "Imported Review Field"
+    }];
   };
 function getRecordGroupKey(rec) {
   return String(
