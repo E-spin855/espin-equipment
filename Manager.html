@@ -2645,19 +2645,30 @@ function mergeRecordsByKey(...groups) {
         existing.quote_seen === true || rec.quote_seen === true,
 
       manager_unseen_update:
-        rec.manager_flash_type === "manager_response"
-          ? false
-          : rec.manager_unseen_update ?? existing.manager_unseen_update ?? false,
+  existing.manager_unseen_update === false
+    ? false
+    : rec.manager_flash_type === "manager_response"
+    ? false
+    : rec.manager_unseen_update ?? existing.manager_unseen_update ?? false,
 
-      manager_flash_type:
-        rec.manager_flash_type === "manager_response"
-          ? ""
-          : rec.manager_flash_type ?? existing.manager_flash_type ?? "",
+     manager_flash_type:
+  existing.manager_unseen_update === false
+    ? ""
+    : rec.manager_flash_type === "manager_response"
+    ? ""
+    : rec.manager_flash_type ?? existing.manager_flash_type ?? "",
 
-      manager_flash_at:
-        rec.manager_flash_type === "manager_response"
-          ? ""
-          : rec.manager_flash_at ?? existing.manager_flash_at ?? ""
+manager_flash_at:
+  existing.manager_unseen_update === false
+    ? ""
+    : rec.manager_flash_type === "manager_response"
+    ? ""
+    : rec.manager_flash_at ?? existing.manager_flash_at ?? "",
+
+manager_flash_text:
+  existing.manager_unseen_update === false
+    ? ""
+    : rec.manager_flash_text ?? existing.manager_flash_text ?? ""
     });
   });
 
@@ -3009,11 +3020,78 @@ function selectRow(id) {
     ...clickedRec,
     id: finalId,
     key,
+
+    // manager opened it, so manager flash must stay cleared
     manager_unseen_update: false,
     manager_flash_at: "",
     manager_flash_type: "",
+    manager_flash_text: "",
+
     quote_seen: true
   };
+
+  function sameRecord(item) {
+    return (
+      String(item.id || "").trim() === finalId ||
+      String(item.id || "").trim() === selectedId ||
+      String(item.key || "") === String(key || "") ||
+      (
+        String(item.oem_project_id || "") === String(cleanedRec.oem_project_id || "") &&
+        String(item.serial_number || "") === String(cleanedRec.serial_number || "")
+      )
+    );
+  }
+
+  let foundInMain = false;
+
+  const updatedMain = main.map(item => {
+    if (!sameRecord(item)) return item;
+
+    foundInMain = true;
+
+    return {
+      ...item,
+      ...cleanedRec,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: "",
+      quote_seen: true
+    };
+  });
+
+  if (!foundInMain) {
+    updatedMain.unshift(cleanedRec);
+  }
+
+  const updatedRepQueue = repQueue.map(item => {
+    if (!sameRecord(item)) return item;
+
+    return {
+      ...item,
+      ...cleanedRec,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: "",
+      quote_seen: true
+    };
+  });
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedMain));
+  localStorage.setItem(espin_rep_queue, JSON.stringify(updatedRepQueue));
+  pingLifecycleSync();
+
+  state.records = updatedMain;
+  state.selectedId = finalId;
+
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+
+  console.log("OPENED RECORD:", cleanedRec);
+}
 
   function sameRecord(item) {
     return (
