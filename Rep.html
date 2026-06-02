@@ -735,19 +735,21 @@ td:nth-child(14){
   color:#d9c98a;
 ">
   AXIS does not automatically generate sales opportunities, recommend offers,
-  select buyers, determine equipment value, determine replacement decisions,
-  determine disposal decisions, or automatically apply trade-in credits.
+select next-best actions, score customers, select buyers, determine equipment
+value, determine replacement decisions, determine disposal decisions, determine
+pricing, or automatically apply trade-in credits.
 
-  <br><br>
+<br><br>
 
-  AXIS organizes OEM-defined review conditions, rep-entered quote activity,
-  manual trade-in references, quote approval status, follow-up visibility,
-  and manager workflow review for human decision-making.
+AXIS organizes OEM-defined review conditions, rep-entered quote activity,
+manual trade-in references, quote approval status, follow-up visibility,
+and manager visibility review for human decision-making.
 
-  <br><br>
+<br><br>
 
-  Final decisions remain with authorized OEM, customer, finance, legal,
-  compliance, procurement, service, sales, and operational stakeholders.
+Final pricing, project, replacement, trade-in, disposal, procurement,
+service, sales, finance, legal, compliance, and operational decisions remain
+with authorized OEM and customer stakeholders.
 </div>
       <div class="strip">
         <div class="chip">Client-side only until explicit action</div>
@@ -879,7 +881,7 @@ td:nth-child(14){
 <th>Associated Trade-In Equipment</th>
 <th>Rep-Applied Trade-In Credit</th>
 <th>Status</th>
-<th>Workflow Review Step</th>
+<th>Manual Review Step</th>
 <th>Actions</th>
         </tr>
       </thead>
@@ -914,7 +916,7 @@ td:nth-child(14){
                   <th>Serial</th>
                   <th>DOM</th>
                   <th>Age</th>
-		<th>Review Priority</th>
+		<th>Review Level</th>
 <th>Manual Trade-In Reference</th>
 <th>Facility</th>
 <th>Review Condition</th>
@@ -941,7 +943,7 @@ td:nth-child(14){
   <button type="button" class="green" id="exportQuotePdfBtn">Submit Quote for Approval</button>
   <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
   <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
-  <button type="button" class="pink" id="connectBtn">Send to Siemens Disposal</button>
+  <button type="button" class="pink" id="connectBtn">Send to Disposal Review</button>
 <button type="button" class="red" id="deleteNewProjectBtn">Delete Lost Project</button>
 </div>
 
@@ -957,7 +959,7 @@ td:nth-child(14){
     <option value="site_visit">Site Visit Scheduled</option>
     <option value="trade_review">Trade-In Review Started</option>
     <option value="budget_discussion">Budget Discussion</option>
-    <option value="replacement_planning">Replacement Planning</option>
+    <option value="replacement_planning">Replacement Discussion Logged</option>
     <option value="follow_up">Follow-Up Scheduled</option>
     <option value="delayed">Delayed</option>
     <option value="declined">Declined</option>
@@ -1052,7 +1054,7 @@ function getRecordGroupKey(rec) {
     ""
   ).trim();
 }
-function getReviewPriorityScore(rec) {
+function getReviewVisibilityScore(rec) {
   let score = 0;
 
   const age = Number(ageFromDom(rec.dom)) || 0;
@@ -1062,23 +1064,23 @@ function getReviewPriorityScore(rec) {
   const condition = String(rec.condition || "").toLowerCase().trim();
   const service = String(rec.service_cost_trend || "").toLowerCase().trim();
 
-  // AGE REVIEW PRIORITY
+  // AGE REVIEW VISIBILITY
   if (age >= threshold) score += 2;
   if (age >= threshold + 2) score += 2;
 
-  // UTILIZATION
+  // UTILIZATION REVIEW VISIBILITY
   if (utilization >= 85) score += 2;
   else if (utilization >= 65) score += 1;
 
-  // CONDITION
+  // CONDITION REVIEW VISIBILITY
   if (condition === "poor") score += 2;
   else if (condition === "fair") score += 1;
 
-  // SERVICE COST TREND
+  // SERVICE REVIEW VISIBILITY
   if (service === "high") score += 2;
   else if (service === "rising") score += 1;
 
-  // Review condition priority boost
+  // Review condition visibility adjustment
   const alerts = getAlerts(rec);
   if (alerts.some(a => a.type === "disposal")) score += 3;
   if (alerts.some(a => a.type === "replacement")) score += 2;
@@ -1190,12 +1192,12 @@ function renderStats() {
   $("statSubmitted").textContent = "$" + wonEstimatedProfit.toLocaleString();
 
   document.querySelector("#statPostponed")
-    .closest(".stat")
-    .querySelector(".k").textContent = "Total Quote Pipeline";
+  .closest(".stat")
+  .querySelector(".k").textContent = "Rep-Entered Open Quote Total";
 
-  document.querySelector("#statSubmitted")
-    .closest(".stat")
-    .querySelector(".k").textContent = "Won Estimated Profit";
+document.querySelector("#statSubmitted")
+  .closest(".stat")
+  .querySelector(".k").textContent = "Rep-Entered Won Profit";
 }
 function renderRepMenu() {
   const container = document.getElementById("repFeed");
@@ -1292,17 +1294,17 @@ function getPrimaryTrigger(rec) {
   return alerts[0] || null;
 }
 
-function getQuoteReviewPriorityLevel(rec) {
+function getQuoteFollowUpLevel(rec) {
   const status = String(rec.quote_status || "").toLowerCase();
-  const priority = String(rec.quote_priority || "").toLowerCase();
+  const level = String(rec.quote_priority || "").toLowerCase();
   const closeDate = rec.quote_expected_close_date || "";
 
   if (status === "won") return "WON";
   if (status === "lost") return "LOST";
 
-  if (priority === "high") return "HIGH";
-  if (priority === "medium") return "MED";
-  if (priority === "low") return "LOW";
+  if (level === "high") return "HIGH";
+  if (level === "medium") return "STANDARD";
+  if (level === "low") return "MONITOR";
 
   if (closeDate) {
     const today = new Date(todayISO());
@@ -1310,58 +1312,56 @@ function getQuoteReviewPriorityLevel(rec) {
     const days = Math.ceil((close - today) / (1000 * 60 * 60 * 24));
 
     if (days <= 14) return "HIGH";
-    if (days <= 45) return "MED";
+    if (days <= 45) return "STANDARD";
   }
 
-  return "MED";
+  return "STANDARD";
 }
-
 function getQuoteSignalLabel(rec) {
   if (!rec.quote_amount) return "";
 
   const status = String(rec.quote_status || "draft").toUpperCase();
-  const priority = getQuoteReviewPriorityLevel(rec);
+  const level = getQuoteFollowUpLevel(rec);
 
   return `
     <span class="pill pending">
       QUOTE ${status}
     </span>
     <div class="mini" style="margin-top:6px;color:#a2f5ff;font-weight:800;">
-      ${priority} QUOTE PRIORITY
+      ${level} FOLLOW-UP VISIBILITY
     </div>
   `;
 }
-
-function getReviewPriorityBadge(label) {
-  if (label === "HIGH") return '<span class="pill ready">HIGH</span>';
-  if (label === "MED") return '<span class="pill pending">MED</span>';
-  if (label === "LOW") return '<span class="pill local">LOW</span>';
+function getReviewVisibilityBadge(label) {
+  if (label === "HIGH") return '<span class="pill ready">HIGH VISIBILITY</span>';
+  if (label === "STANDARD") return '<span class="pill pending">STANDARD</span>';
+  if (label === "MONITOR") return '<span class="pill local">MONITOR</span>';
   if (label === "WON") return '<span class="pill submitted">WON</span>';
   if (label === "LOST") return '<span class="pill postponed">LOST</span>';
-  return '<span class="pill local">LOW</span>';
+  return '<span class="pill local">MONITOR</span>';
 }
-function getUrgencyLevel(rec) {
+function getReviewDisplayLevel(rec) {
   const alerts = getAlerts(rec);
   const type = alerts[0]?.type || "";
 
   if (type === "disposal" || type === "replacement") {
-    return "urgent";
+    return "high_visibility";
   }
 
   if (type === "upgrade" || type === "service") {
-    return "medium";
+    return "standard_visibility";
   }
 
   if (type === "planning" || type === "proactive") {
-    return "low";
+    return "monitor";
   }
 
-  const score = getReviewPriorityScore(rec);
+  const score = getReviewVisibilityScore(rec);
 
-  if (score >= 6) return "urgent";
-  if (score >= 3) return "medium";
+  if (score >= 6) return "high_visibility";
+  if (score >= 3) return "standard_visibility";
 
-  return "low";
+  return "monitor";
 }
 function submitAssociatedTradeIn(kind) {
   const rec = state.records.find(r => r.id === state.selectedId);
@@ -1504,14 +1504,14 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
         <td>
           ${
             rec.quote_status === "lost"
-              ? '<span class="next-action-label next-action-disposition">Delete or Archive</span>'
-              : rec.quote_status === "won"
-              ? '<span class="next-action-label next-action-completed">Moved to Lifecycle</span>'
-              : rec.tradein_required === "no"
-              ? '<span class="next-action-label next-action-quote">Quote Review</span>'
-              : rec.tradein_sync_received
-              ? '<span class="next-action-label next-action-quote">Finalize Draft Quote</span>'
-              : '<span class="next-action-label next-action-proactive">Send Trade-In</span>'
+  ? '<span class="next-action-label next-action-disposition">Manual Close / Archive</span>'
+  : rec.quote_status === "won"
+  ? '<span class="next-action-label next-action-completed">Marked for Lifecycle Review</span>'
+  : rec.tradein_required === "no"
+  ? '<span class="next-action-label next-action-quote">Quote Review</span>'
+  : rec.tradein_sync_received
+  ? '<span class="next-action-label next-action-quote">Review Draft Quote</span>'
+  : '<span class="next-action-label next-action-proactive">Send to Trade-In Review</span>'
           }
         </td>
 
@@ -1680,28 +1680,28 @@ function renderTable() {
   }
 
   const getQuotePriority = (rec) => {
-    const status = String(rec.quote_status || "").toLowerCase();
-    const priority = String(rec.quote_priority || "").toLowerCase();
-    const closeDate = rec.quote_expected_close_date || "";
+  const status = String(rec.quote_status || "").toLowerCase();
+  const priority = String(rec.quote_priority || "").toLowerCase();
+  const closeDate = rec.quote_expected_close_date || "";
 
-    if (status === "won") return "WON";
-    if (status === "lost") return "LOST";
+  if (status === "won") return "WON";
+  if (status === "lost") return "LOST";
 
-    if (priority === "high") return "HIGH";
-    if (priority === "medium") return "MED";
-    if (priority === "low") return "LOW";
+  if (priority === "high") return "HIGH";
+  if (priority === "medium") return "STANDARD";
+  if (priority === "low") return "MONITOR";
 
-    if (closeDate) {
-      const today = new Date(todayISO());
-      const close = new Date(closeDate);
-      const days = Math.ceil((close - today) / (1000 * 60 * 60 * 24));
+  if (closeDate) {
+    const today = new Date(todayISO());
+    const close = new Date(closeDate);
+    const days = Math.ceil((close - today) / (1000 * 60 * 60 * 24));
 
-      if (days <= 14) return "HIGH";
-      if (days <= 45) return "MED";
-    }
+    if (days <= 14) return "HIGH";
+    if (days <= 45) return "STANDARD";
+  }
 
-    return "MED";
-  };
+  return "STANDARD";
+};
   let visibleRecords = state.records.filter(r =>
     r.project_type !== "new_sales_project"
   );
@@ -1728,22 +1728,22 @@ function renderTable() {
       if (rec.quote_amount) {
         const quotePriority = getQuotePriority(rec);
         if (quotePriority === "HIGH") return 120;
-        if (quotePriority === "MED") return 90;
-        if (quotePriority === "LOW") return 60;
-        if (quotePriority === "WON") return 20;
-        if (quotePriority === "LOST") return 10;
+if (quotePriority === "STANDARD") return 90;
+if (quotePriority === "MONITOR") return 60;
+if (quotePriority === "WON") return 20;
+if (quotePriority === "LOST") return 10;
         return 70;
       }
 
       const alerts = getAlerts(rec);
-      const reviewPriorityScore = getReviewPriorityScore(rec);
+      const reviewVisibilityScore = getReviewVisibilityScore(rec);
 
-if (alerts.some(a => a.type === "disposal")) return 100 + reviewPriorityScore;
-if (alerts.some(a => a.type === "replacement")) return 80 + reviewPriorityScore;
-if (alerts.some(a => a.type === "upgrade")) return 60 + reviewPriorityScore;
-if (alerts.some(a => a.type === "planning")) return 40 + reviewPriorityScore;
+if (alerts.some(a => a.type === "disposal")) return 100 + reviewVisibilityScore;
+if (alerts.some(a => a.type === "replacement")) return 80 + reviewVisibilityScore;
+if (alerts.some(a => a.type === "upgrade")) return 60 + reviewVisibilityScore;
+if (alerts.some(a => a.type === "planning")) return 40 + reviewVisibilityScore;
 
-return reviewPriorityScore;
+return reviewVisibilityScore;
     };
 
     return score(b) - score(a);
@@ -1779,9 +1779,9 @@ return reviewPriorityScore;
     rec.project_type === "new_sales_project"
       ? "-"
       : rec.quote_amount
-      ? getReviewPriorityBadge(getQuotePriority(rec))
+      ? getReviewVisibilityBadge(getQuotePriority(rec))
       : (() => {
-          const p = getReviewPriorityScore(rec);
+          const p = getReviewVisibilityScore(rec);
           if (p >= 6) return '<span class="pill ready">HIGH</span>';
           if (p >= 3) return '<span class="pill pending">MED</span>';
           return '<span class="pill local">LOW</span>';
@@ -2191,7 +2191,7 @@ function getInitialTriggerInfo(rec) {
     };
   }
 
-  const pressure = getReviewPriorityScore({
+  const pressure = getReviewVisibilityScore({
     ...rec,
     quote_amount: "",
     quote_status: "",
@@ -2248,8 +2248,8 @@ function getInitialTriggerExplanation(rec) {
 
   if (!trigger) {
     return {
-      reason: "No active lifecycle trigger was found for this equipment.",
-      repTalkTrack: "There is no active AXIS trigger on this record right now."
+      reason: "No active lifecycle review condition was found for this equipment.",
+      repTalkTrack: "There is no active AXIS review condition on this record right now."
     };
   }
 
@@ -2277,44 +2277,46 @@ function getInitialTriggerExplanation(rec) {
     if (days <= 180) {
       return {
         reason: `Service coverage date is approaching or has passed. Current service/contract date on file: ${contractDate}.`,
-        repTalkTrack: `This record was surfaced because the service coverage timing is approaching a decision window. This gives the facility time to review renewal, replacement, upgrade, trade-in, or disposal options before timing becomes reactive.`
+        repTalkTrack: `This record was surfaced because service coverage timing may need manual review. The rep may document whether any follow-up discussion is appropriate through the normal OEM/customer process.`
       };
     }
   }
+
   if (trigger.type === "proactive") {
     return {
       reason:
         rec.proactive_reason ||
         "This record was surfaced before the normal lifecycle threshold was reached.",
       repTalkTrack:
-        "This record was surfaced as an early planning review signal. The rep may review the record and document whether customer follow-up is appropriate and confirm whether planning, upgrade review, budget discussion, replacement timing, trade-in, or disposal review should begin before the normal lifecycle threshold."
+        "This record was surfaced as an early planning review signal. The rep may review the record and document whether customer follow-up is appropriate. AXIS does not select the next action or determine the customer decision."
     };
   }
+
   if (trigger.type === "disposal") {
     return {
-      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record is beyond the disposal/disposition review window.`,
-      repTalkTrack: `This record was surfaced because the equipment is past the normal lifecycle planning window. The facility should review whether continued use, replacement, trade-in, removal, or disposal planning makes sense.`
+      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record is beyond the OEM-defined disposition review window.`,
+      repTalkTrack: `This record was surfaced for manual review because the equipment is past the normal lifecycle planning window. Authorized OEM/customer stakeholders decide whether any continued-use, replacement, trade-in, removal, or disposal discussion is appropriate.`
     };
   }
 
   if (trigger.type === "replacement") {
     return {
-      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has reached the replacement planning window.`,
-      repTalkTrack: `This record was surfaced because the equipment has entered a replacement planning window based on age and OEM-defined lifecycle rules. This does not mean replacement is required, but it should be reviewed with the facility.`
+      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has reached the OEM-defined replacement timing review window.`,
+      repTalkTrack: `This record was surfaced because the equipment has entered a replacement timing review window based on OEM-defined lifecycle rules. This does not mean replacement is required. Final review and decisions remain with authorized OEM/customer stakeholders.`
     };
   }
 
   if (trigger.type === "upgrade") {
     return {
-      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has reached the upgrade review window.`,
-      repTalkTrack: `This record was surfaced because the system may be approaching an upgrade or modernization review window. The facility can evaluate whether software, hardware, or workflow upgrades are available before replacement becomes the only discussion.`
+      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has reached the OEM-defined upgrade timing review window.`,
+      repTalkTrack: `This record was surfaced because the system may be approaching an upgrade or modernization review window. The facility can evaluate, through its normal OEM/customer process, whether any software, hardware, service, or workflow discussion is appropriate.`
     };
   }
 
   if (trigger.type === "planning") {
     return {
-      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has entered the budget planning window.`,
-      repTalkTrack: `This record was surfaced early so the facility can review whether the equipment should be included in capital planning before timing becomes urgent.`
+      reason: `${modality} is ${age} years old. OEM lifecycle threshold is ${threshold} years, and this record has entered the OEM-defined budget timing review window.`,
+      repTalkTrack: `This record was surfaced early so the facility can decide, through its normal planning process, whether the equipment should be discussed for future capital planning.`
     };
   }
 
@@ -2335,15 +2337,15 @@ function getInitialTriggerExplanation(rec) {
 
     return {
       reason: serviceReasons.length
-        ? `Service review was triggered because ${serviceReasons.join(", ")}.`
-        : "Service review was triggered by OEM-defined service indicators.",
-      repTalkTrack: `This record was surfaced because service-related indicators suggest the equipment should be reviewed. This gives the facility a reason to discuss service exposure, upgrade paths, replacement timing, or follow-up planning.`
+        ? `Service review was surfaced because ${serviceReasons.join(", ")}.`
+        : "Service review was surfaced by OEM-defined service indicators.",
+      repTalkTrack: `This record gives the rep context for a manual discussion about service status, customer impact, or follow-up timing. AXIS does not determine service action, replacement, trade-in, disposal, or customer decision.`
     };
   }
 
   return {
     reason: `This record was surfaced based on OEM-defined lifecycle review rules.`,
-repTalkTrack: `This equipment appears in the review queue based on rules configured by the OEM.`
+    repTalkTrack: `This equipment appears in the review queue based on rules configured by the OEM.`
   };
 }
 function renderNewProjectDetail(rec) {
@@ -2526,19 +2528,25 @@ ${
           rec.quote_created_at || rec.quote_status
             ? `
               <div style="font-weight:900;color:#41ff9c;font-size:18px;">
-                $${quoteAmount.toLocaleString()} Gross Project Value
-              </div>
+  $${quoteAmount.toLocaleString()} Gross Quote Amount
+</div>
 
-              <div class="mini" style="margin-top:6px;line-height:1.5;">
-                Trade-In Credit: -$${tradeInCredit.toLocaleString()}<br>
-                Net Project Value: $${netQuote.toLocaleString()}<br>
-                Estimated Cost: $${estimatedCost.toLocaleString()}<br>
-                Estimated Profit:
-                <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">
-                  $${profit.toLocaleString()}
-                </strong><br>
-                Margin: ${margin}%
-              </div>
+<div class="mini" style="margin-top:6px;line-height:1.5;">
+  Manually Applied Trade-In Credit: -$${tradeInCredit.toLocaleString()}<br>
+  Net Quote Amount: $${netQuote.toLocaleString()}<br>
+  Rep-Entered Estimated Cost: $${estimatedCost.toLocaleString()}<br>
+  Rep-Entered Estimated Profit:
+  <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">
+    $${profit.toLocaleString()}
+  </strong><br>
+  Estimated Margin: ${margin}%
+</div>
+
+<div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+  Financial figures are calculated from rep-entered quote amount, rep-entered
+  estimated cost, and manually applied trade-in credit. AXIS does not determine
+  pricing, profitability, margin, value, or financial outcome.
+</div>
             `
             : `
               <span style="color:#ffd84d;font-weight:800;">
@@ -2989,7 +2997,7 @@ ${
   style="margin-top:10px;"
   onclick="applyExternalTradeInToQuote('${rec.id}')"
 >
-  Apply Trade-In Credit to Quote
+Manually Apply Trade-In Credit to Quote
 </button>
       </div>
     `
@@ -3036,26 +3044,30 @@ ${
               $${quoteAmount.toLocaleString()} Gross Quote
             </div>
 
-            <div class="mini" style="margin-top:6px;line-height:1.5;">
-             Trade-In Credit: -$${tradeInCredit.toLocaleString()}
-<br>
-Trade-In Sync Value: $${Number(rec.tradein_estimated_value || 0).toLocaleString()}
-<br>
-Net Quote: $${netQuote.toLocaleString()}
-<br>
-Adjusted Project Value: $${netQuote.toLocaleString()}
-            </div>
+          <div class="mini" style="margin-top:6px;line-height:1.5;">
+  Manually Applied Trade-In Credit: -$${tradeInCredit.toLocaleString()}
+  <br>
+  Trade-In Reference Amount: $${Number(rec.tradein_estimated_value || 0).toLocaleString()}
+  <br>
+  Net Quote Amount: $${netQuote.toLocaleString()}
+</div>
 
-            <div style="margin-top:10px;color:#cdf3ff;font-weight:800;">
-              Estimated Profit:
-              <span style="color:${profit >= 0 ? '#41ff9c' : '#ff6b6b'};">
-                $${profit.toLocaleString()}
-              </span>
-            </div>
+<div style="margin-top:10px;color:#cdf3ff;font-weight:800;">
+  Rep-Entered Estimated Profit:
+  <span style="color:${profit >= 0 ? '#41ff9c' : '#ff6b6b'};">
+    $${profit.toLocaleString()}
+  </span>
+</div>
 
-            <div class="mini" style="margin-top:4px;">
-              Estimated Cost: $${estimatedCost.toLocaleString()} • Margin: ${margin}%
-            </div>
+<div class="mini" style="margin-top:4px;">
+  Rep-Entered Estimated Cost: $${estimatedCost.toLocaleString()} • Estimated Margin: ${margin}%
+</div>
+
+<div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+  Financial figures are calculated from rep-entered quote amount, rep-entered
+  estimated cost, and manually applied trade-in credit. AXIS does not determine
+  pricing, profitability, margin, value, or financial outcome.
+</div>
 
             <div class="mini" style="margin-top:10px;">
               Quote Status:
@@ -3064,18 +3076,24 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
               </strong>
             </div>
 
-            <div class="mini" style="margin-top:6px;">
-              Quote Priority:
-              <strong style="color:${
-                rec.quote_priority === "high"
-                  ? "#ff6b6b"
-                  : rec.quote_priority === "medium"
-                  ? "#ffd84d"
-                  : "#41ff9c"
-              };">
-                ${(rec.quote_priority || "medium").toUpperCase()}
-              </strong>
-            </div>
+           <div class="mini" style="margin-top:6px;">
+  Quote Follow-Up Level:
+  <strong style="color:${
+    rec.quote_priority === "high"
+      ? "#ff6b6b"
+      : rec.quote_priority === "medium"
+      ? "#ffd84d"
+      : "#41ff9c"
+  };">
+    ${
+      rec.quote_priority === "high"
+        ? "HIGH FOLLOW-UP"
+        : rec.quote_priority === "medium"
+        ? "STANDARD FOLLOW-UP"
+        : "LOW FOLLOW-UP"
+    }
+  </strong>
+</div>
 
             <div class="mini" style="margin-top:6px;">
   Expected Close:
@@ -3158,7 +3176,7 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
                     font-size:13px;
                     line-height:1.45;
                   ">
-                    Won quote is ready to flow into Project Management for install/removal planning.
+                    Won quote is marked for manual project management review for install/removal planning.
                   </div>
                 `
                 : ""
@@ -3261,39 +3279,35 @@ Adjusted Project Value: $${netQuote.toLocaleString()}
 
     <div class="v" style="line-height:1.55;">
 
-      <div style="color:#41ff9c;font-weight:900;margin-bottom:6px;">
-        Quote Amount
-      </div>
+     <div style="color:#41ff9c;font-weight:900;margin-bottom:6px;">
+  Quote Amount
+</div>
 
-      <div class="mini" style="margin-bottom:12px;">
-        The total proposed sale price to the customer.
-        <br><br>
-        Example: if the OEM rep is quoting a replacement system, upgrade package, service package, or lifecycle-related project, this is the proposed revenue number.
-      </div>
+<div class="mini" style="margin-bottom:12px;">
+  The total proposed sale price manually entered by the rep or OEM user.
+  <br><br>
+  AXIS displays the entered amount for review visibility only and does not determine price, customer value, or sales outcome.
+</div>
 
-      <div style="color:#ffd84d;font-weight:900;margin-bottom:6px;">
-        Trade-In Credit
-      </div>
+<div style="color:#ffd84d;font-weight:900;margin-bottom:6px;">
+  Manually Applied Trade-In Credit
+</div>
 
-      <div class="mini" style="margin-bottom:12px;">
-       Rep-applied trade-in credit used to adjust the customer quote.
-        <br><br>
-        This lowers the net quote amount while keeping trade-in value visible in the financial review.
-      </div>
+<div class="mini" style="margin-bottom:12px;">
+  Rep-applied trade-in credit used to adjust the customer quote.
+  <br><br>
+  This lowers the net quote amount while keeping the manually applied trade-in reference visible in the financial review.
+</div>
 
-      <div style="color:#43b0ff;font-weight:900;margin-bottom:6px;">
-        Estimated Cost
-      </div>
+<div style="color:#43b0ff;font-weight:900;margin-bottom:6px;">
+  Rep-Entered Estimated Cost
+</div>
 
-      <div class="mini">
-        The OEM’s internal estimated cost to deliver that quote.
-        <br><br>
-        This could include equipment cost, labor, install cost, service cost, logistics, removal cost, discount impact, or other internal delivery costs. In this demo, it is manually entered.
-      </div>
-
-    </div>
-  </div>
-
+<div class="mini">
+  The OEM’s internal estimated cost manually entered by the rep or authorized OEM user.
+  <br><br>
+  This may include equipment cost, labor, install cost, service cost, logistics, removal cost, discount impact, or other internal delivery costs. AXIS does not determine cost, margin, profitability, or financial outcome.
+</div>
 `;
 const isNewProject = rec.project_type === "new_sales_project";
 
@@ -3357,22 +3371,22 @@ function pushToRepFeed(rec) {
   const now = Date.now();
   const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
 
-  const reviewPriorityScore = getReviewPriorityScore(rec);
+  const reviewVisibilityScore = getReviewVisibilityScore(rec);
   const alerts = getAlerts(rec).map(a => a.label).join(", ");
 
   const exists = queue.find(q => q.key === key);
 
   if (exists) {
     const lastTime = new Date(exists.timestamp).getTime();
-    const oldReviewPriorityScore = Number(exists.reviewPriorityScore || exists.pressure || 0);
+    const oldReviewVisibilityScore = Number(exists.reviewVisibilityScore || exists.pressure || 0);
 
     const timePassed = now - lastTime >= THIRTY_DAYS;
-const reviewPriorityIncreased = reviewPriorityScore > oldReviewPriorityScore;
+const reviewVisibilityIncreased = reviewVisibilityScore > oldReviewVisibilityScore;
 
-if (!timePassed && !reviewPriorityIncreased) return;
+if (!timePassed && !reviewVisibilityIncreased) return;
 
 exists.timestamp = new Date().toISOString();
-    exists.reviewPriorityScore = reviewPriorityScore;
+    exists.reviewVisibilityScore = reviewVisibilityScore;
     exists.alert = alerts;
 exists.status = rec.rep_status || "needed";
 
@@ -3388,7 +3402,7 @@ exists.status = rec.rep_status || "needed";
   model: rec.model,
   modality: rec.modality,
   alert: alerts,
-  reviewPriorityScore,
+  reviewVisibilityScore,
   status: rec.rep_status || "needed",
   rep: rec.sales_rep_first
     ? `${rec.sales_rep_first} ${rec.sales_rep_last || ""}`
@@ -5524,7 +5538,7 @@ tradein_synced_to_axis_at: "",
 
     rep_status: "new_project",
     rep_action: "new_project_created",
-    rep_notes: "New AXIS sales project created.",
+    rep_notes: "New AXIS project review item created.",
     rep_last_action_at: "",
     rep_hidden: false,
     rep_deleted: false,
@@ -5671,7 +5685,13 @@ const ccEmail = $("quoteCcEmail").value.trim();
     <strong>Estimated Margin:</strong> ${margin}%
     <br><br>
 
-    <strong>Quote Priority:</strong> ${priority.toUpperCase()}
+    <strong>Quote Follow-Up Level:</strong> ${
+  priority === "high"
+    ? "HIGH FOLLOW-UP"
+    : priority === "medium"
+    ? "STANDARD FOLLOW-UP"
+    : "LOW FOLLOW-UP"
+}
     <br>
 
     <strong>Expected Close Date:</strong> ${expectedCloseDate || "Not set"}
@@ -6108,11 +6128,10 @@ if (notes.trim()) {
 
   doc.setFontSize(8);
   doc.setTextColor(90);
-
-  const disclaimer = doc.splitTextToSize(
-    "This quote is generated from AXIS data. Final pricing, cost, margin, trade-in credit, project scope, install requirements, removal requirements, and contract terms must be validated and approved by authorized OEM and customer stakeholders.",
-    180
-  );
+const disclaimer = doc.splitTextToSize(
+  "This quote document is prepared from user-entered AXIS fields. Final pricing, cost, margin, trade-in credit, project scope, install requirements, removal requirements, and contract terms must be validated and approved by authorized OEM and customer stakeholders. AXIS does not determine pricing, value, margin, profitability, trade-in credit, or customer decision.",
+  180
+);
 
   doc.text(disclaimer, 14, y);
 
@@ -6346,10 +6365,9 @@ function markNewProjectLost(id) {
   const rec = state.records.find(r => r.id === id);
   if (!rec) return;
 
-  if (!confirm("Mark this project as lost? This will remove its value from pipeline totals.")) {
-    return;
-  }
-
+ if (!confirm("Mark this project as lost? This will remove its rep-entered quote amount from active quote totals.")) {
+  return;
+}
   rec.quote_status = "lost";
   rec.rep_status = "lost";
   rec.lifecycle_completed = false;
@@ -6751,12 +6769,12 @@ document.addEventListener("DOMContentLoaded", init);
       <option value="lost">Lost</option>
     </select>
 
-    <label>Quote Priority</label>
-    <select id="quotePriority">
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-    </select>
+   <label>Quote Follow-Up Level</label>
+<select id="quotePriority">
+  <option value="high">High Follow-Up</option>
+  <option value="medium">Standard Follow-Up</option>
+  <option value="low">Low Follow-Up</option>
+</select>
 
     <label>Expected Close Date</label>
     <input id="quoteExpectedCloseDate" type="date" />
@@ -6782,7 +6800,7 @@ document.addEventListener("DOMContentLoaded", init);
 <label>Quote Follow-Up Note</label>
 <textarea
   id="quoteFollowUpAlertNote"
-  placeholder="Example: Follow up before quote goes stale, customer waiting on budget approval, call before close date..."
+  placeholder="Example: Follow up before quote expiration, customer waiting on budget approval, call before close date..."
 ></textarea>
     <label>Install Required</label>
     <select id="quoteInstallRequired">
