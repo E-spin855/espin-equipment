@@ -1068,52 +1068,131 @@
 
       return String(val).slice(0, 10);
     }
+function getAlerts(rec) {
+  if (!rec || rec.alert_enabled === "no") return [];
 
-    function getAlerts(rec) {
-      if (!rec || rec.alert_enabled === "no") return [];
+  if (rec.next_action_date && rec.next_action_date > todayISO()) {
+    return [{
+      type: "postponed",
+      label: "Follow-up scheduled by rep.",
+      displayType: "Follow-Up Scheduled",
+      source: "Rep-entered follow-up date"
+    }];
+  }
 
-      if (rec.next_action_date && rec.next_action_date > todayISO()) {
-        return [{ type: "postponed", label: "Follow-Up Scheduled" }];
-      }
+  const age = ageFromDom(rec.dom);
+  const threshold = Number(rec.threshold_years || 0);
 
-      const importedType = lower(rec.oem_review_type || rec.review_type || rec.alert_override || rec.proactive_type || "");
-      const importedLabel = clean(rec.oem_review_label || rec.review_label || rec.proactive_reason || "");
-      const importedReason = clean(rec.oem_review_reason || rec.review_reason || "");
-      const importedDate = clean(rec.oem_review_date || rec.review_date || rec.proactive_date || "");
+  if (
+    threshold > 0 &&
+    age !== null &&
+    age !== undefined &&
+    Number(age) >= threshold
+  ) {
+    return [{
+      type: "lifecycle",
+      label: `Equipment age is ${age} years. OEM review threshold is ${threshold} years.`,
+      displayType: "OEM Age Review Window",
+      source: "OEM-defined age threshold"
+    }];
+  }
 
-      const hasImportedReview =
-        importedType ||
-        importedLabel ||
-        importedReason ||
-        importedDate ||
-        lower(rec.proactive_signal) === "yes" ||
-        lower(rec.proactive_signal) === "true";
+  const importedType = lower(
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    ""
+  );
 
-      if (!hasImportedReview) return [];
+  const importedLabel = clean(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.proactive_reason ||
+    ""
+  );
 
-      const allowedTypes = [
-        "planning",
-        "service",
-        "utilization",
-        "lifecycle",
-        "tradein",
-        "quote",
-        "project",
-        "proactive",
-        "review",
-        "replacement",
-        "upgrade",
-        "disposal",
-        "postponed"
-      ];
+  const importedReason = clean(
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
 
-      const safeType = allowedTypes.includes(importedType) ? importedType : "review";
+  const importedDate = clean(
+    rec.oem_review_date ||
+    rec.review_date ||
+    rec.proactive_date ||
+    ""
+  );
 
-      return [{
-        type: safeType,
-        label: importedLabel || importedReason || "Imported Review Field"
-      }];
-    }
+  const hasImportedReview =
+    importedType ||
+    importedLabel ||
+    importedReason ||
+    importedDate ||
+    lower(rec.proactive_signal) === "yes" ||
+    lower(rec.proactive_signal) === "true";
+
+  if (!hasImportedReview) return [];
+
+  const safeTypeMap = {
+    planning: "planning",
+    capital_planning_signal: "planning",
+    capital_planning: "planning",
+    service: "service",
+    service_review: "service",
+    utilization: "utilization",
+    utilization_review: "utilization",
+    lifecycle: "lifecycle",
+    lifecycle_review: "lifecycle",
+    tradein: "tradein",
+    trade_in: "tradein",
+    quote: "quote",
+    quote_review: "quote",
+    project: "project",
+    project_review: "project",
+    proactive: "proactive",
+    review: "review",
+    replacement: "replacement",
+    upgrade: "upgrade",
+    disposal: "disposal",
+    disposition: "disposal"
+  };
+
+  const displayTypeMap = {
+    planning: "Planning Window",
+    capital_planning_signal: "Capital Planning Window",
+    capital_planning: "Capital Planning Window",
+    service: "Service Review",
+    service_review: "Service Review",
+    utilization: "Utilization Review",
+    utilization_review: "Utilization Review",
+    lifecycle: "Lifecycle Review",
+    lifecycle_review: "Lifecycle Review",
+    tradein: "Trade-In Review",
+    trade_in: "Trade-In Review",
+    quote: "Quote Review",
+    quote_review: "Quote Review",
+    project: "Project Review",
+    project_review: "Project Review",
+    proactive: "OEM Review Notice",
+    review: "OEM Review Notice",
+    replacement: "Replacement Review",
+    upgrade: "Upgrade Review",
+    disposal: "Disposition Review",
+    disposition: "Disposition Review"
+  };
+
+  const safeType = safeTypeMap[importedType] || "review";
+  const displayType = displayTypeMap[importedType] || "OEM Review Notice";
+
+  return [{
+    type: safeType,
+    label: importedLabel || importedReason || "OEM review information attached to this record.",
+    displayType,
+    source: "OEM-imported review field"
+  }];
+}
 function formatReviewText(value) {
   const raw = String(value || "").trim();
   const v = raw.toLowerCase();
@@ -1223,60 +1302,55 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     }
 
     function renderReviewSignalCell(rec) {
-      if (rec.lifecycle_completed) return `<span class="alert-badge alert-completed">Reviewed</span>`;
+  if (rec.lifecycle_completed) {
+    return `<span class="alert-badge alert-completed">Reviewed</span>`;
+  }
 
-      if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-        return `<span class="alert-badge alert-proactive">Trade-In Update</span>`;
-      }
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+    return `<span class="alert-badge alert-proactive">Trade-In Update</span>`;
+  }
 
-      if (rec.quote_amount) {
-        const status = String(rec.quote_status || "draft").toUpperCase();
-        return `
-          <div class="quote-status-wrap">
-            <span class="quote-main-badge">Quote ${escapeHtml(status)}</span>
-            ${getQuoteFollowUpAlertBadge(rec)}
-          </div>
-        `;
-      }
+  if (rec.quote_amount) {
+    const status = String(rec.quote_status || "draft").toUpperCase();
 
-      const alerts = getAlerts(rec);
-      if (!alerts.length) return `<span class="alert-badge alert-none">Normal</span>`;
+    return `
+      <div class="quote-status-wrap">
+        <span class="quote-main-badge">Quote ${escapeHtml(status)}</span>
+        ${getQuoteFollowUpAlertBadge(rec)}
+      </div>
+    `;
+  }
 
-      const primary = alerts[0];
-      const type = lower(primary.type);
-      const proactiveType = lower(rec.proactive_type);
-      const proactiveReason = clean(rec.proactive_reason);
-      const proactiveDate = clean(rec.proactive_date);
+  const alerts = getAlerts(rec);
 
-      let badgeClass = "alert-badge alert-planning";
-      let badgeText = "Review";
+  if (!alerts.length) {
+    return `<span class="alert-badge alert-none">Normal</span>`;
+  }
 
-      if (type === "proactive" || proactiveType || proactiveReason || proactiveDate) {
-        badgeClass = "alert-badge alert-proactive";
-        badgeText = "Proactive";
-      } else if (type === "planning") {
-        badgeClass = "alert-badge alert-proactive";
-        badgeText = "Planning";
-      } else if (type === "replacement" || type === "lifecycle") {
-        badgeClass = "alert-badge alert-replacement";
-        badgeText = "Lifecycle";
-      } else if (type === "upgrade" || type === "utilization") {
-        badgeClass = "alert-badge alert-upgrade";
-        badgeText = "Utilization";
-      } else if (type === "service") {
-        badgeClass = "alert-badge alert-service";
-        badgeText = "Service";
-      } else if (type === "disposal") {
-        badgeClass = "alert-badge alert-disposal";
-        badgeText = "Disposition";
-      } else if (type === "postponed") {
-        badgeClass = "alert-badge alert-postponed";
-        badgeText = "Postponed";
-      }
+  const primary = alerts[0];
+  const type = lower(primary.type);
 
-      return `<span class="${badgeClass}">${escapeHtml(badgeText)}</span>`;
-    }
+  let badgeClass = "alert-badge alert-planning";
+  let badgeText = primary.displayType || "Review";
 
+  if (type === "planning") {
+    badgeClass = "alert-badge alert-proactive";
+  } else if (type === "replacement" || type === "lifecycle") {
+    badgeClass = "alert-badge alert-replacement";
+  } else if (type === "upgrade" || type === "utilization") {
+    badgeClass = "alert-badge alert-upgrade";
+  } else if (type === "service") {
+    badgeClass = "alert-badge alert-service";
+  } else if (type === "disposal") {
+    badgeClass = "alert-badge alert-disposal";
+  } else if (type === "postponed") {
+    badgeClass = "alert-badge alert-postponed";
+  } else if (type === "proactive" || type === "review") {
+    badgeClass = "alert-badge alert-proactive";
+  }
+
+  return `<span class="${badgeClass}">${escapeHtml(badgeText)}</span>`;
+}
     function renderRepReviewStatus(rec) {
       const label =
         rec.rep_selected_manual_action_label ||
@@ -1725,13 +1799,16 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
   const alerts = getAlerts(rec);
   const primary = alerts[0] || null;
 
-  const importedType = clean(
-    rec.oem_review_type ||
-    rec.review_type ||
-    rec.alert_override ||
-    rec.proactive_type ||
-    ""
-  );
+ const importedType = clean(
+  primary?.displayType ||
+  rec.oem_review_display_type ||
+  rec.review_display_type ||
+  rec.oem_review_type ||
+  rec.review_type ||
+  rec.alert_override ||
+  rec.proactive_type ||
+  ""
+);
 
   const importedLabel = getSafeReviewLabel(
     rec,
