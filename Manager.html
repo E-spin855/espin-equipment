@@ -1325,55 +1325,13 @@ function getManagerNextActionHtml(rec) {
 
   const repSelectedAction = getRepSelectedAction(rec);
 
-  if (repSelectedAction && repSelectedAction !== "remove") {
-    return `
-      <span class="pill pending" style="border:1px solid rgba(255,216,77,.55);color:#fff4cc;background:transparent;">
-        ${getRepActionLabel(repSelectedAction)}
-      </span>
-    `;
+  if (!repSelectedAction || repSelectedAction === "remove") {
+    return `<span class="mini">No rep action selected</span>`;
   }
-
-  if (rec.tradein_sync_received || rec.quote_status === "trade_in_credit_received") {
-    return `<span class="pill pending" style="border:1px solid #ffd84d;color:#ffe890;background:transparent;">FINALIZE QUOTE</span>`;
-  }
-
-  if (rec.quote_status === "sent") {
-    return `<span class="pill quote-sent">FOLLOW QUOTE</span>`;
-  }
-
-  if (rec.quote_status === "won") {
-    return `<span class="pill submitted">CLOSE WON</span>`;
-  }
-
-  if (rec.quote_status === "lost") {
-    return `<span class="pill postponed">REVIEW LOSS</span>`;
-  }
-
-  if (rec.quote_status === "draft" || rec.quote_amount) {
-    return `<span class="pill pending" style="border:1px solid #ffd84d;color:#ffe890;background:transparent;">REVIEW QUOTE</span>`;
-  }
-
-  const alerts = getAlerts(rec);
-  const first = alerts[0];
-
-  if (!first) {
-    return `<span class="mini">Monitor</span>`;
-  }
-
-  const nextMap = {
-    disposal: "TRADE-IN / DISPOSAL REVIEW",
-    replacement: "REPLACEMENT PLANNING",
-    upgrade: "UPGRADE REVIEW",
-    planning: "BUDGET PLANNING",
-    service: "SERVICE REVIEW",
-    proactive: "PROACTIVE REVIEW",
-    postponed: "FOLLOW-UP SCHEDULED",
-    completed: "COMPLETED"
-  };
 
   return `
     <span class="pill pending" style="border:1px solid rgba(255,216,77,.55);color:#fff4cc;background:transparent;">
-      ${nextMap[first.type] || first.label}
+      ${getRepActionLabel(repSelectedAction)}
     </span>
   `;
 }
@@ -2698,10 +2656,15 @@ function pushToRepFeed(rec) {
 
   const existingIndex = queue.findIndex(q => q.key === key);
 
+  const existing =
+    existingIndex >= 0
+      ? queue[existingIndex]
+      : {};
+
   const payload = {
     ...rec,
     key,
-    id: rec.id || uuid(),
+    id: rec.id || existing.id || uuid(),
 
     project:
       rec.site ||
@@ -2716,12 +2679,40 @@ function pushToRepFeed(rec) {
 
     timestamp:
       rec.last_pushed_at ||
-      new Date().toISOString()
+      existing.timestamp ||
+      new Date().toISOString(),
+
+    // Preserve rep manual selection only.
+    // Do NOT auto-fill this from lifecycle signal.
+    rep_action: existing.rep_action || rec.rep_action || "",
+    rep_selected_next_action:
+      existing.rep_selected_next_action ||
+      rec.rep_selected_next_action ||
+      "",
+
+    selected_next_action:
+      existing.selected_next_action ||
+      rec.selected_next_action ||
+      "",
+
+    next_action_selected:
+      existing.next_action_selected ||
+      rec.next_action_selected ||
+      "",
+
+    rep_next_action:
+      existing.rep_next_action ||
+      rec.rep_next_action ||
+      "",
+
+    rep_notes: existing.rep_notes || rec.rep_notes || "",
+    rep_status: existing.rep_status || rec.rep_status || "new",
+    rep_last_action_at: existing.rep_last_action_at || rec.rep_last_action_at || ""
   };
 
   if (existingIndex >= 0) {
     queue[existingIndex] = {
-      ...queue[existingIndex],
+      ...existing,
       ...payload
     };
   } else {
@@ -2735,7 +2726,6 @@ function pushToRepFeed(rec) {
     JSON.stringify(queue)
   );
 }
-
 function syncRepRecord(updatedRec) {
   let main = [];
 
