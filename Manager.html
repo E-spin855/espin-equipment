@@ -267,24 +267,32 @@
       word-break:normal;
     }
 
-    th:nth-child(2), td:nth-child(2){width:105px}
-    th:nth-child(3), td:nth-child(3){width:165px}
-    th:nth-child(4), td:nth-child(4){width:95px}
-    th:nth-child(5), td:nth-child(5){width:130px}
-    th:nth-child(6), td:nth-child(6){width:70px}
-    th:nth-child(7), td:nth-child(7){width:60px}
-    th:nth-child(8), td:nth-child(8){width:160px}
-    th:nth-child(9), td:nth-child(9){width:170px}
-    th:nth-child(10), td:nth-child(10){width:185px}
-    th:nth-child(11), td:nth-child(11){width:85px}
-    th:nth-child(12), td:nth-child(12){width:140px}
-    th:nth-child(13), td:nth-child(13){width:105px}
+th:nth-child(1), td:nth-child(1){width:150px;}
+th:nth-child(2), td:nth-child(2){width:220px;}
+th:nth-child(3), td:nth-child(3){width:220px;}
+th:nth-child(4), td:nth-child(4){width:230px;}
+th:nth-child(5), td:nth-child(5){width:260px;}
+th:nth-child(6), td:nth-child(6){width:100px;}
+th:nth-child(7), td:nth-child(7){width:160px;}
+th:nth-child(8), td:nth-child(8){width:120px;}
+th:nth-child(9), td:nth-child(9){width:160px;}
+th:nth-child(10), td:nth-child(10){width:110px;}
+th:nth-child(11), td:nth-child(11){width:150px;}
+th:nth-child(12), td:nth-child(12){width:100px;}
+th:nth-child(13), td:nth-child(13){width:105px;}
 
-    td:nth-child(9),
-    td:nth-child(10),
-    td:nth-child(13){
-      text-align:center;
-    }
+td:nth-child(1),
+td:nth-child(4),
+td:nth-child(5),
+td:nth-child(13){
+  text-align:center;
+}
+
+td:nth-child(13) button{
+  width:78px;
+  min-width:78px;
+  padding:10px 10px;
+}
 
     .alert-badge,
     .pill{
@@ -298,12 +306,6 @@
       line-height:1.1;
       white-space:normal;
       margin:0 auto;
-    }
-
-    td:nth-child(13) button{
-      width:78px;
-      min-width:78px;
-      padding:10px 10px;
     }
 
     .pill{
@@ -1230,7 +1232,6 @@ function selectRep(name) {
   state.selectedId = null;
   render();
 }
-
 function getManagerStatusHtml(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
     return `<span class="alert-badge alert-completed">COMPLETED</span>`;
@@ -1239,7 +1240,7 @@ function getManagerStatusHtml(rec) {
   if (hasManagerUnseenUpdate(rec)) {
     return `
       <span class="alert-badge alert-service manager-flash-pill">
-        ${rec.manager_flash_text || "REP UPDATE"}
+        ${rec.manager_flash_text || "REP SELECTED NEXT ACTION"}
       </span>
     `;
   }
@@ -1272,18 +1273,18 @@ function getManagerStatusHtml(rec) {
   const first = alerts[0];
 
   if (!first) {
-    return `<span class="mini">No Action</span>`;
+    return `<span class="mini">No Active Condition</span>`;
   }
 
   const statusMap = {
-    disposal: "Disposition Review Signal",
-    replacement: "Replacement Planning Review",
-    upgrade: "Upgrade Review Signal",
-    planning: "Budget Planning Review",
-    service: "SERVICE",
-    proactive: "PROACTIVE",
+    disposal: "Disposition Condition",
+    replacement: "Replacement Timing Condition",
+    upgrade: "Upgrade Timing Condition",
+    planning: "Budget Timing Condition",
+    service: "Service Condition",
+    proactive: "Proactive Condition",
     postponed: "Follow-Up Scheduled",
-    completed: "COMPLETED"
+    completed: "Completed"
   };
 
   return `
@@ -1292,10 +1293,35 @@ function getManagerStatusHtml(rec) {
     </span>
   `;
 }
+function getRepActionLabel(action) {
+  const map = {
+    contacted: "Contacted Hospital",
+    quote_sent: "Quote Sent",
+    site_visit: "Site Visit Scheduled",
+    trade_review: "Trade-In Review Started",
+    budget_discussion: "Budget Discussion",
+    replacement_planning: "Replacement Planning",
+    follow_up: "Follow-Up Needed",
+    delayed: "Delayed",
+    declined: "Declined",
+    completed: "Completed",
+    remove: "Removed From Rep View"
+  };
 
+  return map[action] || String(action || "").replace(/_/g, " ").toUpperCase();
+}
 function getManagerNextActionHtml(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
     return `<span class="alert-badge alert-completed">COMPLETED</span>`;
+  }
+
+  // ✅ REP SELECTION OVERRIDES ORIGINAL LIFECYCLE SIGNAL
+  if (rec.rep_action && rec.rep_action !== "remove") {
+    return `
+      <span class="pill pending" style="border:1px solid rgba(255,216,77,.55);color:#fff4cc;background:transparent;">
+        ${getRepActionLabel(rec.rep_action)}
+      </span>
+    `;
   }
 
   if (rec.tradein_sync_received || rec.quote_status === "trade_in_credit_received") {
@@ -1331,6 +1357,7 @@ function getManagerNextActionHtml(rec) {
     upgrade: "UPGRADE REVIEW",
     planning: "BUDGET PLANNING",
     service: "SERVICE REVIEW",
+    proactive: "PROACTIVE REVIEW",
     postponed: "FOLLOW-UP SCHEDULED",
     completed: "COMPLETED"
   };
@@ -1341,7 +1368,31 @@ function getManagerNextActionHtml(rec) {
     </span>
   `;
 }
+function getReviewPriorityHtml(rec) {
+  const alerts = getAlerts(rec);
+  const first = alerts[0];
 
+  let level = "LOW";
+
+  if (first?.type === "disposal" || first?.type === "replacement") {
+    level = "HIGH";
+  } else if (first?.type === "upgrade" || first?.type === "service") {
+    level = "MED";
+  }
+
+  const cls =
+    level === "HIGH"
+      ? "alert-disposal"
+      : level === "MED"
+      ? "alert-upgrade"
+      : "alert-proactive";
+
+  return `
+    <span class="alert-badge ${cls}">
+      ${level}
+    </span>
+  `;
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1405,29 +1456,41 @@ function renderTable() {
       repMode && rec.manager_response_action && !rec.manager_response_seen_by_rep ? "manager-row-flash" : ""
     ].filter(Boolean).join(" ");
 
-    return `
-      <tr class="${selectedClass}" data-id="${String(rec.id || "")}" style="cursor:pointer;">
-        <td>${rec.oem_project_id || ""}</td>
-        <td>${rec.make || ""}</td>
-        <td>${rec.model || ""}</td>
-        <td>${rec.modality || ""}</td>
-        <td>${rec.serial_number || ""}</td>
-        <td>${rec.dom || ""}</td>
-        <td>${ageFromDom(rec.dom) || "-"}</td>
-        <td>${rec.site || rec.site_address || "-"}</td>
-        <td>${getManagerStatusHtml(rec)}</td>
-        <td>${getManagerNextActionHtml(rec)}</td>
-        <td>${rec.source || ""}</td>
-        <td style="font-weight:700;color:#a2f5ff;">
-          ${rec.assigned_rep_name || "-"}
-        </td>
-        <td>
-          <button type="button" class="open-record-btn" data-id="${String(rec.id || "")}">
-            Open
-          </button>
-        </td>
-      </tr>
-    `;
+  return `
+  <tr class="${selectedClass}" data-id="${String(rec.id || "")}" style="cursor:pointer;">
+    <td>${getReviewPriorityHtml(rec)}</td>
+
+    <td>${rec.manual_tradein_reference || rec.tradein_reference || "-"}</td>
+
+    <td>${rec.site || rec.site_address || "-"}</td>
+
+    <td>${getManagerStatusHtml(rec)}</td>
+
+    <td>${getManagerNextActionHtml(rec)}</td>
+
+    <td>${rec.source || ""}</td>
+
+    <td style="font-weight:700;color:#a2f5ff;">
+      ${rec.assigned_rep_name || "-"}
+    </td>
+
+    <td>${rec.make || ""}</td>
+
+    <td>${rec.model || ""}</td>
+
+    <td>${rec.modality || ""}</td>
+
+    <td>${rec.serial_number || ""}</td>
+
+    <td>${rec.dom || ""}</td>
+
+    <td>
+      <button type="button" class="open-record-btn" data-id="${String(rec.id || "")}">
+        Open
+      </button>
+    </td>
+  </tr>
+`;
   }).join("");
 }
 
