@@ -1461,6 +1461,40 @@ function getReviewSortBucket(rec) {
 
   return 0;
 }
+function renderRepReviewStatus(rec) {
+  const label =
+    rec.rep_selected_manual_action_label ||
+    rec.rep_action_label ||
+    rec.rep_action ||
+    rec.rep_status ||
+    "";
+
+  if (!label || label === "needed") {
+    return `
+      <button onclick="event.stopPropagation(); selectRow('${rec.id}')">
+        Open
+      </button>
+    `;
+  }
+
+  if (rec.lifecycle_completed || rec.rep_status === "completed") {
+    return `<span class="pill submitted">Completed</span>`;
+  }
+
+  if (rec.rep_status === "follow_up_scheduled" || rec.rep_action === "follow_up") {
+    return `<span class="pill pending">Follow-Up Set</span>`;
+  }
+
+  if (rec.rep_deleted || rec.rep_action === "remove") {
+    return `<span class="pill postponed">Removed</span>`;
+  }
+
+  return `
+    <span class="pill local">
+      ${String(label).replace(/_/g, " ")}
+    </span>
+  `;
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1569,11 +1603,9 @@ if (quotePriority === "LOST") return 10;
   }
 </td>
 
-        <td>
-          <button onclick="event.stopPropagation(); selectRow('${rec.id}')">
-            Open
-          </button>
-        </td>
+        <<td>
+  ${renderRepReviewStatus(rec)}
+</td>
       </tr>
     `;
   }).join("");
@@ -4544,6 +4576,10 @@ async function confirmManualAction() {
   rec.rep_selected_manual_action = action;
   rec.rep_selected_manual_action_label = label;
   rec.rep_selected_manual_action_at = new Date().toISOString();
+rec.rep_status = action;
+rec.rep_action = action;
+rec.rep_action_label = label;
+rec.rep_last_action_at = new Date().toISOString();
 
   if (action === "quote_review") {
     openQuoteModal();
