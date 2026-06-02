@@ -1576,14 +1576,12 @@ function saveRepSelectedNextAction(recordId) {
   if (!rec) return;
 
   const select = document.getElementById(`repNextAction_${recordId}`);
-  const note = document.getElementById(`repNextActionNote_${recordId}`);
 
   const action = select ? select.value : "";
-  const notes = note ? note.value.trim() : "";
+  const label = getRepSelectedActionLabel(action);
 
   rec.rep_selected_next_action = action;
-  rec.rep_selected_next_action_label = getRepSelectedActionLabel(action);
-  rec.rep_selected_next_action_notes = notes;
+  rec.rep_selected_next_action_label = label;
   rec.rep_selected_next_action_at = action ? new Date().toISOString() : "";
 
   rec.manager_unseen_update = true;
@@ -1591,11 +1589,12 @@ function saveRepSelectedNextAction(recordId) {
   rec.manager_flash_type = "rep_selected_next_action";
   rec.manager_flash_text = "Rep selected next action";
 
-  saveRecords();
   syncFeedStatus(rec);
-  renderStats();
-  renderRepMenu();
-  renderFollowUpAlertCenter();
+  saveRecords();
+
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  render();
 }
 
 function renderRepSelectedNextActionControl(rec) {
@@ -2076,7 +2075,7 @@ manager_response_seen_at: ""
     ? {
         ...existing,
         ...newRec,
-
+id: existing.id || newRec.id,
         _pushed_to_feed: existing._pushed_to_feed || false,
 
         submitted_to: existing.submitted_to || "",
