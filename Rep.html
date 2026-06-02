@@ -875,7 +875,7 @@ trade-in review will be completed on time or correctly.
           <th>Serial</th>
           <th>Manual Reference</th>
           <th>Status</th>
-<th>Actions</th>
+<th>Rep Review Status</th>
         </tr>
       </thead>
       <tbody id="unmatchedTradeInTableBody"></tbody>
@@ -902,7 +902,7 @@ trade-in review will be completed on time or correctly.
 <th>Rep-Applied Trade-In Credit</th>
 <th>Status</th>
 <th>Manual Review Step</th>
-<th>Actions</th>
+<th>Rep Review Status</th>
         </tr>
       </thead>
       <tbody id="newProjectsTableBody"></tbody>
@@ -936,10 +936,10 @@ trade-in review will be completed on time or correctly.
 <th>Serial</th>
 <th>DOM</th>
 <th>Age</th>
-<th>Attention</th>
+<th>OEM Review Field</th>
 <th>Facility</th>
 <th>Source</th>
-<th>Actions</th>
+<th>Rep Review Status</th>
                 </tr>
               </thead>
               <tbody id="tableBody"></tbody>
@@ -1151,297 +1151,35 @@ function getRecordGroupKey(rec) {
   ).trim();
 }
 function getReviewVisibilityLevel(rec) {
-  const age = Number(ageFromDom(rec.dom)) || 0;
-  const threshold = Number(rec.threshold_years) || 8;
-
-  const utilization = Number(rec.utilization) || 0;
-  const condition = String(rec.condition || "").toLowerCase().trim();
-  const service = String(rec.service_cost_trend || "").toLowerCase().trim();
-
   const alerts = getAlerts(rec);
 
-  const hasDispositionCondition =
-    alerts.some(a => a.type === "disposal");
+  if (!alerts.length) return "NORMAL";
 
-  const hasReplacementCondition =
-    alerts.some(a => a.type === "replacement");
+  const importedLevel = String(
+    rec.oem_review_level ||
+    rec.review_level ||
+    rec.visibility_level ||
+    rec.priority ||
+    ""
+  ).toLowerCase().trim();
 
-  const hasUpgradeCondition =
-    alerts.some(a => a.type === "upgrade");
-
-  const hasPlanningCondition =
-    alerts.some(a => a.type === "planning");
-
-  const hasServiceCondition =
-    service === "high" ||
-    service === "rising" ||
-    condition === "poor" ||
-    condition === "fair" ||
-    utilization >= 85;
-
-  if (hasDispositionCondition || hasReplacementCondition) {
+  if (
+    importedLevel === "high" ||
+    importedLevel === "high_visibility" ||
+    importedLevel === "urgent"
+  ) {
     return "HIGH";
   }
 
-  if (hasUpgradeCondition || hasServiceCondition || age >= threshold) {
+  if (
+    importedLevel === "standard" ||
+    importedLevel === "medium" ||
+    importedLevel === "standard_visibility"
+  ) {
     return "STANDARD";
   }
 
-  if (hasPlanningCondition) {
-    return "MONITOR";
-  }
-
   return "MONITOR";
-}
-function evaluateStatus(rec) {
-  if (rec.submitted_to) return "submitted";
-
-  const alerts = getAlerts(rec);
-
-  if (!alerts.length) return "pending";
-
-  if (alerts.some(a => a.type === "postponed")) return "postponed";
-
-  return "ready";
-}
-
-function payloadFor(rec) {
-  return {
-    oem_project_id: rec.oem_project_id,
-    make: rec.make,
-    model: rec.model,
-    modality: rec.modality,
-    serial_number: rec.serial_number,
-    dom: String(rec.dom || ""),
-    site: rec.site,
-    site_address: rec.site_address || "",
-    city: rec.city || "",
-    state: rec.state || "",
-    zip_code: rec.zip_code || ""
-  };
-}
-
-function saveRecords() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-}
-
-function loadRecords() {
-  try {
-    state.records = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch {
-    state.records = [];
-  }
-}
-
-function upsertRecord(rec) {
-  const idx = state.records.findIndex(r => r.id === rec.id);
-  if (idx >= 0) state.records[idx] = rec;
-  else state.records.push(rec);
-  saveRecords();
-  render();
-}
-function renderStats() {
-  const total = state.records.length;
-
-  let ready = 0;
-  let postponed = 0;
-  let submitted = 0;
-
-  let totalPipeline = 0;
-  let wonEstimatedProfit = 0;
-
-  state.records.forEach(r => {
-    const status = String(r.quote_status || "").toLowerCase();
-
-    const quoteAmount = Number(r.quote_amount || 0);
-    const tradeInCredit = getTradeInCreditValue(r);
-    const estimatedCost = Number(r.quote_estimated_cost || 0);
-
-    const netQuote = Number(
-      r.quote_net_amount ||
-      Math.max(0, quoteAmount - tradeInCredit)
-    );
-
-    const estimatedProfit = Number(
-      r.quote_profit ||
-      (netQuote - estimatedCost)
-    );
-
-    if (quoteAmount && status !== "lost") {
-      totalPipeline += netQuote;
-    }
-
-    if (quoteAmount && status === "won") {
-      wonEstimatedProfit += estimatedProfit;
-    }
-
-    if (r.submitted_to) {
-      submitted++;
-      return;
-    }
-
-    if (r.next_action_date && r.next_action_date > todayISO()) {
-      postponed++;
-      return;
-    }
-
-    const alerts = getAlerts(r);
-
-    if (alerts.length && !alerts.some(a => a.type === "postponed")) {
-      ready++;
-    }
-  });
-
-  $("statTotal").textContent = total;
-  $("statReady").textContent = ready;
-  $("statPostponed").textContent = "$" + totalPipeline.toLocaleString();
-  $("statSubmitted").textContent = "$" + wonEstimatedProfit.toLocaleString();
-
-  document.querySelector("#statPostponed")
-  .closest(".stat")
-  .querySelector(".k").textContent = "Open Rep-Entered Quote Review";
-
-document.querySelector("#statSubmitted")
-  .closest(".stat")
-  .querySelector(".k").textContent = "Won Rep-Entered Quote Review";
-}
-function renderRepMenu() {
-  const container = document.getElementById("repFeed");
-  if (!container) return;
-
-  const reps = {};
-
-  state.records.forEach(rec => {
-    if (rec.rep_deleted) return;
-
-    const repName =
-      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-      rec.assigned_rep_name ||
-      "Unassigned";
-
-    if (!reps[repName]) {
-      reps[repName] = {
-        name: repName,
-        count: 0,
-        open: 0,
-        completed: 0
-      };
-    }
-
-    reps[repName].count++;
-
-    if (rec.lifecycle_completed || rec.rep_status === "completed") {
-      reps[repName].completed++;
-    } else {
-      reps[repName].open++;
-    }
-  });
-
-  const list = Object.values(reps);
-
-  if (!list.length) {
-    container.innerHTML = '<div class="mini">No reps found</div>';
-    return;
-  }
-
-  container.innerHTML = `
-    <div
-      onclick="selectRep('')"
-      style="
-        padding:14px;
-        border-bottom:1px solid rgba(88,184,255,.15);
-        cursor:pointer;
-        background:${!state.selectedRep ? "rgba(67,176,255,.12)" : "transparent"};
-      "
-    >
-      <div style="font-weight:900;font-size:15px;color:#eef6ff;">
-        All Reps
-      </div>
-
-      <div class="mini" style="margin-top:6px;">
-        ${state.records.length} Total Records
-      </div>
-    </div>
-
-    ${list.map(rep => `
-      <div
-        onclick="selectRep('${rep.name.replace(/'/g, "\\'")}')"
-        style="
-          padding:14px;
-          border-bottom:1px solid rgba(88,184,255,.15);
-          cursor:pointer;
-          background:${state.selectedRep === rep.name ? "rgba(67,176,255,.12)" : "transparent"};
-        "
-      >
-        <div style="font-weight:900;font-size:15px;color:#eef6ff;">
-          ${rep.name}
-        </div>
-
-        <div class="mini" style="margin-top:6px;">
-          ${rep.count} Total • ${rep.open} Open • ${rep.completed} Completed
-        </div>
-      </div>
-    `).join("")}
-  `;
-}
-function selectRep(repName) {
-  state.selectedRep = repName || null;
-  state.selectedId = null;
-  render();
-}
-function selectRow(id) {
-  state.selectedId = id;
-
-  const rec = state.records.find(r => r.id === id);
-
-  if (rec && rec.manager_response_action && !rec.manager_response_seen_by_rep) {
-    rec.manager_response_seen_by_rep = true;
-    rec.manager_response_seen_at = new Date().toISOString();
-    saveRecords();
-    syncFeedStatus(rec);
-  }
-
-  if (rec && rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-    rec.tradein_seen_by_rep = true;
-    saveRecords();
-    syncFeedStatus(rec);
-  }
-
-  render();
-}
-function getPrimaryTrigger(rec) {
-  const alerts = getAlerts({
-    ...rec,
-    quote_amount: "",
-    quote_status: "",
-    lifecycle_completed: false
-  });
-
-  return alerts[0] || null;
-}
-
-function getQuoteFollowUpLevel(rec) {
-  const status = String(rec.quote_status || "").toLowerCase();
-  const level = String(rec.quote_priority || "").toLowerCase();
-  const closeDate = rec.quote_expected_close_date || "";
-
-  if (status === "won") return "WON";
-  if (status === "lost") return "LOST";
-
-  if (level === "high") return "HIGH";
-  if (level === "medium") return "STANDARD";
-  if (level === "low") return "MONITOR";
-
-  if (closeDate) {
-    const today = new Date(todayISO());
-    const close = new Date(closeDate);
-    const days = Math.ceil((close - today) / (1000 * 60 * 60 * 24));
-
-    if (days <= 14) return "HIGH";
-    if (days <= 45) return "STANDARD";
-  }
-
-  return "STANDARD";
 }
 function getQuoteSignalLabel(rec) {
   if (!rec.quote_amount) return "";
@@ -1462,9 +1200,10 @@ function getReviewVisibilityBadge(label) {
   if (label === "HIGH") return '<span class="pill ready">HIGH VISIBILITY</span>';
   if (label === "STANDARD") return '<span class="pill pending">STANDARD</span>';
   if (label === "MONITOR") return '<span class="pill local">MONITOR</span>';
+  if (label === "NORMAL") return '<span class="alert-badge alert-none">NORMAL</span>';
   if (label === "WON") return '<span class="pill submitted">WON</span>';
   if (label === "LOST") return '<span class="pill postponed">LOST</span>';
-  return '<span class="pill local">MONITOR</span>';
+  return '<span class="alert-badge alert-none">NORMAL</span>';
 }
 function getReviewDisplayLevel(rec) {
   const level = getReviewVisibilityLevel(rec);
@@ -2196,9 +1935,9 @@ function getInitialTriggerInfo(rec) {
   if (!trigger) {
     return {
       type: "none",
-      label: "No Initial Trigger",
-      action: "No imported review field is currently visible",
-      priority: "LOW"
+      label: "Normal",
+action: "No OEM-imported review field is currently attached",
+priority: "NORMAL"
     };
   }
 
@@ -2649,166 +2388,140 @@ function applyExternalTradeInToQuote(id = null) {
 }
 function renderRawSignalDataCard(rec) {
   const alerts = getAlerts(rec);
-  const activeTypes = new Set(
-    alerts.map(a => String(a.type || "").toLowerCase())
-  );
+  const primary = alerts[0] || null;
 
-  const age = Number(ageFromDom(rec.dom)) || 0;
-  const threshold = Number(rec.threshold_years) || 8;
-  const utilization = Number(rec.utilization || 0);
-  const condition = String(rec.condition || "").toLowerCase().trim();
-  const service = String(rec.service_cost_trend || "").toLowerCase().trim();
+  const importedType = String(
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    ""
+  ).trim();
 
-  const proactiveType = String(rec.proactive_type || "").toLowerCase().trim();
-  const proactiveReason = String(rec.proactive_reason || "").trim();
-  const proactiveDate = rec.proactive_date || "";
+  const importedLabel = String(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.proactive_reason ||
+    primary?.label ||
+    ""
+  ).trim();
 
-  const lines = [];
+  const importedReason = String(
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  ).trim();
 
-  function addLine(text, tone = "standard") {
-    lines.push({ text, tone });
-  }
+  const importedDate =
+    rec.oem_review_date ||
+    rec.review_date ||
+    rec.proactive_date ||
+    "";
 
-  const hasProactive =
-    String(rec.proactive_enabled || "yes").toLowerCase() !== "no" &&
-    (
-      String(rec.proactive_signal || "").toLowerCase() === "yes" ||
-      String(rec.proactive_signal || "").toLowerCase() === "true" ||
-      proactiveType ||
-      proactiveReason ||
-      proactiveDate ||
-      activeTypes.has("proactive")
-    );
+  const importedLevel = String(
+    rec.oem_review_level ||
+    rec.review_level ||
+    rec.visibility_level ||
+    ""
+  ).trim();
 
-  if (hasProactive) {
-    if (
-      proactiveType.includes("service") ||
-      proactiveReason.toLowerCase().includes("service")
-    ) {
-      addLine(
-        proactiveDate
-          ? `OEM-defined service contract review date: ${proactiveDate}`
-          : `OEM-defined service contract expiration: review visible`,
-        "green"
-      );
-    } else if (
-      proactiveType.includes("warranty") ||
-      proactiveReason.toLowerCase().includes("warranty")
-    ) {
-      addLine(
-        proactiveDate
-          ? `OEM-defined warranty review date: ${proactiveDate}`
-          : `OEM-defined warranty expiration: review visible`,
-        "green"
-      );
-    } else if (
-      proactiveType.includes("lease") ||
-      proactiveReason.toLowerCase().includes("lease")
-    ) {
-      addLine(
-        proactiveDate
-          ? `OEM-defined lease review date: ${proactiveDate}`
-          : `OEM-defined lease expiration: review visible`,
-        "green"
-      );
-    } else if (proactiveReason) {
-      addLine(`OEM-defined proactive review: ${proactiveReason}`, "green");
-    } else if (proactiveDate) {
-      addLine(`OEM-defined proactive review date: ${proactiveDate}`, "green");
-    } else {
-      addLine(`OEM-defined proactive review field visible`, "green");
-    }
-  }
+  const hasImportedReview =
+    primary ||
+    importedType ||
+    importedLabel ||
+    importedReason ||
+    importedDate ||
+    importedLevel;
 
-  if (activeTypes.has("planning")) {
-    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`, "green");
-  }
-
-  if (activeTypes.has("replacement")) {
-    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`, "red");
-  }
-
-  if (activeTypes.has("upgrade")) {
-    addLine(`Utilization ${utilization}%, OEM-defined utilization review threshold 85%`, "yellow");
-  }
-
-  if (activeTypes.has("service")) {
-    addLine(`Service trend ${service || "not provided"}, OEM-defined service review condition`, "yellow");
-  }
-
-  if (activeTypes.has("disposal")) {
-    addLine(`Condition ${condition || "not provided"}, OEM-defined disposition review condition`, "red");
-  }
-
-  if (rec.tradein_sync_received) {
-    addLine(
-      `Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}`,
-      "green"
-    );
-  }
-
-  if (!lines.length) {
-    addLine("No active imported signal fields for this record.", "standard");
-  }
-
-  function styleForTone(tone) {
-    if (tone === "green") {
-      return `
-        border:1px solid rgba(65,255,156,.42);
-        background:rgba(65,255,156,.10);
-        color:#b8ffd7;
-      `;
-    }
-
-    if (tone === "yellow") {
-      return `
-        border:1px solid rgba(255,216,77,.42);
-        background:rgba(255,216,77,.10);
-        color:#fff4cc;
-      `;
-    }
-
-    if (tone === "red") {
-      return `
-        border:1px solid rgba(255,77,77,.42);
-        background:rgba(255,77,77,.10);
-        color:#ffe5e5;
-      `;
-    }
-
+  if (!hasImportedReview) {
     return `
-      border:1px solid rgba(88,184,255,.18);
-      background:rgba(8,18,35,.62);
-      color:#eef6ff;
+      <div class="detail-card" style="
+        border:1px solid rgba(120,144,170,.35);
+        background:rgba(120,144,170,.08);
+      ">
+        <div class="k">OEM Review Field</div>
+        <div class="v">
+          <span class="alert-badge alert-none">Normal</span>
+        </div>
+        <div class="mini" style="margin-top:10px;line-height:1.45;">
+          No OEM-imported review field is currently attached to this record.
+        </div>
+      </div>
     `;
   }
 
   return `
     <div class="detail-card" style="
-      border:2px solid rgba(0,229,255,.45);
-      background:linear-gradient(180deg,rgba(0,229,255,.10),rgba(8,18,35,.82));
-      box-shadow:0 0 24px rgba(0,229,255,.16);
+      border:2px solid rgba(0,229,255,.35);
+      background:linear-gradient(180deg,rgba(0,229,255,.08),rgba(8,18,35,.82));
+      box-shadow:0 0 20px rgba(0,229,255,.12);
     ">
-      <div class="k">Imported Review Signal</div>
+      <div class="k">OEM Review Field</div>
 
       <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-        AXIS displays only the imported field connected to this record’s active review condition.
-        Color indicates review visibility only, not a recommendation or decision.
+        This section displays OEM-imported review information only.
+        AXIS does not determine, recommend, score, rank, or decide the required action.
       </div>
 
       <div style="display:grid;gap:10px;">
-        ${lines.map(item => `
-          <div style="
-            padding:12px 14px;
-            border-radius:12px;
-            font-size:14px;
-            font-weight:900;
-            line-height:1.4;
-            ${styleForTone(item.tone)}
-          ">
-            ${item.text}
-          </div>
-        `).join("")}
+        ${
+          importedLabel
+            ? `
+              <div style="
+                padding:12px 14px;
+                border-radius:12px;
+                border:1px solid rgba(52,211,153,.42);
+                background:rgba(52,211,153,.10);
+                color:#b8ffd7;
+                font-size:14px;
+                font-weight:900;
+                line-height:1.4;
+              ">
+                ${importedLabel}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedType
+            ? `
+              <div class="mini">
+                OEM Review Type: <strong>${importedType}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedLevel
+            ? `
+              <div class="mini">
+                OEM Visibility Level: <strong>${importedLevel}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedDate
+            ? `
+              <div class="mini">
+                OEM Review Date: <strong>${importedDate}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedReason
+            ? `
+              <div class="mini" style="line-height:1.45;">
+                OEM Note: <strong>${importedReason}</strong>
+              </div>
+            `
+            : ""
+        }
       </div>
     </div>
   `;
@@ -3335,14 +3048,18 @@ function pushToRepFeed(rec) {
 }
 // 🔥 ADD THIS RIGHT HERE (AFTER FUNCTION ENDS)
 function evaluateAndPush(rec) {
-
+  if (!rec) return;
   if (rec.lifecycle_completed) return;
-
-  const alerts = getAlerts(rec);
-
-  if (!alerts.length) return;
   if (rec.submitted_to) return;
 
+  const oemReviewFields = getAlerts(rec);
+
+  if (!oemReviewFields.length) return;
+
+  /*
+    AXIS does not generate or recommend actions here.
+    This only makes an OEM-imported review field visible in the rep feed.
+  */
   pushToRepFeed(rec);
 
   rec._pushed_to_feed = true;
@@ -4010,7 +3727,7 @@ if (rec.image_sync_received) {
 
   items.push({
     date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
-    label: `Imported review field visible: ${initial.label}`
+    label: `OEM review field visible: ${initial.label}`
   });
 
   if (rec.tradein_sync_received) {
@@ -6284,7 +6001,7 @@ document.addEventListener("DOMContentLoaded", init);
       </select>
     </div>
 
-    <label>Disposition Review Requested</label>
+    <label>Send for Disposition Review?</label>
     <select id="decisionDisposal">
       <option value="false">No</option>
       <option value="true">Yes</option>
