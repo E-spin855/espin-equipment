@@ -2636,81 +2636,44 @@ function renderRawSignalDataCard(rec) {
   const alerts = getAlerts(rec);
   const activeTypes = new Set(alerts.map(a => a.type));
 
-  const rawSignals = [];
-
-  const addSignal = (field, value, source) => {
-    if (value === "" || value === null || value === undefined) return;
-
-    rawSignals.push({
-      field,
-      value,
-      source: source || rec.source || "CSV"
-    });
-  };
-
   const age = Number(ageFromDom(rec.dom)) || 0;
   const threshold = Number(rec.threshold_years) || 8;
   const utilization = Number(rec.utilization || 0);
   const condition = String(rec.condition || "").toLowerCase().trim();
   const service = String(rec.service_cost_trend || "").toLowerCase().trim();
 
-  if (String(rec.alert_override || "").trim()) {
-    addSignal("alert_override", rec.alert_override, rec.source);
+  const lines = [];
+
+  if (activeTypes.has("replacement") || activeTypes.has("planning")) {
+    lines.push(`Age ${age}, OEM-defined threshold years ${threshold}`);
   }
 
-  if (rec.next_action_date && rec.next_action_date > todayISO()) {
-    addSignal("next_action_date", rec.next_action_date, rec.source);
+  if (activeTypes.has("upgrade")) {
+    lines.push(`Utilization ${utilization}%, OEM-defined utilization review trigger 85%`);
+  }
+
+  if (activeTypes.has("service")) {
+    lines.push(`Service cost trend: ${service || "not provided"}`);
+  }
+
+  if (activeTypes.has("disposal")) {
+    lines.push(`Condition: ${condition || "not provided"}`);
   }
 
   if (activeTypes.has("proactive")) {
-    addSignal("proactive_signal", rec.proactive_signal, rec.source);
-    addSignal("proactive_type", rec.proactive_type, rec.source);
-    addSignal("proactive_date", rec.proactive_date, rec.source);
-    addSignal("proactive_reason", rec.proactive_reason, rec.source);
-  }
-
-  if (activeTypes.has("disposal") && condition === "poor") {
-    addSignal("condition", rec.condition, rec.source);
-  }
-
-  if (activeTypes.has("replacement")) {
-    if (condition === "fair") {
-      addSignal("condition", rec.condition, rec.source);
-    }
-
-    if (age >= threshold) {
-      addSignal("dom", rec.dom, rec.source);
-      addSignal("calculated_age", age, rec.source);
-      addSignal("threshold_years", rec.threshold_years || threshold, rec.source);
-    }
-  }
-
-  if (activeTypes.has("planning") && age >= threshold - 2 && age < threshold) {
-    addSignal("dom", rec.dom, rec.source);
-    addSignal("calculated_age", age, rec.source);
-    addSignal("threshold_years", rec.threshold_years || threshold, rec.source);
-  }
-
-  if (activeTypes.has("service") && (service === "high" || service === "rising")) {
-    addSignal("service_cost_trend", rec.service_cost_trend, rec.source);
-  }
-
-  if (activeTypes.has("upgrade") && utilization >= 85) {
-    addSignal("utilization", rec.utilization, rec.source);
+    lines.push(
+      `Proactive review: ${rec.proactive_reason || rec.proactive_type || rec.proactive_signal || "OEM-defined proactive review"}`
+    );
   }
 
   if (rec.tradein_sync_received) {
-    addSignal("tradein_sync_received", rec.tradein_sync_received, rec.external_tradein_source);
-    addSignal("external_tradein_value", rec.external_tradein_value, rec.external_tradein_source);
+    lines.push(
+      `Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}`
+    );
   }
 
-  if (!rawSignals.length) {
-    return `
-      <div class="detail-card">
-        <div class="k">Raw Imported Signal Data</div>
-        <div class="v">No active imported signal fields for this record.</div>
-      </div>
-    `;
+  if (!lines.length) {
+    lines.push("No active imported signal fields for this record.");
   }
 
   return `
@@ -2722,26 +2685,22 @@ function renderRawSignalDataCard(rec) {
       <div class="k">Raw Imported Signal Data</div>
 
       <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-        AXIS displays only the imported fields connected to this record’s active review condition.
+        AXIS displays the imported field connected to this record’s active review condition.
       </div>
 
       <div style="display:grid;gap:10px;">
-        ${rawSignals.map((s, index) => `
+        ${lines.map(line => `
           <div style="
-            padding:10px 12px;
+            padding:12px 14px;
             border-radius:12px;
             border:1px solid rgba(88,184,255,.18);
             background:rgba(8,18,35,.62);
+            color:#eef6ff;
+            font-size:14px;
+            font-weight:800;
+            line-height:1.4;
           ">
-            <div class="mini" style="color:#a2f5ff;font-weight:900;">
-              Active Signal ${index + 1}
-            </div>
-
-            <div style="margin-top:4px;font-size:13px;line-height:1.45;">
-              <strong>Field:</strong> ${s.field}<br>
-              <strong>Value:</strong> ${String(s.value)}<br>
-              <strong>Source:</strong> ${s.source || "CSV"}
-            </div>
+            ${line}
           </div>
         `).join("")}
       </div>
