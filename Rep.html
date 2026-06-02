@@ -712,7 +712,7 @@
                   <th>Serial</th>
                   <th>DOM</th>
                   <th>Age</th>
-                  <th>OEM Review Field</th>
+                  <th>OEM Review Note</th>
                   <th>Facility</th>
                   <th>Source</th>
                   <th>Rep Review Status</th>
@@ -1114,7 +1114,72 @@
         label: importedLabel || importedReason || "Imported Review Field"
       }];
     }
+function formatReviewText(value) {
+  const raw = String(value || "").trim();
+  const v = raw.toLowerCase();
 
+  const map = {
+    capital_planning_signal: "Capital Planning Review",
+    planning_signal: "Planning Review",
+    service_signal: "Service Review",
+    utilization_signal: "Utilization Review",
+    lifecycle_signal: "Lifecycle Review",
+    replacement_signal: "Replacement Review",
+    upgrade_signal: "Upgrade Review",
+    disposal_signal: "Disposition Review",
+    tradein_signal: "Trade-In Review",
+    quote_signal: "Quote Review",
+    project_signal: "Project Review",
+    proactive_signal: "Proactive Review",
+    review_signal: "General Review",
+
+    capital_planning: "Capital Planning Review",
+    planning: "Planning Review",
+    service: "Service Review",
+    utilization: "Utilization Review",
+    lifecycle: "Lifecycle Review",
+    replacement: "Replacement Review",
+    upgrade: "Upgrade Review",
+    disposal: "Disposition Review",
+    tradein: "Trade-In Review",
+    quote: "Quote Review",
+    project: "Project Review",
+    proactive: "Proactive Review",
+    review: "General Review",
+
+    high_visibility: "High Visibility",
+    standard_visibility: "Standard Visibility",
+    monitor: "Monitor",
+    high: "High Visibility",
+    medium: "Standard Visibility",
+    standard: "Standard Visibility",
+    low: "Monitor",
+    urgent: "High Visibility"
+  };
+
+  if (map[v]) return map[v];
+
+  return raw
+    .replace(/_/g, " ")
+    .replace(/\bsignal\b/gi, "review")
+    .replace(/\bfield\b/gi, "note")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
+  const raw = clean(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.proactive_reason ||
+    fallback
+  );
+
+  return raw
+    .replace(/\bsignal\b/gi, "review note")
+    .replace(/\btrigger\b/gi, "review note")
+    .replace(/\brecommendation\b/gi, "review context")
+    .replace(/\binstruction\b/gi, "review context");
+}
     function getReviewVisibilityLevel(rec) {
       if (!getAlerts(rec).length) return "NORMAL";
 
@@ -1657,46 +1722,132 @@
     }
 
     function renderRawSignalDataCard(rec) {
-      const alerts = getAlerts(rec);
-      const primary = alerts[0] || null;
+  const alerts = getAlerts(rec);
+  const primary = alerts[0] || null;
 
-      const importedType = clean(rec.oem_review_type || rec.review_type || rec.alert_override || rec.proactive_type || "");
-      const importedLabel = clean(rec.oem_review_label || rec.review_label || rec.proactive_reason || primary?.label || "");
-      const importedReason = clean(rec.oem_review_reason || rec.review_reason || "");
-      const importedDate = clean(rec.oem_review_date || rec.review_date || rec.proactive_date || "");
-      const importedLevel = clean(rec.oem_review_level || rec.review_level || rec.visibility_level || "");
+  const importedType = clean(
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    ""
+  );
 
-      const hasImportedReview = primary || importedType || importedLabel || importedReason || importedDate || importedLevel;
+  const importedLabel = getSafeReviewLabel(
+    rec,
+    primary?.label || "OEM-Provided Review Note"
+  );
 
-      if (!hasImportedReview) {
-        return `
-          <div class="detail-card" style="border:1px solid rgba(120,144,170,.35);background:rgba(120,144,170,.08);">
-            <div class="k">OEM Review Field</div>
-            <div class="v"><span class="alert-badge alert-none">Normal</span></div>
-            <div class="mini" style="margin-top:10px;line-height:1.45;">No OEM-imported review field is currently attached to this record.</div>
-          </div>
-        `;
-      }
+  const importedReason = clean(
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
 
-      return `
-        <div class="detail-card" style="border:2px solid rgba(0,229,255,.35);background:linear-gradient(180deg,rgba(0,229,255,.08),rgba(8,18,35,.82));box-shadow:0 0 20px rgba(0,229,255,.12);">
-          <div class="k">OEM Review Field</div>
+  const importedDate = clean(
+    rec.oem_review_date ||
+    rec.review_date ||
+    rec.proactive_date ||
+    ""
+  );
 
-          <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-            This section displays OEM-imported review information only. AXIS does not determine, recommend, score, rank, or decide the required action.
-          </div>
+  const importedLevel = clean(
+    rec.oem_review_level ||
+    rec.review_level ||
+    rec.visibility_level ||
+    ""
+  );
 
-          <div style="display:grid;gap:10px;">
-            ${importedLabel ? `<div style="padding:12px 14px;border-radius:12px;border:1px solid rgba(52,211,153,.42);background:rgba(52,211,153,.10);color:#b8ffd7;font-size:14px;font-weight:900;line-height:1.4;">${escapeHtml(importedLabel)}</div>` : ""}
-            ${importedType ? `<div class="mini">OEM Review Type: <strong>${escapeHtml(importedType)}</strong></div>` : ""}
-            ${importedLevel ? `<div class="mini">OEM Visibility Level: <strong>${escapeHtml(importedLevel)}</strong></div>` : ""}
-            ${importedDate ? `<div class="mini">OEM Review Date: <strong>${escapeHtml(importedDate)}</strong></div>` : ""}
-            ${importedReason ? `<div class="mini" style="line-height:1.45;">OEM Note: <strong>${escapeHtml(importedReason)}</strong></div>` : ""}
-          </div>
+  const hasImportedReview =
+    primary ||
+    importedType ||
+    importedLabel ||
+    importedReason ||
+    importedDate ||
+    importedLevel;
+
+  if (!hasImportedReview) {
+    return `
+      <div class="detail-card" style="border:1px solid rgba(120,144,170,.35);background:rgba(120,144,170,.08);">
+        <div class="k">OEM Review Note</div>
+
+        <div class="v">
+          <span class="alert-badge alert-none">Normal</span>
         </div>
-      `;
-    }
 
+        <div class="mini" style="margin-top:10px;line-height:1.45;">
+          No OEM-provided review note is currently attached to this record.
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="detail-card" style="border:2px solid rgba(0,229,255,.35);background:linear-gradient(180deg,rgba(0,229,255,.08),rgba(8,18,35,.82));box-shadow:0 0 20px rgba(0,229,255,.12);">
+      <div class="k">OEM Review Note</div>
+
+      <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
+        This section displays OEM-provided review context only. AXIS does not create the review reason, recommend an action, score the customer, rank the record, or decide the required next step.
+      </div>
+
+      <div style="display:grid;gap:10px;">
+        ${
+          importedLabel
+            ? `
+              <div style="padding:12px 14px;border-radius:12px;border:1px solid rgba(52,211,153,.42);background:rgba(52,211,153,.10);color:#b8ffd7;font-size:14px;font-weight:900;line-height:1.4;">
+                ${escapeHtml(importedLabel)}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedType
+            ? `
+              <div class="mini">
+                OEM Review Category:
+                <strong>${escapeHtml(formatReviewText(importedType))}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedLevel
+            ? `
+              <div class="mini">
+                OEM Visibility Tag:
+                <strong>${escapeHtml(formatReviewText(importedLevel))}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedDate
+            ? `
+              <div class="mini">
+                OEM Review Timing:
+                <strong>${escapeHtml(importedDate)}</strong>
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          importedReason
+            ? `
+              <div class="mini" style="line-height:1.45;">
+                OEM-Provided Context:
+                <strong>${escapeHtml(formatReviewText(importedReason))}</strong>
+              </div>
+            `
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
     function buildActivityTimeline(rec) {
       const items = [];
 
@@ -1704,7 +1855,10 @@
         items.push({ date: rec.new_project_created_at || "Current", label: "New AXIS project created" });
       } else {
         const initialLabel = getAlerts(rec)[0]?.label || "Normal";
-        items.push({ date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current", label: `OEM review field visible: ${initialLabel}` });
+       items.push({
+  date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
+  label: `OEM review note visible: ${formatReviewText(initialLabel)}`
+});
       }
 
       if (rec.tradein_sync_received) items.push({ date: rec.tradein_synced_to_axis_at || rec.tradein_last_update_at || "Current", label: "Trade-In details synced back to AXIS" });
