@@ -765,7 +765,7 @@ with authorized OEM and customer stakeholders.
 
     <div class="stats">
       <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
-      <div class="stat"><div class="k">Items Flagged for Review</div><div class="v" id="statReady">0</div></div>
+      <div class="stat"><div class="k">Items Matching Review Conditions</div><div class="v" id="statReady">0</div></div>
       <div class="stat"><div class="k">Postponed</div><div class="v" id="statPostponed">0</div></div>
       <div class="stat"><div class="k">Submitted</div><div class="v" id="statSubmitted">0</div></div>
     </div>
@@ -1054,8 +1054,8 @@ function getRecordGroupKey(rec) {
     ""
   ).trim();
 }
-function getReviewVisibilityScore(rec) {
-  let score = 0;
+function getReviewVisibilityWeight(rec) {
+  let weight = 0;
 
   const age = Number(ageFromDom(rec.dom)) || 0;
   const threshold = Number(rec.threshold_years) || 8;
@@ -1064,28 +1064,33 @@ function getReviewVisibilityScore(rec) {
   const condition = String(rec.condition || "").toLowerCase().trim();
   const service = String(rec.service_cost_trend || "").toLowerCase().trim();
 
-  // AGE REVIEW VISIBILITY
-  if (age >= threshold) score += 2;
-  if (age >= threshold + 2) score += 2;
+  if (age >= threshold) weight += 2;
+  if (age >= threshold + 2) weight += 2;
 
-  // UTILIZATION REVIEW VISIBILITY
-  if (utilization >= 85) score += 2;
-  else if (utilization >= 65) score += 1;
+  if (utilization >= 85) weight += 2;
+  else if (utilization >= 65) weight += 1;
 
-  // CONDITION REVIEW VISIBILITY
-  if (condition === "poor") score += 2;
-  else if (condition === "fair") score += 1;
+  if (condition === "poor") weight += 2;
+  else if (condition === "fair") weight += 1;
 
-  // SERVICE REVIEW VISIBILITY
-  if (service === "high") score += 2;
-  else if (service === "rising") score += 1;
+  if (service === "high") weight += 2;
+  else if (service === "rising") weight += 1;
 
-  // Review condition visibility adjustment
   const alerts = getAlerts(rec);
-  if (alerts.some(a => a.type === "disposal")) score += 3;
-  if (alerts.some(a => a.type === "replacement")) score += 2;
 
-  return score;
+  if (alerts.some(a => a.type === "disposal")) weight += 3;
+  if (alerts.some(a => a.type === "replacement")) weight += 2;
+
+  return weight;
+}
+
+function getReviewVisibilityLevel(rec) {
+  const weight = getReviewVisibilityWeight(rec);
+
+  if (weight >= 6) return "HIGH";
+  if (weight >= 3) return "STANDARD";
+
+  return "MONITOR";
 }
 function evaluateStatus(rec) {
   if (rec.submitted_to) return "submitted";
@@ -1341,25 +1346,10 @@ function getReviewVisibilityBadge(label) {
   return '<span class="pill local">MONITOR</span>';
 }
 function getReviewDisplayLevel(rec) {
-  const alerts = getAlerts(rec);
-  const type = alerts[0]?.type || "";
+  const level = getReviewVisibilityLevel(rec);
 
-  if (type === "disposal" || type === "replacement") {
-    return "high_visibility";
-  }
-
-  if (type === "upgrade" || type === "service") {
-    return "standard_visibility";
-  }
-
-  if (type === "planning" || type === "proactive") {
-    return "monitor";
-  }
-
-  const score = getReviewVisibilityScore(rec);
-
-  if (score >= 6) return "high_visibility";
-  if (score >= 3) return "standard_visibility";
+  if (level === "HIGH") return "high_visibility";
+  if (level === "STANDARD") return "standard_visibility";
 
   return "monitor";
 }
@@ -1511,7 +1501,7 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
   ? '<span class="next-action-label next-action-quote">Quote Review</span>'
   : rec.tradein_sync_received
   ? '<span class="next-action-label next-action-quote">Review Draft Quote</span>'
-  : '<span class="next-action-label next-action-proactive">Send to Trade-In Review</span>'
+  : '<span class="next-action-label next-action-proactive">Trade-In Review Requested</span>'
           }
         </td>
 
@@ -1718,7 +1708,7 @@ function renderTable() {
 }
 
   const sorted = [...visibleRecords].sort((a, b) => {
-    const score = (rec) => {
+    const visibilitySortWeight = (rec) => {
       if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 999;
 
       if (rec.lifecycle_completed) return 0;
@@ -1736,17 +1726,17 @@ if (quotePriority === "LOST") return 10;
       }
 
       const alerts = getAlerts(rec);
-      const reviewVisibilityScore = getReviewVisibilityScore(rec);
+    const reviewVisibilityWeight = getReviewVisibilityWeight(rec);
 
-if (alerts.some(a => a.type === "disposal")) return 100 + reviewVisibilityScore;
-if (alerts.some(a => a.type === "replacement")) return 80 + reviewVisibilityScore;
-if (alerts.some(a => a.type === "upgrade")) return 60 + reviewVisibilityScore;
-if (alerts.some(a => a.type === "planning")) return 40 + reviewVisibilityScore;
+if (alerts.some(a => a.type === "disposal")) return 100 + reviewVisibilityWeight;
+if (alerts.some(a => a.type === "replacement")) return 80 + reviewVisibilityWeight;
+if (alerts.some(a => a.type === "upgrade")) return 60 + reviewVisibilityWeight;
+if (alerts.some(a => a.type === "planning")) return 40 + reviewVisibilityWeight;
 
-return reviewVisibilityScore;
+return reviewVisibilityWeight;
     };
 
-    return score(b) - score(a);
+    return visibilitySortWeight(b) - visibilitySortWeight(a);
   });
 
   tbody.innerHTML = sorted.map(rec => {
@@ -1780,12 +1770,19 @@ return reviewVisibilityScore;
       ? "-"
       : rec.quote_amount
       ? getReviewVisibilityBadge(getQuotePriority(rec))
-      : (() => {
-          const p = getReviewVisibilityScore(rec);
-          if (p >= 6) return '<span class="pill ready">HIGH</span>';
-          if (p >= 3) return '<span class="pill pending">MED</span>';
-          return '<span class="pill local">LOW</span>';
-        })()
+     : (() => {
+    const level = getReviewVisibilityLevel(rec);
+
+    if (level === "HIGH") {
+      return '<span class="pill ready">HIGH VISIBILITY</span>';
+    }
+
+    if (level === "STANDARD") {
+      return '<span class="pill pending">STANDARD</span>';
+    }
+
+    return '<span class="pill local">MONITOR</span>';
+  })()
   }
 </td>
 
@@ -2191,26 +2188,16 @@ function getInitialTriggerInfo(rec) {
     };
   }
 
-  const pressure = getReviewVisibilityScore({
-    ...rec,
-    quote_amount: "",
-    quote_status: "",
-    lifecycle_completed: false
-  });
+ const visibilityLevel = getReviewVisibilityLevel({
+  ...rec,
+  quote_amount: "",
+  quote_status: "",
+  lifecycle_completed: false
+});
 
-  let priority = "LOW";
-  if (pressure >= 6) priority = "HIGH";
-  else if (pressure >= 3) priority = "MED";
-
-    const actionMap = {
-    disposal: "Disposition Review",
-    replacement: "Replacement Planning",
-    upgrade: "Upgrade Review",
-    planning: "Budget Planning",
-    service: "Service Review",
-    proactive: "Early Planning Review",
-    postponed: "Follow-Up Scheduled"
-  };
+let priority = "LOW";
+if (visibilityLevel === "HIGH") priority = "HIGH";
+else if (visibilityLevel === "STANDARD") priority = "MED";
 
   return {
     type: trigger.type,
@@ -3370,22 +3357,24 @@ function pushToRepFeed(rec) {
   const now = Date.now();
   const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
 
-  const reviewVisibilityScore = getReviewVisibilityScore(rec);
+  const reviewVisibilityWeight = getReviewVisibilityWeight(rec);
+const reviewVisibilityLevel = getReviewVisibilityLevel(rec);
   const alerts = getAlerts(rec).map(a => a.label).join(", ");
 
   const exists = queue.find(q => q.key === key);
 
   if (exists) {
     const lastTime = new Date(exists.timestamp).getTime();
-    const oldReviewVisibilityScore = Number(exists.reviewVisibilityScore || exists.pressure || 0);
+    const oldReviewVisibilityWeight = Number(exists.reviewVisibilityWeight || 0);
 
     const timePassed = now - lastTime >= THIRTY_DAYS;
-const reviewVisibilityIncreased = reviewVisibilityScore > oldReviewVisibilityScore;
+const reviewVisibilityIncreased = reviewVisibilityWeight > oldReviewVisibilityWeight;
 
 if (!timePassed && !reviewVisibilityIncreased) return;
 
 exists.timestamp = new Date().toISOString();
-    exists.reviewVisibilityScore = reviewVisibilityScore;
+    exists.reviewVisibilityWeight = reviewVisibilityWeight;
+exists.reviewVisibilityLevel = reviewVisibilityLevel;
     exists.alert = alerts;
 exists.status = rec.rep_status || "needed";
 
@@ -3401,8 +3390,9 @@ exists.status = rec.rep_status || "needed";
   model: rec.model,
   modality: rec.modality,
   alert: alerts,
-  reviewVisibilityScore,
-  status: rec.rep_status || "needed",
+ reviewVisibilityWeight,
+reviewVisibilityLevel,
+status: rec.rep_status || "needed",
   rep: rec.sales_rep_first
     ? `${rec.sales_rep_first} ${rec.sales_rep_last || ""}`
     : "Unassigned",
@@ -5201,8 +5191,8 @@ function openDecisionModal() {
 
   const alerts = getAlerts(rec);
 
-  document.getElementById("decisionDisposal").value =
-    alerts.some(a => a.type === "disposal") ? "true" : "false";
+// Disposal decision must remain manual.
+document.getElementById("decisionDisposal").value = "false";
 
   document.getElementById("decisionModal").style.display = "flex";
 }
