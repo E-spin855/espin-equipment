@@ -750,6 +750,21 @@ and manager visibility review for human decision-making.
 Final pricing, project, replacement, trade-in, disposal, procurement,
 service, sales, finance, legal, compliance, and operational decisions remain
 with authorized OEM and customer stakeholders.
+<br><br>
+<br><br>
+
+AXIS is a visibility and documentation aid only. AXIS does not replace the
+OEM’s CRM, quoting system, project management system, service system,
+calendar system, approval system, compliance process, or customer contract
+process.
+
+<br><br>
+
+All lifecycle review labels, follow-up dates, quote status fields, approval
+status fields, trade-in references, and project status fields must be reviewed,
+validated, and acted on by authorized human users. AXIS does not guarantee that
+a project, quote, follow-up, approval, disposal review, replacement review, or
+trade-in review will be completed on time or correctly.
 </div>
       <div class="strip">
         <div class="chip">Client-side only until explicit action</div>
@@ -916,11 +931,8 @@ with authorized OEM and customer stakeholders.
 <th>Serial</th>
 <th>DOM</th>
 <th>Age</th>
-<th>Review Level</th>
-<th>Manual Trade-In Reference</th>
+<th>Attention</th>
 <th>Facility</th>
-<th>OEM Rule Match</th>
-<th>Rep-Selected Manual Follow-Up</th>
 <th>Source</th>
 <th>Actions</th>
                 </tr>
@@ -931,21 +943,34 @@ with authorized OEM and customer stakeholders.
 <div class="panel hidden" id="lifecycleDetailPanel">
   <div class="panel-head">
   <h2>Selected Record</h2>
-  <span class="mini">Review condition → Trade-In details → Quote review</span>
+  <span class="mini">Raw data review → user-selected action log</span>
 </div>
 
   <div class="panel-body">
     <div id="emptyState" class="mini">Select a record in the table above.</div>
     <div id="detailArea" class="hidden">
       <div class="detail-grid" id="detailGrid"></div>
-      <div class="btns" style="margin-top:2px;">
-  <button type="button" class="green" id="quoteBtn">Quote Review</button>
-  <button type="button" class="green" id="exportQuotePdfBtn">Submit Quote for Approval</button>
-  <button type="button" class="green" id="sendQuoteBtn">Open Email Draft</button>
-  <button type="button" class="green" id="tradeBtn">Send Equipment to Trade-In App</button>
-  <button type="button" class="pink" id="connectBtn">Send to Disposal Review</button>
-<button type="button" class="red" id="deleteNewProjectBtn">Delete Lost Project</button>
+      <div class="row" style="margin-top:12px;max-width:420px;">
+  <label>Rep Manual Action</label>
+  <select id="manualActionSelect">
+    <option value="">Select manual action</option>
+    <option value="quote_review">Open Quote Review</option>
+    <option value="submit_quote_approval">Submit Quote for Approval</option>
+    <option value="open_email_draft">Open Approved Email Draft</option>
+    <option value="send_tradein_app">Send Equipment to Trade-In App</option>
+    <option value="send_disposal_review">Send to Disposal Review</option>
+    <option value="contact_customer">Contact Customer</option>
+    <option value="schedule_follow_up">Schedule Follow-Up</option>
+    <option value="add_note">Add Note Only</option>
+    <option value="mark_reviewed">Mark Reviewed</option>
+    <option value="complete">Complete Project</option>
+    <option value="remove">Remove From My View</option>
+  </select>
 </div>
+
+<button class="green" onclick="confirmManualAction()">
+  Continue
+</button>
 
 <div class="row" style="margin-top:12px;max-width:320px;">
   <label>Action Taken</label>
@@ -1523,93 +1548,6 @@ const tradeInCredit = Number(tradeInCreditRaw || 0);
     `;
   }).join("");
 }
-function getRepSelectedActionOptions(selected = "") {
-  const options = [
-    ["", "Rep selects manual action"],
-    ["review_customer_status", "Rep selected: review customer status"],
-    ["contact_customer", "Rep selected: contact customer"],
-    ["schedule_follow_up", "Rep selected: schedule follow-up"],
-    ["review_budget_timing", "Rep selected: review budget timing"],
-    ["review_service_history", "Rep selected: review service history"],
-    ["review_upgrade_path", "Rep selected: review upgrade path"],
-    ["review_replacement_timing", "Rep selected: review replacement timing"],
-    ["send_to_trade_in", "Rep selected: send to Trade-In App"],
-    ["send_to_disposal", "Rep selected: send to Disposal"],
-    ["quote_review", "Rep selected: quote review"],
-    ["monitor_no_action", "Rep selected: monitor only"],
-    ["other", "Rep selected: other"]
-  ];
-
-  return options.map(([value, label]) => `
-    <option value="${value}" ${String(selected || "") === value ? "selected" : ""}>
-      ${label}
-    </option>
-  `).join("");
-}
-function getRepSelectedActionLabel(value) {
-  const map = {
-    review_customer_status: "Rep selected: review customer status",
-    contact_customer: "Rep selected: contact customer",
-    schedule_follow_up: "Rep selected: schedule follow-up",
-    review_budget_timing: "Rep selected: review budget timing",
-    review_service_history: "Rep selected: review service history",
-    review_upgrade_path: "Rep selected: review upgrade path",
-    review_replacement_timing: "Rep selected: review replacement timing",
-    send_to_trade_in: "Rep selected: send to Trade-In App",
-    send_to_disposal: "Rep selected: send to Disposal",
-    quote_review: "Rep selected: quote review",
-    monitor_no_action: "Rep selected: monitor only",
-    other: "Rep selected: other"
-  };
-
-  return map[value] || "";
-}
-function saveRepSelectedNextAction(recordId) {
-  const rec = state.records.find(r => String(r.id) === String(recordId));
-
-  if (!rec) return;
-
-  const select = document.getElementById(`repNextAction_${recordId}`);
-
-  const action = select ? select.value : "";
-  const label = getRepSelectedActionLabel(action);
-
-  rec.rep_selected_next_action = action;
-  rec.rep_selected_next_action_label = label;
-  rec.rep_selected_next_action_at = action ? new Date().toISOString() : "";
-
-  rec.manager_unseen_update = true;
-  rec.manager_flash_at = new Date().toISOString();
-  rec.manager_flash_type = "rep_selected_next_action";
-  rec.manager_flash_text = "Rep selected next action";
-
-  syncFeedStatus(rec);
-  saveRecords();
-
-  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-
-  render();
-}
-
-function renderRepSelectedNextActionControl(rec) {
-  const selected = rec.rep_selected_next_action || "";
-
-  return `
-    <div class="rep-next-action-wrap" onclick="event.stopPropagation();">
-      <select
-        id="repNextAction_${rec.id}"
-        class="rep-next-action-select"
-        onchange="saveRepSelectedNextAction('${rec.id}')"
-      >
-        ${getRepSelectedActionOptions(selected)}
-      </select>
-
-      <div class="axis-signal-note">
-        Rep manually selects next action.
-      </div>
-    </div>
-  `;
-}
 function renderReviewSignalCell(rec) {
   if (rec.lifecycle_completed) {
     return `<span class="alert-badge alert-completed">Completed</span>`;
@@ -1686,7 +1624,7 @@ function renderTable() {
   const tbody = $("tableBody");
 
   if (!state.records.length) {
-    tbody.innerHTML = '<tr><td colspan="14">No records</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11">No records</td></tr>';
     return;
   }
 
@@ -1779,55 +1717,23 @@ if (quotePriority === "LOST") return 10;
 
       <td>
   ${
-    rec.project_type === "new_sales_project"
-      ? "-"
-      : rec.quote_amount
-      ? getReviewVisibilityBadge(getQuotePriority(rec))
-      : (() => {
-          const level = getReviewVisibilityLevel(rec);
-
-          if (level === "HIGH") {
-            return '<span class="pill ready">HIGH VISIBILITY</span>';
-          }
-
-          if (level === "STANDARD") {
-            return '<span class="pill pending">STANDARD</span>';
-          }
-
-          return '<span class="pill local">MONITOR</span>';
-        })()
-  }
-</td>
-
-<td>
-  ${
-    getTradeInCreditValue(rec) > 0
-      ? "$" + getTradeInCreditValue(rec).toLocaleString()
-      : "-"
+    rec.lifecycle_completed
+      ? '<span class="alert-badge alert-completed">Reviewed</span>'
+      : getAlerts(rec).length || rec.tradein_sync_received || rec.quote_amount
+      ? '<span class="pill ready">ATTENTION NEEDED</span><div class="mini" style="margin-top:6px;">Open record to review raw imported signal data.</div>'
+      : '<span class="mini">No active signal</span>'
   }
 </td>
 
 <td>${rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility"}</td>
 
-                     <td>
-          ${renderReviewSignalCell(rec)}
-        </td>
-
-        <td>
-          ${
-            rec.lifecycle_completed
-              ? `<span class="next-action-label next-action-completed">Completed</span>`
-              : renderRepSelectedNextActionControl(rec)
-          }
-        </td>
-
-        <td>
-          ${
-            rec.project_type === "new_sales_project"
-              ? '<span class="pill local">NEW PROJECT</span>'
-              : rec.source || ""
-          }
-        </td>
+<td>
+  ${
+    rec.project_type === "new_sales_project"
+      ? '<span class="pill local">USER ENTERED</span>'
+      : rec.source || "CSV"
+  }
+</td>
 
         <td>
           <button onclick="event.stopPropagation(); selectRow('${rec.id}')">
@@ -2196,7 +2102,7 @@ function getInitialTriggerInfo(rec) {
     return {
       type: "none",
       label: "No Initial Trigger",
-      action: "No lifecycle review step was triggered",
+      action: "No imported review field is currently visible",
       priority: "LOW"
     };
   }
@@ -2217,149 +2123,6 @@ else if (visibilityLevel === "STANDARD") priority = "MED";
     label: trigger.label,
     action: trigger.label,
     priority
-  };
-}
-function getInitialTriggerExplanation(rec) {
-  const age = ageFromDom(rec.dom);
-  const modality = normalizeModality(rec.modality);
-
-  const DEFAULT_THRESHOLDS = {
-    MRI: 8,
-    CT: 7,
-    XRAY: 6,
-    CATH: 8,
-    PET: 8,
-    OTHER: 8
-  };
-
-  const threshold =
-    Number(rec.threshold_years) > 0
-      ? Number(rec.threshold_years)
-      : (DEFAULT_THRESHOLDS[modality] || 8);
-
-  const alerts = getAlerts({
-    ...rec,
-    quote_amount: "",
-    quote_status: "",
-    lifecycle_completed: false
-  });
-
-  const trigger = alerts[0];
-
-  if (!trigger) {
-    return {
-      reason: "No active OEM rule match is currently visible for this equipment.",
-      repTalkTrack:
-        "There is no active AXIS rule match on this record right now. Continue normal manual monitoring through the OEM/customer process."
-    };
-  }
-
-  const serviceTrend =
-    String(rec.service_cost_trend || "").toLowerCase().trim();
-
-  const condition =
-    String(rec.condition || "").toLowerCase().trim();
-
-  const utilization =
-    Number(rec.utilization || 0);
-
-  const contractDate =
-    rec.service_contract_end_date ||
-    rec.contract_expiration_date ||
-    rec.warranty_end_date ||
-    rec.service_end_date ||
-    "";
-
-  if (contractDate) {
-    const today = new Date(todayISO());
-    const end = new Date(contractDate);
-    const days = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-
-    if (days <= 180) {
-      return {
-        reason:
-          `OEM rule match: service coverage date is approaching or has passed. Current service/contract date on file: ${contractDate}.`,
-        repTalkTrack:
-          "This record is visible because an OEM-defined service-date rule matched the uploaded record. The rep may manually review the record and document any follow-up. AXIS does not recommend action, determine customer need, select the next action, or determine the customer decision."
-      };
-    }
-  }
-
-  if (trigger.type === "proactive") {
-    return {
-      reason:
-        rec.proactive_reason ||
-        "OEM rule match: early planning visibility was manually included or configured for this uploaded record.",
-      repTalkTrack:
-        "This record is visible because an OEM-defined early-planning rule matched the uploaded record. The rep may manually review the record and document any follow-up. AXIS does not recommend action, determine customer need, select the next action, or determine the customer decision."
-    };
-  }
-
-  if (trigger.type === "disposal") {
-    return {
-      reason:
-        `${modality} is ${age} years old. OEM-configured threshold is ${threshold} years, and this record matches the OEM-defined disposition-window rule.`,
-      repTalkTrack:
-        "This record is visible because it matches an OEM-defined disposition-window rule. Authorized OEM/customer stakeholders decide whether any continued-use, replacement, trade-in, removal, disposal, or monitoring discussion is appropriate. AXIS does not determine disposal, replacement, value, pricing, or customer decision."
-    };
-  }
-
-  if (trigger.type === "replacement") {
-    return {
-      reason:
-        `${modality} is ${age} years old. OEM-configured threshold is ${threshold} years, and this record matches the OEM-defined replacement-window rule.`,
-      repTalkTrack:
-        "This record is visible because it matches an OEM-defined replacement-window rule. This does not mean replacement is required. Authorized OEM/customer stakeholders make all replacement, trade-in, pricing, procurement, and customer decisions."
-    };
-  }
-
-  if (trigger.type === "upgrade") {
-    return {
-      reason:
-        `${modality} is ${age} years old. OEM-configured threshold is ${threshold} years, and this record matches the OEM-defined upgrade-window rule.`,
-      repTalkTrack:
-        "This record is visible because it matches an OEM-defined upgrade-window rule. The facility and OEM may manually evaluate whether any software, hardware, service, workflow, or monitoring discussion is appropriate. AXIS does not recommend an upgrade, select an offer, or determine customer need."
-    };
-  }
-
-  if (trigger.type === "planning") {
-    return {
-      reason:
-        `${modality} is ${age} years old. OEM-configured threshold is ${threshold} years, and this record matches the OEM-defined budget-window rule.`,
-      repTalkTrack:
-        "This record is visible because it matches an OEM-defined budget-window rule. The facility can decide through its normal planning process whether any future discussion is appropriate. AXIS does not determine budget action, replacement timing, procurement timing, or customer decision."
-    };
-  }
-
-  if (trigger.type === "service") {
-    const serviceReasons = [];
-
-    if (serviceTrend && serviceTrend !== "none") {
-      serviceReasons.push(`service cost trend is marked as ${serviceTrend}`);
-    }
-
-    if (condition && condition !== "good") {
-      serviceReasons.push(`equipment condition is marked as ${condition}`);
-    }
-
-    if (utilization > 0) {
-      serviceReasons.push(`utilization is listed at ${utilization}%`);
-    }
-
-    return {
-      reason: serviceReasons.length
-        ? `OEM rule match: service visibility is shown because ${serviceReasons.join(", ")}.`
-        : "OEM rule match: service visibility is shown by OEM-defined service indicators.",
-      repTalkTrack:
-        "This record is visible because OEM-defined service, condition, utilization, or cost-trend fields matched the uploaded record. The rep may manually review service status, customer context, and follow-up timing. AXIS does not determine service action, replacement, trade-in, disposal, pricing, value, or customer decision."
-    };
-  }
-
-  return {
-    reason:
-      "This record is visible because it matches OEM-defined review fields from the uploaded record.",
-    repTalkTrack:
-      "This equipment appears in the review workspace based on rules configured by the OEM. AXIS displays the record for manual review only and does not recommend action, generate an opportunity, determine value, select pricing, or determine customer decision."
   };
 }
 function renderNewProjectDetail(rec) {
@@ -2789,6 +2552,84 @@ function applyExternalTradeInToQuote(id = null) {
 
   alert("Trade-in reference manually applied to quote.");
 }
+function renderRawSignalDataCard(rec) {
+  const rawSignals = [];
+
+  const addSignal = (field, value, source) => {
+    if (value === "" || value === null || value === undefined) return;
+
+    rawSignals.push({
+      field,
+      value,
+      source: source || rec.source || "CSV"
+    });
+  };
+
+  addSignal("threshold_years", rec.threshold_years, rec.source);
+  addSignal("alert_override", rec.alert_override, rec.source);
+  addSignal("alert_enabled", rec.alert_enabled, rec.source);
+  addSignal("proactive_signal", rec.proactive_signal, rec.source);
+  addSignal("proactive_type", rec.proactive_type, rec.source);
+  addSignal("proactive_date", rec.proactive_date, rec.source);
+  addSignal("proactive_reason", rec.proactive_reason, rec.source);
+  addSignal("utilization", rec.utilization, rec.source);
+  addSignal("condition", rec.condition, rec.source);
+  addSignal("service_cost_trend", rec.service_cost_trend, rec.source);
+  addSignal("planning_offset", rec.planning_offset, rec.source);
+  addSignal("upgrade_offset", rec.upgrade_offset, rec.source);
+  addSignal("replacement_offset", rec.replacement_offset, rec.source);
+  addSignal("disposal_offset", rec.disposal_offset, rec.source);
+  addSignal("next_action_date", rec.next_action_date, rec.source);
+  addSignal("external_tradein_value", rec.external_tradein_value, rec.external_tradein_source);
+  addSignal("tradein_sync_received", rec.tradein_sync_received, rec.external_tradein_source);
+
+  if (!rawSignals.length) {
+    return `
+      <div class="detail-card">
+        <div class="k">Raw Imported Signal Data</div>
+        <div class="v">No raw signal fields were imported for this record.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="detail-card" style="
+      border:2px solid rgba(0,229,255,.45);
+      background:linear-gradient(180deg,rgba(0,229,255,.10),rgba(8,18,35,.82));
+      box-shadow:0 0 24px rgba(0,229,255,.16);
+    ">
+      <div class="k">Raw Imported Signal Data</div>
+
+      <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
+        AXIS displays these imported/user-entered fields for review visibility only.
+        AXIS does not combine these fields into a recommendation, score, ranking,
+        next-best action, replacement decision, trade-in decision, disposal decision,
+        price, or offer.
+      </div>
+
+      <div style="display:grid;gap:10px;">
+        ${rawSignals.map((s, index) => `
+          <div style="
+            padding:10px 12px;
+            border-radius:12px;
+            border:1px solid rgba(88,184,255,.18);
+            background:rgba(8,18,35,.62);
+          ">
+            <div class="mini" style="color:#a2f5ff;font-weight:900;">
+              Signal ${index + 1}
+            </div>
+
+            <div style="margin-top:4px;font-size:13px;line-height:1.45;">
+              <strong>Field:</strong> ${s.field}<br>
+              <strong>Value:</strong> ${String(s.value)}<br>
+              <strong>Source:</strong> ${s.source || "CSV"}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -2871,102 +2712,7 @@ grid.innerHTML += `
     <div class="k">Override</div>
     <div class="v">${rec.alert_override || "None"}</div>
   </div>
-${
-  (() => {
-    const initial = getInitialTriggerInfo(rec);
-    const explain = getInitialTriggerExplanation(rec);
-
-    const priorityClass =
-      initial.priority === "HIGH"
-        ? "ready"
-        : initial.priority === "MED"
-        ? "pending"
-        : "local";
-
-        const triggerClass =
-      initial.type === "disposal"
-        ? "alert-disposal"
-        : initial.type === "replacement"
-        ? "alert-replacement"
-        : initial.type === "upgrade"
-        ? "alert-upgrade"
-        : initial.type === "planning"
-        ? "alert-planning"
-        : initial.type === "proactive"
-        ? "alert-proactive"
-        : "alert-service";
-
-    return `
-      <div class="detail-card" style="
-        border:2px solid rgba(0,229,255,.45);
-        background:linear-gradient(180deg,rgba(0,229,255,.10),rgba(8,18,35,.82));
-        box-shadow:0 0 24px rgba(0,229,255,.16);
-      ">
-        <div class="k">Initial OEM Rule Match</div>
-
-        <div class="v">
-          <span class="alert-badge ${triggerClass}">
-            ${initial.label}
-          </span>
-        </div>
-
-        <div style="
-          margin-top:12px;
-          padding:12px;
-          border-radius:12px;
-          border:1px solid rgba(88,184,255,.22);
-          background:rgba(8,18,35,.55);
-          color:#d8ebff;
-          font-size:13px;
-          line-height:1.5;
-        ">
-          <strong style="color:#a2f5ff;">Why this record is visible:</strong>
-          <br>
-          ${explain.reason}
-        </div>
-
-        <div style="
-          margin-top:10px;
-          padding:12px;
-          border-radius:12px;
-          border:1px solid rgba(255,216,77,.25);
-          background:rgba(255,216,77,.07);
-          color:#fff4cc;
-          font-size:13px;
-          line-height:1.5;
-        ">
-          <strong>Rep explanation:</strong>
-          <br>
-          ${explain.repTalkTrack}
-        </div>
-      </div>
-
-      <div class="detail-card" style="
-        border:2px solid rgba(255,216,77,.35);
-        background:rgba(255,216,77,.06);
-      ">
-        <div class="k">Initial OEM Rule Match</div>
-
-        <div class="v" style="margin-bottom:10px;">
-          ${initial.action}
-        </div>
-<span class="pill ${priorityClass}">
-  ${initial.priority === "MED" ? "STANDARD" : initial.priority} INITIAL VISIBILITY
-</span>
-
-        ${
-          rec.quote_amount
-            ? `
-              <div class="mini" style="margin-top:10px;line-height:1.45;">
-                Quote activity is now shown in the table, but the original review condition remains preserved so the rep can explain why the review item was opened.
-              </div>
-            `
-            : ""
-        }
-      </div>
-    `;
-  })()
-}
+${renderRawSignalDataCard(rec)}
 ${
   rec.tradein_sync_received
     ? `
@@ -3325,47 +3071,10 @@ Manually Apply Trade-In Reference to Quote
     </div>
   </div>
 `;
-const isNewProject = rec.project_type === "new_sales_project";
-
-$("tradeBtn").style.display = isNewProject ? "none" : "inline-flex";
-$("connectBtn").style.display = isNewProject ? "none" : "inline-flex";
-
-$("quoteBtn").style.display = "inline-flex";
-$("exportQuotePdfBtn").style.display = "inline-flex";
-$("sendQuoteBtn").style.display = "inline-flex";
-
-const deleteNewProjectBtn = $("deleteNewProjectBtn");
-
-if (deleteNewProjectBtn) {
-  deleteNewProjectBtn.style.display =
-    isNewProject && rec.quote_status === "lost"
-      ? "inline-flex"
-      : "none";
-}
   // 🔥 PAYLOAD
   $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
 
 // 🔥 allow re-send after short lock OR always allow (your choice)
-
-// 🔥 BUTTON STATE (CLEAN — NO BREAKS)
-$("tradeBtn").disabled =
-  completed ||
-  rec.submitted_to === "tradein_app" ||
-  rec.submitted_to === "tradein_desk";
-
-$("connectBtn").disabled =
-  completed ||
-  rec.submitted_to === "connect";
-$("quoteBtn").disabled = completed;
-$("exportQuotePdfBtn").disabled = completed || !rec.quote_amount;
-$("sendQuoteBtn").disabled = completed || !rec.quote_amount;
-
-if (deleteNewProjectBtn) {
-  deleteNewProjectBtn.style.display =
-    rec.project_type === "new_sales_project" && rec.quote_status === "lost"
-      ? "inline-flex"
-      : "none";
-}
 document.querySelector(
   'button[onclick="saveRepAction()"]'
 ).disabled = completed;
@@ -4118,7 +3827,7 @@ if (rec.image_sync_received) {
 
   items.push({
     date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
-    label: `OEM rule match visible: ${initial.label}`
+    label: `Imported review field visible: ${initial.label}`
   });
 
   if (rec.tradein_sync_received) {
@@ -4187,7 +3896,7 @@ function buildManagerEscalation(rec) {
       <br>
       Quote follow-up missed by <strong>${daysLate}</strong> day(s).
       <br>
-      Manager may review this item before follow-up activity stalls.
+      Manager visibility is shown because the rep-entered quote follow-up date has passed.
     </div>
   `;
 }
@@ -4982,105 +4691,6 @@ function selectRow(id) {
 
   render();
 }
-function getProactiveSignal(rec) {
-  if (rec.proactive_enabled === "no") return null;
-
-  const directSignal =
-    rec.proactive_signal === "yes" ||
-    rec.proactive_signal === "true" ||
-    rec.proactive_signal === "1";
-
-  if (!directSignal) return null;
-
-  return {
-    type: "proactive",
-    label: "EARLY PLANNING VISIBILITY",
-    reason:
-      rec.proactive_reason ||
-      "This record was surfaced before the normal lifecycle threshold."
-  };
-}
-function getAxisReviewSummary(rec) {
-  const alerts = getAlerts(rec);
-  const first = alerts[0];
-  const age = ageFromDom(rec.dom);
-  const modality = normalizeModality(rec.modality);
-  const threshold = Number(rec.threshold_years || 0) || 8;
-
-  if (!first) {
-    return {
-      reviewReason: "No active OEM-defined review condition is currently shown for this equipment.",
-      reviewTiming: "Continue normal monitoring until an OEM-defined lifecycle, service, utilization, or proactive review condition becomes visible.",
-      possibleReviewStep: "Monitor asset status.",
-      repContextNote: "Hi, we are continuing to monitor your equipment lifecycle timing and will follow up if a planning review condition becomes visible.",
-      managerVisibilityNote: "No active rep review item is currently shown."
-    };
-  }
-
-  const assetLabel =
-    `${modality || "Asset"}${age ? ` is ${age} years old` : ""}`;
-
-  const map = {
-    disposal: {
-      reviewReason: `${assetLabel} and matches the OEM-defined disposition review condition.`,
-      reviewTiming: "This record is shown for manual review because OEM-defined lifecycle timing indicates disposition visibility may be appropriate. Final decisions remain with authorized OEM and customer stakeholders.",
-      possibleReviewStep: "Rep may document customer status, timing, and whether a manual trade-in, removal, disposal, continued-use, or monitoring discussion is appropriate.",
-      repContextNote: "Hi, we are reviewing lifecycle timing for your system and noticed it is showing in a disposition review window. Would it make sense to confirm the current planning status?",
-      managerVisibilityNote: "High-visibility disposition review item. Rep follow-up should remain visible to management."
-    },
-
-    replacement: {
-      reviewReason: `${assetLabel} and matches the OEM-defined ${threshold}-year replacement timing review condition.`,
-      reviewTiming: "This record is shown for human review only. AXIS does not determine that replacement is required and does not select a customer action.",
-      possibleReviewStep: "Rep may review timing with authorized OEM/customer stakeholders before any sales, replacement, trade-in, removal, or service discussion.",
-      repContextNote: "Hi, we are reviewing lifecycle timing for your system and noticed it is showing in a replacement timing review window. Would it make sense to confirm your current planning timeline?",
-      managerVisibilityNote: "High-visibility lifecycle review item assigned to rep. Follow-up should remain visible."
-    },
-
-    upgrade: {
-      reviewReason: `${assetLabel} and matches the OEM-defined upgrade timing review condition.`,
-      reviewTiming: "This record is shown because OEM-defined timing or service context may justify manual visibility. Final review remains manual.",
-      possibleReviewStep: "Rep may document whether upgrade, modernization, service planning, or continued monitoring should be discussed.",
-      repContextNote: "Hi, we are reviewing lifecycle timing for your system and noticed it is showing in an upgrade review window. Would it be useful to confirm whether any upgrade planning is active?",
-      managerVisibilityNote: "Upgrade review item assigned to rep. Manager may verify follow-up visibility."
-    },
-
-    planning: {
-      reviewReason: `${assetLabel} and matches the OEM-defined budget timing review condition.`,
-      reviewTiming: "This record is shown early for planning visibility. AXIS does not determine budget action, replacement action, or procurement timing.",
-      possibleReviewStep: "Rep may document whether the asset should be discussed during future budget, service, upgrade, replacement, trade-in, removal, or monitoring planning.",
-      repContextNote: "Hi, we are reviewing upcoming lifecycle timing and wanted to help confirm whether this system should be included in future planning discussions.",
-      managerVisibilityNote: "Planning-stage review item. Rep should document customer status and any follow-up date."
-    },
-
-    service: {
-      reviewReason: "OEM-defined service, condition, utilization, or cost-trend inputs caused this asset to appear for review visibility.",
-      reviewTiming: "This record is shown because OEM-defined service indicators may justify manual review. AXIS does not determine service action, replacement, trade-in, disposal, or customer decision.",
-      possibleReviewStep: "Rep may review service history, customer status, utilization, condition, and whether any follow-up discussion should be documented.",
-      repContextNote: "Hi, we are reviewing recent service and lifecycle indicators for your system. Would it be useful to confirm current performance and planning status?",
-      managerVisibilityNote: "Service-driven review item. Rep should document customer impact and next follow-up."
-    },
-
-    proactive: {
-      reviewReason: rec.proactive_reason || "An OEM-defined early planning visibility condition was provided.",
-      reviewTiming: "This record is shown before the normal lifecycle threshold for early manual review visibility.",
-      possibleReviewStep: "Rep may document whether early planning, budget review, upgrade review, replacement timing, trade-in, disposal, or monitoring should be discussed.",
-      repContextNote: "Hi, we are reviewing your equipment planning timeline and noticed an early lifecycle review signal. Would it make sense to confirm your current planning status?",
-      managerVisibilityNote: "Early planning visibility item. Rep should document planning status, response, and follow-up timing."
-    }
-  };
-
-  return map[first.type] || map.planning;
-}
-/*
-  AXIS only displays records that match OEM-configured rule fields.
-  These rule matches are for visibility only.
-
-  AXIS does not generate sales opportunities, recommend action,
-  determine customer need, determine equipment value, determine replacement,
-  determine disposal, determine pricing, rank customers, rank reps,
-  or automatically apply trade-in credits.
-*/
 function getAlerts(rec) {
   if (rec.lifecycle_completed || rec.project_type === "new_sales_project") {
     return [];
@@ -5125,13 +4735,13 @@ function getAlerts(rec) {
   if (validOverrides.includes(String(rec.alert_override || "").toLowerCase().trim())) {
     const type = String(rec.alert_override || "").toLowerCase().trim();
 
-   const labelMap = {
-  disposal: "Disposition Window",
-  replacement: "Replacement Window",
-  upgrade: "Upgrade Window",
-  planning: "Budget Window",
-  service: "Service Review",
-  proactive: "Early Planning Visibility"
+  const labelMap = {
+  disposal: "Imported disposition-window field",
+  replacement: "Imported replacement-window field",
+  upgrade: "Imported upgrade-window field",
+  planning: "Imported planning-window field",
+  service: "Imported service field",
+  proactive: "Imported proactive field"
 };
 
     return [{
@@ -5151,7 +4761,7 @@ function getAlerts(rec) {
   if (proactiveSignal) {
     return [{
   type: "proactive",
-  label: "Early Planning Visibility"
+  label: "Imported proactive field"
 }];
   }
 
@@ -5191,32 +4801,32 @@ function getAlerts(rec) {
       ? 2
       : Number(rec.disposal_offset);
 
-  if (age === null || age === undefined) {
-    if (serviceTriggered) {
-      return [{ type: "service", label: "Service Review" }];
-    }
-
-    return [];
+if (age === null || age === undefined) {
+  if (serviceTriggered) {
+    return [{ type: "service", label: "Imported service field" }];
   }
 
-  if (age >= threshold + disposalOffset) {
-  return [{ type: "disposal", label: "Disposition Review Window" }];
+  return [];
+}
+
+if (age >= threshold + disposalOffset) {
+  return [{ type: "disposal", label: "Imported disposition-window field" }];
 }
 
 if (age >= threshold + replacementOffset) {
-  return [{ type: "replacement", label: "Replacement Review Window" }];
+  return [{ type: "replacement", label: "Imported replacement-window field" }];
 }
 
 if (age >= threshold + upgradeOffset) {
-  return [{ type: "upgrade", label: "Upgrade Review Window" }];
+  return [{ type: "upgrade", label: "Imported upgrade-window field" }];
 }
 
 if (age >= threshold + planningOffset) {
-  return [{ type: "planning", label: "Budget Review Window" }];
+  return [{ type: "planning", label: "Imported planning-window field" }];
 }
 
 if (serviceTriggered) {
-  return [{ type: "service", label: "Service Review" }];
+  return [{ type: "service", label: "Imported service field" }];
 }
 
 return [];
@@ -5298,6 +4908,114 @@ $("newProjectRepFirst").value = "";
 }
 function closeNewProjectModal() {
   $("newProjectModal").style.display = "none";
+}
+
+/* ✅ ADD confirmManualAction HERE */
+async function confirmManualAction() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  const action = document.getElementById("manualActionSelect").value;
+
+  if (!action) {
+    alert("Select a manual action first.");
+    return;
+  }
+
+  const labelMap = {
+    quote_review: "Open Quote Review",
+    submit_quote_approval: "Submit Quote for Approval",
+    open_email_draft: "Open Approved Email Draft",
+    send_tradein_app: "Send Equipment to Trade-In App",
+    send_disposal_review: "Send to Disposal Review",
+    contact_customer: "Contact Customer",
+    schedule_follow_up: "Schedule Follow-Up",
+    add_note: "Add Note Only",
+    mark_reviewed: "Mark Reviewed",
+    complete: "Complete Project",
+    remove: "Remove From My View"
+  };
+
+  const label = labelMap[action] || action;
+
+  if (!confirm(`Confirm manual action:\n\n${label}\n\nAXIS will document this user-selected action.`)) {
+    return;
+  }
+
+  rec.rep_selected_manual_action = action;
+  rec.rep_selected_manual_action_label = label;
+  rec.rep_selected_manual_action_at = new Date().toISOString();
+
+  if (action === "quote_review") {
+    openQuoteModal();
+    return;
+  }
+
+  if (action === "submit_quote_approval") {
+    exportQuotePDF();
+    return;
+  }
+
+  if (action === "open_email_draft") {
+    sendQuoteToCustomer();
+    return;
+  }
+
+  if (action === "send_tradein_app") {
+    await submitRecord("tradein_app");
+    return;
+  }
+
+  if (action === "send_disposal_review") {
+    openDecisionModal();
+    return;
+  }
+
+  if (action === "schedule_follow_up") {
+    document.getElementById("repAction").value = "follow_up";
+    alert("Select follow-up date, then save action.");
+    return;
+  }
+
+  if (action === "complete") {
+    completeLifecycleProject();
+    return;
+  }
+
+  if (action === "remove") {
+    deleteFromRepOnly();
+    return;
+  }
+
+  if (action === "mark_reviewed") {
+    rec.rep_status = "reviewed";
+  } else {
+    rec.rep_status = action;
+  }
+
+  rec.rep_action = action;
+  rec.rep_last_action_at = new Date().toISOString();
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "rep_manual_action";
+  rec.manager_flash_text = `Rep manually selected: ${label}`;
+
+  syncFeedStatus(rec);
+  saveRecords();
+  render();
+
+  const banner = document.getElementById("resultBanner");
+  banner.style.display = "block";
+  banner.textContent = `✅ Manual action recorded: ${label}`;
+
+  setTimeout(() => {
+    banner.style.display = "none";
+  }, 2500);
 }
 function saveRepAction() {
   const rec = state.records.find(
@@ -6578,13 +6296,8 @@ $("axisShareToggle").addEventListener("change", () => {
 
   render();
 });
-$("quoteBtn").addEventListener("click", () => openQuoteModal());
 $("addNewProjectBtn").addEventListener("click", () => openNewProjectModal());
-$("tradeBtn").addEventListener("click", () => submitRecord("tradein_app"));
-$("deleteNewProjectBtn").addEventListener("click", () => deleteLostNewProject());
-$("connectBtn").addEventListener("click", () => openDecisionModal());
-$("sendQuoteBtn").addEventListener("click", () => sendQuoteToCustomer());
-$("exportQuotePdfBtn").addEventListener("click", () => exportQuotePDF());
+
 $("quoteAmount").addEventListener("input", updateQuotePreview);
 $("quoteEstimatedCost").addEventListener("input", updateQuotePreview);
 $("quoteTradeInCredit").addEventListener("input", updateQuotePreview);
