@@ -1635,11 +1635,11 @@ function renderReviewSignalCell(rec) {
 
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
     return `
-      <span class="pill submitted tradein-flash">
-        NEW TRADE-IN INFO RECEIVED
+      <span class="alert-badge alert-proactive">
+        Trade-In Update
       </span>
       <div class="mini" style="margin-top:6px;">
-        Open record to review received trade-in reference.
+        Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}
       </div>
     `;
   }
@@ -1661,87 +1661,75 @@ function renderReviewSignalCell(rec) {
     return `<span class="mini">No active signal</span>`;
   }
 
+  const age = Number(ageFromDom(rec.dom)) || 0;
+  const threshold = Number(rec.threshold_years) || 8;
+  const utilization = Number(rec.utilization || 0);
+  const condition = String(rec.condition || "").toLowerCase().trim();
+  const service = String(rec.service_cost_trend || "").toLowerCase().trim();
+
+  const proactiveType = String(rec.proactive_type || "").toLowerCase().trim();
+  const proactiveReason = String(rec.proactive_reason || "").trim();
+  const proactiveDate = rec.proactive_date || "";
+
   const primary = alerts[0];
   const type = String(primary.type || "").toLowerCase();
 
+  let badgeClass = "alert-badge alert-planning";
+  let badgeText = "Review Field";
+  let detailText = "OEM-defined review field visible.";
+
   if (
     type === "proactive" ||
-    type.includes("service_contract") ||
-    type.includes("warranty") ||
-    type.includes("lease") ||
-    type.includes("refresh")
+    proactiveType ||
+    proactiveReason ||
+    proactiveDate
   ) {
-    return `
-      <span class="alert-badge alert-proactive">
-        Proactive Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined proactive review field visible.
-      </div>
-    `;
-  }
+    badgeClass = "alert-badge alert-proactive";
+    badgeText = "Proactive Review";
 
-  if (type === "planning") {
-    return `
-      <span class="alert-badge alert-planning">
-        Planning Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined planning review field visible.
-      </div>
-    `;
-  }
-
-  if (type === "upgrade") {
-    return `
-      <span class="alert-badge alert-upgrade">
-        Utilization Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined utilization review field visible.
-      </div>
-    `;
-  }
-
-  if (type === "service") {
-    return `
-      <span class="alert-badge alert-service">
-        Service Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined service review field visible.
-      </div>
-    `;
-  }
-
-  if (type === "replacement") {
-    return `
-      <span class="alert-badge alert-replacement">
-        Lifecycle Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined lifecycle review field visible.
-      </div>
-    `;
-  }
-
-  if (type === "disposal") {
-    return `
-      <span class="alert-badge alert-disposal">
-        Disposition Review
-      </span>
-      <div class="mini" style="margin-top:6px;">
-        OEM-defined disposition review field visible.
-      </div>
-    `;
+    if (proactiveType.includes("service") || proactiveReason.toLowerCase().includes("service")) {
+      detailText = proactiveDate
+        ? `Service contract review date: ${proactiveDate}`
+        : "Service contract expiration review visible.";
+    } else if (proactiveType.includes("warranty") || proactiveReason.toLowerCase().includes("warranty")) {
+      detailText = proactiveDate
+        ? `Warranty review date: ${proactiveDate}`
+        : "Warranty expiration review visible.";
+    } else if (proactiveType.includes("lease") || proactiveReason.toLowerCase().includes("lease")) {
+      detailText = proactiveDate
+        ? `Lease review date: ${proactiveDate}`
+        : "Lease expiration review visible.";
+    } else {
+      detailText = proactiveReason || proactiveDate || "OEM-defined proactive review visible.";
+    }
+  } else if (type === "planning") {
+    badgeClass = "alert-badge alert-proactive";
+    badgeText = "Planning Review";
+    detailText = `Age ${age}, OEM-defined threshold ${threshold} years.`;
+  } else if (type === "replacement") {
+    badgeClass = "alert-badge alert-replacement";
+    badgeText = "Lifecycle Review";
+    detailText = `Age ${age}, OEM-defined threshold ${threshold} years.`;
+  } else if (type === "upgrade") {
+    badgeClass = "alert-badge alert-upgrade";
+    badgeText = "Utilization Review";
+    detailText = `Utilization ${utilization}%, OEM-defined review threshold 85%.`;
+  } else if (type === "service") {
+    badgeClass = "alert-badge alert-service";
+    badgeText = "Service Review";
+    detailText = `Service trend: ${service || "not provided"}.`;
+  } else if (type === "disposal") {
+    badgeClass = "alert-badge alert-disposal";
+    badgeText = "Disposition Review";
+    detailText = `Condition: ${condition || "not provided"}.`;
   }
 
   return `
-    <span class="alert-badge alert-planning">
-      Review Visible
+    <span class="${badgeClass}">
+      ${badgeText}
     </span>
     <div class="mini" style="margin-top:6px;">
-      OEM-defined review field visible.
+      ${detailText}
     </div>
   `;
 }
