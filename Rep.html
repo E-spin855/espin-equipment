@@ -5809,6 +5809,190 @@ function importQuoteApprovalDecisions() {
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
 }
+function renderStats() {
+  const total = state.records.length;
+
+  const ready = state.records.filter(rec =>
+    !rec.lifecycle_completed &&
+    !rec.submitted_to &&
+    getAlerts(rec).length
+  ).length;
+
+  const postponed = state.records.filter(rec =>
+    rec.next_action_date && rec.next_action_date > todayISO()
+  ).length;
+
+  const submitted = state.records.filter(rec =>
+    rec.submitted_to
+  ).length;
+
+  $("statTotal").textContent = total;
+  $("statReady").textContent = ready;
+  $("statPostponed").textContent = postponed;
+  $("statSubmitted").textContent = submitted;
+}
+
+function renderRepMenu() {
+  const el = $("repFeed");
+  if (!el) return;
+
+  const reps = [...new Set(
+    state.records.map(rec =>
+      `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+      rec.assigned_rep_name ||
+      "Unassigned"
+    )
+  )];
+
+  if (!reps.length) {
+    el.innerHTML = `<div class="mini">No reps available</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="btns" style="margin-bottom:12px;">
+      <button
+        type="button"
+        class="secondary"
+        onclick="state.selectedRep=null; render();"
+      >
+        Show All
+      </button>
+    </div>
+
+    ${reps.map(rep => {
+      const count = state.records.filter(rec => {
+        const name =
+          `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+          rec.assigned_rep_name ||
+          "Unassigned";
+
+        return name === rep;
+      }).length;
+
+      const active = state.selectedRep === rep;
+
+      return `
+        <div
+          style="
+            padding:10px 12px;
+            margin-bottom:8px;
+            border-radius:12px;
+            border:1px solid ${active ? "rgba(65,255,156,.55)" : "rgba(88,184,255,.18)"};
+            background:${active ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.55)"};
+            cursor:pointer;
+          "
+          onclick="state.selectedRep='${rep.replace(/'/g, "\\'")}'; render();"
+        >
+          <strong>${rep}</strong>
+          <div class="mini">${count} assigned record(s)</div>
+        </div>
+      `;
+    }).join("")}
+  `;
+}
+
+function selectRow(id) {
+  state.selectedId = id;
+
+  const rec = state.records.find(r => r.id === id);
+
+  if (rec) {
+    rec.tradein_seen_by_rep = true;
+
+    if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+      rec.manager_response_seen_by_rep = true;
+      rec.manager_response_seen_at = new Date().toISOString();
+    }
+
+    saveRecords();
+  }
+
+  render();
+}
+
+function payloadFor(rec) {
+  if (!rec) return {};
+
+  return {
+    axis_record_id: rec.id || "",
+    oem_project_id: rec.oem_project_id || "",
+    project_type: rec.project_type || "lifecycle_equipment",
+
+    facility: rec.site || rec.facility || rec.hospital || "",
+    site_address: rec.site_address || "",
+    city: rec.city || "",
+    state: rec.state || "",
+    zip_code: rec.zip_code || "",
+
+    make: rec.make || "",
+    model: rec.model || "",
+    modality: rec.modality || "",
+    serial_number: rec.serial_number || "",
+    dom: rec.dom || "",
+
+    contact_name: rec.contact_name || "",
+    contact_title: rec.contact_title || "",
+    contact_phone: rec.contact_phone || "",
+    contact_email: rec.contact_email || "",
+
+    sales_rep_first: rec.sales_rep_first || "",
+    sales_rep_last: rec.sales_rep_last || "",
+    sales_rep_company: rec.sales_rep_company || "",
+    sales_rep_phone: rec.sales_rep_phone || "",
+    sales_rep_email: rec.sales_rep_email || "",
+
+    oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
+    oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
+    oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
+
+    manual_action: rec.rep_action || "",
+    manual_notes: rec.rep_notes || "",
+    follow_up_date: rec.rep_follow_up_date || rec.next_action_date || "",
+
+    submitted_to: rec.submitted_to || "",
+    submitted_at: rec.submitted_at || "",
+
+    quote_amount: rec.quote_amount || "",
+    quote_status: rec.quote_status || "",
+    quote_follow_up_alert_date: rec.quote_follow_up_alert_date || "",
+
+    tradein_sync_received: Boolean(rec.tradein_sync_received),
+    external_tradein_value: rec.external_tradein_value || "",
+    manually_applied_tradein_credit: rec.quote_trade_in_credit || rec.tradein_credit || ""
+  };
+}
+
+function upsertRecord(rec) {
+  if (!rec || !rec.id) return;
+
+  const index = state.records.findIndex(r => r.id === rec.id);
+
+  if (index >= 0) {
+    state.records[index] = {
+      ...state.records[index],
+      ...rec
+    };
+  } else {
+    state.records.unshift(rec);
+  }
+
+  saveRecords();
+  render();
+}
+
+function getQuoteFollowUpLevel(rec) {
+  if (!rec || !rec.quote_amount) return "NO";
+
+  if (isQuoteFollowUpOverdue(rec)) return "OVERDUE";
+  if (isQuoteFollowUpDueToday(rec)) return "DUE TODAY";
+
+  const days = getDaysUntil(rec.quote_follow_up_alert_date);
+
+  if (days !== null && days <= 7) return "UPCOMING";
+
+  return "OPEN";
+}
 function loadRecords() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
