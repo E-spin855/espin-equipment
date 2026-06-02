@@ -2642,38 +2642,66 @@ function renderRawSignalDataCard(rec) {
   const condition = String(rec.condition || "").toLowerCase().trim();
   const service = String(rec.service_cost_trend || "").toLowerCase().trim();
 
+  const proactiveType = String(rec.proactive_type || "").toLowerCase().trim();
+  const proactiveReason = String(rec.proactive_reason || "").trim();
+  const proactiveDate = rec.proactive_date || "";
+
   const lines = [];
 
+  function addLine(text, green = false) {
+    lines.push({ text, green });
+  }
+
   if (activeTypes.has("replacement") || activeTypes.has("planning")) {
-    lines.push(`Age ${age}, OEM-defined threshold years ${threshold}`);
+    addLine(`Age ${age}, OEM-defined equipment threshold ${threshold} years`);
   }
 
   if (activeTypes.has("upgrade")) {
-    lines.push(`Utilization ${utilization}%, OEM-defined utilization review trigger 85%`);
+    addLine(`Utilization ${utilization}%, OEM-defined utilization review threshold 85%`);
   }
 
   if (activeTypes.has("service")) {
-    lines.push(`Service cost trend: ${service || "not provided"}`);
+    addLine(`Service trend ${service || "not provided"}, OEM-defined service review condition`);
   }
 
   if (activeTypes.has("disposal")) {
-    lines.push(`Condition: ${condition || "not provided"}`);
+    addLine(`Condition ${condition || "not provided"}, OEM-defined disposition review condition`);
   }
 
-  if (activeTypes.has("proactive")) {
-    lines.push(
-      `Proactive review: ${rec.proactive_reason || rec.proactive_type || rec.proactive_signal || "OEM-defined proactive review"}`
-    );
+  if (proactiveType || proactiveReason || proactiveDate || activeTypes.has("proactive")) {
+    let proactiveText = "OEM-defined proactive review";
+
+    if (proactiveType.includes("service") || proactiveReason.toLowerCase().includes("service")) {
+      proactiveText = proactiveDate
+        ? `OEM-defined service contract review date: ${proactiveDate}`
+        : `OEM-defined service contract expiration: review required`;
+    } else if (proactiveType.includes("warranty") || proactiveReason.toLowerCase().includes("warranty")) {
+      proactiveText = proactiveDate
+        ? `OEM-defined warranty review date: ${proactiveDate}`
+        : `OEM-defined warranty expiration: review required`;
+    } else if (proactiveType.includes("lease") || proactiveReason.toLowerCase().includes("lease")) {
+      proactiveText = proactiveDate
+        ? `OEM-defined lease review date: ${proactiveDate}`
+        : `OEM-defined lease expiration: review required`;
+    } else if (proactiveType.includes("refresh") || proactiveReason.toLowerCase().includes("refresh")) {
+      proactiveText = `OEM-defined refresh planning review: ${proactiveReason || proactiveDate || "review required"}`;
+    } else if (proactiveReason) {
+      proactiveText = `OEM-defined proactive review: ${proactiveReason}`;
+    } else if (proactiveDate) {
+      proactiveText = `OEM-defined proactive review date: ${proactiveDate}`;
+    }
+
+    addLine(proactiveText, true);
   }
 
   if (rec.tradein_sync_received) {
-    lines.push(
+    addLine(
       `Trade-in reference received: $${Number(rec.external_tradein_value || 0).toLocaleString()}`
     );
   }
 
   if (!lines.length) {
-    lines.push("No active imported signal fields for this record.");
+    addLine("No active imported signal fields for this record.");
   }
 
   return `
@@ -2685,22 +2713,22 @@ function renderRawSignalDataCard(rec) {
       <div class="k">Raw Imported Signal Data</div>
 
       <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-        AXIS displays the imported field connected to this record’s active review condition.
+        AXIS displays only the imported field connected to this record’s active review condition.
       </div>
 
       <div style="display:grid;gap:10px;">
-        ${lines.map(line => `
+        ${lines.map(item => `
           <div style="
             padding:12px 14px;
             border-radius:12px;
-            border:1px solid rgba(88,184,255,.18);
-            background:rgba(8,18,35,.62);
-            color:#eef6ff;
+            border:1px solid ${item.green ? "rgba(65,255,156,.42)" : "rgba(88,184,255,.18)"};
+            background:${item.green ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.62)"};
+            color:${item.green ? "#b8ffd7" : "#eef6ff"};
             font-size:14px;
-            font-weight:800;
+            font-weight:900;
             line-height:1.4;
           ">
-            ${line}
+            ${item.text}
           </div>
         `).join("")}
       </div>
