@@ -834,15 +834,21 @@ function getAlerts(rec) {
 
   if (rec.lifecycle_completed) return [];
 
-  if (rec.next_action_date && rec.next_action_date > todayISO()) {
-    return [{
-      type: "postponed",
-      label: "Follow-up scheduled by rep or manager.",
-      displayType: "Follow-Up Scheduled",
-      source: "Manual follow-up date"
-    }];
-  }
+  const followUpDate =
+  rec.rep_follow_up_date ||
+  rec.next_action_date ||
+  rec.quote_follow_up_alert_date ||
+  rec.manager_response_date ||
+  "";
 
+if (followUpDate && followUpDate > todayISO()) {
+  return [{
+    type: "postponed",
+    label: "Follow-up scheduled by rep or manager.",
+    displayType: "Follow-Up Scheduled",
+    source: "Manual follow-up date"
+  }];
+}
   const age = ageFromDom(rec.dom);
   const threshold = Number(rec.threshold_years || 0);
 
@@ -1542,21 +1548,34 @@ function renderDetail() {
       </div>
     </div>
 
-    <div class="detail-card">
-      <div class="k">Follow-Up Visibility</div>
-      <div class="v">
-        ${
-          rec.next_action_date
-            ? `
-              <span style="color:#ffd84d;font-weight:900;">${escapeHtml(new Date(rec.next_action_date).toLocaleDateString())}</span>
-              <div class="mini" style="margin-top:8px;">Manual follow-up date currently attached to this record.</div>
-            `
-            : `
-              <span style="color:#9db6d2;">No follow-up date set.</span>
-            `
+   <div class="detail-card">
+  <div class="k">Follow-Up Visibility</div>
+  <div class="v">
+    ${
+      (() => {
+        const followUpDate =
+          rec.rep_follow_up_date ||
+          rec.next_action_date ||
+          rec.quote_follow_up_alert_date ||
+          rec.manager_response_date ||
+          "";
+
+        if (!followUpDate) {
+          return `<span style="color:#9db6d2;">No follow-up date set.</span>`;
         }
-      </div>
-    </div>
+
+        return `
+          <span style="color:#ffd84d;font-weight:900;">
+            ${escapeHtml(new Date(followUpDate).toLocaleDateString())}
+          </span>
+          <div class="mini" style="margin-top:8px;">
+            Manual follow-up date currently attached to this record.
+          </div>
+        `;
+      })()
+    }
+  </div>
+</div>
 
     <div class="detail-card">
       <div class="k">Financial Review</div>
@@ -1720,10 +1739,11 @@ function saveManagerResponse() {
     manager_flash_text: "Manager response saved"
   };
 
-  if (responseAction === "needs_follow_up" && responseDate) {
-    updated.next_action_date = responseDate;
-  }
-
+if (responseAction === "needs_follow_up" && responseDate) {
+  updated.next_action_date = responseDate;
+  updated.rep_follow_up_date = responseDate;
+  updated.rep_status = "follow_up_scheduled";
+}
   if (responseAction === "close_out") {
     updated.lifecycle_completed = true;
     updated.rep_status = "completed";
