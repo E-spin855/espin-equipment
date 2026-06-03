@@ -231,13 +231,12 @@
     th:nth-child(5),td:nth-child(5){width:160px}
     th:nth-child(6),td:nth-child(6){width:100px;text-align:center}
     th:nth-child(7),td:nth-child(7){width:80px;text-align:center}
-    th:nth-child(8),td:nth-child(8){width:180px;text-align:center}
-    th:nth-child(9),td:nth-child(9){width:190px;text-align:center}
-    th:nth-child(10),td:nth-child(10){width:240px}
-    th:nth-child(11),td:nth-child(11){width:220px;text-align:center}
-    th:nth-child(12),td:nth-child(12){width:250px;text-align:center}
-    th:nth-child(13),td:nth-child(13){width:170px;text-align:center}
-    th:nth-child(14),td:nth-child(14){width:130px;text-align:center}
+    th:nth-child(8),td:nth-child(8){width:190px;text-align:center}
+th:nth-child(9),td:nth-child(9){width:240px}
+th:nth-child(10),td:nth-child(10){width:220px;text-align:center}
+th:nth-child(11),td:nth-child(11){width:250px;text-align:center}
+th:nth-child(12),td:nth-child(12){width:170px;text-align:center}
+th:nth-child(13),td:nth-child(13){width:130px;text-align:center}
 
     .alert-badge{
       display:inline-flex;
@@ -542,7 +541,6 @@
                   <th>Serial</th>
                   <th>DOM</th>
                   <th>Age</th>
-                  <th>OEM Display Tag</th>
                   <th>Manual Trade-In Ref</th>
                   <th>Facility</th>
                   <th>Review Condition</th>
@@ -1021,62 +1019,6 @@ function formatReviewText(value) {
     .replace(/\bfield\b/gi, "note")
     .replace(/\b\w/g, c => c.toUpperCase());
 }
-
-function getOemDisplayTag(rec) {
-  /*
-    OEM display tag only.
-    This does not create a priority, score, ranking, recommendation,
-    next-best-action, opportunity, offer, or sales instruction.
-  */
-
-  if (!getAlerts(rec).length) return "NORMAL";
-
-  const importedTag = lower(
-    rec.oem_review_level ||
-    rec.review_level ||
-    rec.visibility_level ||
-    rec.oem_display_tag ||
-    rec.quote_follow_up_tag ||
-    ""
-  );
-
-  if (["high", "high_visibility", "urgent", "follow_up_attention"].includes(importedTag)) {
-    return "FOLLOW_UP_ATTENTION";
-  }
-
-  if (["standard", "medium", "standard_visibility"].includes(importedTag)) {
-    return "STANDARD_VISIBILITY";
-  }
-
-  if (["low", "monitor"].includes(importedTag)) {
-    return "MONITOR";
-  }
-
-  return "OEM_NOTE";
-}
-
-function renderOemDisplayTag(rec) {
-  const tag = getOemDisplayTag(rec);
-
-  if (tag === "FOLLOW_UP_ATTENTION") {
-    return `<span class="pill ready">Follow-Up Attention</span>`;
-  }
-
-  if (tag === "STANDARD_VISIBILITY") {
-    return `<span class="pill pending">Standard Visibility</span>`;
-  }
-
-  if (tag === "MONITOR") {
-    return `<span class="pill local">Monitor</span>`;
-  }
-
-  if (tag === "OEM_NOTE") {
-    return `<span class="pill submitted">OEM Note</span>`;
-  }
-
-  return `<span class="pill normal">Normal</span>`;
-}
-
 function renderReviewCondition(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
     return `<span class="alert-badge alert-completed">Completed</span>`;
@@ -1338,7 +1280,7 @@ function renderTable() {
   if (!records.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="14" style="color:#9db6d2;">
+        <td colspan="13" style="color:#9db6d2;">
           No records.
         </td>
       </tr>
@@ -1373,7 +1315,6 @@ function renderTable() {
         <td>${escapeHtml(rec.serial_number || rec.serial || "")}</td>
         <td>${escapeHtml(rec.dom || "")}</td>
         <td>${ageFromDom(rec.dom) ?? "-"}</td>
-        <td>${renderOemDisplayTag(rec)}</td>
         <td>${tradeRef ? escapeHtml(money(tradeRef)) : "-"}</td>
         <td>${escapeHtml(getFacility(rec))}</td>
         <td>${renderReviewCondition(rec)}</td>
@@ -1515,15 +1456,6 @@ function renderDetail() {
         </div>
       </div>
     </div>
-
-    <div class="detail-card">
-      <div class="k">OEM Display Tag</div>
-      <div class="v">
-        ${renderOemDisplayTag(rec)}
-        <div class="mini" style="margin-top:10px;line-height:1.45;">
-          Display tag only. AXIS does not create a priority, score, ranking, recommendation, next-best-action, opportunity, offer, or sales instruction.
-        </div>
-      </div>
     </div>
 
     <div class="detail-card">
