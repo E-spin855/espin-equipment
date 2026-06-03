@@ -1455,7 +1455,201 @@ function renderActivityTimeline(rec) {
   }).join("");
 }
 
+<script>
 function renderDetail() {
+  const rec = findSelectedRecord();
+  const empty = $("emptyState");
+  const detail = $("detailArea");
+  const grid = $("detailGrid");
+
+  if (!rec) {
+    if (empty) empty.classList.remove("hidden");
+    if (detail) detail.classList.add("hidden");
+    if (grid) grid.innerHTML = "";
+    return;
+  }
+
+  if (empty) empty.classList.add("hidden");
+  if (detail) detail.classList.remove("hidden");
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || rec.trade_in_credit || 0);
+  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  const profit = quoteAmount ? netQuote - estimatedCost : 0;
+  const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
+
+  const alert = getAlerts(rec)[0];
+
+  grid.innerHTML = `
+    <div class="selected-summary full">
+      <div class="summary-card">
+        <div class="summary-title">Facility</div>
+        <div class="summary-main">${escapeHtml(getFacility(rec))}</div>
+        <div class="summary-sub">
+          ${escapeHtml([rec.site_address, rec.city, rec.state, rec.zip_code].filter(Boolean).join(", ") || "No address entered")}
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="summary-title">Equipment / Project</div>
+        <div class="summary-main">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
+        <div class="summary-sub">
+          ${escapeHtml(rec.modality || "-")} • Serial: ${escapeHtml(rec.serial_number || rec.serial || "-")} • DOM: ${escapeHtml(rec.dom || "-")}
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <div class="summary-title">Assigned Rep</div>
+        <div class="summary-main">${escapeHtml(getRepName(rec))}</div>
+        <div class="summary-sub">
+          ${escapeHtml(getRepEmail(rec) || "")}<br>
+          ${escapeHtml(getRepPhone(rec) || "")}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">OEM Review Context</div>
+
+    <div class="detail-card">
+      <div class="k">Review Condition</div>
+      <div class="v">${renderReviewCondition(rec)}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">OEM Review Note</div>
+      <div class="v">${escapeHtml(alert ? formatReviewText(alert.label || alert.displayType || "Review") : "Normal")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">OEM Review Category</div>
+      <div class="v">${escapeHtml(formatReviewText(rec.oem_review_type || rec.review_type || rec.alert_override || alert?.displayType || "None"))}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">OEM Display Tag</div>
+      <div class="v">${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "None"))}</div>
+    </div>
+
+    <div class="detail-card full">
+      <div class="k">OEM-Provided Context</div>
+      <div class="v">${escapeHtml(rec.oem_review_reason || rec.review_reason || rec.proactive_reason || "No additional OEM context entered.")}</div>
+      <div class="mini" style="margin-top:8px;line-height:1.45;color:#d9c98a;">
+        This displays OEM-provided review information only. AXIS does not create the review reason, recommend an action, score the customer, rank the record, or decide the next step.
+      </div>
+    </div>
+
+    <div class="section-title">Rep Activity</div>
+
+    <div class="detail-card">
+      <div class="k">Rep Action / Status</div>
+      <div class="v">${renderRepStatus(rec)}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Rep Follow-Up Date</div>
+      <div class="v">${escapeHtml(rec.rep_follow_up_date || rec.next_action_date || rec.quote_follow_up_alert_date || "-")}</div>
+    </div>
+
+    <div class="detail-card full">
+      <div class="k">Rep Notes</div>
+      <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}</div>
+    </div>
+
+    <div class="section-title">Quote / Trade-In Visibility</div>
+
+    <div class="detail-card">
+      <div class="k">Gross Quote</div>
+      <div class="v">${quoteAmount ? money(quoteAmount) : "No quote entered"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Manual Trade-In Reference</div>
+      <div class="v">${tradeInCredit ? money(tradeInCredit) : rec.external_tradein_value ? `${money(rec.external_tradein_value)} external reference` : "-"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Net Quote</div>
+      <div class="v">${quoteAmount ? money(netQuote) : "-"}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Rep-Entered Margin</div>
+      <div class="v">${quoteAmount ? `${margin}%` : "-"}</div>
+    </div>
+
+    <div class="detail-card full">
+      <div class="k">Quote Approval Status</div>
+      <div class="v">${escapeHtml(formatReviewText(rec.quote_approval_status || rec.quote_status || "No quote approval activity"))}</div>
+      <div class="mini" style="margin-top:8px;line-height:1.45;color:#d9c98a;">
+        Quote figures are shown from rep-entered fields. AXIS does not determine pricing, value, profitability, margin, discount, approval, or customer release.
+      </div>
+    </div>
+
+    <div class="section-title">Activity Timeline</div>
+
+    <div class="detail-card full">
+      <div class="k">Timeline</div>
+      <div class="v">${renderActivityTimeline(rec)}</div>
+    </div>
+
+    <div class="section-title">Manager Manual Response</div>
+
+    <div class="manager-response-panel">
+      <div class="manager-response-grid">
+        <div>
+          <label for="managerResponseAction">Manager Response</label>
+          <select id="managerResponseAction">
+            <option value="">Select response</option>
+            <option value="manager_reviewed">Reviewed</option>
+            <option value="needs_follow_up">Needs Follow-Up</option>
+            <option value="needs_rep_update">Needs Rep Update</option>
+            <option value="quote_review_needed">Quote Review Needed</option>
+            <option value="tradein_review_needed">Trade-In Review Needed</option>
+            <option value="project_review_needed">Project Review Needed</option>
+            <option value="close_out">Close Out</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="managerResponseDate">Follow-Up Date</label>
+          <input id="managerResponseDate" type="date" />
+        </div>
+
+        <div>
+          <label for="managerResponseNotes">Manager Notes</label>
+          <textarea id="managerResponseNotes" placeholder="Optional manager notes..."></textarea>
+        </div>
+
+        <div>
+          <button type="button" class="green" onclick="saveManagerResponse()">Save Response</button>
+        </div>
+      </div>
+
+      ${
+        rec.manager_response_action
+          ? `
+            <div class="manager-response-saved">
+              <strong>Saved Manager Response:</strong> ${escapeHtml(formatReviewText(rec.manager_response_action))}<br>
+              ${rec.manager_response_date ? `<strong>Follow-Up Date:</strong> ${escapeHtml(rec.manager_response_date)}<br>` : ""}
+              ${rec.manager_response_notes ? `<strong>Notes:</strong> ${escapeHtml(rec.manager_response_notes)}<br>` : ""}
+              ${rec.manager_response_at ? `<strong>Saved At:</strong> ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}` : ""}
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+
+  const action = $("managerResponseAction");
+  const date = $("managerResponseDate");
+  const notes = $("managerResponseNotes");
+
+  if (action) action.value = rec.manager_response_action || "";
+  if (date) date.value = rec.manager_response_date || "";
+  if (notes) notes.value = rec.manager_response_notes || "";
+}
+
 function syncRecordEverywhere(updatedRec) {
   const key = getRecordKey(updatedRec);
   const rec = { ...updatedRec, key };
@@ -1477,7 +1671,7 @@ function syncRecordEverywhere(updatedRec) {
   state.records = mergeRecordsByKey(main, readManagerQueueRecords());
   pingLifecycleSync();
 }
-
+</script>
 function saveManagerResponse() {
   const rec = findSelectedRecord();
 
