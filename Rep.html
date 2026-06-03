@@ -987,7 +987,8 @@
     const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
     const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
     const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
-    const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
+const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
+const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
     const MANAGER_NAME = new URLSearchParams(window.location.search).get("manager") || "Default Manager";
 
     const state = {
@@ -3551,52 +3552,80 @@ function reviewApprovedQuote() {
   );
 }
     function submitQuoteForApproval(rec) {
-      if (!rec || !rec.quote_amount) return;
+  if (!rec || !rec.quote_amount) return;
 
-      let queue = [];
-      try {
-        queue = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_KEY) || "[]");
-        if (!Array.isArray(queue)) queue = [];
-      } catch {
-        queue = [];
-      }
+  let queue = [];
 
-      const approvalId = rec.quote_approval_id || `QAPP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+  try {
+    queue = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
 
-      rec.quote_approval_id = approvalId;
-      rec.quote_approval_status = "pending_review";
-      rec.quote_status = "submitted_for_approval";
-      rec.quote_customer_release_allowed = false;
-      rec.rep_quote_release_alert = false;
-      rec.quote_approval_requested = true;
-      rec.quote_approval_submitted_at = new Date().toISOString();
+  const approvalId =
+    rec.quote_approval_id ||
+    `QAPP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-      const packet = {
-        ...rec,
-        id: approvalId,
-        quote_approval_id: approvalId,
-        approval_packet_id: approvalId,
-        axis_record_id: rec.id,
-        axis_parent_record_id: rec.id,
-        axis_project_id: rec.oem_project_id || rec.project_id || "",
-        axis_serial_number: rec.serial_number || "",
-        quote_approval_status: "pending_review",
-        quote_status: "submitted_for_approval",
-        quote_approval_submitted_at: rec.quote_approval_submitted_at
-      };
+  const now = new Date().toISOString();
 
-      const existingIndex = queue.findIndex(item =>
-        String(item.quote_approval_id || "") === String(approvalId) ||
-        String(item.axis_record_id || "") === String(rec.id)
-      );
+  rec.quote_approval_id = approvalId;
+  rec.quote_approval_status = "pending_review";
+  rec.quote_status = "submitted_for_approval";
+  rec.quote_customer_release_allowed = false;
+  rec.rep_quote_release_alert = false;
+  rec.quote_approval_requested = true;
+  rec.quote_approval_submitted_at = now;
 
-      if (existingIndex >= 0) queue[existingIndex] = { ...queue[existingIndex], ...packet };
-      else queue.unshift(packet);
+  const packet = {
+    ...rec,
 
-      localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
-      localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-    }
+    id: approvalId,
+    quote_approval_id: approvalId,
+    approval_packet_id: approvalId,
 
+    axis_record_id: rec.id,
+    axis_parent_record_id: rec.id,
+    axis_project_id: rec.oem_project_id || rec.project_id || "",
+    axis_serial_number: rec.serial_number || "",
+
+    quote_approval_status: "pending_review",
+    quote_status: "submitted_for_approval",
+    quote_approval_submitted_at: now,
+
+    quote_amount: Number(rec.quote_amount || 0),
+    quote_estimated_cost: Number(rec.quote_estimated_cost || 0),
+    quote_trade_in_credit: Number(rec.quote_trade_in_credit || rec.tradein_credit || 0),
+    quote_net_amount: Number(
+      rec.quote_net_amount ||
+      Math.max(0, Number(rec.quote_amount || 0) - Number(rec.quote_trade_in_credit || rec.tradein_credit || 0))
+    ),
+
+    facility: rec.site || rec.facility || rec.hospital || "",
+    customer_name: rec.site || rec.facility || rec.hospital || "",
+    recipient_email: rec.quote_recipient_email || rec.contact_email || "",
+    cc_email: rec.quote_cc_email || "",
+    rep_name: `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim(),
+    rep_email: rec.sales_rep_email || ""
+  };
+
+  const existingIndex = queue.findIndex(item =>
+    String(item.quote_approval_id || "") === String(approvalId) ||
+    String(item.axis_record_id || "") === String(rec.id)
+  );
+
+  if (existingIndex >= 0) {
+    queue[existingIndex] = { ...queue[existingIndex], ...packet };
+  } else {
+    queue.unshift(packet);
+  }
+
+  localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
+  localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  window.dispatchEvent(new Event("axis_quote_approval_update"));
+}
     function importQuoteApprovalDecisions() {
       let sync = [];
       try {
@@ -4509,7 +4538,9 @@ function reviewApprovedQuote() {
           e.key === "axis_manager_sync_ping_v1" ||
           e.key === AXIS_SHARE_KEY ||
           e.key === UNMATCHED_TRADEIN_KEY ||
-          e.key === QUOTE_APPROVAL_SYNC_KEY
+          e.key === QUOTE_APPROVAL_SYNC_KEY ||
+e.key === QUOTE_APPROVAL_KEY ||
+e.key === QUOTE_APPROVAL_PING_KEY
         ) {
           loadRecords();
           importTradeInSyncRecords();

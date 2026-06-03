@@ -1,9 +1,12 @@
+<!-- FILE: quote.html -->
+<!-- PATH: /quote.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pricing Desk Department Demo</title>
+<title>Pricing Desk Review</title>
 
 <style>
 :root{
@@ -78,7 +81,7 @@ label{
   color:var(--muted);
 }
 
-input,textarea,button{
+input,textarea,button,select{
   width:100%;
   padding:15px;
   margin-top:8px;
@@ -105,6 +108,16 @@ button{
 
 button.green{background:var(--green)}
 button.red{background:var(--red); color:#fff}
+button.secondary{
+  background:#102340;
+  color:var(--text);
+  border:1px solid var(--line);
+}
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
 
 .badge{
   display:inline-block;
@@ -150,10 +163,52 @@ button.red{background:var(--red); color:#fff}
   font-size:20px;
 }
 
+.small{
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.45;
+  margin-top:10px;
+}
+
+.quote-list{
+  display:grid;
+  gap:10px;
+  margin:10px 0 18px;
+}
+
+.quote-card{
+  border:1px solid var(--line);
+  background:rgba(67,176,255,.08);
+  border-radius:14px;
+  padding:14px;
+  cursor:pointer;
+}
+
+.quote-card:hover{
+  border-color:rgba(67,176,255,.7);
+  background:rgba(67,176,255,.14);
+}
+
+.quote-card.selected{
+  border-color:rgba(65,255,156,.85);
+  background:rgba(65,255,156,.12);
+}
+
+.quote-card strong{
+  color:#fff;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+
 @media(max-width:850px){
   .panel{min-height:auto}
   .badge{font-size:15px}
   h3{font-size:24px}
+  .grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -162,186 +217,573 @@ button.red{background:var(--red); color:#fff}
 
 <div class="demo-banner">
   <h1>DEMO ONLY</h1>
-  <h2>PRICING DESK DEPARTMENT — NOT PART OF ESPIN AXIS</h2>
-  <p>Manual quote review, discount application, and approval workflow only.</p>
+  <h2>PRICING DESK REVIEW — MANUAL APPROVAL WORKFLOW</h2>
+  <p>Reads rep-submitted quote packets and syncs manual pricing decisions back to the rep workspace.</p>
 </div>
 
 <div class="panel">
-  <h3>Pricing Desk Department</h3>
+  <h3>Pricing Desk Review</h3>
 
-  <span class="badge demo">SEPARATE DEPARTMENT DEMO</span>
+  <span class="badge demo">MANUAL PRICING REVIEW</span>
   <span id="pricingStatusBadge" class="badge pending">WAITING FOR QUOTE</span>
+
+  <div class="small">
+    This page reads real rep-submitted quote packets from local browser storage key
+    <strong>axis_quote_approval_queue_v1</strong> and writes pricing decisions back to
+    <strong>axis_quote_approval_sync_records_v1</strong>.
+  </div>
+
+  <label>Submitted Quotes</label>
+  <div id="quoteList" class="quote-list">
+    <div class="small">No submitted quotes loaded.</div>
+  </div>
 
   <div id="incomingQuoteBox" class="box">No quote submitted yet.</div>
 
   <button onclick="receiveQuote()">Load Submitted Quote</button>
   <button onclick="reviewQuote()">Review Quote</button>
 
-  <label>Discount Applied %</label>
-  <input id="discountPercent" type="number" value="7.5">
+  <div class="grid">
+    <div>
+      <label>Discount Applied %</label>
+      <input id="discountPercent" type="number" step="0.01" value="">
+    </div>
 
-  <label>Approved Price</label>
-  <input id="approvedPrice" type="number" value="925000">
+    <div>
+      <label>Approved Price</label>
+      <input id="approvedPrice" type="number" min="0" value="">
+    </div>
+  </div>
 
   <label>Pricing Desk Notes</label>
-  <textarea id="pricingNotes">Discount reviewed and accepted for demo workflow.</textarea>
+  <textarea id="pricingNotes">Pricing desk reviewed rep-submitted quote.</textarea>
 
   <button class="green" onclick="acceptQuote()">Accept Quote</button>
   <button class="red" onclick="returnToRep()">Return To Rep For Revision</button>
+  <button class="secondary" onclick="clearSelectedQuote()">Clear Selected Quote</button>
 </div>
 
 <script>
-const STORAGE_KEY = "quote_pricing_desk_only_demo_v1";
+const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
+const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
+const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
+const MANAGER_SYNC_KEY = "axis_manager_sync_ping_v1";
 
-let state = {
-  step: "waiting",
-  quoteNumber: "Q-1024",
-  customer: "ABC Hospital",
-  equipment: "MRI Upgrade Project",
-  repName: "John Smith",
-  listPrice: 1000000,
-  requestedPrice: 925000,
-  repNotes: "Customer requested pricing review for competitive replacement project.",
-  discountPercent: 7.5,
-  approvedPrice: 925000,
-  pricingNotes: "Discount reviewed and accepted for demo workflow.",
-  receivedAt: "",
-  reviewedAt: "",
-  acceptedAt: "",
-  returnedAt: ""
-};
+let queue = [];
+let selectedQuote = null;
+
+function $(id){
+  return document.getElementById(id);
+}
 
 function money(v){
   return "$" + Number(v || 0).toLocaleString();
 }
 
-function now(){
-  return new Date().toLocaleString();
+function nowISO(){
+  return new Date().toISOString();
 }
 
-function save(){
-  state.discountPercent = document.getElementById("discountPercent").value;
-  state.approvedPrice = document.getElementById("approvedPrice").value;
-  state.pricingNotes = document.getElementById("pricingNotes").value;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function escapeHtml(v){
+  return String(v ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function readQueue(){
+  try{
+    queue = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_KEY) || "[]");
+    if(!Array.isArray(queue)) queue = [];
+  }catch{
+    queue = [];
+  }
+}
+
+function saveQueue(){
+  localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
+  localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+}
+
+function readSyncQueue(){
+  try{
+    const sync = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_SYNC_KEY) || "[]");
+    return Array.isArray(sync) ? sync : [];
+  }catch{
+    return [];
+  }
+}
+
+function saveSyncQueue(sync){
+  localStorage.setItem(QUOTE_APPROVAL_SYNC_KEY, JSON.stringify(Array.isArray(sync) ? sync : []));
+  localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+}
+
+function getQuoteId(q){
+  return String(
+    q?.quote_approval_id ||
+    q?.approval_packet_id ||
+    q?.axis_record_id ||
+    q?.axis_parent_record_id ||
+    q?.id ||
+    ""
+  );
+}
+
+function sameQuote(a,b){
+  if(!a || !b) return false;
+
+  const aApproval = String(a.quote_approval_id || "");
+  const bApproval = String(b.quote_approval_id || "");
+  if(aApproval && bApproval && aApproval === bApproval) return true;
+
+  const aRecord = String(a.axis_record_id || a.axis_parent_record_id || "");
+  const bRecord = String(b.axis_record_id || b.axis_parent_record_id || "");
+  if(aRecord && bRecord && aRecord === bRecord) return true;
+
+  const aId = String(a.id || "");
+  const bId = String(b.id || "");
+  return Boolean(aId && bId && aId === bId);
+}
+
+function getVisibleQuotes(){
+  return queue.filter(q =>
+    q &&
+    (
+      q.quote_approval_status === "pending_review" ||
+      q.quote_approval_status === "pricing_reviewed" ||
+      q.quote_status === "submitted_for_approval" ||
+      q.quote_status === "revision_needed" ||
+      q.quote_status === "rejected" ||
+      q.quote_status === "approved_for_customer_release"
+    )
+  );
+}
+
+function getPendingQuotes(){
+  return queue.filter(q =>
+    q &&
+    (
+      q.quote_approval_status === "pending_review" ||
+      q.quote_status === "submitted_for_approval"
+    )
+  );
+}
+
+function getCustomer(q){
+  return (
+    q.customer_name ||
+    q.facility ||
+    q.site ||
+    q.hospital ||
+    q.hospital_name ||
+    "Unknown Customer"
+  );
+}
+
+function getEquipment(q){
+  return (
+    q.equipment ||
+    `${q.make || ""} ${q.model || ""}`.trim() ||
+    q.model ||
+    "Unknown Equipment / Project"
+  );
+}
+
+function getRepName(q){
+  return (
+    q.rep_name ||
+    `${q.sales_rep_first || ""} ${q.sales_rep_last || ""}`.trim() ||
+    q.assigned_rep_name ||
+    "Unknown Rep"
+  );
+}
+
+function getGrossPrice(q){
+  return Number(q.quote_amount || q.listPrice || 0);
+}
+
+function getTradeInCredit(q){
+  return Number(q.quote_trade_in_credit || q.tradein_credit || q.trade_in_credit || 0);
+}
+
+function getRequestedPrice(q){
+  return Number(q.quote_net_amount || q.requestedPrice || Math.max(0, getGrossPrice(q) - getTradeInCredit(q)) || 0);
+}
+
+function getEstimatedCost(q){
+  return Number(q.quote_estimated_cost || 0);
+}
+
+function calculateDiscountPercent(q){
+  const gross = getGrossPrice(q);
+  const requested = getRequestedPrice(q);
+
+  if(!gross || !requested || requested >= gross) return 0;
+
+  return Number((((gross - requested) / gross) * 100).toFixed(2));
+}
+
+function statusText(){
+  if(!selectedQuote) return "Waiting for submitted quote";
+
+  if(selectedQuote.quote_approval_status === "pending_review") {
+    return "Quote received by Pricing Desk";
+  }
+
+  if(selectedQuote.quote_approval_status === "pricing_reviewed") {
+    return "Quote reviewed — pricing decision ready";
+  }
+
+  if(selectedQuote.quote_approval_status === "approved") {
+    return "Accepted by Pricing Desk — synced back to rep";
+  }
+
+  if(selectedQuote.quote_approval_status === "revision_needed") {
+    return "Returned to rep for revision";
+  }
+
+  if(selectedQuote.quote_approval_status === "rejected") {
+    return "Rejected by Pricing Desk";
+  }
+
+  if(selectedQuote.quote_status === "approved_for_customer_release") {
+    return "Accepted by Pricing Desk — synced back to rep";
+  }
+
+  if(selectedQuote.quote_status === "revision_needed") {
+    return "Returned to rep for revision";
+  }
+
+  return "Waiting for submitted quote";
 }
 
 function quoteText(){
+  if(!selectedQuote) return "No quote submitted yet.";
+
+  const gross = getGrossPrice(selectedQuote);
+  const tradeIn = getTradeInCredit(selectedQuote);
+  const net = getRequestedPrice(selectedQuote);
+  const cost = getEstimatedCost(selectedQuote);
+  const profit = net - cost;
+  const margin = net > 0 ? Math.round((profit / net) * 100) : 0;
+
   return `
 Quote Received From Rep
 
-Quote #: ${state.quoteNumber}
-Customer: ${state.customer}
-Equipment / Project: ${state.equipment}
-Rep: ${state.repName}
+Approval ID: ${selectedQuote.quote_approval_id || "-"}
+AXIS Record ID: ${selectedQuote.axis_record_id || selectedQuote.axis_parent_record_id || "-"}
+Project ID: ${selectedQuote.axis_project_id || selectedQuote.oem_project_id || selectedQuote.project_id || "-"}
+Customer: ${getCustomer(selectedQuote)}
+Equipment / Project: ${getEquipment(selectedQuote)}
+Rep: ${getRepName(selectedQuote)}
+Rep Email: ${selectedQuote.rep_email || selectedQuote.sales_rep_email || "-"}
 
-List Price: ${money(state.listPrice)}
-Rep Requested Price: ${money(state.requestedPrice)}
+Gross Quote: ${money(gross)}
+Trade-In Credit: -${money(tradeIn)}
+Rep Requested / Net Price: ${money(net)}
+Rep-Entered Estimated Cost: ${money(cost)}
+Rep-Entered Estimated Profit: ${money(profit)}
+Rep-Entered Estimated Margin: ${margin}%
+
+Recipient: ${selectedQuote.recipient_email || selectedQuote.quote_recipient_email || selectedQuote.contact_email || "-"}
+CC: ${selectedQuote.cc_email || selectedQuote.quote_cc_email || "None"}
 
 Rep Notes:
-${state.repNotes}
+${selectedQuote.quote_follow_up_alert_note || selectedQuote.quote_notes || selectedQuote.rep_notes || "None"}
 
 Pricing Desk Review
 ----------------------------------
-Discount Applied: ${state.discountPercent || 0}%
-Approved Price: ${money(state.approvedPrice)}
+Discount Applied: ${$("discountPercent").value || 0}%
+Approved Price: ${money($("approvedPrice").value)}
 
 Pricing Desk Notes:
-${state.pricingNotes || "None"}
+${$("pricingNotes").value || "None"}
 
 Status:
 ${statusText()}
 `;
 }
 
-function statusText(){
-  if(state.step === "waiting") return "Waiting for submitted quote";
-  if(state.step === "received") return "Quote received by Pricing Desk";
-  if(state.step === "reviewed") return "Quote reviewed — discount ready";
-  if(state.step === "accepted") return "Accepted by Pricing Desk — synced back to rep";
-  if(state.step === "returned") return "Returned to rep for revision";
-  return "Waiting";
+function hydrateSelectedQuoteFromQueue(){
+  if(!selectedQuote) return;
+
+  const fresh = queue.find(q => sameQuote(q, selectedQuote));
+
+  if(fresh){
+    selectedQuote = fresh;
+  }
+}
+
+function selectQuote(id){
+  readQueue();
+
+  const quote = queue.find(q => getQuoteId(q) === String(id || ""));
+
+  if(!quote){
+    alert("Quote not found. Reload the quote queue.");
+    return;
+  }
+
+  selectedQuote = quote;
+
+  $("discountPercent").value =
+    selectedQuote.pricing_discount_percent ||
+    selectedQuote.discountPercent ||
+    calculateDiscountPercent(selectedQuote);
+
+  $("approvedPrice").value =
+    selectedQuote.pricing_approved_price ||
+    selectedQuote.approvedPrice ||
+    getRequestedPrice(selectedQuote);
+
+  $("pricingNotes").value =
+    selectedQuote.pricing_notes ||
+    selectedQuote.pricingNotes ||
+    selectedQuote.quote_approval_notes ||
+    "Pricing desk reviewed rep-submitted quote.";
+
+  render();
+}
+
+function renderQuoteList(){
+  const list = $("quoteList");
+  const quotes = getVisibleQuotes();
+
+  if(!quotes.length){
+    list.innerHTML = `<div class="small">No submitted rep quotes found. Submit a quote from the rep page first.</div>`;
+    return;
+  }
+
+  list.innerHTML = quotes.map(q => {
+    const id = getQuoteId(q);
+    const selected = selectedQuote && sameQuote(q, selectedQuote);
+
+    return `
+      <div class="quote-card ${selected ? "selected" : ""}" onclick="selectQuote('${escapeHtml(id)}')">
+        <strong>${escapeHtml(q.quote_approval_id || "Quote Review")}</strong><br>
+        ${escapeHtml(getCustomer(q))} — ${escapeHtml(getEquipment(q))}<br>
+        Rep: ${escapeHtml(getRepName(q))}<br>
+        Gross: ${money(getGrossPrice(q))} • Net: ${money(getRequestedPrice(q))}<br>
+        Status: ${escapeHtml(String(q.quote_approval_status || q.quote_status || "pending").replaceAll("_", " ").toUpperCase())}
+      </div>
+    `;
+  }).join("");
 }
 
 function render(){
-  const badge = document.getElementById("pricingStatusBadge");
-  const box = document.getElementById("incomingQuoteBox");
+  readQueue();
+  hydrateSelectedQuoteFromQueue();
+
+  const badge = $("pricingStatusBadge");
+  const box = $("incomingQuoteBox");
 
   badge.className = "badge pending";
 
-  if(state.step === "waiting"){
+  if(!selectedQuote){
     badge.textContent = "WAITING FOR QUOTE";
-    box.textContent = "No quote submitted yet.";
+    box.textContent = "No real rep quote submitted yet.";
+    renderQuoteList();
+    return;
   }
 
-  if(state.step === "received"){
-    badge.className = "badge active";
-    badge.textContent = "QUOTE RECEIVED";
-    box.textContent = quoteText();
-  }
+  const status = String(selectedQuote.quote_approval_status || selectedQuote.quote_status || "");
 
-  if(state.step === "reviewed"){
-    badge.className = "badge active";
-    badge.textContent = "REVIEW COMPLETE";
-    box.textContent = quoteText();
-  }
-
-  if(state.step === "accepted"){
+  if(status === "approved" || status === "approved_for_customer_release"){
     badge.className = "badge done";
     badge.textContent = "ACCEPTED — SYNCED TO REP";
-    box.textContent = quoteText();
-  }
-
-  if(state.step === "returned"){
+  } else if(status === "revision_needed" || status === "rejected"){
     badge.className = "badge pending";
     badge.textContent = "RETURNED TO REP";
-    box.textContent = quoteText();
+  } else if(status === "pricing_reviewed"){
+    badge.className = "badge active";
+    badge.textContent = "REVIEW COMPLETE";
+  } else {
+    badge.className = "badge active";
+    badge.textContent = "QUOTE RECEIVED";
   }
 
-  save();
+  box.textContent = quoteText();
+  renderQuoteList();
 }
 
 function receiveQuote(){
-  state.step = "received";
-  state.receivedAt = now();
+  readQueue();
+
+  const pendingQuotes = getPendingQuotes();
+
+  if(!pendingQuotes.length){
+    alert("No submitted rep quote found. Submit a quote from the rep page first.");
+    selectedQuote = null;
+    render();
+    return;
+  }
+
+  selectedQuote = pendingQuotes[0];
+
+  $("discountPercent").value =
+    selectedQuote.pricing_discount_percent ||
+    selectedQuote.discountPercent ||
+    calculateDiscountPercent(selectedQuote);
+
+  $("approvedPrice").value =
+    selectedQuote.pricing_approved_price ||
+    selectedQuote.approvedPrice ||
+    getRequestedPrice(selectedQuote);
+
+  $("pricingNotes").value =
+    selectedQuote.pricing_notes ||
+    selectedQuote.pricingNotes ||
+    selectedQuote.quote_approval_notes ||
+    "Pricing desk reviewed rep-submitted quote.";
+
+  selectedQuote.pricing_received_at = selectedQuote.pricing_received_at || nowISO();
+
+  queue = queue.map(q => sameQuote(q, selectedQuote) ? { ...q, ...selectedQuote } : q);
+
+  saveQueue();
   render();
 }
 
 function reviewQuote(){
-  state.step = "reviewed";
-  state.reviewedAt = now();
+  if(!selectedQuote){
+    alert("Load a submitted quote first.");
+    return;
+  }
+
+  selectedQuote.quote_approval_status = "pricing_reviewed";
+  selectedQuote.pricing_reviewed_at = nowISO();
+  selectedQuote.pricing_discount_percent = $("discountPercent").value;
+  selectedQuote.pricing_approved_price = Number($("approvedPrice").value || 0);
+  selectedQuote.pricing_notes = $("pricingNotes").value;
+
+  queue = queue.map(q => sameQuote(q, selectedQuote) ? { ...q, ...selectedQuote } : q);
+
+  saveQueue();
   render();
+}
+
+function writeDecisionSync(status){
+  if(!selectedQuote) return;
+
+  let sync = readSyncQueue();
+
+  const approvedPrice = Number($("approvedPrice").value || 0);
+  const discountPercent = $("discountPercent").value || "";
+  const notes = $("pricingNotes").value || "";
+
+  const decision = {
+    ...selectedQuote,
+
+    id: selectedQuote.axis_record_id || selectedQuote.axis_parent_record_id || selectedQuote.id || "",
+    axis_record_id: selectedQuote.axis_record_id || selectedQuote.axis_parent_record_id || "",
+    axis_parent_record_id: selectedQuote.axis_parent_record_id || selectedQuote.axis_record_id || "",
+    quote_approval_id: selectedQuote.quote_approval_id || "",
+
+    quote_approval_status: status,
+    quote_status: status === "approved" ? "approved_for_customer_release" : "revision_needed",
+    quote_customer_release_allowed: status === "approved",
+
+    quote_approval_notes: notes,
+    quote_approval_decision_at: nowISO(),
+    quote_approval_decision_by: "Pricing Desk",
+
+    pricing_discount_percent: discountPercent,
+    pricing_approved_price: approvedPrice,
+    pricing_notes: notes,
+    pricing_decision_at: nowISO()
+  };
+
+  const existingIndex = sync.findIndex(item => sameQuote(item, decision));
+
+  if(existingIndex >= 0){
+    sync[existingIndex] = { ...sync[existingIndex], ...decision };
+  } else {
+    sync.unshift(decision);
+  }
+
+  saveSyncQueue(sync);
 }
 
 function acceptQuote(){
-  state.step = "accepted";
-  state.acceptedAt = now();
+  if(!selectedQuote){
+    alert("Load a submitted quote first.");
+    return;
+  }
+
+  selectedQuote.quote_approval_status = "approved";
+  selectedQuote.quote_status = "approved_for_customer_release";
+  selectedQuote.quote_customer_release_allowed = true;
+  selectedQuote.quote_approval_notes = $("pricingNotes").value;
+  selectedQuote.quote_approval_decision_at = nowISO();
+  selectedQuote.quote_approval_decision_by = "Pricing Desk";
+
+  selectedQuote.pricing_discount_percent = $("discountPercent").value;
+  selectedQuote.pricing_approved_price = Number($("approvedPrice").value || 0);
+  selectedQuote.pricing_notes = $("pricingNotes").value;
+  selectedQuote.pricing_accepted_at = nowISO();
+
+  queue = queue.map(q => sameQuote(q, selectedQuote) ? { ...q, ...selectedQuote } : q);
+
+  saveQueue();
+  writeDecisionSync("approved");
   render();
+
+  alert("Quote approved and synced back to rep page.");
 }
 
 function returnToRep(){
-  state.step = "returned";
-  state.returnedAt = now();
-  render();
-}
-
-function load(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-
-  if(raw){
-    try{
-      state = {...state, ...JSON.parse(raw)};
-    }catch(e){}
+  if(!selectedQuote){
+    alert("Load a submitted quote first.");
+    return;
   }
 
-  document.getElementById("discountPercent").value = state.discountPercent;
-  document.getElementById("approvedPrice").value = state.approvedPrice;
-  document.getElementById("pricingNotes").value = state.pricingNotes;
+  selectedQuote.quote_approval_status = "revision_needed";
+  selectedQuote.quote_status = "revision_needed";
+  selectedQuote.quote_customer_release_allowed = false;
+  selectedQuote.quote_approval_notes = $("pricingNotes").value;
+  selectedQuote.quote_approval_decision_at = nowISO();
+  selectedQuote.quote_approval_decision_by = "Pricing Desk";
 
+  selectedQuote.pricing_discount_percent = $("discountPercent").value;
+  selectedQuote.pricing_approved_price = Number($("approvedPrice").value || 0);
+  selectedQuote.pricing_notes = $("pricingNotes").value;
+  selectedQuote.pricing_returned_at = nowISO();
+
+  queue = queue.map(q => sameQuote(q, selectedQuote) ? { ...q, ...selectedQuote } : q);
+
+  saveQueue();
+  writeDecisionSync("revision_needed");
+  render();
+
+  alert("Quote returned to rep for revision.");
+}
+
+function clearSelectedQuote(){
+  selectedQuote = null;
   render();
 }
 
-load();
+window.addEventListener("storage", e => {
+  if(
+    e.key === QUOTE_APPROVAL_KEY ||
+    e.key === QUOTE_APPROVAL_SYNC_KEY ||
+    e.key === QUOTE_APPROVAL_PING_KEY ||
+    e.key === MANAGER_SYNC_KEY
+  ){
+    render();
+  }
+});
+
+$("discountPercent").addEventListener("input", render);
+$("approvedPrice").addEventListener("input", render);
+$("pricingNotes").addEventListener("input", render);
+
+render();
 </script>
 
 </body>
