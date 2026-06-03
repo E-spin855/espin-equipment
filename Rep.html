@@ -2304,7 +2304,7 @@ function renderQuoteApprovalActionPanel(rec) {
 
         <div class="btns" style="margin-top:12px;">
           <button type="button" class="green" onclick="reviewApprovedQuote()">Review Approved Quote</button>
-         <button type="button" class="green" onclick="sendQuoteToCustomer()">Prepare PDF + Open Email Draft</button>
+         <button type="button" class="green" onclick="sendQuoteToCustomer()">Download PDF + Open Email Draft</button>
         </div>
 
         <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
@@ -3958,7 +3958,7 @@ function reviewApprovedQuote() {
       showBanner("✅ Quote PDF saved");
     }
 
-    function sendQuoteToCustomer() {
+   function sendQuoteToCustomer() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
   if (!rec) {
@@ -4032,38 +4032,14 @@ Thank you.`
   );
 
   const cc = rec.quote_cc_email ? `&cc=${encodeURIComponent(rec.quote_cc_email)}` : "";
+  const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${subject}${cc}&body=${body}`;
 
-  alert(
-    `Quote PDF prepared: ${pdfResult.fileName}\n\n` +
-    "Your email draft will open next.\n\n" +
-    "Attach the downloaded PDF manually before sending."
-  );
+  showBanner("✅ Quote PDF prepared. Opening email draft...");
 
-  window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${subject}${cc}&body=${body}`;
-
-  showBanner("✅ Approved quote PDF prepared and customer email draft opened");
+  setTimeout(() => {
+    window.location.href = mailtoUrl;
+  }, 700);
 }
-    function openDecisionModal() {
-      const rec = state.records.find(r => r.id === state.selectedId);
-
-      if (!rec) {
-        alert("Open a record first");
-        return;
-      }
-
-      if (rec.lifecycle_completed) {
-        alert("This project is already completed");
-        return;
-      }
-
-      const modality = String(rec.modality || "").toUpperCase().trim();
-
-      $("decisionMRI").style.display = modality === "MRI" ? "block" : "none";
-      $("decisionMagnet").value = "ramp_down";
-      $("decisionDisposal").value = "false";
-      $("decisionModal").style.display = "flex";
-    }
-
     function closeDecisionModal() {
       $("decisionModal").style.display = "none";
     }
