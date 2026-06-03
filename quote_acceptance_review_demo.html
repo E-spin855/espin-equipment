@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pricing Desk Department Demo</title>
+
+<style>
+:root{
+  --bg:#07111f;
+  --panel:#0b1830;
+  --panel2:#0e1f3f;
+  --line:rgba(88,184,255,.28);
+  --blue:#43b0ff;
+  --green:#41ff9c;
+  --yellow:#ffd84d;
+  --red:#ff6b6b;
+  --text:#eef6ff;
+  --muted:#9db6d2;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  padding:20px;
+}
+
+.demo-banner{
+  border:3px solid var(--red);
+  background:rgba(255,107,107,.14);
+  padding:20px;
+  border-radius:16px;
+  text-align:center;
+  margin-bottom:18px;
+  box-shadow:0 0 25px rgba(255,107,107,.35);
+}
+
+.demo-banner h1{
+  margin:0;
+  font-size:36px;
+  color:var(--red);
+}
+
+.demo-banner h2{
+  margin:8px 0 0;
+  font-size:22px;
+}
+
+.demo-banner p{
+  margin:8px 0 0;
+  color:#ffdada;
+}
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:22px;
+  max-width:1200px;
+  margin:0 auto;
+  min-height:760px;
+}
+
+h3{
+  margin:0 0 20px;
+  color:var(--blue);
+  font-size:30px;
+}
+
+label{
+  display:block;
+  margin-top:14px;
+  font-size:18px;
+  color:var(--muted);
+}
+
+input,textarea,button{
+  width:100%;
+  padding:15px;
+  margin-top:8px;
+  border-radius:12px;
+  border:1px solid #2f6294;
+  background:#10233f;
+  color:#fff;
+  font-size:18px;
+}
+
+textarea{
+  min-height:120px;
+  resize:vertical;
+}
+
+button{
+  border:none;
+  cursor:pointer;
+  font-weight:bold;
+  color:#06101f;
+  background:var(--blue);
+  margin-top:18px;
+}
+
+button.green{background:var(--green)}
+button.red{background:var(--red); color:#fff}
+
+.badge{
+  display:inline-block;
+  padding:11px 18px;
+  border-radius:999px;
+  font-size:20px;
+  font-weight:bold;
+  margin:4px 14px 20px 0;
+}
+
+.demo{
+  color:var(--red);
+  border:1px solid var(--red);
+  background:rgba(255,107,107,.16);
+}
+
+.pending{
+  color:var(--yellow);
+  border:1px solid var(--yellow);
+  background:rgba(255,216,77,.16);
+}
+
+.active{
+  color:var(--blue);
+  border:1px solid var(--blue);
+  background:rgba(67,176,255,.16);
+}
+
+.done{
+  color:var(--green);
+  border:1px solid var(--green);
+  background:rgba(65,255,156,.16);
+}
+
+.box{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:22px;
+  margin-top:8px;
+  white-space:pre-wrap;
+  line-height:1.45;
+  font-size:20px;
+}
+
+@media(max-width:850px){
+  .panel{min-height:auto}
+  .badge{font-size:15px}
+  h3{font-size:24px}
+}
+</style>
+</head>
+
+<body>
+
+<div class="demo-banner">
+  <h1>DEMO ONLY</h1>
+  <h2>PRICING DESK DEPARTMENT — NOT PART OF ESPIN AXIS</h2>
+  <p>Manual quote review, discount application, and approval workflow only.</p>
+</div>
+
+<div class="panel">
+  <h3>Pricing Desk Department</h3>
+
+  <span class="badge demo">SEPARATE DEPARTMENT DEMO</span>
+  <span id="pricingStatusBadge" class="badge pending">WAITING FOR QUOTE</span>
+
+  <div id="incomingQuoteBox" class="box">No quote submitted yet.</div>
+
+  <button onclick="receiveQuote()">Load Submitted Quote</button>
+  <button onclick="reviewQuote()">Review Quote</button>
+
+  <label>Discount Applied %</label>
+  <input id="discountPercent" type="number" value="7.5">
+
+  <label>Approved Price</label>
+  <input id="approvedPrice" type="number" value="925000">
+
+  <label>Pricing Desk Notes</label>
+  <textarea id="pricingNotes">Discount reviewed and accepted for demo workflow.</textarea>
+
+  <button class="green" onclick="acceptQuote()">Accept Quote</button>
+  <button class="red" onclick="returnToRep()">Return To Rep For Revision</button>
+</div>
+
+<script>
+const STORAGE_KEY = "quote_pricing_desk_only_demo_v1";
+
+let state = {
+  step: "waiting",
+  quoteNumber: "Q-1024",
+  customer: "ABC Hospital",
+  equipment: "MRI Upgrade Project",
+  repName: "John Smith",
+  listPrice: 1000000,
+  requestedPrice: 925000,
+  repNotes: "Customer requested pricing review for competitive replacement project.",
+  discountPercent: 7.5,
+  approvedPrice: 925000,
+  pricingNotes: "Discount reviewed and accepted for demo workflow.",
+  receivedAt: "",
+  reviewedAt: "",
+  acceptedAt: "",
+  returnedAt: ""
+};
+
+function money(v){
+  return "$" + Number(v || 0).toLocaleString();
+}
+
+function now(){
+  return new Date().toLocaleString();
+}
+
+function save(){
+  state.discountPercent = document.getElementById("discountPercent").value;
+  state.approvedPrice = document.getElementById("approvedPrice").value;
+  state.pricingNotes = document.getElementById("pricingNotes").value;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function quoteText(){
+  return `
+Quote Received From Rep
+
+Quote #: ${state.quoteNumber}
+Customer: ${state.customer}
+Equipment / Project: ${state.equipment}
+Rep: ${state.repName}
+
+List Price: ${money(state.listPrice)}
+Rep Requested Price: ${money(state.requestedPrice)}
+
+Rep Notes:
+${state.repNotes}
+
+Pricing Desk Review
+----------------------------------
+Discount Applied: ${state.discountPercent || 0}%
+Approved Price: ${money(state.approvedPrice)}
+
+Pricing Desk Notes:
+${state.pricingNotes || "None"}
+
+Status:
+${statusText()}
+`;
+}
+
+function statusText(){
+  if(state.step === "waiting") return "Waiting for submitted quote";
+  if(state.step === "received") return "Quote received by Pricing Desk";
+  if(state.step === "reviewed") return "Quote reviewed — discount ready";
+  if(state.step === "accepted") return "Accepted by Pricing Desk — synced back to rep";
+  if(state.step === "returned") return "Returned to rep for revision";
+  return "Waiting";
+}
+
+function render(){
+  const badge = document.getElementById("pricingStatusBadge");
+  const box = document.getElementById("incomingQuoteBox");
+
+  badge.className = "badge pending";
+
+  if(state.step === "waiting"){
+    badge.textContent = "WAITING FOR QUOTE";
+    box.textContent = "No quote submitted yet.";
+  }
+
+  if(state.step === "received"){
+    badge.className = "badge active";
+    badge.textContent = "QUOTE RECEIVED";
+    box.textContent = quoteText();
+  }
+
+  if(state.step === "reviewed"){
+    badge.className = "badge active";
+    badge.textContent = "REVIEW COMPLETE";
+    box.textContent = quoteText();
+  }
+
+  if(state.step === "accepted"){
+    badge.className = "badge done";
+    badge.textContent = "ACCEPTED — SYNCED TO REP";
+    box.textContent = quoteText();
+  }
+
+  if(state.step === "returned"){
+    badge.className = "badge pending";
+    badge.textContent = "RETURNED TO REP";
+    box.textContent = quoteText();
+  }
+
+  save();
+}
+
+function receiveQuote(){
+  state.step = "received";
+  state.receivedAt = now();
+  render();
+}
+
+function reviewQuote(){
+  state.step = "reviewed";
+  state.reviewedAt = now();
+  render();
+}
+
+function acceptQuote(){
+  state.step = "accepted";
+  state.acceptedAt = now();
+  render();
+}
+
+function returnToRep(){
+  state.step = "returned";
+  state.returnedAt = now();
+  render();
+}
+
+function load(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+
+  if(raw){
+    try{
+      state = {...state, ...JSON.parse(raw)};
+    }catch(e){}
+  }
+
+  document.getElementById("discountPercent").value = state.discountPercent;
+  document.getElementById("approvedPrice").value = state.approvedPrice;
+  document.getElementById("pricingNotes").value = state.pricingNotes;
+
+  render();
+}
+
+load();
+</script>
+
+</body>
+</html>
