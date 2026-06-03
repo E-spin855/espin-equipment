@@ -1435,7 +1435,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
       return `<span class="quote-sub-badge">Follow-up set</span>`;
     }
 
-    function renderReviewSignalCell(rec) {
+   function renderReviewSignalCell(rec) {
   if (rec.lifecycle_completed) {
     return `<span class="alert-badge alert-completed">Reviewed</span>`;
   }
@@ -1445,12 +1445,81 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
   }
 
   if (rec.quote_amount) {
-    const status = String(rec.quote_status || "draft").toUpperCase();
+    const status = String(rec.quote_status || "draft").toLowerCase();
+    const approvalStatus = String(rec.quote_approval_status || "").toLowerCase();
+
+    const quoteReleased =
+      rec.quote_customer_release_allowed === true ||
+      approvalStatus === "approved" ||
+      status === "approved_for_customer_release";
+
+    const quoteSubmitted =
+      approvalStatus === "pending_review" ||
+      status === "submitted_for_approval";
+
+    const quoteRevision =
+      approvalStatus === "revision_needed" ||
+      status === "revision_needed";
+
+    const quoteRejected =
+      approvalStatus === "rejected" ||
+      status === "rejected";
+
+    const emailDraftOpened =
+      rec.quote_delivery_status === "email_draft_opened_pdf_prepared" ||
+      rec.quote_delivery_status === "email_draft_opened";
+
+    if (quoteSubmitted) {
+      return `
+        <div class="quote-status-wrap compact">
+          <span class="quote-main-badge pending">Under Review</span>
+        </div>
+      `;
+    }
+
+    if (quoteRevision) {
+      return `
+        <div class="quote-status-wrap compact">
+          <span class="quote-main-badge revision">Revision Needed</span>
+        </div>
+      `;
+    }
+
+    if (quoteRejected) {
+      return `
+        <div class="quote-status-wrap compact">
+          <span class="quote-main-badge rejected">Rejected</span>
+        </div>
+      `;
+    }
+
+    if (quoteReleased && !emailDraftOpened) {
+      return `
+        <div class="quote-status-wrap compact">
+          <span class="quote-main-badge approved">Quote Approved</span>
+        </div>
+      `;
+    }
+
+    if (emailDraftOpened && rec.quote_follow_up_alert_date) {
+      return `
+        <div class="quote-status-wrap compact">
+          ${getQuoteFollowUpAlertBadge(rec)}
+        </div>
+      `;
+    }
+
+    if (rec.quote_follow_up_alert_date) {
+      return `
+        <div class="quote-status-wrap compact">
+          ${getQuoteFollowUpAlertBadge(rec)}
+        </div>
+      `;
+    }
 
     return `
-      <div class="quote-status-wrap">
-        <span class="quote-main-badge">Quote ${escapeHtml(status)}</span>
-        ${getQuoteFollowUpAlertBadge(rec)}
+      <div class="quote-status-wrap compact">
+        <span class="quote-main-badge">Quote Draft</span>
       </div>
     `;
   }
