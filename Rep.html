@@ -347,7 +347,37 @@
       color:#ffe890;
       border:1px solid rgba(255,216,77,.45);
     }
+.quote-action-panel{
+  margin-top:14px;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid rgba(0,229,255,.28);
+  background:rgba(0,229,255,.07);
+}
 
+.quote-action-panel.approved{
+  border-color:rgba(65,255,156,.45);
+  background:rgba(65,255,156,.09);
+}
+
+.quote-action-panel.pending{
+  border-color:rgba(255,216,77,.45);
+  background:rgba(255,216,77,.08);
+}
+
+.quote-action-panel.locked{
+  border-color:rgba(255,107,107,.42);
+  background:rgba(255,107,107,.08);
+}
+
+.quote-review-summary{
+  margin-top:10px;
+  display:grid;
+  gap:6px;
+  color:#d8ebff;
+  font-size:13px;
+  line-height:1.45;
+}
     .quote-sub-badge{
       display:inline-flex;
       align-items:center;
@@ -945,6 +975,7 @@
         <div id="quotePreview" style="margin-top:14px;padding:12px;border-radius:12px;background:#f3f6fb;color:#111;font-size:14px;line-height:1.5;"></div>
 
         <button class="green" onclick="saveQuote()">Save Quote</button>
+<button class="green" onclick="saveQuoteAndSubmitForReview()">Save + Submit for Review</button>
         <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeQuoteModal()">Cancel</button>
       </div>
     </div>
@@ -1377,41 +1408,56 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
   return `<span class="${badgeClass}">${escapeHtml(badgeText)}</span>`;
 }
-    function renderRepReviewStatus(rec) {
-      const label =
-        rec.rep_selected_manual_action_label ||
-        rec.rep_action_label ||
-        rec.rep_action ||
-        rec.rep_status ||
-        "";
+   function renderRepReviewStatus(rec) {
+  if (rec.quote_approval_status === "pending_review" || rec.quote_status === "submitted_for_approval") {
+    return `<span class="pill pending">Quote Review Pending</span>`;
+  }
 
-      if (!label || label === "needed") {
-        return `<button onclick="event.stopPropagation(); selectRow('${rec.id}')">Open</button>`;
-      }
+  if (rec.quote_approval_status === "approved" || rec.quote_customer_release_allowed === true || rec.quote_status === "approved_for_customer_release") {
+    return `<span class="pill submitted">Quote Approved</span>`;
+  }
 
-      if (rec.lifecycle_completed || rec.rep_status === "completed") {
-        return `<span class="pill submitted">Completed</span>`;
-      }
+  if (rec.quote_approval_status === "revision_needed" || rec.quote_status === "revision_needed") {
+    return `<span class="pill pending">Revision Needed</span>`;
+  }
 
-      if (rec.rep_status === "follow_up_scheduled" || rec.rep_action === "follow_up" || rec.rep_status === "schedule_follow_up") {
-        return `<span class="pill pending">Follow-Up Set</span>`;
-      }
+  if (rec.quote_approval_status === "rejected" || rec.quote_status === "rejected") {
+    return `<span class="pill postponed">Quote Rejected</span>`;
+  }
 
-      if (rec.rep_deleted || rec.rep_action === "remove" || rec.rep_status === "remove") {
-        return `<span class="pill postponed">Removed</span>`;
-      }
+  const label =
+    rec.rep_selected_manual_action_label ||
+    rec.rep_action_label ||
+    rec.rep_action ||
+    rec.rep_status ||
+    "";
 
-      if (rec.quote_status === "lost" || rec.rep_status === "lost") {
-        return `<span class="pill postponed">Lost</span>`;
-      }
+  if (!label || label === "needed") {
+    return `<button onclick="event.stopPropagation(); selectRow('${rec.id}')">Open</button>`;
+  }
 
-      if (rec.quote_status === "won" || rec.rep_status === "won") {
-        return `<span class="pill submitted">Won</span>`;
-      }
+  if (rec.lifecycle_completed || rec.rep_status === "completed") {
+    return `<span class="pill submitted">Completed</span>`;
+  }
 
-      return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
-    }
+  if (rec.rep_status === "follow_up_scheduled" || rec.rep_action === "follow_up" || rec.rep_status === "schedule_follow_up") {
+    return `<span class="pill pending">Follow-Up Set</span>`;
+  }
 
+  if (rec.rep_deleted || rec.rep_action === "remove" || rec.rep_status === "remove") {
+    return `<span class="pill postponed">Removed</span>`;
+  }
+
+  if (rec.quote_status === "lost" || rec.rep_status === "lost") {
+    return `<span class="pill postponed">Lost</span>`;
+  }
+
+  if (rec.quote_status === "won" || rec.rep_status === "won") {
+    return `<span class="pill submitted">Won</span>`;
+  }
+
+  return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
+}
     function loadRecords() {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -2092,7 +2138,119 @@ const importedLabel = rawImportedLabel
         </div>
       `;
     }
+function renderQuoteApprovalActionPanel(rec) {
+  if (!rec || !rec.quote_amount) {
+    return `
+      <div class="quote-action-panel locked">
+        <strong style="color:#ffd84d;">Quote not created yet</strong>
+        <div class="mini" style="margin-top:8px;line-height:1.45;">
+          Create a quote first. After the quote is saved, the rep can submit it for quote review.
+        </div>
+      </div>
+    `;
+  }
 
+  const status = String(rec.quote_approval_status || "").toLowerCase();
+  const quoteStatus = String(rec.quote_status || "").toLowerCase();
+  const approved = rec.quote_customer_release_allowed === true || status === "approved";
+  const pending = status === "pending_review" || quoteStatus === "submitted_for_approval";
+  const revisionNeeded = status === "revision_needed" || quoteStatus === "revision_needed";
+  const rejected = status === "rejected" || quoteStatus === "rejected";
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
+  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+
+  if (approved) {
+    return `
+      <div class="quote-action-panel approved">
+        <strong style="color:#41ff9c;font-size:16px;">Approved Quote Ready for Customer Release</strong>
+
+        <div class="quote-review-summary">
+          <div><strong>Approval ID:</strong> ${escapeHtml(rec.quote_approval_id || "-")}</div>
+          <div><strong>Approved By:</strong> ${escapeHtml(rec.quote_approval_decision_by || "Quote Review")}</div>
+          <div><strong>Approved At:</strong> ${rec.quote_approval_decision_at ? escapeHtml(new Date(rec.quote_approval_decision_at).toLocaleString()) : "-"}</div>
+          <div><strong>Gross Quote:</strong> ${money(quoteAmount)}</div>
+          <div><strong>Trade-In Credit:</strong> -${money(tradeInCredit)}</div>
+          <div><strong>Net Quote:</strong> ${money(netQuote)}</div>
+          <div><strong>Recipient:</strong> ${escapeHtml(rec.quote_recipient_email || rec.contact_email || "-")}</div>
+          ${rec.quote_approval_notes ? `<div><strong>Approval Notes:</strong> ${escapeHtml(rec.quote_approval_notes)}</div>` : ""}
+        </div>
+
+        <div class="btns" style="margin-top:12px;">
+          <button type="button" class="green" onclick="reviewApprovedQuote()">Review Approved Quote</button>
+          <button type="button" class="green" onclick="sendQuoteToCustomer()">Open Customer Email Draft</button>
+        </div>
+
+        <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+          Customer email is available only after quote approval. AXIS opens a draft only; the rep still manually reviews and sends the email.
+        </div>
+      </div>
+    `;
+  }
+
+  if (pending) {
+    return `
+      <div class="quote-action-panel pending">
+        <strong style="color:#ffd84d;font-size:16px;">Quote Submitted for Review</strong>
+
+        <div class="quote-review-summary">
+          <div><strong>Approval ID:</strong> ${escapeHtml(rec.quote_approval_id || "-")}</div>
+          <div><strong>Submitted At:</strong> ${rec.quote_approval_submitted_at ? escapeHtml(new Date(rec.quote_approval_submitted_at).toLocaleString()) : "-"}</div>
+          <div><strong>Gross Quote:</strong> ${money(quoteAmount)}</div>
+          <div><strong>Net Quote:</strong> ${money(netQuote)}</div>
+        </div>
+
+        <div class="mini" style="margin-top:10px;line-height:1.45;">
+          Waiting for quote review approval. Customer email remains locked.
+        </div>
+      </div>
+    `;
+  }
+
+  if (revisionNeeded || rejected) {
+    return `
+      <div class="quote-action-panel locked">
+        <strong style="color:#ffb3b3;font-size:16px;">
+          ${revisionNeeded ? "Quote Revision Needed" : "Quote Rejected"}
+        </strong>
+
+        <div class="quote-review-summary">
+          <div><strong>Approval ID:</strong> ${escapeHtml(rec.quote_approval_id || "-")}</div>
+          <div><strong>Decision At:</strong> ${rec.quote_approval_decision_at ? escapeHtml(new Date(rec.quote_approval_decision_at).toLocaleString()) : "-"}</div>
+          ${rec.quote_approval_notes ? `<div><strong>Manager Notes:</strong> ${escapeHtml(rec.quote_approval_notes)}</div>` : ""}
+        </div>
+
+        <div class="btns" style="margin-top:12px;">
+          <button type="button" class="green" onclick="openQuoteModal()">Revise Quote</button>
+          <button type="button" class="green" onclick="submitSelectedQuoteForApproval()">Resubmit Quote for Review</button>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="quote-action-panel">
+      <strong style="color:#a2f5ff;font-size:16px;">Quote Ready for Review Submission</strong>
+
+      <div class="quote-review-summary">
+        <div><strong>Gross Quote:</strong> ${money(quoteAmount)}</div>
+        <div><strong>Trade-In Credit:</strong> -${money(tradeInCredit)}</div>
+        <div><strong>Net Quote:</strong> ${money(netQuote)}</div>
+        <div><strong>Recipient:</strong> ${escapeHtml(rec.quote_recipient_email || rec.contact_email || "-")}</div>
+      </div>
+
+      <div class="btns" style="margin-top:12px;">
+        <button type="button" class="green" onclick="submitSelectedQuoteForApproval()">Submit Quote for Review</button>
+        <button type="button" class="secondary" onclick="openQuoteModal()">Edit Quote</button>
+      </div>
+
+      <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+        Submitting sends the rep-entered quote packet to the Quote Review page. Customer email stays locked until approval.
+      </div>
+    </div>
+  `;
+}
     function renderDetail() {
       const rec = state.records.find(r => r.id === state.selectedId);
       const empty = $("emptyState");
@@ -2164,7 +2322,7 @@ const importedLabel = rawImportedLabel
             : ""
         }
 
-        <div class="detail-card">
+                <div class="detail-card">
           <div class="k">Financial Review</div>
           <div class="v">
             ${
@@ -2189,6 +2347,7 @@ const importedLabel = rawImportedLabel
           </div>
         </div>
 
+        ${renderQuoteApprovalActionPanel(rec)}
         <div class="detail-card" style="border:1px solid rgba(0,229,255,.32);background:rgba(0,229,255,.07);">
           <div class="k">Activity Timeline</div>
           <div class="v" style="font-size:14px;line-height:1.45;">
@@ -2290,6 +2449,7 @@ const importedLabel = rawImportedLabel
                     Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
                     Estimated Margin: ${margin}%
                   </div>
+${renderQuoteApprovalActionPanel(rec)}
                   <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.</div>
                 `
                 : `
@@ -2785,7 +2945,7 @@ const importedLabel = rawImportedLabel
 
       if (!rec) {
         alert("Open a record first");
-        return;
+        return false;
       }
 
       const amount = Number($("quoteAmount").value || 0);
@@ -2796,19 +2956,19 @@ const importedLabel = rawImportedLabel
       const lossReason = clean($("quoteLossReason").value);
 
       if (!amount || amount <= 0) {
-        alert("Enter quote amount");
-        return;
-      }
+  alert("Enter quote amount");
+  return false;
+}
 
-      if (!followUpDate && status !== "won" && status !== "lost") {
-        alert("Set quote follow-up date");
-        return;
-      }
+if (!followUpDate && status !== "won" && status !== "lost") {
+  alert("Set quote follow-up date");
+  return false;
+}
 
-      if (status === "lost" && !lossReason) {
-        alert("Enter loss reason");
-        return;
-      }
+if (status === "lost" && !lossReason) {
+  alert("Enter loss reason");
+  return false;
+}
 
       const now = new Date().toISOString();
       const isNewQuote = !rec.quote_created_at;
@@ -2839,7 +2999,16 @@ const importedLabel = rawImportedLabel
       rec.quote_loss_reason = status === "lost" ? lossReason : "";
       rec.quote_created_at = rec.quote_created_at || now;
       rec.quote_updated_at = now;
-
+if (
+  rec.quote_approval_status === "approved" ||
+  rec.quote_customer_release_allowed === true ||
+  rec.quote_status === "approved_for_customer_release"
+) {
+  rec.quote_approval_status = "revision_needed";
+  rec.quote_customer_release_allowed = false;
+  rec.rep_quote_release_alert = false;
+  rec.quote_approval_notes = "Quote was edited after approval and must be resubmitted before customer release.";
+}
       rec.manager_unseen_update = true;
       rec.manager_flash_at = now;
 
@@ -2875,27 +3044,53 @@ const importedLabel = rawImportedLabel
       closeQuoteModal();
       render();
 
-      showBanner(
+            showBanner(
         status === "won"
           ? "✅ Quote won — project ready for Project Management"
           : status === "lost"
           ? "✅ Quote marked lost"
           : "✅ Quote saved with follow-up alert"
       );
+
+      return true;
     }
+function saveQuoteAndSubmitForReview() {
+  const saved = saveQuote();
 
-    function showBanner(text) {
-      const banner = $("resultBanner");
-      if (!banner) return;
-      banner.style.display = "block";
-      banner.textContent = text;
+  if (!saved) return;
 
-      setTimeout(() => {
-        banner.style.display = "none";
-        banner.textContent = "";
-      }, 2500);
-    }
+  const rec = state.records.find(r => r.id === state.selectedId);
 
+  if (!rec || !rec.quote_amount) return;
+
+  if (!confirm("Submit this saved quote to Quote Review? Customer email will stay locked until approval.")) {
+    return;
+  }
+
+  submitQuoteForApproval(rec);
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "quote_submitted_for_approval";
+  rec.manager_flash_text = "Rep submitted quote for review";
+
+  syncFeedStatus(rec);
+  render();
+
+  showBanner("✅ Quote saved and submitted to Quote Review");
+}
+function showBanner(text) {
+  const banner = $("resultBanner");
+  if (!banner) return;
+
+  banner.style.display = "block";
+  banner.textContent = text;
+
+  setTimeout(() => {
+    banner.style.display = "none";
+    banner.textContent = "";
+  }, 2500);
+}
     function saveRepAction() {
       const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -3016,10 +3211,10 @@ const importedLabel = rawImportedLabel
         return;
       }
 
-      if (action === "submit_quote_approval") {
-        exportQuotePDF();
-        return;
-      }
+     if (action === "submit_quote_approval") {
+  submitSelectedQuoteForApproval();
+  return;
+}
 
       if (action === "open_email_draft") {
         sendQuoteToCustomer();
@@ -3290,7 +3485,71 @@ const importedLabel = rawImportedLabel
       saveRecords();
       render();
     }
+function submitSelectedQuoteForApproval() {
+  const rec = state.records.find(r => r.id === state.selectedId);
 
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  if (!rec.quote_amount) {
+    alert("Create and save a quote first.");
+    return;
+  }
+
+  if (!rec.quote_recipient_email && !rec.contact_email) {
+    alert("Enter quote recipient email before submitting for review.");
+    return;
+  }
+
+  if (!confirm("Submit this quote to Quote Review? Customer email will stay locked until approval.")) {
+    return;
+  }
+
+  submitQuoteForApproval(rec);
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "quote_submitted_for_approval";
+  rec.manager_flash_text = "Rep submitted quote for review";
+
+  syncFeedStatus(rec);
+  render();
+
+  showBanner("✅ Quote submitted to Quote Review");
+}
+
+function reviewApprovedQuote() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  if (rec.quote_customer_release_allowed !== true) {
+    alert("Quote is not approved yet.");
+    return;
+  }
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
+  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+
+  alert(
+    "APPROVED QUOTE REVIEW\n\n" +
+    `Facility: ${rec.site || "-"}\n` +
+    `Project / Equipment: ${rec.make || ""} ${rec.model || ""}\n` +
+    `Serial: ${rec.serial_number || "-"}\n\n` +
+    `Gross Quote: ${money(quoteAmount)}\n` +
+    `Trade-In Credit: -${money(tradeInCredit)}\n` +
+    `Net Quote: ${money(netQuote)}\n\n` +
+    `Recipient: ${rec.quote_recipient_email || rec.contact_email || "-"}\n` +
+    `CC: ${rec.quote_cc_email || "None"}\n\n` +
+    `Approval Notes: ${rec.quote_approval_notes || "None"}`
+  );
+}
     function submitQuoteForApproval(rec) {
       if (!rec || !rec.quote_amount) return;
 
@@ -3536,8 +3795,6 @@ const importedLabel = rawImportedLabel
       rec.quote_delivery_status = "pdf_saved";
       rec.quote_pdf_saved_at = new Date().toISOString();
 
-      submitQuoteForApproval(rec);
-
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
       rec.manager_flash_type = "quote_submitted_for_approval";
@@ -3545,7 +3802,7 @@ const importedLabel = rawImportedLabel
       syncFeedStatus(rec);
       render();
 
-      showBanner("✅ Quote submitted to Quote Approval");
+      showBanner("✅ Quote PDF saved");
     }
 
     function sendQuoteToCustomer() {
@@ -4309,13 +4566,15 @@ const importedLabel = rawImportedLabel
       $("clearBtn").addEventListener("click", () => {
         if (!confirm("Clear all local demo data?")) return;
 
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem("espin_rep_queue");
-        localStorage.removeItem("axis_manager_sync_ping_v1");
-        localStorage.removeItem("axis_tradein_sync_records_v1");
-        localStorage.removeItem("axis_tradein_last_sync_v1");
-        localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
-        localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
+       localStorage.removeItem(STORAGE_KEY);
+localStorage.removeItem("espin_rep_queue");
+localStorage.removeItem("axis_manager_sync_ping_v1");
+localStorage.removeItem("axis_tradein_sync_records_v1");
+localStorage.removeItem("axis_tradein_last_sync_v1");
+localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
+localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
+localStorage.removeItem(QUOTE_APPROVAL_KEY);
+localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
 
         state.records = [];
         state.selectedId = null;
