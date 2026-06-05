@@ -910,22 +910,8 @@ th:nth-child(9),td:nth-child(9){width:190px;text-align:center}
 
 <div class="btns">
   <button class="green" onclick="confirmManualAction()">Continue</button>
+  <button class="green" onclick="completeLifecycleProject()">Complete Project</button>
 </div>
-              <div class="row" style="max-width:320px;">
-                <label>Scheduled Follow-Up Date</label>
-                <input id="repFollowUpDate" type="date" />
-              </div>
-
-              <div class="row" style="max-width:420px;">
-                <label>Notes</label>
-                <textarea id="repOutcomeNotes" placeholder="Optional notes..."></textarea>
-              </div>
-
-              <div class="btns">
-                <button class="green" onclick="saveRepAction()">Save Action</button>
-                <button class="green" onclick="completeLifecycleProject()">Complete Project</button>
-              </div>
-
               <div class="banner" id="resultBanner"></div>
 
               <div class="codebox">
@@ -2446,9 +2432,9 @@ function renderQuoteApprovalActionPanel(rec) {
       empty.classList.add("hidden");
       detail.classList.remove("hidden");
 
-      $("repAction").value = rec.rep_action || "";
-      $("repOutcomeNotes").value = rec.rep_notes || "";
-      $("repFollowUpDate").value = rec.rep_follow_up_date || rec.next_action_date || "";
+     $("manualActionSelect").value = rec.rep_selected_manual_action || rec.rep_action || "";
+$("repOutcomeNotes").value = rec.rep_notes || "";
+$("repFollowUpDate").value = rec.rep_follow_up_date || rec.next_action_date || "";
 
       const quoteAmount = Number(rec.quote_amount || 0);
       const estimatedCost = Number(rec.quote_estimated_cost || 0);
@@ -2543,11 +2529,11 @@ function renderQuoteApprovalActionPanel(rec) {
 
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
 
-      document.querySelector('button[onclick="saveRepAction()"]').disabled = completed;
-      document.querySelector('button[onclick="completeLifecycleProject()"]').disabled = completed;
-      $("repAction").disabled = completed;
-      $("repOutcomeNotes").disabled = completed;
-      $("repFollowUpDate").disabled = completed;
+      document.querySelector('button[onclick="confirmManualAction()"]').disabled = completed;
+document.querySelector('button[onclick="completeLifecycleProject()"]').disabled = completed;
+$("manualActionSelect").disabled = completed;
+$("repOutcomeNotes").disabled = completed;
+$("repFollowUpDate").disabled = completed;
     }
 
     function renderNewProjectDetail(rec) {
@@ -3382,14 +3368,20 @@ function showBanner(text) {
       }
 
       const action = $("manualActionSelect").value;
+const notes = $("repOutcomeNotes").value;
+const followUpDate = $("repFollowUpDate").value;
 
-      if (!action) {
-        alert("Select a manual action first.");
-        return;
-      }
+if (!action) {
+  alert("Select action first.");
+  return;
+}
 
-      const label = $("manualActionSelect").selectedOptions[0]?.textContent || action;
+if (action === "schedule_follow_up" && !followUpDate) {
+  alert("Select follow-up date first.");
+  return;
+}
 
+const label = $("manualActionSelect").selectedOptions[0]?.textContent || action;
       if (!confirm(`Confirm manual action:\n\n${label}\n\nAXIS will document this user-selected action.`)) {
         return;
       }
@@ -3398,11 +3390,19 @@ function showBanner(text) {
       rec.rep_selected_manual_action_label = label;
       rec.rep_selected_manual_action_at = new Date().toISOString();
 
-      rec.rep_status = action === "mark_reviewed" ? "reviewed" : action;
-      rec.rep_action = action;
-      rec.rep_action_label = label;
-      rec.rep_last_action_at = new Date().toISOString();
+    rec.rep_status =
+  action === "mark_reviewed"
+    ? "reviewed"
+    : action === "schedule_follow_up"
+    ? "follow_up_scheduled"
+    : action;
 
+rec.rep_action = action;
+rec.rep_action_label = label;
+rec.rep_notes = notes;
+rec.rep_follow_up_date = followUpDate || "";
+rec.next_action_date = action === "schedule_follow_up" ? followUpDate : "";
+rec.rep_last_action_at = new Date().toISOString();
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
       rec.manager_flash_type = "rep_manual_action";
@@ -3435,13 +3435,6 @@ function showBanner(text) {
         openDecisionModal();
         return;
       }
-
-      if (action === "schedule_follow_up") {
-        $("repAction").value = "follow_up";
-        alert("Select follow-up date, then save action.");
-        return;
-      }
-
       if (action === "complete") {
         completeLifecycleProject();
         return;
