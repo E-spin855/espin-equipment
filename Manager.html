@@ -1156,37 +1156,53 @@ function formatReviewText(value) {
 }
 function renderReviewCondition(rec) {
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
-    return `<span class="alert-badge alert-completed">Completed</span>`;
+    return `<span class="alert-badge alert-completed">Done</span>`;
   }
 
   if (rec.manager_unseen_update && rec.manager_flash_type !== "manager_response") {
     return `
       <span class="alert-badge alert-service manager-flash-pill">
-        ${escapeHtml(rec.manager_flash_text || "Rep Update")}
+        Update
       </span>
     `;
   }
 
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-    return `<span class="alert-badge alert-proactive">Trade-In Update</span>`;
+    return `<span class="alert-badge alert-proactive">Trade-In</span>`;
   }
 
   if (rec.quote_amount) {
-    const status = String(rec.quote_status || "draft").toUpperCase();
+    const status = String(rec.quote_status || "draft").toLowerCase();
 
-    if (rec.quote_status === "sent") {
-      return `<span class="pill pending">Quote Sent</span>`;
+    if (status === "sent") {
+      return `<span class="pill pending">Sent</span>`;
     }
 
-    if (rec.quote_status === "won") {
-      return `<span class="pill submitted">Quote Won</span>`;
+    if (status === "won") {
+      return `<span class="pill submitted">Won</span>`;
     }
 
-    if (rec.quote_status === "lost") {
-      return `<span class="pill postponed">Quote Lost</span>`;
+    if (status === "lost") {
+      return `<span class="pill postponed">Lost</span>`;
     }
 
-    return `<span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">Quote ${escapeHtml(status)}</span>`;
+    if (status === "submitted_for_approval") {
+      return `<span class="pill pending">Review</span>`;
+    }
+
+    if (status === "approved_for_customer_release") {
+      return `<span class="pill submitted">Approved</span>`;
+    }
+
+    if (status === "revision_needed") {
+      return `<span class="pill pending">Revise</span>`;
+    }
+
+    if (status === "rejected") {
+      return `<span class="pill postponed">Rejected</span>`;
+    }
+
+    return `<span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">Draft</span>`;
   }
 
   const alerts = getAlerts(rec);
@@ -1199,17 +1215,39 @@ function renderReviewCondition(rec) {
   const type = lower(first.type);
 
   let cls = "alert-badge alert-planning";
+  let shortText = "Review";
 
-  if (type === "service") cls = "alert-badge alert-service";
-  else if (type === "upgrade" || type === "utilization") cls = "alert-badge alert-upgrade";
-  else if (type === "replacement" || type === "lifecycle") cls = "alert-badge alert-replacement";
-  else if (type === "disposal") cls = "alert-badge alert-disposal";
-  else if (type === "postponed") cls = "alert-badge alert-postponed";
-  else if (type === "proactive" || type === "review" || type === "planning") cls = "alert-badge alert-proactive";
+  if (type === "service") {
+    cls = "alert-badge alert-service";
+    shortText = "Service";
+  } else if (type === "upgrade") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Upgrade";
+  } else if (type === "utilization") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Use";
+  } else if (type === "replacement") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Replace";
+  } else if (type === "lifecycle") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Age";
+  } else if (type === "disposal" || type === "disposition") {
+    cls = "alert-badge alert-disposal";
+    shortText = "Dispose";
+  } else if (type === "postponed") {
+    cls = "alert-badge alert-postponed";
+    shortText = "Follow-Up";
+  } else if (type === "planning") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Planning";
+  } else if (type === "proactive" || type === "review") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Notice";
+  }
 
-  return `<span class="${cls}">${escapeHtml(first.displayType || first.label || "Review")}</span>`;
+  return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
 }
-
 function getRepActionLabel(action) {
   const map = {
     quote_review: "Open Quote Review",
