@@ -1179,14 +1179,22 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
 function getAlerts(rec) {
   if (!rec || rec.alert_enabled === "no") return [];
 
-  if (rec.next_action_date && rec.next_action_date > todayISO()) {
-    return [{
-      type: "postponed",
-      label: "Follow-up scheduled by rep.",
-      displayType: "Follow-Up Scheduled",
-      source: "Rep-entered follow-up date"
-    }];
-  }
+  const hasManualRepFollowUp =
+  rec.rep_action === "follow_up" ||
+  rec.rep_status === "follow_up_scheduled" ||
+  rec.rep_status === "schedule_follow_up" ||
+  Boolean(rec.rep_follow_up_date);
+
+const followUpDate = rec.rep_follow_up_date || "";
+
+if (hasManualRepFollowUp && followUpDate && followUpDate > todayISO()) {
+  return [{
+    type: "postponed",
+    label: "Follow-up scheduled by rep.",
+    displayType: "Follow-Up Scheduled",
+    source: "Rep-entered follow-up date"
+  }];
+}
 
   const age = ageFromDom(rec.dom);
   const threshold = Number(rec.threshold_years || 0);
@@ -1197,11 +1205,11 @@ function getAlerts(rec) {
     age !== undefined &&
     Number(age) >= threshold
   ) {
-  return [{
+ return [{
   type: "lifecycle",
-  label: `OEM age review field visible: equipment age is ${age} years; OEM review field is ${threshold} years.`,
-  displayType: "OEM Age Field",
-  source: "OEM-provided age review field"
+  label: `Equipment is ${age} years old. Review window is set at ${threshold} years.`,
+  displayType: "Age",
+  source: "Imported review threshold"
 }];
   }
 
@@ -1268,28 +1276,28 @@ function getAlerts(rec) {
   };
 
   const displayTypeMap = {
-    planning: "Planning Window",
-    capital_planning_signal: "Capital Planning Window",
-    capital_planning: "Capital Planning Window",
-    service: "Service Review",
-    service_review: "Service Review",
-    utilization: "Utilization Review",
-    utilization_review: "Utilization Review",
-    lifecycle: "Lifecycle Review",
-    lifecycle_review: "Lifecycle Review",
-    tradein: "Trade-In Review",
-    trade_in: "Trade-In Review",
-    quote: "Quote Review",
-    quote_review: "Quote Review",
-    project: "Project Review",
-    project_review: "Project Review",
-    proactive: "OEM Review Notice",
-    review: "OEM Review Notice",
-    replacement: "Replacement Review Note",
-upgrade: "Upgrade Review Note",
-disposal: "Disposition Review Note"
-  };
-
+  planning: "Planning",
+  capital_planning_signal: "Planning",
+  capital_planning: "Planning",
+  service: "Service",
+  service_review: "Service",
+  utilization: "Use",
+  utilization_review: "Use",
+  lifecycle: "Age",
+  lifecycle_review: "Age",
+  tradein: "Trade-In",
+  trade_in: "Trade-In",
+  quote: "Quote",
+  quote_review: "Quote",
+  project: "Project",
+  project_review: "Project",
+  proactive: "Notice",
+  review: "Review",
+  replacement: "Replace",
+  upgrade: "Upgrade",
+  disposal: "Dispose",
+  disposition: "Dispose"
+};
   const safeType = safeTypeMap[importedType] || "review";
   const displayType = displayTypeMap[importedType] || "OEM Review Notice";
 
@@ -1479,7 +1487,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     if (quoteRevision) {
       return `
         <div class="quote-status-wrap compact">
-          <span class="quote-main-badge revision">Revision Needed</span>
+          <span class="quote-main-badge revision">Revise</span>
         </div>
       `;
     }
@@ -1759,10 +1767,16 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
         getAlerts(rec).length
       ).length;
 
-      const postponed = state.records.filter(rec =>
-        rec.next_action_date && rec.next_action_date > todayISO()
-      ).length;
-
+     const postponed = state.records.filter(rec =>
+  (
+    rec.rep_action === "follow_up" ||
+    rec.rep_status === "follow_up_scheduled" ||
+    rec.rep_status === "schedule_follow_up" ||
+    rec.rep_follow_up_date
+  ) &&
+  rec.rep_follow_up_date &&
+  rec.rep_follow_up_date > todayISO()
+).length;
       const submitted = state.records.filter(rec => rec.submitted_to).length;
 
       $("statTotal").textContent = total;
