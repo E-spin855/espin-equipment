@@ -395,75 +395,67 @@
       animation:none!important;
     }
 
-   .manager-flash-pill{
-  background:linear-gradient(90deg,#ff4fd8,#ff8a00,#ffd84d)!important;
-  color:#160018!important;
-  border:2px solid rgba(255,255,255,.92)!important;
+ .manager-flash-pill{
+  background:linear-gradient(90deg,#43b0ff,#00e5ff)!important;
+  color:#03111b!important;
+  border:1px solid rgba(0,229,255,.72)!important;
   box-shadow:
-    0 0 0 3px rgba(255,79,216,.30),
-    0 0 24px rgba(255,79,216,.95),
-    0 0 46px rgba(255,138,0,.78)!important;
-  animation:managerUpdatePillPulse .85s ease-in-out infinite!important;
+    0 0 0 2px rgba(0,229,255,.12),
+    0 0 14px rgba(0,229,255,.38)!important;
+  animation:managerUpdatePillPulse 1.8s ease-in-out infinite!important;
   transform-origin:center;
 }
 
 tr.manager-row-flash{
-  outline:3px solid rgba(255,79,216,.95)!important;
+  outline:2px solid rgba(0,229,255,.55)!important;
   box-shadow:
-    inset 7px 0 0 rgba(255,79,216,1),
-    0 0 0 2px rgba(255,216,77,.38),
-    0 0 34px rgba(255,79,216,.80)!important;
-  background:rgba(78,18,72,.88)!important;
-  animation:managerUpdateRowPulse 1s ease-in-out infinite!important;
+    inset 5px 0 0 rgba(0,229,255,.75),
+    0 0 18px rgba(0,229,255,.22)!important;
+  background:rgba(9,52,68,.72)!important;
+  animation:managerUpdateRowPulse 2.2s ease-in-out infinite!important;
 }
 
 tr.manager-row-flash td{
-  border-bottom-color:rgba(255,216,77,.58)!important;
+  border-bottom-color:rgba(0,229,255,.32)!important;
 }
 
 @keyframes managerUpdatePillPulse{
   0%{
     transform:scale(1);
     filter:brightness(1);
-    background:linear-gradient(90deg,#ff4fd8,#ff8a00,#ffd84d);
     box-shadow:
-      0 0 0 3px rgba(255,79,216,.24),
-      0 0 18px rgba(255,79,216,.72),
-      0 0 34px rgba(255,138,0,.48);
+      0 0 0 2px rgba(0,229,255,.10),
+      0 0 10px rgba(0,229,255,.28);
   }
 
   50%{
-    transform:scale(1.12);
-    filter:brightness(1.6);
-    background:linear-gradient(90deg,#ffd84d,#ff4fd8,#00e5ff);
+    transform:scale(1.04);
+    filter:brightness(1.18);
     box-shadow:
-      0 0 0 5px rgba(255,255,255,.28),
-      0 0 34px rgba(255,79,216,1),
-      0 0 62px rgba(255,216,77,.85);
+      0 0 0 3px rgba(0,229,255,.18),
+      0 0 20px rgba(0,229,255,.52);
   }
 
   100%{
     transform:scale(1);
     filter:brightness(1);
-    background:linear-gradient(90deg,#ff4fd8,#ff8a00,#ffd84d);
     box-shadow:
-      0 0 0 3px rgba(255,79,216,.24),
-      0 0 18px rgba(255,79,216,.72),
-      0 0 34px rgba(255,138,0,.48);
+      0 0 0 2px rgba(0,229,255,.10),
+      0 0 10px rgba(0,229,255,.28);
   }
 }
 
 @keyframes managerUpdateRowPulse{
   0%{
-    background:rgba(78,18,72,.72);
+    background:rgba(9,42,58,.58);
   }
 
   50%{
-    background:rgba(128,32,106,.98);
+    background:rgba(12,66,86,.82);
   }
 
   100%{
-    background:rgba(78,18,72,.72);
+    background:rgba(9,42,58,.58);
   }
 }
     .followup-date-pill{
@@ -1067,51 +1059,74 @@ function mergeRecordsByKey(...groups) {
 
     const existing = map.get(key) || {};
 
-    const incomingIsManagerResponse = rec.manager_flash_type === "manager_response";
+    const incomingIsManagerResponse =
+      rec.manager_flash_type === "manager_response";
+
+    const incomingClearedManagerUpdate =
+      rec.manager_unseen_update === false &&
+      rec.manager_update_seen_at;
+
+    const existingClearedManagerUpdate =
+      existing.manager_unseen_update === false &&
+      existing.manager_update_seen_at;
+
+    const shouldShowManagerUpdate =
+      incomingIsManagerResponse
+        ? false
+        : incomingClearedManagerUpdate
+        ? false
+        : existingClearedManagerUpdate
+        ? false
+        : rec.manager_unseen_update === true
+        ? true
+        : existing.manager_unseen_update === true
+        ? true
+        : false;
 
     map.set(key, {
       ...existing,
       ...rec,
       key,
 
-      quote_seen: existing.quote_seen === true || rec.quote_seen === true,
+      quote_seen:
+        existing.quote_seen === true ||
+        rec.quote_seen === true,
 
       manager_response_seen_by_rep:
         rec.manager_response_seen_by_rep === false
           ? false
           : existing.manager_response_seen_by_rep === false
           ? false
-          : rec.manager_response_seen_by_rep ?? existing.manager_response_seen_by_rep ?? true,
+          : rec.manager_response_seen_by_rep ??
+            existing.manager_response_seen_by_rep ??
+            true,
 
-      manager_unseen_update:
-        incomingIsManagerResponse
-          ? false
-          : rec.manager_unseen_update === true
-          ? true
-          : existing.manager_unseen_update === true
-          ? true
-          : false,
+      manager_unseen_update: shouldShowManagerUpdate,
+
+      manager_update_seen_at:
+        rec.manager_update_seen_at ||
+        existing.manager_update_seen_at ||
+        "",
 
       manager_flash_at:
-        incomingIsManagerResponse
-          ? ""
-          : rec.manager_flash_at || existing.manager_flash_at || "",
+        shouldShowManagerUpdate
+          ? rec.manager_flash_at || existing.manager_flash_at || ""
+          : "",
 
       manager_flash_type:
-        incomingIsManagerResponse
-          ? ""
-          : rec.manager_flash_type || existing.manager_flash_type || "",
+        shouldShowManagerUpdate
+          ? rec.manager_flash_type || existing.manager_flash_type || ""
+          : "",
 
       manager_flash_text:
-        incomingIsManagerResponse
-          ? ""
-          : rec.manager_flash_text || existing.manager_flash_text || ""
+        shouldShowManagerUpdate
+          ? rec.manager_flash_text || existing.manager_flash_text || ""
+          : ""
     });
   });
 
   return Array.from(map.values());
 }
-
 function getRepName(rec) {
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
@@ -2139,10 +2154,21 @@ function closeSelectedRecord() {
     manager_flash_text: ""
   };
 
-  syncRecordEverywhere(updated);
+  let main = readArrayKey(STORAGE_KEY);
 
+  main = main.map(item =>
+    sameRecord(item, updated)
+      ? { ...item, ...updated }
+      : item
+  );
+
+  writeArrayKey(STORAGE_KEY, main);
+  writeManagerQueueRecord(updated);
+
+  state.records = mergeRecordsByKey(main, readManagerQueueRecords());
   state.selectedId = null;
 
+  pingLifecycleSync();
   render();
 }
 function handleCSVUpload(file) {
