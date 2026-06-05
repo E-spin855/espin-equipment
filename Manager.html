@@ -692,6 +692,44 @@ tr.manager-row-flash td{
     .mini{font-size:12px;color:var(--muted)}
     .hidden{display:none!important}
     a{color:#43b0ff}
+.update-detail-card{
+  border:2px solid rgba(255,216,77,.78)!important;
+  background:
+    radial-gradient(circle at top left, rgba(255,216,77,.22), transparent 34%),
+    linear-gradient(180deg,rgba(255,79,216,.16),rgba(8,18,35,.86))!important;
+  box-shadow:
+    0 0 0 1px rgba(255,216,77,.18),
+    0 0 24px rgba(255,216,77,.20),
+    0 0 34px rgba(255,79,216,.16)!important;
+}
+
+.update-detail-card .k{
+  color:#fff2a6!important;
+}
+
+.update-detail-card .v{
+  color:#ffffff!important;
+}
+
+.update-detail-card.followup-update{
+  border-color:rgba(65,255,156,.82)!important;
+  background:
+    radial-gradient(circle at top left, rgba(65,255,156,.24), transparent 34%),
+    linear-gradient(180deg,rgba(0,229,255,.13),rgba(8,18,35,.88))!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.20),
+    0 0 24px rgba(65,255,156,.20),
+    0 0 34px rgba(0,229,255,.16)!important;
+}
+
+.close-selected-btn{
+  background:rgba(255,216,77,.14)!important;
+  color:#fff4cc!important;
+  border:1px solid rgba(255,216,77,.42)!important;
+  box-shadow:none!important;
+  padding:9px 12px!important;
+  font-size:12px!important;
+}
   </style>
 </head>
 
@@ -799,11 +837,15 @@ tr.manager-row-flash td{
           </div>
         </div>
 
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Selected Record</h2>
-            <span class="mini">Manager review only</span>
-          </div>
+       <div class="panel-head">
+  <h2>Selected Record</h2>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="mini">Manager review only</span>
+    <button type="button" class="close-selected-btn hidden" id="closeSelectedBtn">
+      Close Review
+    </button>
+  </div>
+</div>
 
           <div class="panel-body">
             <div id="emptyState" class="mini">Select a record in the table above.</div>
@@ -1706,6 +1748,19 @@ function renderActivityTimeline(rec) {
   if (rec.assigned_at) items.push({ date: rec.assigned_at, label: "Record loaded into manager workspace" });
 
   const alert = getAlerts(rec)[0];
+const hasOpenManagerUpdate =
+  rec.manager_unseen_update === true &&
+  rec.manager_flash_type !== "manager_response";
+
+const repActivityCardClass =
+  hasOpenManagerUpdate
+    ? "detail-card update-detail-card"
+    : "detail-card";
+
+const repFollowUpCardClass =
+  hasOpenManagerUpdate
+    ? "detail-card update-detail-card followup-update"
+    : "detail-card";
   if (alert) items.push({ date: rec.oem_review_date || rec.review_date || "Current", label: `OEM review note visible: ${formatReviewText(alert.displayType || alert.label)}` });
 
   if (rec.tradein_sync_received) items.push({ date: rec.tradein_synced_to_axis_at || rec.external_tradein_received_at || "Current", label: "Trade-In details synced back to AXIS" });
@@ -1742,17 +1797,18 @@ function renderDetail() {
   const empty = $("emptyState");
   const detail = $("detailArea");
   const grid = $("detailGrid");
-
+const closeBtn = $("closeSelectedBtn");
   if (!rec) {
     if (empty) empty.classList.remove("hidden");
     if (detail) detail.classList.add("hidden");
     if (grid) grid.innerHTML = "";
+if (closeBtn) closeBtn.classList.add("hidden");
     return;
   }
 
   if (empty) empty.classList.add("hidden");
   if (detail) detail.classList.remove("hidden");
-
+if (closeBtn) closeBtn.classList.remove("hidden");
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
   const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || rec.trade_in_credit || 0);
@@ -1824,16 +1880,25 @@ function renderDetail() {
 
     <div class="section-title blue">Rep Activity</div>
 
-    <div class="detail-card">
-      <div class="k">Rep Action / Status</div>
-      <div class="v">${renderRepStatus(rec)}</div>
-    </div>
+   <div class="${repActivityCardClass}">
+  <div class="k">Rep Action / Status</div>
+  <div class="v">${renderRepStatus(rec)}</div>
+  ${
+    hasOpenManagerUpdate
+      ? `<div class="mini" style="margin-top:8px;color:#fff2a6;font-weight:900;">New rep update is open for manager review.</div>`
+      : ""
+  }
+</div>
 
-    <div class="detail-card">
-      <div class="k">Rep Follow-Up Date</div>
-      <div class="v">${renderFollowUpDatePill(rec)}</div>
-    </div>
-
+<div class="${repFollowUpCardClass}">
+  <div class="k">Rep Follow-Up Date</div>
+  <div class="v">${renderFollowUpDatePill(rec)}</div>
+  ${
+    hasOpenManagerUpdate && getFollowUpDate(rec)
+      ? `<div class="mini" style="margin-top:8px;color:#b8ffd7;font-weight:900;">Follow-up date came from the rep update.</div>`
+      : ""
+  }
+</div>
     <div class="detail-card full">
       <div class="k">Rep Notes</div>
       <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}</div>
@@ -2040,14 +2105,7 @@ function selectRow(id) {
     ...rec,
     id: rec.id || selectedId,
     key: getRecordKey(rec),
-
-    quote_seen: true,
-
-    manager_unseen_update: false,
-    manager_update_seen_at: new Date().toISOString(),
-    manager_flash_at: "",
-    manager_flash_type: "",
-    manager_flash_text: ""
+    quote_seen: true
   };
 
   syncRecordEverywhere(updated);
@@ -2059,7 +2117,32 @@ function selectRow(id) {
   renderTable();
   renderDetail();
 }
+function closeSelectedRecord() {
+  const rec = findSelectedRecord();
 
+  if (!rec) {
+    state.selectedId = null;
+    render();
+    return;
+  }
+
+  const updated = {
+    ...rec,
+    key: getRecordKey(rec),
+
+    manager_unseen_update: false,
+    manager_update_seen_at: new Date().toISOString(),
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: ""
+  };
+
+  syncRecordEverywhere(updated);
+
+  state.selectedId = null;
+
+  render();
+}
 function handleCSVUpload(file) {
   const reader = new FileReader();
 
@@ -2259,7 +2342,7 @@ function init() {
     });
   }
 
-  const clearBtn = $("clearBtn");
+ const clearBtn = $("clearBtn");
 
 if (clearBtn) {
   clearBtn.addEventListener("click", () => {
@@ -2278,6 +2361,13 @@ if (clearBtn) {
 
     render();
   });
+}
+
+/* ADD THIS RIGHT AFTER CLEAR BUTTON BLOCK */
+const closeSelectedBtn = $("closeSelectedBtn");
+
+if (closeSelectedBtn) {
+  closeSelectedBtn.addEventListener("click", closeSelectedRecord);
 }
   const csvInput = $("csvInput");
 
