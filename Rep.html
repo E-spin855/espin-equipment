@@ -4253,6 +4253,13 @@ const axisTradeInHandoff = {
   sales_rep_email: rec.sales_rep_email || ""
 };
 
+const equipmentDataForSave = {
+  ...equipmentPayload,
+  modality: normalizedTradeInModality,
+  axis_lifecycle_project_id: rec.oem_project_id || rec.id || "",
+  additional_identifier: rec.serial_number || rec.oem_project_id || rec.id || ""
+};
+
 const equipmentSaveRes = await fetchWithTimeout(
   "https://espin-equipment.vercel.app/api/equipment-details/equipment-save",
   {
@@ -4265,16 +4272,10 @@ const equipmentSaveRes = await fetchWithTimeout(
       projectId: projectData.id,
       modalityId: "",
       modality: normalizedTradeInModality,
-      data: {
-        ...equipmentPayload,
-        modality: normalizedTradeInModality,
-        axis_lifecycle_project_id: rec.oem_project_id || rec.id || "",
-        additional_identifier: ""
-      }
+      data: equipmentDataForSave
     })
   }
 );
-
 const equipmentSaveText = await equipmentSaveRes.text();
 let equipmentSaveData = {};
 
@@ -4296,7 +4297,8 @@ const createdModalityId =
   equipmentSaveData.modalityId ||
   equipmentSaveData.id ||
   "";
-
+console.log("CREATED TRADE-IN MODALITY ID:", createdModalityId);
+console.log("EQUIPMENT SAVE RESPONSE FULL:", equipmentSaveData);
 localStorage.setItem("axis_tradein_handoff_v1", JSON.stringify(axisTradeInHandoff));
 localStorage.setItem("axis_tradein_handoff_ping_v1", String(Date.now()));
 
@@ -4340,7 +4342,7 @@ console.log("AXIS Trade-In equipment detail created:", equipmentSaveData);
 console.log("AXIS Trade-In handoff saved:", axisTradeInHandoff);
 console.log("Opening Trade-In App URL:", tradeUrl.toString());
 
-window.open(tradeUrl.toString(), "_blank");
+window.location.href = tradeUrl.toString();
 
 rec.submitted_to = "tradein_app";
 rec.tradein_project_id = projectData.id;
