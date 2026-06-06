@@ -1415,45 +1415,8 @@ function prepareBuyerReviewPacket(id){
 
   if (idx >= 0) packets[idx] = buyerPacket;
 else packets.unshift(buyerPacket);
-
 saveArray(BUYER_PACKET_KEY, packets);
-let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
 
-bidderPortalPackages = bidderPortalPackages.map(pkg => {
-  const same =
-    String(pkg.review_packet_id || "") === String(rec.review_packet_id || "") ||
-    String(pkg.bid_package_id || "") === String(rec.review_packet_id || "") ||
-    String(pkg.packet_id || "") === String(rec.review_packet_id || "") ||
-    String(pkg.package_id || "") === String(rec.review_packet_id || "") ||
-    String(pkg.id || "") === String(rec.review_packet_id || "") ||
-    String(pkg.trade_desk_record_id || "") === String(rec.id || "");
-
-  if (!same) return pkg;
-
-  return {
-    ...pkg,
-    response_deadline: value,
-    bid_deadline: value,
-    bidding_ends_at: value,
-    bid_expires_at: value,
-    record: {
-      ...(pkg.record || {}),
-      response_deadline: value,
-      bid_deadline: value,
-      bidding_ends_at: value,
-      bid_expires_at: value
-    },
-    equipment: {
-      ...(pkg.equipment || {}),
-      response_deadline: value,
-      bid_deadline: value,
-      bidding_ends_at: value,
-      bid_expires_at: value
-    }
-  };
-});
-
-saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
 /* Also save to bidder portal key for direct portal sync */
 let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
 
@@ -1486,12 +1449,19 @@ const bidderPortalPackage = {
   bidding_ends_at: responseDeadline,
   bid_expires_at: responseDeadline,
 
+  buyer_review_link_visible: true,
+  review_packet_prepared: true,
+  bid_status: "Open for Bids",
+
   equipment: {
     ...rec,
     response_deadline: responseDeadline,
     bid_deadline: responseDeadline,
     bidding_ends_at: responseDeadline,
-    bid_expires_at: responseDeadline
+    bid_expires_at: responseDeadline,
+    buyer_review_link_visible: true,
+    review_packet_prepared: true,
+    bid_status: "Open for Bids"
   },
 
   record: {
@@ -1499,7 +1469,10 @@ const bidderPortalPackage = {
     response_deadline: responseDeadline,
     bid_deadline: responseDeadline,
     bidding_ends_at: responseDeadline,
-    bid_expires_at: responseDeadline
+    bid_expires_at: responseDeadline,
+    buyer_review_link_visible: true,
+    review_packet_prepared: true,
+    bid_status: "Open for Bids"
   },
 
   images: Array.isArray(rec.images) ? rec.images : [],
@@ -2284,7 +2257,10 @@ function saveResponseDeadline(id){
     return;
   }
 
-  const input = document.getElementById(`responseDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`);
+  const input = document.getElementById(
+    `responseDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`
+  );
+
   const value = String(input?.value || "").trim();
 
   if (!value) {
@@ -2301,6 +2277,7 @@ function saveResponseDeadline(id){
     rec.review_packet.response_deadline = value;
     rec.review_packet.bid_deadline = value;
     rec.review_packet.bidding_ends_at = value;
+    rec.review_packet.bid_expires_at = value;
   }
 
   rec.manually_shared_with_buyers = Array.isArray(rec.manually_shared_with_buyers)
@@ -2308,45 +2285,59 @@ function saveResponseDeadline(id){
         ...b,
         response_deadline: value,
         bid_deadline: value,
-        bidding_ends_at: value
+        bidding_ends_at: value,
+        bid_expires_at: value
       }))
     : [];
 
   saveData(data);
 
-  let packets = loadArray(BUYER_PACKET_KEY);
+  const packetId = rec.review_packet_id || rec.bid_package_id || getReviewPacketId(rec);
 
-  packets = packets.map(pkg => {
-    if (
-      String(pkg.review_packet_id || "") !== String(rec.review_packet_id || "") &&
-      String(pkg.trade_desk_record_id || "") !== String(rec.id || "")
-    ) {
-      return pkg;
-    }
+  function updateDeadlineArray(arr){
+    return arr.map(pkg => {
+      const same =
+        String(pkg.review_packet_id || "") === String(packetId) ||
+        String(pkg.bid_package_id || "") === String(packetId) ||
+        String(pkg.packet_id || "") === String(packetId) ||
+        String(pkg.package_id || "") === String(packetId) ||
+        String(pkg.id || "") === String(packetId) ||
+        String(pkg.trade_desk_record_id || "") === String(rec.id || "");
 
-    return {
-      ...pkg,
-      response_deadline: value,
-      bid_deadline: value,
-      bidding_ends_at: value,
-      record: {
-        ...(pkg.record || {}),
+      if (!same) return pkg;
+
+      return {
+        ...pkg,
         response_deadline: value,
         bid_deadline: value,
         bidding_ends_at: value,
-        bid_expires_at: value
-      },
-      equipment: {
-        ...(pkg.equipment || {}),
-        response_deadline: value,
-        bid_deadline: value,
-        bidding_ends_at: value,
-        bid_expires_at: value
-      }
-    };
-  });
+        bid_expires_at: value,
 
+        record: {
+          ...(pkg.record || {}),
+          response_deadline: value,
+          bid_deadline: value,
+          bidding_ends_at: value,
+          bid_expires_at: value
+        },
+
+        equipment: {
+          ...(pkg.equipment || {}),
+          response_deadline: value,
+          bid_deadline: value,
+          bidding_ends_at: value,
+          bid_expires_at: value
+        }
+      };
+    });
+  }
+
+  const packets = updateDeadlineArray(loadArray(BUYER_PACKET_KEY));
   saveArray(BUYER_PACKET_KEY, packets);
+
+  const bidderPortalPackages = updateDeadlineArray(loadArray(BIDDER_PORTAL_PACKAGES_KEY));
+  saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
+
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 
   render();
