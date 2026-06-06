@@ -1417,6 +1417,44 @@ function prepareBuyerReviewPacket(id){
 else packets.unshift(buyerPacket);
 
 saveArray(BUYER_PACKET_KEY, packets);
+let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
+
+bidderPortalPackages = bidderPortalPackages.map(pkg => {
+  if (
+    String(pkg.review_packet_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.bid_package_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.packet_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.package_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.trade_desk_record_id || "") !== String(rec.id || "")
+  ) {
+    return pkg;
+  }
+
+  return {
+    ...pkg,
+    response_deadline: value,
+    bid_deadline: value,
+    bidding_ends_at: value,
+    bid_expires_at: value,
+    record: {
+      ...(pkg.record || {}),
+      response_deadline: value,
+      bid_deadline: value,
+      bidding_ends_at: value,
+      bid_expires_at: value
+    },
+    equipment: {
+      ...(pkg.equipment || {}),
+      response_deadline: value,
+      bid_deadline: value,
+      bidding_ends_at: value,
+      bid_expires_at: value
+    }
+  };
+});
+
+saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
 
 /* Also save to bidder portal key for direct portal sync */
 let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
@@ -1425,7 +1463,9 @@ const bidderIdx = bidderPortalPackages.findIndex(p =>
   String(p.review_packet_id || "") === String(packetId) ||
   String(p.bid_package_id || "") === String(packetId) ||
   String(p.packet_id || "") === String(packetId) ||
-  String(p.id || "") === String(packetId)
+  String(p.package_id || "") === String(packetId) ||
+  String(p.id || "") === String(packetId) ||
+  String(p.trade_desk_record_id || "") === String(rec.id || "")
 );
 
 const bidderPortalPackage = {
@@ -1477,7 +1517,6 @@ if (bidderIdx >= 0) {
 }
 
 saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
-
   activePacketId = packetId;
 localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
 
@@ -1900,6 +1939,7 @@ bidderPortalPackages = bidderPortalPackages.map(pkg => {
     String(pkg.review_packet_id || "") !== String(rec.review_packet_id || "") &&
     String(pkg.bid_package_id || "") !== String(rec.review_packet_id || "") &&
     String(pkg.packet_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.package_id || "") !== String(rec.review_packet_id || "") &&
     String(pkg.id || "") !== String(rec.review_packet_id || "") &&
     String(pkg.trade_desk_record_id || "") !== String(rec.id || "")
   ) {
@@ -1908,23 +1948,28 @@ bidderPortalPackages = bidderPortalPackages.map(pkg => {
 
   return {
     ...pkg,
-    response_deadline: value,
-    bid_deadline: value,
-    bidding_ends_at: value,
-    bid_expires_at: value,
+    bids: rec.bids,
+    winningBid: selected,
+    winning_bid_amount: selected.amount,
+    winning_bidder: rec.winning_bidder,
+    winning_bid_terms: rec.winning_bid_terms,
+    status: "Manual Credit Reference Created",
+    buyer_response_status: "Manual Response Selected",
     record: {
       ...(pkg.record || {}),
-      response_deadline: value,
-      bid_deadline: value,
-      bidding_ends_at: value,
-      bid_expires_at: value
+      bids: rec.bids,
+      winningBid: selected,
+      winning_bid_amount: selected.amount,
+      winning_bidder: rec.winning_bidder,
+      winning_bid_terms: rec.winning_bid_terms
     },
     equipment: {
       ...(pkg.equipment || {}),
-      response_deadline: value,
-      bid_deadline: value,
-      bidding_ends_at: value,
-      bid_expires_at: value
+      bids: rec.bids,
+      winningBid: selected,
+      winning_bid_amount: selected.amount,
+      winning_bidder: rec.winning_bidder,
+      winning_bid_terms: rec.winning_bid_terms
     }
   };
 });
@@ -1937,6 +1982,7 @@ saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
 function clearDemo(){
   localStorage.removeItem(KEY);
   localStorage.removeItem(BUYER_PACKET_KEY);
+  localStorage.removeItem(BIDDER_PORTAL_PACKAGES_KEY);
   localStorage.removeItem(TRADEIN_SYNC_KEY);
   localStorage.removeItem(LAST_SYNC_KEY);
   localStorage.removeItem(MANAGER_PING_KEY);
@@ -2596,14 +2642,15 @@ window.addEventListener("storage", (e) => {
   }
 
   if (
-    e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
-    e.key === AXIS_TRADE_DESK_INBOX_KEY ||
-    e.key === MANAGER_PING_KEY ||
-    e.key === KEY ||
-    e.key === TRADEIN_SYNC_KEY ||
-    e.key === BUYER_PACKET_KEY ||
-    e.key === ACTIVE_PACKET_KEY
-  ) {
+  e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
+  e.key === AXIS_TRADE_DESK_INBOX_KEY ||
+  e.key === MANAGER_PING_KEY ||
+  e.key === KEY ||
+  e.key === TRADEIN_SYNC_KEY ||
+  e.key === BUYER_PACKET_KEY ||
+  e.key === BIDDER_PORTAL_PACKAGES_KEY ||
+  e.key === ACTIVE_PACKET_KEY
+) {
     if (!isTradeDeskInputFocused()) {
       importAutomaticIntake();
       render();
