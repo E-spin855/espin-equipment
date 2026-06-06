@@ -306,11 +306,20 @@ const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
 const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
 const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 const BIDDER_PORTAL_KEY = "axis_bidder_portal_packages_v1";
-
+const BUYER_PACKET_KEY = "axis_buyer_review_packets_v1";
 const params = new URLSearchParams(window.location.search);
 
-const packageIdFromUrl = params.get("packageId") || "";
-const recordIdFromUrl = params.get("recordId") || "";
+const packageIdFromUrl =
+  params.get("packageId") ||
+  params.get("packetId") ||
+  params.get("review_packet_id") ||
+  params.get("bid_package_id") ||
+  "";
+
+const recordIdFromUrl =
+  params.get("recordId") ||
+  params.get("trade_desk_record_id") ||
+  "";
 
 const approvedBidderCompany =
   params.get("company") ||
@@ -384,18 +393,30 @@ function saveArray(key, data){
 
 function getBidPackageId(rec){
   return String(
+    rec.package_id ||
+    rec.packet_id ||
+    rec.review_packet_id ||
     rec.bid_package_id ||
-    `PKG-${String(rec.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.id || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
+    rec.id ||
+    `PKG-${String(rec.modality || rec.record?.modality || rec.equipment?.modality || "EQ").toUpperCase()}-${String(rec.serial_number || rec.axis_serial_number || rec.record?.serial_number || rec.equipment?.serial_number || Date.now()).replace(/[^a-z0-9]/gi,"").slice(-8)}`
   );
 }
-
 function getBidDeadline(rec){
   return String(
+    rec.response_deadline ||
     rec.bid_deadline ||
     rec.bidding_ends_at ||
+    rec.bid_expires_at ||
+    rec.record?.response_deadline ||
+    rec.record?.bid_deadline ||
+    rec.record?.bidding_ends_at ||
+    rec.record?.bid_expires_at ||
+    rec.equipment?.response_deadline ||
+    rec.equipment?.bid_deadline ||
+    rec.equipment?.bidding_ends_at ||
+    rec.equipment?.bid_expires_at ||
     rec.bid_package?.bid_deadline ||
     rec.bid_package?.bidding_ends_at ||
-    rec.bid_expires_at ||
     ""
   ).trim();
 }
@@ -414,34 +435,141 @@ function formatBidDeadline(rec){
   return raw;
 }
 
-function getOpenPackages(){
-  const records = loadArray(TRADE_DESK_KEY);
+function normalizePortalPackage(pkg){
+  const record = pkg.record && typeof pkg.record === "object" ? pkg.record : {};
+  const equipment = pkg.equipment && typeof pkg.equipment === "object" ? pkg.equipment : {};
 
-  return records.filter(r =>
-    r.bidder_portal_visible === true ||
-    r.bid_package_open === true ||
-    String(r.bid_status || "") === "Open for Bids" ||
-    String(r.bid_status || "") === "Bids Received"
-  );
+  const merged = {
+    ...equipment,
+    ...record,
+    ...pkg
+  };
+
+  merged.id =
+    pkg.trade_desk_record_id ||
+    record.id ||
+    equipment.id ||
+    pkg.id ||
+    pkg.package_id ||
+    pkg.packet_id ||
+    pkg.review_packet_id ||
+    pkg.bid_package_id ||
+    uid("portal_record");
+
+  merged.package_id =
+    pkg.package_id ||
+    pkg.packet_id ||
+    pkg.review_packet_id ||
+    pkg.bid_package_id ||
+    pkg.id ||
+    "";
+
+  merged.packet_id = merged.package_id;
+  merged.review_packet_id = pkg.review_packet_id || merged.package_id;
+  merged.bid_package_id = pkg.bid_package_id || merged.package_id;
+
+  merged.modality = merged.modality || record.modality || equipment.modality || "";
+  merged.make = merged.make || record.make || equipment.make || "";
+  merged.model = merged.model || record.model || equipment.model || "";
+  merged.serial_number = merged.serial_number || record.serial_number || equipment.serial_number || merged.axis_serial_number || "";
+  merged.images = Array.isArray(pkg.images)
+    ? pkg.images
+    : Array.isArray(record.images)
+      ? record.images
+      : Array.isArray(equipment.images)
+        ? equipment.images
+        : [];
+
+  merged.bid_status =
+    pkg.bid_status ||
+    record.bid_status ||
+    pkg.buyer_response_status ||
+    pkg.status ||
+    "Open for Bids";
+
+  merged.response_deadline =
+    pkg.response_deadline ||
+    record.response_deadline ||
+    equipment.response_deadline ||
+    "";
+
+  merged.bid_deadline =
+    pkg.bid_deadline ||
+    record.bid_deadline ||
+    equipment.bid_deadline ||
+    merged.response_deadline ||
+    "";
+
+  merged.bidding_ends_at =
+    pkg.bidding_ends_at ||
+    record.bidding_ends_at ||
+    equipment.bidding_ends_at ||
+    merged.response_deadline ||
+    "";
+
+  merged.bids = Array.isArray(pkg.bids)
+    ? pkg.bids
+    : Array.isArray(record.bids)
+      ? record.bids
+      : [];
+
+  return merged;
+}
+
+function getOpenPackages(){
+  const portalPackages = loadArray(BIDDER_PORTAL_KEY).map(normalizePortalPackage);
+  const buyerPackets = loadArray(BUYER_PACKET_KEY).map(normalizePortalPackage);
+  const tradeDeskRecords = loadArray(TRADE_DESK_KEY).map(normalizePortalPackage);
+
+  const combined = [
+    ...portalPackages,
+    ...buyerPackets,
+    ...tradeDeskRecords
+  ];
+
+  const seen = new Set();
+
+  return combined.filter(pkg => {
+    const id = getBidPackageId(pkg);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+
+    return (
+      pkg.buyer_review_link_visible === true ||
+      pkg.review_packet_prepared === true ||
+      pkg.bidder_portal_visible === true ||
+      pkg.bid_package_open === true ||
+      String(pkg.status || "").includes("Prepared") ||
+      String(pkg.buyer_response_status || "").includes("Prepared") ||
+      String(pkg.bid_status || "") === "Open for Bids" ||
+      String(pkg.bid_status || "") === "Bids Received"
+    );
+  });
 }
 
 function getVisiblePackages(){
   const openPackages = getOpenPackages();
 
   if (recordIdFromUrl) {
-    return openPackages.filter(r => String(r.id || "") === String(recordIdFromUrl));
+    return openPackages.filter(r =>
+      String(r.id || "") === String(recordIdFromUrl) ||
+      String(r.trade_desk_record_id || "") === String(recordIdFromUrl)
+    );
   }
 
   if (packageIdFromUrl) {
     return openPackages.filter(r =>
+      String(r.package_id || "") === String(packageIdFromUrl) ||
+      String(r.packet_id || "") === String(packageIdFromUrl) ||
+      String(r.review_packet_id || "") === String(packageIdFromUrl) ||
       String(r.bid_package_id || "") === String(packageIdFromUrl) ||
+      String(r.id || "") === String(packageIdFromUrl) ||
       String(getBidPackageId(r)) === String(packageIdFromUrl)
     );
   }
 
   return openPackages;
 }
-
 function isBidFormFocused(){
   const active = document.activeElement;
 
@@ -907,21 +1035,32 @@ function submitBid(recordId){
     return;
   }
 
-  const records = loadArray(TRADE_DESK_KEY);
+  let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
+  let buyerPackets = loadArray(BUYER_PACKET_KEY);
+  let tradeDeskRecords = loadArray(TRADE_DESK_KEY);
 
-  const index = records.findIndex(r =>
-    String(r.id || "") === String(recordId) ||
-    String(r.bid_package_id || "") === String(packageIdFromUrl) ||
-    String(getBidPackageId(r)) === String(packageIdFromUrl)
+  const allPackages = [
+    ...bidderPackages.map((pkg, index) => ({ source: BIDDER_PORTAL_KEY, index, pkg: normalizePortalPackage(pkg) })),
+    ...buyerPackets.map((pkg, index) => ({ source: BUYER_PACKET_KEY, index, pkg: normalizePortalPackage(pkg) })),
+    ...tradeDeskRecords.map((pkg, index) => ({ source: TRADE_DESK_KEY, index, pkg: normalizePortalPackage(pkg) }))
+  ];
+
+  const found = allPackages.find(item =>
+    String(item.pkg.id || "") === String(recordId) ||
+    String(item.pkg.trade_desk_record_id || "") === String(recordId) ||
+    String(item.pkg.package_id || "") === String(packageIdFromUrl) ||
+    String(item.pkg.packet_id || "") === String(packageIdFromUrl) ||
+    String(item.pkg.review_packet_id || "") === String(packageIdFromUrl) ||
+    String(item.pkg.bid_package_id || "") === String(packageIdFromUrl) ||
+    String(getBidPackageId(item.pkg)) === String(packageIdFromUrl)
   );
 
-  if (index < 0) {
-    alert("Bid package not found in Trade Desk local storage. Make sure Trade Desk page released this package first.");
+  if (!found) {
+    alert("Bid package not found. Make sure Trade Desk prepared the package and both pages are opened from the same origin.");
     return;
   }
 
-  const rec = records[index];
-
+  const rec = found.pkg;
   rec.bids = Array.isArray(rec.bids) ? rec.bids : [];
 
   const existingBidIndex = rec.bids.findIndex(b =>
@@ -948,71 +1087,93 @@ function submitBid(recordId){
   }
 
   rec.bid_status = "Bids Received";
-  rec.crm_status = "Bid Received";
+  rec.buyer_response_status = "Buyer Responses Received";
+  rec.crm_status = "Buyer Response Records Received";
   rec.quote_sync_status = rec.quote_sync_status || "Pending Bid";
-  rec.last_bid_received_at = new Date().toISOString();
+  rec.last_bid_at = new Date().toISOString();
+  rec.last_bid_received_at = rec.last_bid_at;
   rec.last_bidder_company = bidderCompany;
   rec.last_bidder_email = approvedBidderEmail;
   rec.bid_count = rec.bids.length;
 
-  records[index] = rec;
-  saveArray(TRADE_DESK_KEY, records);
+  const packetId = getBidPackageId(rec);
 
-  let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
+  function updatePacketArray(arr){
+    let foundMatch = false;
 
-  const packageIndex = bidderPackages.findIndex(pkg =>
-    String(pkg.bid_package_id || "") === String(rec.bid_package_id || "") ||
-    String(pkg.trade_desk_record_id || "") === String(rec.id || "")
-  );
+    const updated = arr.map(pkg => {
+      const normalized = normalizePortalPackage(pkg);
 
-  const bidderPackagePayload = {
-    bid_package_id: rec.bid_package_id || getBidPackageId(rec),
-    trade_desk_record_id: rec.id,
-    record: rec,
-    bids: rec.bids,
-    bid_status: rec.bid_status,
-    crm_status: rec.crm_status,
-    last_bid_at: rec.last_bid_received_at,
-    last_bidder_company: bidderCompany,
-    last_bidder_email: approvedBidderEmail,
-    bid_count: rec.bids.length
-  };
+      const same =
+        String(normalized.id || "") === String(rec.id || "") ||
+        String(normalized.trade_desk_record_id || "") === String(rec.trade_desk_record_id || "") ||
+        String(normalized.package_id || "") === String(packetId) ||
+        String(normalized.packet_id || "") === String(packetId) ||
+        String(normalized.review_packet_id || "") === String(packetId) ||
+        String(normalized.bid_package_id || "") === String(packetId);
 
-  if (packageIndex >= 0) {
-    bidderPackages[packageIndex] = {
-      ...bidderPackages[packageIndex],
-      ...bidderPackagePayload
-    };
-  } else {
-    bidderPackages.unshift(bidderPackagePayload);
+      if (!same) return pkg;
+
+      foundMatch = true;
+
+      return {
+        ...pkg,
+        ...rec,
+        id: pkg.id || packetId,
+        package_id: packetId,
+        packet_id: packetId,
+        review_packet_id: rec.review_packet_id || packetId,
+        bid_package_id: rec.bid_package_id || packetId,
+        trade_desk_record_id: rec.trade_desk_record_id || rec.id,
+        bids: rec.bids,
+        bid_status: rec.bid_status,
+        buyer_response_status: rec.buyer_response_status,
+        crm_status: rec.crm_status,
+        last_bid_at: rec.last_bid_at,
+        last_bid_received_at: rec.last_bid_received_at,
+        last_bidder_company: bidderCompany,
+        last_bidder_email: approvedBidderEmail,
+        bid_count: rec.bids.length,
+        record: {
+          ...(pkg.record || {}),
+          ...rec,
+          bids: rec.bids
+        },
+        equipment: {
+          ...(pkg.equipment || {}),
+          bids: rec.bids
+        }
+      };
+    });
+
+    if (!foundMatch) {
+      updated.unshift({
+        ...rec,
+        id: packetId,
+        package_id: packetId,
+        packet_id: packetId,
+        review_packet_id: rec.review_packet_id || packetId,
+        bid_package_id: rec.bid_package_id || packetId,
+        trade_desk_record_id: rec.trade_desk_record_id || rec.id,
+        bids: rec.bids,
+        record: { ...rec },
+        equipment: { ...rec }
+      });
+    }
+
+    return updated;
   }
+
+  bidderPackages = updatePacketArray(bidderPackages);
+  buyerPackets = updatePacketArray(buyerPackets);
+  tradeDeskRecords = updatePacketArray(tradeDeskRecords);
 
   saveArray(BIDDER_PORTAL_KEY, bidderPackages);
+  saveArray(BUYER_PACKET_KEY, buyerPackets);
+  saveArray(TRADE_DESK_KEY, tradeDeskRecords);
 
   let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-
-  const syncIndex = syncRecords.findIndex(r =>
-    String(r.id || "") === String(rec.id || "") ||
-    String(r.axis_record_id || "") === String(rec.axis_record_id || "") ||
-    String(r.axis_parent_record_id || "") === String(rec.axis_parent_record_id || "") ||
-    String(r.bid_package_id || "") === String(rec.bid_package_id || "")
-  );
-
-  if (syncIndex >= 0) {
-    syncRecords[syncIndex] = {
-      ...syncRecords[syncIndex],
-      bids: rec.bids,
-      bid_status: rec.bid_status,
-      crm_status: rec.crm_status,
-      last_bid_received_at: rec.last_bid_received_at,
-      last_bidder_company: rec.last_bidder_company,
-      last_bidder_email: rec.last_bidder_email,
-      bid_count: rec.bid_count
-    };
-  } else {
-    syncRecords.unshift(rec);
-  }
-
+  syncRecords = updatePacketArray(syncRecords);
   saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
@@ -1025,14 +1186,12 @@ function submitBid(recordId){
   draft.expires = "";
 
   userManuallyClosedPackage = false;
-  openPackageId = String(recordId || "");
+  openPackageId = String(recordId || rec.id || "");
 
   setTimeout(() => {
     render();
   }, 900);
 }
-
-render();
 </script>
 
 </body>
