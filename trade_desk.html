@@ -442,6 +442,31 @@ textarea#infoRequestNotes{
     flex-direction:column;
   }
 }
+button.is-loading{
+  opacity:.82;
+  pointer-events:none;
+}
+
+button.is-success{
+  background:#18a558 !important;
+  color:#ffffff !important;
+}
+
+.spinner-dot{
+  display:inline-block;
+  width:14px;
+  height:14px;
+  border:2px solid rgba(255,255,255,.45);
+  border-top-color:#ffffff;
+  border-radius:50%;
+  animation:spinButton .75s linear infinite;
+  vertical-align:-2px;
+  margin-right:8px;
+}
+
+@keyframes spinButton{
+  to{transform:rotate(360deg)}
+}
 </style>
 </head>
 
@@ -519,7 +544,7 @@ Trade-In App / AXIS Rep Workflow → Manual Trade Desk Review → Prepare Buyer 
 
     <div class="modal-actions">
       <button class="secondary" onclick="closeInfoRequestModal()">Cancel</button>
-      <button class="gold" onclick="sendInfoRequestToRep()">Send Request to Rep</button>
+      <button class="gold" onclick="sendInfoRequestToRep(this)">Send Request to Rep</button>
     </div>
   </div>
 </div>
@@ -613,7 +638,33 @@ function saveData(data){
   saveArray(KEY, data);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
+function buttonSpinConfirm(btn, loadingText, successText, done){
+  if (!btn) {
+    if (typeof done === "function") done();
+    return;
+  }
 
+  const originalHtml = btn.innerHTML;
+  const originalDisabled = btn.disabled;
+
+  btn.disabled = true;
+  btn.classList.add("is-loading");
+  btn.innerHTML = `<span class="spinner-dot"></span>${loadingText || "Sending..."}`;
+
+  setTimeout(() => {
+    btn.classList.remove("is-loading");
+    btn.classList.add("is-success");
+    btn.innerHTML = successText || "Submitted";
+
+    setTimeout(() => {
+      btn.classList.remove("is-success");
+      btn.disabled = originalDisabled;
+      btn.innerHTML = originalHtml;
+
+      if (typeof done === "function") done();
+    }, 700);
+  }, 650);
+}
 function openImagePreview(url, title){
   const overlay = document.getElementById("imagePreviewOverlay");
   const img = document.getElementById("imagePreviewImg");
@@ -1299,7 +1350,7 @@ function importAutomaticIntake(){
   return changed;
 }
 
-function prepareBuyerReviewPacket(id){
+function prepareBuyerReviewPacket(id, btn = null){
   const data = loadData();
   const rec = findById(data, id);
 
@@ -1558,7 +1609,9 @@ localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
+  buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   window.location.href = mailto;
+});
 }
 
 function openTradeDeskPacket(id){
@@ -1630,7 +1683,7 @@ function getRepName(rec){
   ).trim();
 }
 
-function sendInfoRequestToRep(){
+function sendInfoRequestToRep(btn = null){
   const data = loadData();
   const rec = findById(data, activeInfoRequestId);
 
@@ -1699,10 +1752,11 @@ function sendInfoRequestToRep(){
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
+ buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   closeInfoRequestModal();
   render();
-
   window.location.href = mailto;
+});
 }
 
 function createPendingManualCreditReference(rec){
@@ -2497,7 +2551,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
 
             <hr>
 
-            <button onclick="prepareBuyerReviewPacket('${safeId}')">Prepare Buyer Review Packet</button>
+            <button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
 
             <details>
@@ -2507,7 +2561,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
           `
           : `
             <hr>
-            <button onclick="prepareBuyerReviewPacket('${safeId}')">Prepare Buyer Review Packet</button>
+            <button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
           `
       }
