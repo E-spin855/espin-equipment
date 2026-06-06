@@ -388,6 +388,199 @@ Object.entries(AXIS_CONTEXT).forEach(([key, value]) => {
 });
 
 console.log("AXIS CONTEXT LOADED:", AXIS_CONTEXT);
+function normalizeAxisHandoffModality(value) {
+  const m = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (m === "CATH" || m === "CARM") return "CARM";
+  if (m === "XRAY" || m === "XR") return "XRAY";
+  if (m === "PETCT" || m === "PET") return "PETCT";
+  if (m === "MAMMO" || m === "MAMOGRAPHY" || m === "MAMMOGRAPHY") return "MAMMO";
+  if (m === "MRI") return "MRI";
+  if (m === "CT") return "CT";
+
+  return m;
+}
+
+function readAxisTradeInHandoffForDetails() {
+  const params = new URLSearchParams(window.location.search);
+
+  if (String(params.get("source") || "").toLowerCase() !== "axis") {
+    return null;
+  }
+
+  let handoff = null;
+
+  const possibleKeys = [
+    "axis_tradein_handoff_v1",
+    `${APP_PREFIX}axisTradeInHandoff`
+  ];
+
+  for (const key of possibleKeys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      handoff = JSON.parse(raw);
+      if (handoff && typeof handoff === "object") break;
+    } catch (e) {
+      console.warn("Invalid AXIS handoff key:", key, e);
+    }
+  }
+
+  if (!handoff) {
+    console.warn("No AXIS trade-in handoff found on Equipment Details page.");
+    return null;
+  }
+
+  return handoff;
+}
+
+function applyAxisTradeInHandoffToFormData() {
+  const handoff = readAxisTradeInHandoffForDetails();
+
+  if (!handoff) return false;
+
+  const equipmentPayload =
+    handoff.equipment_payload && typeof handoff.equipment_payload === "object"
+      ? handoff.equipment_payload
+      : {};
+
+  const rawModality =
+    handoff.modality ||
+    equipmentPayload.modality ||
+    "";
+
+  const normalizedModality = normalizeAxisHandoffModality(rawModality);
+
+  if (!normalizedModality) {
+    console.warn("AXIS handoff has no usable modality:", handoff);
+    return false;
+  }
+
+  const mappedData = {
+    modality: normalizedModality,
+    axis_lifecycle_project_id:
+      handoff.axis_project_id ||
+      handoff.axis_record_id ||
+      ""
+  };
+
+  /*
+    Direct same-name fields first.
+    This handles CT/MRI/XRAY/PETCT if AXIS already sent matching IDs.
+  */
+  Object.entries(equipmentPayload).forEach(([key, value]) => {
+    if (key === "modality") return;
+    mappedData[key] = value || "";
+  });
+
+  /*
+    CATH from AXIS maps to CARM in this Trade-In form.
+  */
+  if (rawModality && String(rawModality).toUpperCase().includes("CATH")) {
+    mappedData.carm_manufacturer =
+      equipmentPayload.cath_manufacturer ||
+      handoff.make ||
+      handoff.manufacturer ||
+      "";
+
+    mappedData.carm_model =
+      equipmentPayload.cath_model ||
+      handoff.model ||
+      "";
+
+    mappedData.carm_serial =
+      equipmentPayload.cath_serial ||
+      handoff.serial_number ||
+      handoff.axis_serial_number ||
+      "";
+
+    mappedData.carm_hard_drive_removed =
+      equipmentPayload.cath_hard_drive_removed ||
+      "";
+
+    mappedData.carm_availability_timeframe =
+      equipmentPayload.cath_availability_timeframe ||
+      "";
+  }
+
+  /*
+    Generic fallbacks.
+  */
+  if (normalizedModality === "CT") {
+    mappedData.ct_manufacturer = mappedData.ct_manufacturer || handoff.make || handoff.manufacturer || "";
+    mappedData.ct_model = mappedData.ct_model || handoff.model || "";
+    mappedData.ct_serial = mappedData.ct_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    mappedData.ct_dom = mappedData.ct_dom || handoff.dom || "";
+  }
+
+  if (normalizedModality === "MRI") {
+    mappedData.mri_manufacturer = mappedData.mri_manufacturer || handoff.make || handoff.manufacturer || "";
+    mappedData.mri_model = mappedData.mri_model || handoff.model || "";
+    mappedData.mri_serial = mappedData.mri_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    mappedData.mri_yom = mappedData.mri_yom || handoff.dom || "";
+  }
+
+  if (normalizedModality === "XRAY") {
+    mappedData.xray_manufacturer = mappedData.xray_manufacturer || handoff.make || handoff.manufacturer || "";
+    mappedData.xray_model = mappedData.xray_model || handoff.model || "";
+    mappedData.xray_serial = mappedData.xray_serial || handoff.serial_number || handoff.axis_serial_number || "";
+  }
+
+  if (normalizedModality === "PETCT") {
+    mappedData.pet_manufacturer = mappedData.pet_manufacturer || handoff.make || handoff.manufacturer || "";
+    mappedData.pet_model = mappedData.pet_model || handoff.model || "";
+    mappedData.pet_serial = mappedData.pet_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    mappedData.pet_tube_dom = mappedData.pet_tube_dom || handoff.dom || "";
+  }
+
+  if (normalizedModality === "MAMMO") {
+    mappedData.mamo_manufacturer = mappedData.mamo_manufacturer || handoff.make || handoff.manufacturer || "";
+    mappedData.mamo_model = mappedData.mamo_model || handoff.model || "";
+    mappedData.mamo_serial = mappedData.mamo_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    mappedData.mamo_dom = mappedData.mamo_dom || handoff.dom || "";
+  }
+
+  // Keep AXIS context alive for sync-back.
+  AXIS_CONTEXT.axis_record_id = handoff.axis_record_id || AXIS_CONTEXT.axis_record_id || "";
+  AXIS_CONTEXT.axis_parent_record_id = handoff.axis_parent_record_id || AXIS_CONTEXT.axis_parent_record_id || AXIS_CONTEXT.axis_record_id || "";
+  AXIS_CONTEXT.axis_project_id = handoff.axis_project_id || AXIS_CONTEXT.axis_project_id || "";
+  AXIS_CONTEXT.axis_serial_number = handoff.axis_serial_number || handoff.serial_number || AXIS_CONTEXT.axis_serial_number || "";
+  AXIS_CONTEXT.axis_parent_project_type = handoff.axis_parent_project_type || AXIS_CONTEXT.axis_parent_project_type || "";
+  AXIS_CONTEXT.axis_parent_project_name = handoff.axis_parent_project_name || AXIS_CONTEXT.axis_parent_project_name || "";
+  AXIS_CONTEXT.axis_source = handoff.axis_source || AXIS_CONTEXT.axis_source || "existing_axis_equipment";
+  AXIS_CONTEXT.sync_mode = handoff.sync_mode || AXIS_CONTEXT.sync_mode || "update_existing_axis_record";
+
+  AXIS_CONTEXT.sales_rep_first = handoff.sales_rep_first || AXIS_CONTEXT.sales_rep_first || "";
+  AXIS_CONTEXT.sales_rep_last = handoff.sales_rep_last || AXIS_CONTEXT.sales_rep_last || "";
+  AXIS_CONTEXT.sales_rep_company = handoff.sales_rep_company || AXIS_CONTEXT.sales_rep_company || "";
+  AXIS_CONTEXT.sales_rep_phone = handoff.sales_rep_phone || AXIS_CONTEXT.sales_rep_phone || "";
+  AXIS_CONTEXT.sales_rep_email = handoff.sales_rep_email || AXIS_CONTEXT.sales_rep_email || "";
+
+  Object.entries(AXIS_CONTEXT).forEach(([key, value]) => {
+    if (value) localStorage.setItem(key, value);
+  });
+
+  currentModality = normalizedModality;
+  formData = {
+    ...formData,
+    ...mappedData,
+    modality: normalizedModality
+  };
+
+  dirtyFields = new Set(Object.keys(mappedData));
+
+  localStorage.setItem(`${MODALITY_KEY}_${projectId}`, normalizedModality);
+
+  console.log("AXIS handoff applied to Equipment Details:", {
+    rawModality,
+    normalizedModality,
+    mappedData,
+    handoff
+  });
+
+  return true;
+}
 const AXIS_DEMO_SYNC_ENABLED = true;
 const ADMIN_DOWNLOAD_EXCEL_ENABLED = false;
 
@@ -633,6 +826,28 @@ function downloadEquipment() {
 }
 async function loadData(){
   try {
+    const axisApplied = applyAxisTradeInHandoffToFormData();
+
+    if (axisApplied) {
+      document.getElementById("modality").value = currentModality;
+      triggerRender(currentModality);
+
+      setTimeout(() => {
+        Object.entries(formData).forEach(([key, value]) => {
+          const input = document.querySelector(`[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`);
+          if (!input || value === undefined || value === null) return;
+
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+
+        applyChangedFieldStyling();
+      }, 100);
+
+      return;
+    }
+
     if (isCreateMode && !modalityId) {
       formData = {};
       dirtyFields = new Set();
