@@ -840,26 +840,232 @@ function downloadEquipment() {
 }
 async function loadData(){
   try {
-    const axisApplied = applyAxisTradeInHandoffToFormData();
+    /*
+      AXIS handoff prefill.
+      This runs before normal create/edit loading so AXIS equipment data
+      can prefill the Trade-In equipment form.
+    */
+    let axisHandoff = null;
 
-    if (axisApplied) {
-      document.getElementById("modality").value = currentModality;
-      triggerRender(currentModality);
+    try {
+      axisHandoff = JSON.parse(localStorage.getItem("axis_tradein_handoff_v1") || "null");
+    } catch {
+      axisHandoff = null;
+    }
 
-      setTimeout(() => {
-        Object.entries(formData).forEach(([key, value]) => {
-          const input = document.querySelector(`[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`);
-          if (!input || value === undefined || value === null) return;
+    if (axisHandoff && String(axisHandoff.source || "").toLowerCase() === "axis") {
+      const equipmentPayload =
+        axisHandoff.equipment_payload && typeof axisHandoff.equipment_payload === "object"
+          ? axisHandoff.equipment_payload
+          : {};
 
-          input.value = value;
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          input.dispatchEvent(new Event("change", { bubbles: true }));
-        });
+      let handoffModality = String(
+        axisHandoff.modality ||
+        equipmentPayload.modality ||
+        ""
+      ).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-        applyChangedFieldStyling();
-      }, 100);
+      if (handoffModality === "CATH") handoffModality = "CARM";
+      if (handoffModality === "XR") handoffModality = "XRAY";
+      if (handoffModality === "PET") handoffModality = "PETCT";
 
-      return;
+      if (handoffModality) {
+        currentModality = handoffModality;
+
+        formData = {
+          ...formData,
+          ...equipmentPayload,
+          modality: handoffModality,
+          axis_lifecycle_project_id:
+            axisHandoff.axis_project_id ||
+            axisHandoff.project_identifier ||
+            ""
+        };
+
+        // Generic fallbacks if payload field names are missing
+        if (handoffModality === "MRI") {
+          formData.mri_manufacturer =
+            formData.mri_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.mri_model =
+            formData.mri_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.mri_serial =
+            formData.mri_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+
+          formData.mri_yom =
+            formData.mri_yom ||
+            axisHandoff.dom ||
+            axisHandoff.year ||
+            "";
+        }
+
+        if (handoffModality === "CT") {
+          formData.ct_manufacturer =
+            formData.ct_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.ct_model =
+            formData.ct_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.ct_serial =
+            formData.ct_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+
+          formData.ct_dom =
+            formData.ct_dom ||
+            axisHandoff.dom ||
+            axisHandoff.year ||
+            "";
+        }
+
+        if (handoffModality === "CARM") {
+          formData.carm_manufacturer =
+            formData.carm_manufacturer ||
+            formData.cath_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.carm_model =
+            formData.carm_model ||
+            formData.cath_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.carm_serial =
+            formData.carm_serial ||
+            formData.cath_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+        }
+
+        if (handoffModality === "XRAY") {
+          formData.xray_manufacturer =
+            formData.xray_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.xray_model =
+            formData.xray_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.xray_serial =
+            formData.xray_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+        }
+
+        if (handoffModality === "PETCT") {
+          formData.pet_manufacturer =
+            formData.pet_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.pet_model =
+            formData.pet_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.pet_serial =
+            formData.pet_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+
+          formData.pet_tube_dom =
+            formData.pet_tube_dom ||
+            axisHandoff.dom ||
+            axisHandoff.year ||
+            "";
+        }
+
+        if (handoffModality === "MAMMO") {
+          formData.mamo_manufacturer =
+            formData.mamo_manufacturer ||
+            axisHandoff.make ||
+            axisHandoff.manufacturer ||
+            "";
+
+          formData.mamo_model =
+            formData.mamo_model ||
+            axisHandoff.model ||
+            "";
+
+          formData.mamo_serial =
+            formData.mamo_serial ||
+            axisHandoff.serial_number ||
+            axisHandoff.serial ||
+            axisHandoff.axis_serial_number ||
+            "";
+
+          formData.mamo_dom =
+            formData.mamo_dom ||
+            axisHandoff.dom ||
+            axisHandoff.year ||
+            "";
+        }
+
+        dirtyFields = new Set(Object.keys(formData));
+
+        document.getElementById("modality").value = handoffModality;
+        localStorage.setItem(`${MODALITY_KEY}_${projectId}`, handoffModality);
+
+        triggerRender(handoffModality);
+
+        setTimeout(() => {
+          Object.entries(formData).forEach(([key, value]) => {
+            const el = document.querySelector(
+              `[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`
+            );
+
+            if (!el) return;
+
+            el.value = value || "";
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          });
+
+          console.log("AXIS HANDOFF PREFILLED EQUIPMENT DETAILS:", {
+            handoffModality,
+            formData,
+            mri_manufacturer: document.querySelector('[data-key="mri_manufacturer"] input')?.value,
+            mri_model: document.querySelector('[data-key="mri_model"] input')?.value,
+            mri_serial: document.querySelector('[data-key="mri_serial"] input')?.value,
+            carm_manufacturer: document.querySelector('[data-key="carm_manufacturer"] input')?.value,
+            carm_model: document.querySelector('[data-key="carm_model"] input')?.value,
+            carm_serial: document.querySelector('[data-key="carm_serial"] input')?.value
+          });
+
+          applyChangedFieldStyling();
+        }, 150);
+
+        return;
+      }
     }
 
     if (isCreateMode && !modalityId) {
