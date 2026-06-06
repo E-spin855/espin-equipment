@@ -535,6 +535,7 @@ Trade-In App / AXIS Rep Workflow → Manual Trade Desk Review → Prepare Buyer 
 <script>
 const KEY = "axis_trade_desk_demo_v1";
 const BUYER_PACKET_KEY = "axis_buyer_review_packets_v1";
+const BIDDER_PORTAL_PACKAGES_KEY = "axis_bidder_portal_packages_v1";
 const AXIS_TRADE_DESK_QUEUE_KEY = "axis_trade_desk_queue_v1";
 const AXIS_TRADE_DESK_INBOX_KEY = "axis_trade_desk_inbox_v1";
 const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
@@ -1426,12 +1427,72 @@ function prepareBuyerReviewPacket(id){
   };
 
   if (idx >= 0) packets[idx] = buyerPacket;
-  else packets.unshift(buyerPacket);
+else packets.unshift(buyerPacket);
 
-  saveArray(BUYER_PACKET_KEY, packets);
+saveArray(BUYER_PACKET_KEY, packets);
 
-  activePacketId = rec.id;
-  localStorage.setItem(ACTIVE_PACKET_KEY, rec.id);
+/* Also save to bidder portal key for direct portal sync */
+let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
+
+const bidderIdx = bidderPortalPackages.findIndex(p =>
+  String(p.review_packet_id || "") === String(packetId) ||
+  String(p.bid_package_id || "") === String(packetId) ||
+  String(p.packet_id || "") === String(packetId) ||
+  String(p.id || "") === String(packetId)
+);
+
+const bidderPortalPackage = {
+  ...buyerPacket,
+
+  id: packetId,
+  packet_id: packetId,
+  package_id: packetId,
+  review_packet_id: packetId,
+  bid_package_id: packetId,
+
+  trade_desk_record_id: rec.id,
+
+  status: "Prepared for Manual Sharing",
+  prepared_at: rec.approved_for_bidding_at,
+  prepared_by: rec.approved_by,
+
+  response_deadline: responseDeadline,
+  bid_deadline: responseDeadline,
+  bidding_ends_at: responseDeadline,
+  bid_expires_at: responseDeadline,
+
+  equipment: {
+    ...rec,
+    response_deadline: responseDeadline,
+    bid_deadline: responseDeadline,
+    bidding_ends_at: responseDeadline,
+    bid_expires_at: responseDeadline
+  },
+
+  record: {
+    ...rec,
+    response_deadline: responseDeadline,
+    bid_deadline: responseDeadline,
+    bidding_ends_at: responseDeadline,
+    bid_expires_at: responseDeadline
+  },
+
+  images: Array.isArray(rec.images) ? rec.images : [],
+  bids: Array.isArray(rec.bids) ? rec.bids : [],
+
+  manually_shared_with_buyers: rec.manually_shared_with_buyers
+};
+
+if (bidderIdx >= 0) {
+  bidderPortalPackages[bidderIdx] = bidderPortalPackage;
+} else {
+  bidderPortalPackages.unshift(bidderPortalPackage);
+}
+
+saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
+
+  activePacketId = packetId;
+localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
 
   render();
 
@@ -1845,7 +1906,43 @@ function selectBuyerResponseForManualCredit(id, index){
   });
 
   saveArray(BUYER_PACKET_KEY, packets);
+let bidderPortalPackages = loadArray(BIDDER_PORTAL_PACKAGES_KEY);
 
+bidderPortalPackages = bidderPortalPackages.map(pkg => {
+  if (
+    String(pkg.review_packet_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.bid_package_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.packet_id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.id || "") !== String(rec.review_packet_id || "") &&
+    String(pkg.trade_desk_record_id || "") !== String(rec.id || "")
+  ) {
+    return pkg;
+  }
+
+  return {
+    ...pkg,
+    response_deadline: value,
+    bid_deadline: value,
+    bidding_ends_at: value,
+    bid_expires_at: value,
+    record: {
+      ...(pkg.record || {}),
+      response_deadline: value,
+      bid_deadline: value,
+      bidding_ends_at: value,
+      bid_expires_at: value
+    },
+    equipment: {
+      ...(pkg.equipment || {}),
+      response_deadline: value,
+      bid_deadline: value,
+      bidding_ends_at: value,
+      bid_expires_at: value
+    }
+  };
+});
+
+saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
   createPendingManualCreditReference(rec);
   render();
 }
