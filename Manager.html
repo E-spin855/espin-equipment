@@ -396,66 +396,59 @@
     }
 
  .manager-flash-pill{
-  background:linear-gradient(90deg,#43b0ff,#00e5ff)!important;
+  background:linear-gradient(90deg,#41ff9c,#00e5ff,#43b0ff)!important;
   color:#03111b!important;
-  border:1px solid rgba(0,229,255,.72)!important;
+  border:2px solid rgba(255,255,255,.85)!important;
   box-shadow:
-    0 0 0 2px rgba(0,229,255,.12),
-    0 0 14px rgba(0,229,255,.38)!important;
-  animation:managerUpdatePillPulse 1.8s ease-in-out infinite!important;
+    0 0 0 3px rgba(0,229,255,.22),
+    0 0 24px rgba(0,229,255,.72),
+    0 0 42px rgba(65,255,156,.48)!important;
+  animation:managerUpdatePillPulse 1.05s ease-in-out infinite!important;
   transform-origin:center;
 }
 
 tr.manager-row-flash{
-  outline:2px solid rgba(0,229,255,.55)!important;
+  outline:3px solid rgba(0,229,255,.88)!important;
   box-shadow:
-    inset 5px 0 0 rgba(0,229,255,.75),
-    0 0 18px rgba(0,229,255,.22)!important;
-  background:rgba(9,52,68,.72)!important;
-  animation:managerUpdateRowPulse 2.2s ease-in-out infinite!important;
+    inset 8px 0 0 rgba(65,255,156,.95),
+    0 0 0 2px rgba(0,229,255,.30),
+    0 0 30px rgba(0,229,255,.52)!important;
+  background:rgba(8,76,86,.88)!important;
+  animation:managerUpdateRowPulse 1.25s ease-in-out infinite!important;
 }
 
 tr.manager-row-flash td{
-  border-bottom-color:rgba(0,229,255,.32)!important;
+  border-bottom-color:rgba(65,255,156,.52)!important;
 }
 
 @keyframes managerUpdatePillPulse{
   0%{
     transform:scale(1);
     filter:brightness(1);
-    box-shadow:
-      0 0 0 2px rgba(0,229,255,.10),
-      0 0 10px rgba(0,229,255,.28);
   }
 
   50%{
-    transform:scale(1.04);
-    filter:brightness(1.18);
-    box-shadow:
-      0 0 0 3px rgba(0,229,255,.18),
-      0 0 20px rgba(0,229,255,.52);
+    transform:scale(1.09);
+    filter:brightness(1.38);
   }
 
   100%{
     transform:scale(1);
     filter:brightness(1);
-    box-shadow:
-      0 0 0 2px rgba(0,229,255,.10),
-      0 0 10px rgba(0,229,255,.28);
   }
 }
 
 @keyframes managerUpdateRowPulse{
   0%{
-    background:rgba(9,42,58,.58);
+    background:rgba(8,58,70,.74);
   }
 
   50%{
-    background:rgba(12,66,86,.82);
+    background:rgba(11,106,120,.96);
   }
 
   100%{
-    background:rgba(9,42,58,.58);
+    background:rgba(8,58,70,.74);
   }
 }
     .followup-date-pill{
@@ -1062,26 +1055,28 @@ function mergeRecordsByKey(...groups) {
     const incomingIsManagerResponse =
       rec.manager_flash_type === "manager_response";
 
-    const incomingClearedManagerUpdate =
+    const incomingWasAcknowledged =
       rec.manager_unseen_update === false &&
-      rec.manager_update_seen_at;
+      !!rec.manager_update_seen_at;
 
-    const existingClearedManagerUpdate =
+    const existingWasAcknowledged =
       existing.manager_unseen_update === false &&
-      existing.manager_update_seen_at;
+      !!existing.manager_update_seen_at;
 
-    const shouldShowManagerUpdate =
-      incomingIsManagerResponse
-        ? false
-        : incomingClearedManagerUpdate
-        ? false
-        : existingClearedManagerUpdate
-        ? false
-        : rec.manager_unseen_update === true
-        ? true
-        : existing.manager_unseen_update === true
-        ? true
-        : false;
+    const updateSeenAt =
+      rec.manager_update_seen_at ||
+      existing.manager_update_seen_at ||
+      "";
+
+    let shouldFlash = false;
+
+    if (incomingIsManagerResponse) {
+      shouldFlash = false;
+    } else if (incomingWasAcknowledged || existingWasAcknowledged) {
+      shouldFlash = false;
+    } else if (rec.manager_unseen_update === true || existing.manager_unseen_update === true) {
+      shouldFlash = true;
+    }
 
     map.set(key, {
       ...existing,
@@ -1101,25 +1096,22 @@ function mergeRecordsByKey(...groups) {
             existing.manager_response_seen_by_rep ??
             true,
 
-      manager_unseen_update: shouldShowManagerUpdate,
+      manager_unseen_update: shouldFlash,
 
-      manager_update_seen_at:
-        rec.manager_update_seen_at ||
-        existing.manager_update_seen_at ||
-        "",
+      manager_update_seen_at: updateSeenAt,
 
       manager_flash_at:
-        shouldShowManagerUpdate
+        shouldFlash
           ? rec.manager_flash_at || existing.manager_flash_at || ""
           : "",
 
       manager_flash_type:
-        shouldShowManagerUpdate
+        shouldFlash
           ? rec.manager_flash_type || existing.manager_flash_type || ""
           : "",
 
       manager_flash_text:
-        shouldShowManagerUpdate
+        shouldFlash
           ? rec.manager_flash_text || existing.manager_flash_text || ""
           : ""
     });
@@ -2122,7 +2114,15 @@ function selectRow(id) {
     ...rec,
     id: rec.id || selectedId,
     key: getRecordKey(rec),
-    quote_seen: true
+
+    quote_seen: true,
+
+    // ✅ clicking/opening the row acknowledges the rep update
+    manager_unseen_update: false,
+    manager_update_seen_at: new Date().toISOString(),
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: ""
   };
 
   syncRecordEverywhere(updated);
