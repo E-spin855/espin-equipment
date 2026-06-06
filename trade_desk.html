@@ -493,7 +493,7 @@ Trade-In App / AXIS Rep Workflow → Manual Trade Desk Review → Prepare Buyer 
   </div>
 
   <div class="panel">
-    <h2>3. Pending Manual Credit Reference</h2>
+    <h2>3. Pending Credit Reference</h2>
     <div id="manualCredits"></div>
   </div>
 </div>
@@ -1114,7 +1114,7 @@ function normalizeIncomingRecord(item){
 
     crm_status: item.crm_status || "Field Intake Received",
     rep_notes: item.rep_notes || "Field intake record received for manual Trade Desk review.",
-    trade_desk_status: item.trade_desk_status || "Manual Review Needed",
+    trade_desk_status: item.trade_desk_status || "Review Needed",
     buyer_response_status: item.buyer_response_status || item.bid_status || "Not Shared",
 
     approved_for_bidding_at: item.approved_for_bidding_at || "",
@@ -1137,7 +1137,7 @@ function normalizeIncomingRecord(item){
     winning_bid_terms: item.winning_bid_terms || "",
     winning_bid_selected_at: item.winning_bid_selected_at || "",
 
-    manual_credit_status: item.manual_credit_status || "Waiting on Manual Trade Desk Review",
+    manual_credit_status: item.manual_credit_status || "Waiting on Trade Desk Review",
     manual_trade_desk_credit_pending: item.manual_trade_desk_credit_pending || "",
     manual_credit_reference_amount: item.manual_credit_reference_amount || "",
     manual_credit_source: item.manual_credit_source || "",
@@ -1145,7 +1145,7 @@ function normalizeIncomingRecord(item){
     manual_credit_posted_at: item.manual_credit_posted_at || "",
     manual_credit_posted_by: item.manual_credit_posted_by || "",
 
-    quote_sync_status: item.quote_sync_status || "Waiting on Manual Trade Desk Review",
+    quote_sync_status: item.quote_sync_status || "Waiting on Trade Desk Review",
     quote_id: item.quote_id || projectId || "",
 
     trade_in_credit: "",
@@ -1594,10 +1594,10 @@ localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
     `IMAGES`,
     imageLines,
     ``,
-    `BUYERS PREPARED FOR MANUAL SHARING`,
+    `BUYERS PREPARED FOR SHARING`,
     buyerList,
     ``,
-    `Please manually review this packet before forwarding. This packet does not contain an appraisal, offer, valuation recommendation, or automatic trade-in credit.`,
+    `Please carefully review this packet before forwarding. This packet does not contain an appraisal, offer, valuation recommendation, or automatic trade-in credit.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -1711,9 +1711,9 @@ function sendInfoRequestToRep(btn = null){
   }
 
   rec.trade_desk_status = "Needs More Information";
-  rec.buyer_response_status = "Manual Review Hold";
-  rec.manual_credit_status = "Waiting on Manual Trade Desk Review";
-  rec.quote_sync_status = "Waiting on Manual Trade Desk Review";
+  rec.buyer_response_status = "Review Hold";
+  rec.manual_credit_status = "Waiting on Trade Desk Review";
+  rec.quote_sync_status = "Waiting on Trade Desk Review";
   rec.crm_status = "Trade Desk Needs More Information";
   rec.info_request_items = checked;
   rec.info_request_notes = notes;
@@ -1722,12 +1722,12 @@ function sendInfoRequestToRep(btn = null){
 
   saveData(data);
 
-  const subject = `Additional information needed for manual trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
+  const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
   const body = [
     `Hi ${getRepName(rec)},`,
     ``,
-    `Trade Desk reviewed the submitted field intake record and needs a few items before continuing manual review.`,
+    `Trade Desk reviewed the submitted field intake record and needs a few items before continuing review.`,
     ``,
     `Equipment:`,
     `${rec.modality || "-"} – ${rec.make || "-"} ${rec.model || ""}`,
@@ -1741,7 +1741,7 @@ function sendInfoRequestToRep(btn = null){
     `Notes:`,
     notes || "-",
     ``,
-    `Please update the Trade-In App record and resend the equipment update. Once received, Trade Desk can continue manual review.`,
+    `Please update the Trade-In App record and resend the equipment update. Once received, Trade Desk can continue review.`,
     ``,
     `Thank you,`,
     `AXIS Trade Desk`
@@ -2277,7 +2277,7 @@ function renderBuyerResponses(rec, safeId){
       <div class="response-card ${isSelected ? "selected" : ""}">
         <span class="badge">Response ${index + 1}</span>
         ${isHighestResponse ? `<span class="badge highest-response-badge">HIGHEST BUYER RESPONSE</span>` : ""}
-        ${isSelected ? `<span class="badge win">SELECTED FOR MANUAL CREDIT REFERENCE</span>` : ""}
+        ${isSelected ? `<span class="badge win">SELECTED FOR CREDIT REFERENCE</span>` : ""}
 
         <div class="kv" style="margin-top:10px;">
           <strong>Buyer:</strong> ${htmlSafe(b.bidder || b.bidder_company || b.company || "-")}
@@ -2295,7 +2295,7 @@ function renderBuyerResponses(rec, safeId){
         <div class="small">Received: ${htmlSafe(b.submitted_at || b.created_at || "-")}</div>
 
         <button class="green" onclick="selectBuyerResponseForManualCredit('${safeId}',${b.originalIndex})">
-          Create Pending Manual Credit Reference
+          Create Pending Credit Reference
         </button>
       </div>
     `;
@@ -2583,7 +2583,7 @@ function renderBuyerResponseCard(rec){
       <span class="badge deadline-badge">Response Deadline: ${htmlSafe(formatResponseDeadline(rec))}</span>
       ${
         selected
-          ? `<span class="badge win">Pending Manual Credit Reference Created</span>`
+          ? `<span class="badge win">Pending Credit Reference Created</span>`
           : `<span class="badge pending">No Credit Reference Yet</span>`
       }
 
@@ -2622,23 +2622,23 @@ function renderManualCreditCard(rec){
     <div class="card">
       <h3>Review Ref: ${htmlSafe(rec.quote_id || rec.project_id || "-")}</h3>
 
-      <span class="badge">${htmlSafe(rec.manual_credit_status || "Waiting on Manual Trade Desk Review")}</span>
+      <span class="badge">${htmlSafe(rec.manual_credit_status || "Waiting on Trade Desk Review")}</span>
       <span class="badge">${htmlSafe(rec.crm_status || "-")}</span>
 
       <div class="kv"><strong>Equipment:</strong> ${htmlSafe(rec.modality || "-")} — ${htmlSafe(rec.make || "-")} ${htmlSafe(rec.model || "")}</div>
       <div class="kv"><strong>Serial:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}</div>
-      <div class="kv"><strong>Pending Manual Credit Reference:</strong> ${
-        amount ? money(amount) : "Pending manual Trade Desk review"
+      <div class="kv"><strong>Pending Credit Reference:</strong> ${
+        amount ? money(amount) : "Pending Trade Desk review"
       }</div>
       <div class="kv"><strong>Selected Buyer:</strong> ${htmlSafe(rec.winning_bidder || "-")}</div>
       <div class="kv"><strong>Selected Terms:</strong> ${htmlSafe(rec.winning_bid_terms || "-")}</div>
-      <div class="kv"><strong>Credit Status:</strong> ${htmlSafe(rec.manual_credit_status || "Waiting on Manual Trade Desk Review")}</div>
+      <div class="kv"><strong>Credit Status:</strong> ${htmlSafe(rec.manual_credit_status || "Waiting on Trade Desk Review")}</div>
       <div class="kv"><strong>Last Update:</strong> ${htmlSafe(rec.last_tradein_update_at || "-")}</div>
 
       <hr>
 
       <p class="small">
-        This is a pending manual credit reference only. It is not automatically applied to a quote, offer, opportunity, customer proposal, or financial record.
+        This is a pending  manual credit reference only. It is not automatically applied to a quote, offer, opportunity, customer proposal, or financial record.
       </p>
     </div>
   `;
@@ -2661,9 +2661,9 @@ function render(){
       rec.buyer_review_link_visible === true ||
       rec.review_packet_prepared === true ||
       String(rec.trade_desk_status || "").includes("Prepared") ||
-      String(rec.buyer_response_status || "") === "Prepared for Manual Sharing" ||
+      String(rec.buyer_response_status || "") === "Prepared for Sharing" ||
       String(rec.buyer_response_status || "") === "Buyer Responses Received" ||
-      String(rec.buyer_response_status || "") === "Manual Response Selected";
+      String(rec.buyer_response_status || "") === "Response Selected";
 
     if (isPreparedOrHasResponses) {
       buyerResponses.innerHTML += renderBuyerResponseCard(rec);
