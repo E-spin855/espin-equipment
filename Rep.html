@@ -217,6 +217,14 @@
   min-width:1120px;
 
 }
+tbody tr{
+  cursor:pointer;
+}
+
+tbody tr:active{
+  transform:scale(.998);
+  background:rgba(0,229,255,.12)!important;
+}
 
 th,td{
 
@@ -1628,16 +1636,26 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
-    function loadRecords() {
-      try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        state.records = Array.isArray(saved) ? saved : [];
-      } catch {
-        state.records = [];
-      }
-      state.selectedId = null;
-    }
+   function loadRecords(preserveSelection = true) {
+  const previousSelectedId = state.selectedId;
 
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    state.records = Array.isArray(saved) ? saved : [];
+  } catch {
+    state.records = [];
+  }
+
+  if (
+    preserveSelection &&
+    previousSelectedId &&
+    state.records.some(r => String(r.id || "") === String(previousSelectedId))
+  ) {
+    state.selectedId = previousSelectedId;
+  } else if (!preserveSelection) {
+    state.selectedId = null;
+  }
+}
     function saveRecords() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
     }
@@ -4839,49 +4857,84 @@ return true;
 
       return base;
     }
+function refreshSelectedRowUI() {
+  document
+    .querySelectorAll("#tableBody tr.selected, #newProjectsTableBody tr.selected")
+    .forEach(row => row.classList.remove("selected"));
 
+  if (!state.selectedId) return;
+
+  const safeId = String(state.selectedId).replace(/"/g, '\\"');
+
+  document
+    .querySelectorAll(`[data-id="${safeId}"]`)
+    .forEach(row => row.classList.add("selected"));
+}
     function selectRow(id) {
-      state.selectedId = id;
+  const selectedId = String(id || "").trim();
+  if (!selectedId) return;
 
-      const rec = state.records.find(r => r.id === id);
+  state.selectedId = selectedId;
 
-      if (rec) {
-        rec.tradein_seen_by_rep = true;
+  const rec = state.records.find(r => String(r.id || "") === selectedId);
 
-        if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
-          rec.manager_response_seen_by_rep = true;
-          rec.manager_response_seen_at = new Date().toISOString();
-        }
+  refreshSelectedRowUI();
 
-        saveRecords();
-      }
+  if (rec) {
+    let changed = false;
 
-      render();
+    if (rec.tradein_seen_by_rep !== true) {
+      rec.tradein_seen_by_rep = true;
+      changed = true;
     }
 
+    if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+      rec.manager_response_seen_by_rep = true;
+      rec.manager_response_seen_at = new Date().toISOString();
+      changed = true;
+    }
+
+    if (changed) {
+      saveRecords();
+    }
+  }
+
+  renderDetail();
+}
     function init() {
-      loadRecords();
+      loadRecords(true);
       importTradeInSyncRecords();
       updateAxisShareStatus();
 
       window.addEventListener("storage", (e) => {
-        if (
-          e.key === STORAGE_KEY ||
-          e.key === "axis_tradein_sync_records_v1" ||
-          e.key === "axis_manager_sync_ping_v1" ||
-          e.key === AXIS_SHARE_KEY ||
-          e.key === UNMATCHED_TRADEIN_KEY ||
-          e.key === QUOTE_APPROVAL_SYNC_KEY ||
-e.key === QUOTE_APPROVAL_KEY ||
-e.key === QUOTE_APPROVAL_PING_KEY
-        ) {
-          loadRecords();
-          importTradeInSyncRecords();
-          updateAxisShareStatus();
-          render();
-        }
-      });
+  if (
+    e.key === STORAGE_KEY ||
+    e.key === "axis_tradein_sync_records_v1" ||
+    e.key === "axis_manager_sync_ping_v1" ||
+    e.key === AXIS_SHARE_KEY ||
+    e.key === UNMATCHED_TRADEIN_KEY ||
+    e.key === QUOTE_APPROVAL_SYNC_KEY ||
+    e.key === QUOTE_APPROVAL_KEY ||
+    e.key === QUOTE_APPROVAL_PING_KEY
+  ) {
+    loadRecords(true);
+    importTradeInSyncRecords();
+    importQuoteApprovalDecisions();
+    updateAxisShareStatus();
 
+    renderStats();
+    renderRepMenu();
+    renderFollowUpAlertCenter();
+    renderUnmatchedTradeInLeads();
+    renderNewProjectsTable();
+    renderTable();
+    refreshSelectedRowUI();
+
+    if (!document.activeElement || document.activeElement.tagName === "BODY") {
+      renderDetail();
+    }
+  }
+});
       window.addEventListener("rep_feed_update", () => {
         renderStats();
         renderRepMenu();
@@ -4968,7 +5021,7 @@ e.key === QUOTE_APPROVAL_PING_KEY
         }
 
         updateAxisShareStatus();
-      }, 5000);
+      }, 8000);
 
       render();
     }
