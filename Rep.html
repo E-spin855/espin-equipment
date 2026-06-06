@@ -4151,125 +4151,191 @@ Thank you.`
     }
 
     async function sendToEspin(type, rec) {
-      const banner = $("resultBanner");
-      if (banner) {
-        banner.style.display = "block";
-        banner.textContent = "Sending...";
-      }
+  const banner = $("resultBanner");
+  if (banner) {
+    banner.style.display = "block";
+    banner.textContent = "Sending...";
+  }
+
+  try {
+    const email = "info@espinmedical.com";
+
+    if (type === "tradein_app") {
+      const isNewProject = rec.project_type === "new_project_record";
+
+      const projectRes = await fetchWithTimeout(
+        "https://espin-equipment.vercel.app/api/admin/equipment",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": email
+          },
+          body: JSON.stringify({
+            project_name: rec.site || rec.model || "AXIS Project",
+            project_identifier: rec.oem_project_id || rec.id || `AXIS-${Date.now()}`,
+            site_address: rec.site_address || "",
+            city: rec.city || "",
+            state: rec.state || "",
+            zip_code: rec.zip_code || "",
+            sales_rep_first: rec.sales_rep_first || "",
+            sales_rep_last: rec.sales_rep_last || "",
+            sales_rep_company: rec.sales_rep_company || "",
+            sales_rep_phone: rec.sales_rep_phone || "",
+            sales_rep_email: rec.sales_rep_email || "info@espinmedical.com"
+          })
+        }
+      );
+
+      const projectText = await projectRes.text();
+      let projectData = {};
 
       try {
-        const email = "info@espinmedical.com";
-
-        if (type === "tradein_app") {
-          const isNewProject = rec.project_type === "new_project_record";
-
-          const projectRes = await fetchWithTimeout(
-            "https://espin-equipment.vercel.app/api/admin/equipment",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-user-email": email
-              },
-              body: JSON.stringify({
-                project_name: rec.site || rec.model || "AXIS Project",
-                project_identifier: rec.oem_project_id || rec.id || `AXIS-${Date.now()}`,
-                site_address: rec.site_address || "",
-                city: rec.city || "",
-                state: rec.state || "",
-                zip_code: rec.zip_code || "",
-                sales_rep_first: rec.sales_rep_first || "",
-                sales_rep_last: rec.sales_rep_last || "",
-                sales_rep_company: rec.sales_rep_company || "",
-                sales_rep_phone: rec.sales_rep_phone || "",
-                sales_rep_email: rec.sales_rep_email || "info@espinmedical.com"
-              })
-            }
-          );
-
-          const projectText = await projectRes.text();
-          let projectData = {};
-
-          try {
-            projectData = JSON.parse(projectText);
-          } catch {
-            console.error("PROJECT CREATE RAW RESPONSE:", projectText);
-          }
-
-          if (!projectRes.ok || !projectData?.id) {
-            throw new Error(projectData?.error || projectData?.message || "Project creation failed");
-          }
-
-          localStorage.setItem("axis_record_id", rec.id || "");
-          localStorage.setItem("axis_parent_record_id", rec.id || "");
-          localStorage.setItem("axis_project_id", rec.oem_project_id || rec.id || "");
-          localStorage.setItem("axis_serial_number", rec.serial_number || "");
-          localStorage.setItem("axis_parent_project_type", isNewProject ? "new_project_record" : "equipment_review_record");
-          localStorage.setItem("axis_parent_project_name", rec.model || rec.site || rec.oem_project_id || "");
-          localStorage.setItem("axis_source", isNewProject ? "new_axis_project" : "existing_axis_equipment");
-          localStorage.setItem("sync_mode", isNewProject ? "sync_tradein_to_new_axis_project" : "update_existing_axis_record");
-
-          const tradeUrl = new URL("https://espin-equipment.vercel.app/equipmentprojects.html");
-
-          tradeUrl.searchParams.set("projectId", projectData.id);
-          tradeUrl.searchParams.set("source", "axis");
-          tradeUrl.searchParams.set("axis_record_id", rec.id || "");
-          tradeUrl.searchParams.set("axis_parent_record_id", rec.id || "");
-          tradeUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
-          tradeUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
-          tradeUrl.searchParams.set("sales_rep_first", rec.sales_rep_first || "");
-          tradeUrl.searchParams.set("sales_rep_last", rec.sales_rep_last || "");
-          tradeUrl.searchParams.set("sales_rep_company", rec.sales_rep_company || "");
-          tradeUrl.searchParams.set("sales_rep_phone", rec.sales_rep_phone || "");
-          tradeUrl.searchParams.set("sales_rep_email", rec.sales_rep_email || "");
-          tradeUrl.searchParams.set("axis_parent_project_type", isNewProject ? "new_project_record" : "equipment_review_record");
-          tradeUrl.searchParams.set("axis_parent_project_name", rec.model || rec.site || rec.oem_project_id || "");
-          tradeUrl.searchParams.set("axis_source", isNewProject ? "new_axis_project" : "existing_axis_equipment");
-          tradeUrl.searchParams.set("sync_mode", isNewProject ? "sync_tradein_to_new_axis_project" : "update_existing_axis_record");
-
-          window.open(tradeUrl.toString(), "_blank");
-
-          rec.submitted_to = "tradein_app";
-          rec.tradein_project_id = projectData.id;
-          rec.tradein_modality_id = "";
-          rec.tradein_sent_to_app_at = new Date().toISOString();
-
-          rec.manager_unseen_update = true;
-          rec.manager_flash_at = new Date().toISOString();
-          rec.manager_flash_type = "sent_to_tradein_app";
-          rec.manager_flash_text = isNewProject ? "New AXIS project sent to Trade-In App" : "Equipment review record sent to Trade-In App";
-
-          syncFeedStatus(rec);
-          render();
-
-          showBanner(isNewProject ? "✅ New AXIS project sent to Trade-In App" : "✅ Equipment sent to Trade-In App");
-          return true;
-        }
-
-        if (type === "tradein_desk" || type === "disposal") {
-          rec.associated_tradein_submitted_to = type;
-          rec.associated_tradein_submitted_at = new Date().toISOString();
-          rec.manager_unseen_update = true;
-          rec.manager_flash_at = new Date().toISOString();
-          rec.manager_flash_type = type === "tradein_desk" ? "sent_to_tradein_desk" : "sent_to_disposal";
-          rec.manager_flash_text = type === "tradein_desk" ? "Rep sent equipment to Trade-In Desk" : "Rep sent equipment to Disposal Review";
-
-          syncFeedStatus(rec);
-          render();
-
-          showBanner(type === "tradein_desk" ? "✅ Sent to Trade-In Desk" : "✅ Sent to Disposal Review");
-          return true;
-        }
-
-        showBanner("❌ Unknown action type");
-        return false;
-
-      } catch (err) {
-        console.error(err);
-        showBanner("❌ Failed to send");
-        return false;
+        projectData = JSON.parse(projectText);
+      } catch {
+        console.error("PROJECT CREATE RAW RESPONSE:", projectText);
       }
+
+      if (!projectRes.ok || !projectData?.id) {
+        throw new Error(projectData?.error || projectData?.message || "Project creation failed");
+      }
+
+      const equipmentPayload = buildEquipmentPayload(rec);
+
+      const axisTradeInHandoff = {
+        created_at: new Date().toISOString(),
+
+        projectId: projectData.id,
+        source: "axis",
+
+        // AXIS parent record link
+        axis_record_id: rec.id || "",
+        axis_parent_record_id: rec.id || "",
+        axis_project_id: rec.oem_project_id || rec.id || "",
+        axis_serial_number: rec.serial_number || "",
+        axis_parent_project_type: isNewProject ? "new_project_record" : "equipment_review_record",
+        axis_parent_project_name: rec.model || rec.site || rec.oem_project_id || "",
+        axis_source: isNewProject ? "new_axis_project" : "existing_axis_equipment",
+        sync_mode: isNewProject ? "sync_tradein_to_new_axis_project" : "update_existing_axis_record",
+
+        // Project / facility
+        project_name: rec.site || rec.model || "AXIS Project",
+        project_identifier: rec.oem_project_id || rec.id || `AXIS-${Date.now()}`,
+        site: rec.site || rec.facility || rec.hospital || "",
+        site_address: rec.site_address || "",
+        city: rec.city || "",
+        state: rec.state || "",
+        zip_code: rec.zip_code || "",
+
+        // Equipment
+        modality: rec.modality || "",
+        make: rec.make || "",
+        manufacturer: rec.make || "",
+        model: rec.model || "",
+        serial_number: rec.serial_number || "",
+        serial: rec.serial_number || "",
+        dom: rec.dom || "",
+        year: rec.dom || "",
+
+        // Modality-specific form fields for Trade-In app
+        equipment_payload: equipmentPayload,
+
+        // Contact
+        contact_name: rec.contact_name || "",
+        contact_title: rec.contact_title || "",
+        contact_phone: rec.contact_phone || "",
+        contact_email: rec.contact_email || "",
+
+        // Rep
+        sales_rep_first: rec.sales_rep_first || "",
+        sales_rep_last: rec.sales_rep_last || "",
+        sales_rep_company: rec.sales_rep_company || "",
+        sales_rep_phone: rec.sales_rep_phone || "",
+        sales_rep_email: rec.sales_rep_email || ""
+      };
+
+      /*
+        Main handoff object.
+        Trade-In app should read this key and prefill the equipment form.
+      */
+      localStorage.setItem("axis_tradein_handoff_v1", JSON.stringify(axisTradeInHandoff));
+      localStorage.setItem("axis_tradein_handoff_ping_v1", String(Date.now()));
+
+      /*
+        Keep older keys for backward compatibility in case the Trade-In app
+        already reads these values.
+      */
+      localStorage.setItem("axis_record_id", rec.id || "");
+      localStorage.setItem("axis_parent_record_id", rec.id || "");
+      localStorage.setItem("axis_project_id", rec.oem_project_id || rec.id || "");
+      localStorage.setItem("axis_serial_number", rec.serial_number || "");
+      localStorage.setItem("axis_parent_project_type", isNewProject ? "new_project_record" : "equipment_review_record");
+      localStorage.setItem("axis_parent_project_name", rec.model || rec.site || rec.oem_project_id || "");
+      localStorage.setItem("axis_source", isNewProject ? "new_axis_project" : "existing_axis_equipment");
+      localStorage.setItem("sync_mode", isNewProject ? "sync_tradein_to_new_axis_project" : "update_existing_axis_record");
+
+      /*
+        Same-domain navigation.
+        If your Trade-In app is truly on the same domain, this is the correct version.
+        If it is still hosted separately, change this back to the full espin-equipment URL
+        and use URL params/server save instead of localStorage.
+      */
+      const tradeUrl = new URL("/equipmentprojects.html", window.location.origin);
+
+      tradeUrl.searchParams.set("projectId", projectData.id);
+      tradeUrl.searchParams.set("source", "axis");
+      tradeUrl.searchParams.set("handoff", "axis_tradein_handoff_v1");
+
+      console.log("AXIS Trade-In handoff saved:", axisTradeInHandoff);
+      console.log("Opening Trade-In App URL:", tradeUrl.toString());
+
+      window.open(tradeUrl.toString(), "_blank");
+
+      rec.submitted_to = "tradein_app";
+      rec.tradein_project_id = projectData.id;
+      rec.tradein_modality_id = "";
+      rec.tradein_sent_to_app_at = new Date().toISOString();
+
+      rec.manager_unseen_update = true;
+      rec.manager_flash_at = new Date().toISOString();
+      rec.manager_flash_type = "sent_to_tradein_app";
+      rec.manager_flash_text = isNewProject
+        ? "New AXIS project sent to Trade-In App"
+        : "Equipment review record sent to Trade-In App";
+
+      syncFeedStatus(rec);
+      render();
+
+      showBanner(isNewProject ? "✅ New AXIS project sent to Trade-In App" : "✅ Equipment sent to Trade-In App");
+      return true;
     }
+
+    if (type === "tradein_desk" || type === "disposal") {
+      rec.associated_tradein_submitted_to = type;
+      rec.associated_tradein_submitted_at = new Date().toISOString();
+      rec.manager_unseen_update = true;
+      rec.manager_flash_at = new Date().toISOString();
+      rec.manager_flash_type = type === "tradein_desk" ? "sent_to_tradein_desk" : "sent_to_disposal";
+      rec.manager_flash_text = type === "tradein_desk"
+        ? "Rep sent equipment to Trade-In Desk"
+        : "Rep sent equipment to Disposal Review";
+
+      syncFeedStatus(rec);
+      render();
+
+      showBanner(type === "tradein_desk" ? "✅ Sent to Trade-In Desk" : "✅ Sent to Disposal Review");
+      return true;
+    }
+
+    showBanner("❌ Unknown action type");
+    return false;
+
+  } catch (err) {
+    console.error(err);
+    showBanner("❌ Failed to send");
+    return false;
+  }
+}
 
     async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired) {
       const banner = $("resultBanner");
