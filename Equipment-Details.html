@@ -404,9 +404,12 @@ function normalizeAxisHandoffModality(value) {
 function readAxisTradeInHandoffForDetails() {
   const params = new URLSearchParams(window.location.search);
 
-  if (String(params.get("source") || "").toLowerCase() !== "axis") {
-    return null;
-  }
+  const source = String(params.get("source") || "").toLowerCase().trim();
+  const hasAxisUrl =
+    source === "axis" ||
+    params.get("handoff") === "axis_tradein_handoff_v1" ||
+    params.has("axis_record_id") ||
+    params.has("axis_project_id");
 
   let handoff = null;
 
@@ -428,18 +431,29 @@ function readAxisTradeInHandoffForDetails() {
   }
 
   if (!handoff) {
-    console.warn("No AXIS trade-in handoff found on Equipment Details page.");
+    console.warn("No AXIS trade-in handoff found on Equipment Details page.", {
+      source,
+      hasAxisUrl,
+      url: location.href,
+      axis_tradein_handoff_v1: localStorage.getItem("axis_tradein_handoff_v1"),
+      espinEquipment_axisTradeInHandoff: localStorage.getItem(`${APP_PREFIX}axisTradeInHandoff`)
+    });
     return null;
   }
 
+  console.log("AXIS handoff found on Equipment Details:", {
+    source,
+    hasAxisUrl,
+    handoff
+  });
+
   return handoff;
 }
-
 function applyAxisTradeInHandoffToFormData() {
   const handoff = readAxisTradeInHandoffForDetails();
 
   if (!handoff) return false;
-
+console.log("RAW HANDOFF ABOUT TO APPLY:", handoff);
   const equipmentPayload =
     handoff.equipment_payload && typeof handoff.equipment_payload === "object"
       ? handoff.equipment_payload
@@ -2272,8 +2286,150 @@ async function sendEquipmentOnly() {
 
 initDownloadButton();
 
+function applyAxisHandoffDirectly() {
+  let handoff = null;
+
+  try {
+    handoff = JSON.parse(localStorage.getItem("axis_tradein_handoff_v1") || "null");
+  } catch {
+    handoff = null;
+  }
+
+  if (!handoff) {
+    console.warn("No AXIS handoff found");
+    return false;
+  }
+
+  const payload = handoff.equipment_payload || {};
+
+  let modality = String(
+    handoff.modality ||
+    payload.modality ||
+    ""
+  ).toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  // AXIS uses CATH, Trade-In form uses CARM
+  if (modality === "CATH") modality = "CARM";
+
+  if (!modality) {
+    console.warn("AXIS handoff has no modality", handoff);
+    return false;
+  }
+
+  currentModality = modality;
+
+  formData = {
+    ...formData,
+    modality,
+    axis_lifecycle_project_id: handoff.axis_project_id || handoff.axis_record_id || ""
+  };
+
+  if (modality === "CARM") {
+    formData.carm_manufacturer =
+      payload.carm_manufacturer ||
+      payload.cath_manufacturer ||
+      handoff.make ||
+      handoff.manufacturer ||
+      "";
+
+    formData.carm_model =
+      payload.carm_model ||
+      payload.cath_model ||
+      handoff.model ||
+      "";
+
+    formData.carm_serial =
+      payload.carm_serial ||
+      payload.cath_serial ||
+      handoff.serial_number ||
+      handoff.axis_serial_number ||
+      "";
+
+    formData.carm_hard_drive_removed =
+      payload.carm_hard_drive_removed ||
+      payload.cath_hard_drive_removed ||
+      "";
+
+    formData.carm_availability_timeframe =
+      payload.carm_availability_timeframe ||
+      payload.cath_availability_timeframe ||
+      "";
+  }
+
+  if (modality === "CT") {
+    formData.ct_manufacturer = payload.ct_manufacturer || handoff.make || handoff.manufacturer || "";
+    formData.ct_model = payload.ct_model || handoff.model || "";
+    formData.ct_serial = payload.ct_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    formData.ct_dom = payload.ct_dom || handoff.dom || "";
+  }
+
+  if (modality === "MRI") {
+    formData.mri_manufacturer = payload.mri_manufacturer || handoff.make || handoff.manufacturer || "";
+    formData.mri_model = payload.mri_model || handoff.model || "";
+    formData.mri_serial = payload.mri_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    formData.mri_yom = payload.mri_yom || handoff.dom || "";
+  }
+
+  if (modality === "XRAY") {
+    formData.xray_manufacturer = payload.xray_manufacturer || handoff.make || handoff.manufacturer || "";
+    formData.xray_model = payload.xray_model || handoff.model || "";
+    formData.xray_serial = payload.xray_serial || handoff.serial_number || handoff.axis_serial_number || "";
+  }
+
+  if (modality === "PETCT") {
+    formData.pet_manufacturer = payload.pet_manufacturer || handoff.make || handoff.manufacturer || "";
+    formData.pet_model = payload.pet_model || handoff.model || "";
+    formData.pet_serial = payload.pet_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    formData.pet_tube_dom = payload.pet_tube_dom || handoff.dom || "";
+  }
+
+  if (modality === "MAMMO") {
+    formData.mamo_manufacturer = payload.mamo_manufacturer || handoff.make || handoff.manufacturer || "";
+    formData.mamo_model = payload.mamo_model || handoff.model || "";
+    formData.mamo_serial = payload.mamo_serial || handoff.serial_number || handoff.axis_serial_number || "";
+    formData.mamo_dom = payload.mamo_dom || handoff.dom || "";
+  }
+
+  const modalitySelect = document.getElementById("modality");
+  if (modalitySelect) modalitySelect.value = modality;
+
+  localStorage.setItem(`${MODALITY_KEY}_${projectId}`, modality);
+
+  dirtyFields = new Set(Object.keys(formData));
+
+  triggerRender(modality);
+
+  setTimeout(() => {
+    Object.entries(formData).forEach(([key, value]) => {
+      const el = document.querySelector(
+        `[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`
+      );
+
+      if (!el) return;
+
+      el.value = value || "";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    console.log("AXIS HANDOFF APPLIED DIRECTLY:", {
+      modality,
+      handoff,
+      formData,
+      carm_manufacturer: document.querySelector('[data-key="carm_manufacturer"] input')?.value,
+      carm_model: document.querySelector('[data-key="carm_model"] input')?.value,
+      carm_serial: document.querySelector('[data-key="carm_serial"] input')?.value
+    });
+  }, 200);
+
+  return true;
+}
+
 loadData().then(() => {
-  setTimeout(() => applyChangedFieldStyling(), 100);
+  setTimeout(() => {
+    applyAxisHandoffDirectly();
+    applyChangedFieldStyling();
+  }, 300);
 });
 
 window.addEventListener("beforeunload", () => {
