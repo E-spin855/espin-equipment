@@ -2491,156 +2491,197 @@ async function sendEquipmentOnly() {
 }
 
 initDownloadButton();
+/* ===============================
+   AXIS → TRADE-IN PREFILL PATCH
+   Append-only safety patch
+=============================== */
 
-function applyAxisHandoffDirectly() {
-  let handoff = null;
-
+function getAxisTradeInHandoffPatch() {
   try {
-    handoff = JSON.parse(localStorage.getItem("axis_tradein_handoff_v1") || "null");
+    const handoff = JSON.parse(localStorage.getItem("axis_tradein_handoff_v1") || "null");
+    if (!handoff || typeof handoff !== "object") return null;
+    if (String(handoff.source || "").toLowerCase() !== "axis") return null;
+    return handoff;
   } catch {
-    handoff = null;
+    return null;
   }
+}
 
-  if (!handoff) {
-    console.warn("No AXIS handoff found");
-    return false;
+function normalizeAxisHandoffModalityPatch(value) {
+  let m = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (m === "CATH") m = "CARM";
+  if (m === "CARMOBILE") m = "CARM";
+  if (m === "XR") m = "XRAY";
+  if (m === "XRAYSYSTEM") m = "XRAY";
+  if (m === "PET") m = "PETCT";
+
+  return m;
+}
+
+function setAxisFieldPatch(key, value) {
+  if (!key) return;
+
+  const finalValue = String(value || "").trim();
+
+  if (!finalValue) return;
+
+  formData[key] = finalValue;
+  dirtyFields.add(key);
+
+  const el = document.querySelector(
+    `[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`
+  );
+
+  if (el) {
+    el.value = finalValue;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
   }
+}
 
-  const payload = handoff.equipment_payload || {};
+function applyAxisTradeInPrefillPatch() {
+  const handoff = getAxisTradeInHandoffPatch();
 
-  let modality = String(
-    handoff.modality ||
-    payload.modality ||
-    ""
-  ).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!handoff) return false;
 
-  // AXIS uses CATH, Trade-In form uses CARM
-  if (modality === "CATH") modality = "CARM";
+  const payload =
+    handoff.equipment_payload && typeof handoff.equipment_payload === "object"
+      ? handoff.equipment_payload
+      : {};
 
-  if (!modality) {
-    console.warn("AXIS handoff has no modality", handoff);
-    return false;
-  }
+  const modality = normalizeAxisHandoffModalityPatch(
+    handoff.modality || payload.modality
+  );
+
+  if (!modality) return false;
 
   currentModality = modality;
-
-  formData = {
-    ...formData,
-    modality,
-    axis_lifecycle_project_id: handoff.axis_project_id || handoff.axis_record_id || ""
-  };
-
-  if (modality === "CARM") {
-    formData.carm_manufacturer =
-      payload.carm_manufacturer ||
-      payload.cath_manufacturer ||
-      handoff.make ||
-      handoff.manufacturer ||
-      "";
-
-    formData.carm_model =
-      payload.carm_model ||
-      payload.cath_model ||
-      handoff.model ||
-      "";
-
-    formData.carm_serial =
-      payload.carm_serial ||
-      payload.cath_serial ||
-      handoff.serial_number ||
-      handoff.axis_serial_number ||
-      "";
-
-    formData.carm_hard_drive_removed =
-      payload.carm_hard_drive_removed ||
-      payload.cath_hard_drive_removed ||
-      "";
-
-    formData.carm_availability_timeframe =
-      payload.carm_availability_timeframe ||
-      payload.cath_availability_timeframe ||
-      "";
-  }
-
-  if (modality === "CT") {
-    formData.ct_manufacturer = payload.ct_manufacturer || handoff.make || handoff.manufacturer || "";
-    formData.ct_model = payload.ct_model || handoff.model || "";
-    formData.ct_serial = payload.ct_serial || handoff.serial_number || handoff.axis_serial_number || "";
-    formData.ct_dom = payload.ct_dom || handoff.dom || "";
-  }
-
-  if (modality === "MRI") {
-    formData.mri_manufacturer = payload.mri_manufacturer || handoff.make || handoff.manufacturer || "";
-    formData.mri_model = payload.mri_model || handoff.model || "";
-    formData.mri_serial = payload.mri_serial || handoff.serial_number || handoff.axis_serial_number || "";
-    formData.mri_yom = payload.mri_yom || handoff.dom || "";
-  }
-
-  if (modality === "XRAY") {
-    formData.xray_manufacturer = payload.xray_manufacturer || handoff.make || handoff.manufacturer || "";
-    formData.xray_model = payload.xray_model || handoff.model || "";
-    formData.xray_serial = payload.xray_serial || handoff.serial_number || handoff.axis_serial_number || "";
-  }
-
-  if (modality === "PETCT") {
-    formData.pet_manufacturer = payload.pet_manufacturer || handoff.make || handoff.manufacturer || "";
-    formData.pet_model = payload.pet_model || handoff.model || "";
-    formData.pet_serial = payload.pet_serial || handoff.serial_number || handoff.axis_serial_number || "";
-    formData.pet_tube_dom = payload.pet_tube_dom || handoff.dom || "";
-  }
-
-  if (modality === "MAMMO") {
-    formData.mamo_manufacturer = payload.mamo_manufacturer || handoff.make || handoff.manufacturer || "";
-    formData.mamo_model = payload.mamo_model || handoff.model || "";
-    formData.mamo_serial = payload.mamo_serial || handoff.serial_number || handoff.axis_serial_number || "";
-    formData.mamo_dom = payload.mamo_dom || handoff.dom || "";
-  }
-
-  const modalitySelect = document.getElementById("modality");
-  if (modalitySelect) modalitySelect.value = modality;
+  formData.modality = modality;
+  dirtyFields.add("modality");
 
   localStorage.setItem(`${MODALITY_KEY}_${projectId}`, modality);
 
-  dirtyFields = new Set(Object.keys(formData));
+  const modalitySelect = document.getElementById("modality");
+  if (modalitySelect) {
+    modalitySelect.value = modality;
+  }
 
+  /*
+    Force correct form section to exist.
+    This is important because the page may load in blank create mode first.
+  */
   triggerRender(modality);
 
   setTimeout(() => {
-    Object.entries(formData).forEach(([key, value]) => {
-      const el = document.querySelector(
-        `[data-key="${key}"] input, [data-key="${key}"] select, [data-key="${key}"] textarea`
-      );
+    setAxisFieldPatch(
+      "axis_lifecycle_project_id",
+      handoff.axis_project_id || handoff.project_identifier || handoff.axis_record_id || ""
+    );
 
-      if (!el) return;
+    if (modality === "MRI") {
+      setAxisFieldPatch("mri_manufacturer", payload.mri_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("mri_model", payload.mri_model || handoff.model);
+      setAxisFieldPatch("mri_serial", payload.mri_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("mri_yom", payload.mri_yom || handoff.dom || handoff.year);
+      setAxisFieldPatch("mri_in_use", payload.mri_in_use);
+      setAxisFieldPatch("mri_hard_drive_removed", payload.mri_hard_drive_removed);
+      setAxisFieldPatch("mri_availability_timeframe", payload.mri_availability_timeframe);
+    }
 
-      el.value = value || "";
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    if (modality === "CT") {
+      setAxisFieldPatch("ct_manufacturer", payload.ct_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("ct_model", payload.ct_model || handoff.model);
+      setAxisFieldPatch("ct_serial", payload.ct_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("ct_dom", payload.ct_dom || handoff.dom || handoff.year);
+      setAxisFieldPatch("ct_in_use", payload.ct_in_use);
+      setAxisFieldPatch("ct_loading_dock", payload.ct_loading_dock);
+      setAxisFieldPatch("ct_hard_drive_removed", payload.ct_hard_drive_removed);
+      setAxisFieldPatch("ct_availability_timeframe", payload.ct_availability_timeframe);
+    }
 
-    console.log("AXIS HANDOFF APPLIED DIRECTLY:", {
+    if (modality === "CARM") {
+      setAxisFieldPatch("carm_manufacturer", payload.carm_manufacturer || payload.cath_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("carm_model", payload.carm_model || payload.cath_model || handoff.model);
+      setAxisFieldPatch("carm_serial", payload.carm_serial || payload.cath_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("carm_in_use", payload.carm_in_use || payload.cath_in_use);
+      setAxisFieldPatch("carm_hard_drive_removed", payload.carm_hard_drive_removed || payload.cath_hard_drive_removed);
+      setAxisFieldPatch("carm_availability_timeframe", payload.carm_availability_timeframe || payload.cath_availability_timeframe);
+    }
+
+    if (modality === "XRAY") {
+      setAxisFieldPatch("xray_manufacturer", payload.xray_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("xray_model", payload.xray_model || handoff.model);
+      setAxisFieldPatch("xray_serial", payload.xray_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("xray_in_use", payload.xray_in_use);
+      setAxisFieldPatch("xray_loading_dock", payload.xray_loading_dock);
+      setAxisFieldPatch("xray_availability_timeframe", payload.xray_availability_timeframe);
+    }
+
+    if (modality === "PETCT") {
+      setAxisFieldPatch("pet_manufacturer", payload.pet_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("pet_model", payload.pet_model || handoff.model);
+      setAxisFieldPatch("pet_serial", payload.pet_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("pet_tube_dom", payload.pet_tube_dom || handoff.dom || handoff.year);
+      setAxisFieldPatch("pet_in_use", payload.pet_in_use);
+      setAxisFieldPatch("pet_loading_dock", payload.pet_loading_dock);
+      setAxisFieldPatch("pet_hard_drive_removed", payload.pet_hard_drive_removed);
+      setAxisFieldPatch("pet_availability_timeframe", payload.pet_availability_timeframe);
+    }
+
+    if (modality === "MAMMO") {
+      setAxisFieldPatch("mamo_manufacturer", payload.mamo_manufacturer || handoff.make || handoff.manufacturer);
+      setAxisFieldPatch("mamo_model", payload.mamo_model || handoff.model);
+      setAxisFieldPatch("mamo_serial", payload.mamo_serial || handoff.serial_number || handoff.serial || handoff.axis_serial_number);
+      setAxisFieldPatch("mamo_dom", payload.mamo_dom || handoff.dom || handoff.year);
+      setAxisFieldPatch("mamo_in_use", payload.mamo_in_use);
+      setAxisFieldPatch("mamo_loading_dock", payload.mamo_loading_dock);
+      setAxisFieldPatch("mamo_hard_drive_removed", payload.mamo_hard_drive_removed);
+      setAxisFieldPatch("mamo_availability_timeframe", payload.mamo_availability_timeframe);
+    }
+
+    console.log("AXIS TRADE-IN PREFILL PATCH APPLIED:", {
       modality,
       handoff,
       formData,
+      mri_manufacturer: document.querySelector('[data-key="mri_manufacturer"] input')?.value,
+      mri_model: document.querySelector('[data-key="mri_model"] input')?.value,
+      mri_serial: document.querySelector('[data-key="mri_serial"] input')?.value,
       carm_manufacturer: document.querySelector('[data-key="carm_manufacturer"] input')?.value,
       carm_model: document.querySelector('[data-key="carm_model"] input')?.value,
       carm_serial: document.querySelector('[data-key="carm_serial"] input')?.value
     });
-  }, 200);
+
+    applyChangedFieldStyling();
+  }, 250);
 
   return true;
 }
-
+/*
+  First load normal saved project/equipment data.
+  Then apply AXIS handoff prefill if this page was opened from AXIS.
+*/
 loadData().then(() => {
   setTimeout(() => {
-    applyAxisHandoffDirectly();
+    applyAxisTradeInPrefillPatch();
     applyChangedFieldStyling();
   }, 300);
 });
 
-window.addEventListener("beforeunload", () => {
-  clearChangedFieldsForAdmin();
-});
+/*
+  Retry because Equipment-Details.html may render after async loadData(),
+  especially on Safari/iPhone.
+*/
+let axisPrefillPatchTries = 0;
+const axisPrefillPatchTimer = setInterval(() => {
+  axisPrefillPatchTries += 1;
+
+  const applied = applyAxisTradeInPrefillPatch();
+
+  if (applied || axisPrefillPatchTries >= 20) {
+    clearInterval(axisPrefillPatchTimer);
+  }
+}, 300);
 </script>
 </body>
 </html>
