@@ -4162,7 +4162,7 @@ function openDecisionModal() {
       $("decisionModal").style.display = "none";
     }
 
-  function confirmDecision() {
+  async function confirmDecision() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
   if (!rec) {
@@ -4176,22 +4176,54 @@ function openDecisionModal() {
 
   closeDecisionModal();
 
-  rec.submitted_to = "connect_demo";
+  rec.submitted_to = "connect_pending";
   rec.submitted_at = new Date().toISOString();
   rec.disposal_required = disposalRequired;
   rec.magnet_event = magnetEvent;
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
-  rec.manager_flash_type = "sent_to_connect_demo";
-  rec.manager_flash_text = "Rep opened Espin Connect disposal review";
+  rec.manager_flash_type = "sent_to_connect_pending";
+  rec.manager_flash_text = "Rep submitted equipment review record to Espin Connect";
 
   syncFeedStatus(rec);
   render();
 
-  openConnectDemoWindow(rec, magnetEvent, disposalRequired);
+  const connectWindow = window.open("", "_blank", "noopener,noreferrer");
 
-  showBanner("✅ Opening Espin Connect demo window...");
+  if (connectWindow) {
+    connectWindow.document.write(`
+      <html>
+        <head>
+          <title>Opening Espin Connect...</title>
+          <style>
+            body{
+              font-family:Arial,sans-serif;
+              background:#07111f;
+              color:#eef6ff;
+              padding:30px;
+            }
+          </style>
+        </head>
+        <body>
+          <h2>Opening Espin Connect...</h2>
+          <p>Creating the project handoff from AXIS.</p>
+        </body>
+      </html>
+    `);
+    connectWindow.document.close();
+  }
+
+  const ok = await sendToConnectWithDecision(
+    rec,
+    magnetEvent,
+    disposalRequired,
+    connectWindow
+  );
+
+  if (ok) {
+    showBanner("✅ Project synced to Espin Connect");
+  }
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
   const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
@@ -4561,6 +4593,7 @@ return true;
     const connectProjectId = data.id || data.projectId || "";
 
     rec.submitted_to = "connect";
+rec.connect_sync_status = "synced";
     rec.submitted_at = new Date().toISOString();
     rec.connect_project_id = connectProjectId;
     rec.disposal_required = Boolean(disposalRequired);
@@ -4577,7 +4610,20 @@ return true;
     const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
 
     connectUrl.searchParams.set("source", "axis");
-    connectUrl.searchParams.set("handoff", "equipment_review");
+   connectUrl.searchParams.set("handoff", "disposal_review");
+connectUrl.searchParams.set("demo", "true");
+connectUrl.searchParams.set("project_name", `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim());
+connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
+connectUrl.searchParams.set("site_address", rec.site_address || "");
+connectUrl.searchParams.set("city", rec.city || "");
+connectUrl.searchParams.set("state", rec.state || "");
+connectUrl.searchParams.set("zip_code", rec.zip_code || "");
+connectUrl.searchParams.set("make", rec.make || "");
+connectUrl.searchParams.set("model", rec.model || "");
+connectUrl.searchParams.set("serial_number", rec.serial_number || "");
+connectUrl.searchParams.set("dom", rec.dom || "");
+connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
+connectUrl.searchParams.set("magnet_event", magnetEvent || "");
 
     if (connectProjectId) {
       connectUrl.searchParams.set("projectId", connectProjectId);
