@@ -682,9 +682,9 @@ function syncDraftFromInputs(recordId){
   draft.expires = String(document.getElementById(`bidExpires_${safeId}`)?.value || draft.expires || "").trim();
 }
 
-function setBidButtonState(recordId, state){
+function setBidButtonState(recordId, state, btnEl = null){
   const safeRecordId = idSafe(recordId);
-  const btn = document.getElementById(`submitBidBtn_${safeRecordId}`);
+  const btn = btnEl || document.getElementById(`submitBidBtn_${safeRecordId}`);
 
   if (!btn) return;
 
@@ -1144,31 +1144,39 @@ function submitBidFromEl(el){
     return;
   }
 
-  submitBid(recordId);
+  submitBid(recordId, el);
 }
 
-function submitBid(recordId){
-  suppressRenderUntil = Date.now() + 1800;
-  syncDraftFromInputs(recordId);
+function submitBid(recordId, btnEl = null){
+  suppressRenderUntil = Date.now() + 2200;
 
   const safeRecordId = idSafe(recordId);
+
+  const companyInput = document.getElementById(`bidderCompany_${safeRecordId}`);
+  const amountInput = document.getElementById(`bidAmount_${safeRecordId}`);
+  const termsInput = document.getElementById(`bidTerms_${safeRecordId}`);
+  const expiresInput = document.getElementById(`bidExpires_${safeRecordId}`);
+
+  const bidderCompany = String(companyInput?.value || approvedBidderCompany || "").trim();
+  const amount = Number(amountInput?.value || 0);
+  const terms = String(termsInput?.value || "").trim();
+  const expires = String(expiresInput?.value || "").trim();
+
   const draft = getDraft(recordId);
-
-  const bidderCompany = String(draft.bidder_company || "").trim();
-  const amount = Number(draft.amount || 0);
-  const terms = String(draft.terms || "").trim();
-  const expires = String(draft.expires || "").trim();
-
+  draft.bidder_company = bidderCompany;
+  draft.amount = amountInput?.value || "";
+  draft.terms = terms;
+  draft.expires = expires;
   const errorBox = document.getElementById(`errorBox_${safeRecordId}`);
   const successBox = document.getElementById(`successBox_${safeRecordId}`);
 
   if (errorBox) errorBox.style.display = "none";
   if (successBox) successBox.style.display = "none";
 
-  setBidButtonState(recordId, "loading");
+  setBidButtonState(recordId, "loading", btnEl);
 
   if (!bidderCompany || !amount || amount <= 0) {
-    setBidButtonState(recordId, "reset");
+    setBidButtonState(recordId, "reset", btnEl);
 
     if (errorBox) {
       errorBox.textContent = "Enter company name and bid amount.";
@@ -1197,7 +1205,7 @@ function submitBid(recordId){
   );
 
   if (!found) {
-    setBidButtonState(recordId, "reset");
+    setBidButtonState(recordId, "reset", btnEl);
     suppressRenderUntil = 0;
     alert("Bid package not found. Make sure Trade Desk prepared the package and both pages are opened from the same browser/origin.");
     return;
@@ -1356,7 +1364,7 @@ function submitBid(recordId){
   localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 
-  setBidButtonState(recordId, "submitted");
+  setBidButtonState(recordId, "submitted", btnEl);
 
   if (successBox) {
     successBox.textContent = "Bid submitted successfully to AXIS Trade Desk.";
@@ -1371,7 +1379,7 @@ function submitBid(recordId){
   openPackageId = String(recordId || tradeDeskRecordId || rec.id || "");
 
   setTimeout(() => {
-    setBidButtonState(recordId, "reset");
+    setBidButtonState(recordId, "reset", btnEl);
     suppressRenderUntil = 0;
     render();
   }, 1400);
