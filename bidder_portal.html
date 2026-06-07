@@ -326,6 +326,7 @@ const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
 const MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
 const BIDDER_PORTAL_KEY = "axis_bidder_portal_packages_v1";
 const BUYER_PACKET_KEY = "axis_buyer_review_packets_v1";
+const BUYER_RESPONSE_OUTBOX_KEY = "axis_buyer_response_outbox_v1";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -1343,15 +1344,56 @@ function submitBid(recordId, btnEl = null){
   tradeDeskRecords = updatePacketArray(tradeDeskRecords);
 
   saveArray(BIDDER_PORTAL_KEY, bidderPackages);
-  saveArray(BUYER_PACKET_KEY, buyerPackets);
-  saveArray(TRADE_DESK_KEY, tradeDeskRecords);
+saveArray(BUYER_PACKET_KEY, buyerPackets);
+saveArray(TRADE_DESK_KEY, tradeDeskRecords);
 
-  let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-  syncRecords = updatePacketArray(syncRecords);
-  saveArray(TRADEIN_SYNC_KEY, syncRecords);
+let syncRecords = loadArray(TRADEIN_SYNC_KEY);
+syncRecords = updatePacketArray(syncRecords);
+saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
-  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(rec));
-  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+/* Dedicated outbox for Trade Desk buyer response import */
+let responseOutbox = loadArray(BUYER_RESPONSE_OUTBOX_KEY);
+
+const responsePayload = {
+  id: `buyer_response_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+  source_event: "buyer_response_submitted",
+  trade_desk_record_id: tradeDeskRecordId,
+  package_id: packetId,
+  packet_id: packetId,
+  review_packet_id: rec.review_packet_id || packetId,
+  bid_package_id: rec.bid_package_id || packetId,
+  bids: rec.bids,
+  bid_status: "Bids Received",
+  buyer_response_status: "Buyer Responses Received",
+  crm_status: "Buyer Response Records Received",
+  last_bid_at: rec.last_bid_at,
+  last_bid_received_at: rec.last_bid_received_at,
+  last_bidder_company: bidderCompany,
+  last_bidder_email: approvedBidderEmail,
+  bid_count: rec.bids.length
+};
+
+const outboxIndex = responseOutbox.findIndex(item =>
+  String(item.review_packet_id || "") === String(responsePayload.review_packet_id || "") ||
+  String(item.bid_package_id || "") === String(responsePayload.bid_package_id || "") ||
+  String(item.package_id || "") === String(responsePayload.package_id || "") ||
+  String(item.packet_id || "") === String(responsePayload.packet_id || "") ||
+  String(item.trade_desk_record_id || "") === String(responsePayload.trade_desk_record_id || "")
+);
+
+if (outboxIndex >= 0) {
+  responseOutbox[outboxIndex] = {
+    ...responseOutbox[outboxIndex],
+    ...responsePayload
+  };
+} else {
+  responseOutbox.unshift(responsePayload);
+}
+
+saveArray(BUYER_RESPONSE_OUTBOX_KEY, responseOutbox);
+
+localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(responsePayload));
+localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 
   setBidButtonState(recordId, "submitted", btnEl);
 

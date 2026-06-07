@@ -561,6 +561,7 @@ Trade-In App / AXIS Rep Workflow → Manual Trade Desk Review → Prepare Buyer 
 const KEY = "axis_trade_desk_demo_v1";
 const BUYER_PACKET_KEY = "axis_buyer_review_packets_v1";
 const BIDDER_PORTAL_PACKAGES_KEY = "axis_bidder_portal_packages_v1";
+const BUYER_RESPONSE_OUTBOX_KEY = "axis_buyer_response_outbox_v1";
 const AXIS_TRADE_DESK_QUEUE_KEY = "axis_trade_desk_queue_v1";
 const AXIS_TRADE_DESK_INBOX_KEY = "axis_trade_desk_inbox_v1";
 const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
@@ -1275,12 +1276,19 @@ function mergeRecordIntoDesk(deskData, incoming){
 function importBuyerResponses(){
   let deskData = loadData();
   const packets = loadArray(BUYER_PACKET_KEY);
+  const outbox = loadArray(BUYER_RESPONSE_OUTBOX_KEY);
+  const sources = [...packets, ...outbox];
+
   let changed = false;
 
-  packets.forEach(pkg => {
+  sources.forEach(pkg => {
     const idx = deskData.findIndex(r =>
       String(r.review_packet_id || "") === String(pkg.review_packet_id || "") ||
       String(r.review_packet_id || "") === String(pkg.bid_package_id || "") ||
+      String(r.review_packet_id || "") === String(pkg.package_id || "") ||
+      String(r.review_packet_id || "") === String(pkg.packet_id || "") ||
+      String(r.bid_package_id || "") === String(pkg.review_packet_id || "") ||
+      String(r.bid_package_id || "") === String(pkg.bid_package_id || "") ||
       String(r.id || "") === String(pkg.trade_desk_record_id || "")
     );
 
@@ -1291,23 +1299,37 @@ function importBuyerResponses(){
     deskData[idx] = {
       ...existing,
       bids: Array.isArray(pkg.bids) ? pkg.bids : existing.bids || [],
+
+      bid_status:
+        Array.isArray(pkg.bids) && pkg.bids.length
+          ? "Bids Received"
+          : existing.bid_status || pkg.bid_status || "",
+
       buyer_response_status:
         Array.isArray(pkg.bids) && pkg.bids.length
           ? "Buyer Responses Received"
-          : existing.buyer_response_status,
+          : existing.buyer_response_status || pkg.buyer_response_status || "",
+
       crm_status:
         Array.isArray(pkg.bids) && pkg.bids.length
           ? "Buyer Response Records Received"
-          : existing.crm_status,
-      last_tradein_update_at: pkg.last_bid_at || existing.last_tradein_update_at || new Date().toISOString()
+          : existing.crm_status || pkg.crm_status || "",
+
+      last_bid_at: pkg.last_bid_at || existing.last_bid_at || "",
+      last_bid_received_at: pkg.last_bid_received_at || existing.last_bid_received_at || "",
+      last_bidder_company: pkg.last_bidder_company || existing.last_bidder_company || "",
+      last_bidder_email: pkg.last_bidder_email || existing.last_bidder_email || "",
+      bid_count: Array.isArray(pkg.bids) ? pkg.bids.length : existing.bid_count || 0,
+      last_tradein_update_at: pkg.last_bid_at || pkg.last_bid_received_at || existing.last_tradein_update_at || new Date().toISOString()
     };
 
     changed = true;
   });
 
-  if (changed) saveData(deskData);
+  if (changed) {
+    saveData(deskData);
+  }
 }
-
 function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
@@ -2719,9 +2741,10 @@ window.addEventListener("storage", (e) => {
   e.key === MANAGER_PING_KEY ||
   e.key === KEY ||
   e.key === TRADEIN_SYNC_KEY ||
-  e.key === BUYER_PACKET_KEY ||
-  e.key === BIDDER_PORTAL_PACKAGES_KEY ||
-  e.key === ACTIVE_PACKET_KEY
+ e.key === BUYER_PACKET_KEY ||
+e.key === BIDDER_PORTAL_PACKAGES_KEY ||
+e.key === BUYER_RESPONSE_OUTBOX_KEY ||
+e.key === ACTIVE_PACKET_KEY
 ) {
     if (!isTradeDeskInputFocused() && !shouldSuppressRender()) {
   importAutomaticIntake();
