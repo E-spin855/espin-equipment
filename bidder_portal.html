@@ -703,11 +703,6 @@ function setBidButtonState(recordId, state, btnEl = null){
   btn.disabled = false;
   btn.textContent = "Submit Bid";
 }
-function togglePackageFromEl(el){
-  const recordId = getRecordIdFromEl(el);
-  if (!recordId) return;
-  togglePackage(recordId);
-}
 function togglePackage(recordId){
   const id = String(recordId || "").trim();
   if (!id) return;
@@ -970,12 +965,15 @@ function renderPackageCard(rec){
           <strong>${htmlSafe(rec.availability_timeframe || "-")}</strong>
           <div class="small">Availability</div>
         </div>
-
-        <div class="package-actions">
-          <button data-record-id="${htmlSafe(recordId)}" onclick="togglePackageFromEl(this)">
-            ${isOpen ? "Close Package" : "Open Package"}
-          </button>
-        </div>
+<div class="package-actions">
+  <button
+    type="button"
+    data-action="toggle-package"
+    data-record-id="${htmlSafe(recordId)}"
+  >
+    ${isOpen ? "Close Package" : "Open Package"}
+  </button>
+</div>
       </div>
 
       <div class="package-grid">
@@ -1073,10 +1071,11 @@ function renderPackageCard(rec){
 >
 
 <button
+  type="button"
   id="submitBidBtn_${safeRecordId}"
   class="green"
+  data-action="submit-bid"
   data-record-id="${htmlSafe(recordId)}"
-  onclick="submitBidFromEl(this)"
 >
   Submit Bid
 </button>
@@ -1135,18 +1134,34 @@ function syncDraftFromInputsFromEl(el){
   if (!recordId) return;
   syncDraftFromInputs(recordId);
 }
+document.addEventListener("click", function(e){
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
 
-function submitBidFromEl(el){
-  const recordId = getRecordIdFromEl(el);
+  const root = document.getElementById("packageRoot");
+  if (!root || !root.contains(btn)) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const action = btn.dataset.action;
+  const recordId = getRecordIdFromEl(btn);
 
   if (!recordId) {
     alert("Missing bid package record ID.");
     return;
   }
 
-  submitBid(recordId, el);
-}
+  if (action === "toggle-package") {
+    togglePackage(recordId);
+    return;
+  }
 
+  if (action === "submit-bid") {
+    submitBid(recordId, btn);
+    return;
+  }
+});
 function submitBid(recordId, btnEl = null){
   suppressRenderUntil = Date.now() + 2200;
 
