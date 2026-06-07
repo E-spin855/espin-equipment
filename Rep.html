@@ -4194,28 +4194,67 @@ function openDecisionModal() {
   showBanner("✅ Opening Espin Connect demo window...");
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
-    async function submitRecord(type, id = null) {
-      const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
+  const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
 
-      if (!rec) {
-        alert("Open a record first");
-        return false;
-      }
+  connectUrl.searchParams.set("source", "axis");
+  connectUrl.searchParams.set("handoff", "disposal_review");
+  connectUrl.searchParams.set("demo", "true");
 
-      if (rec.lifecycle_completed) {
-        alert("This project is already completed");
-        return false;
-      }
+  connectUrl.searchParams.set("axis_record_id", rec.id || "");
+  connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
+  connectUrl.searchParams.set(
+    "project_name",
+    `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim()
+  );
 
-      if (type === "connect") {
-        openDecisionModal();
-        return false;
-      }
+  connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
+  connectUrl.searchParams.set("site_address", rec.site_address || "");
+  connectUrl.searchParams.set("city", rec.city || "");
+  connectUrl.searchParams.set("state", rec.state || "");
+  connectUrl.searchParams.set("zip_code", rec.zip_code || "");
 
-      return await sendToEspin(type, rec);
-    }
+  connectUrl.searchParams.set("make", rec.make || "");
+  connectUrl.searchParams.set("model", rec.model || "");
+  connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
+  connectUrl.searchParams.set("serial_number", rec.serial_number || "");
+  connectUrl.searchParams.set("dom", rec.dom || "");
 
-    async function sendToEspin(type, rec) {
+  connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
+  connectUrl.searchParams.set("magnet_event", magnetEvent || "");
+
+  connectUrl.searchParams.set("sales_rep_first", rec.sales_rep_first || "");
+  connectUrl.searchParams.set("sales_rep_last", rec.sales_rep_last || "");
+  connectUrl.searchParams.set("sales_rep_company", rec.sales_rep_company || "");
+  connectUrl.searchParams.set("sales_rep_phone", rec.sales_rep_phone || "");
+  connectUrl.searchParams.set("sales_rep_email", rec.sales_rep_email || "");
+
+  console.log("Opening Espin Connect demo URL:", connectUrl.toString());
+
+  window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
+}
+
+async function submitRecord(type, id = null) {
+  const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
+
+  if (!rec) {
+    alert("Open a record first");
+    return false;
+  }
+
+  if (rec.lifecycle_completed) {
+    alert("This project is already completed");
+    return false;
+  }
+
+  if (type === "connect") {
+    openDecisionModal();
+    return false;
+  }
+
+  return await sendToEspin(type, rec);
+}
+
+async function sendToEspin(type, rec) {
   const banner = $("resultBanner");
   if (banner) {
     banner.style.display = "block";
