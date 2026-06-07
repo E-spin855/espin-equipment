@@ -998,12 +998,11 @@ th:nth-child(9),td:nth-child(9){width:190px;text-align:center}
           </select>
         </div>
 
-        <label>Send for Disposition Review?</label>
-        <select id="decisionDisposal">
-          <option value="false">No</option>
-          <option value="true">Yes</option>
-        </select>
-
+       <label>Send for Disposition Review?</label>
+<select id="decisionDisposal">
+  <option value="true">Yes</option>
+  <option value="false">No</option>
+</select>
         <button class="green" onclick="confirmDecision()">Send to Connect</button>
         <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeDecisionModal()">Cancel</button>
       </div>
@@ -4411,80 +4410,110 @@ return true;
   }
 }
 
-    async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired) {
-      const banner = $("resultBanner");
-      if (banner) {
-        banner.style.display = "block";
-        banner.textContent = "Sending...";
+   async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired) {
+  const banner = $("resultBanner");
+
+  if (banner) {
+    banner.style.display = "block";
+    banner.textContent = "Sending to Espin Connect...";
+  }
+
+  try {
+    const email = localStorage.getItem("espinUserEmail") || "info@espinmedical.com";
+
+    const payload = {
+      project_name: `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim(),
+      site_address: rec.site_address || "",
+      city: rec.city || "",
+      state: rec.state || "",
+      zip_code: rec.zip_code || "",
+      modality: String(rec.modality || "").toUpperCase().trim() || "OTHER",
+      magnet_event: magnetEvent || null,
+      disposal_required: Boolean(disposalRequired),
+
+      // This is what your Projects.html page can use to show "From"
+      source: "equipment_review",
+
+      sales_rep_first: rec.sales_rep_first || "",
+      sales_rep_last: rec.sales_rep_last || "",
+      sales_rep_company: rec.sales_rep_company || "",
+      sales_rep_phone: rec.sales_rep_phone || "",
+      sales_rep_email: rec.sales_rep_email || ""
+    };
+
+    const res = await fetchWithTimeout(
+      "https://espin-medical-app.vercel.app/api/admin/projects",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": email
+        },
+        body: JSON.stringify(payload)
       }
+    );
 
-      try {
-        const email = localStorage.getItem("espinUserEmail") || "info@espinmedical.com";
+    const text = await res.text();
 
-        const payload = {
-          project_name: `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim(),
-          site_address: rec.site_address || "",
-          city: rec.city || "",
-          state: rec.state || "",
-          zip_code: rec.zip_code || "",
-          modality: String(rec.modality || "").toUpperCase().trim() || "OTHER",
-          magnet_event: magnetEvent || null,
-          disposal_required: Boolean(disposalRequired),
-          source: "equipment_review",
-          sales_rep_first: rec.sales_rep_first || "",
-          sales_rep_last: rec.sales_rep_last || "",
-          sales_rep_company: rec.sales_rep_company || "",
-          sales_rep_phone: rec.sales_rep_phone || "",
-          sales_rep_email: rec.sales_rep_email || ""
-        };
-
-        const res = await fetchWithTimeout(
-          "https://espin-medical-app.vercel.app/api/admin/projects",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-user-email": email
-            },
-            body: JSON.stringify(payload)
-          }
-        );
-
-        const text = await res.text();
-
-        if (!res.ok) throw new Error("Connect project creation failed");
-
-        let data = {};
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = {};
-        }
-
-        rec.submitted_to = "connect";
-        rec.submitted_at = new Date().toISOString();
-        rec.connect_project_id = data.id || data.projectId || "";
-        rec.disposal_required = Boolean(disposalRequired);
-        rec.magnet_event = magnetEvent || "";
-
-        rec.manager_unseen_update = true;
-        rec.manager_flash_at = new Date().toISOString();
-        rec.manager_flash_type = "sent_to_connect";
-        rec.manager_flash_text = "Rep sent equipment review record to Connect";
-
-        syncFeedStatus(rec);
-        render();
-
-        showBanner("✅ Sent to Espin Connect");
-        return true;
-
-      } catch (err) {
-        console.error(err);
-        showBanner("❌ Failed to send to Connect");
-        return false;
-      }
+    if (!res.ok) {
+      console.error("CONNECT CREATE FAILED:", text);
+      throw new Error("Connect project creation failed");
     }
 
+    let data = {};
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.error("CONNECT RAW RESPONSE:", text);
+      data = {};
+    }
+
+    const connectProjectId = data.id || data.projectId || "";
+
+    rec.submitted_to = "connect";
+    rec.submitted_at = new Date().toISOString();
+    rec.connect_project_id = connectProjectId;
+    rec.disposal_required = Boolean(disposalRequired);
+    rec.magnet_event = magnetEvent || "";
+
+    rec.manager_unseen_update = true;
+    rec.manager_flash_at = new Date().toISOString();
+    rec.manager_flash_type = "sent_to_connect";
+    rec.manager_flash_text = "Rep sent equipment review record to Espin Connect";
+
+    syncFeedStatus(rec);
+    render();
+
+    const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
+
+    connectUrl.searchParams.set("source", "axis");
+    connectUrl.searchParams.set("handoff", "equipment_review");
+
+    if (connectProjectId) {
+      connectUrl.searchParams.set("projectId", connectProjectId);
+    }
+
+    connectUrl.searchParams.set("axis_record_id", rec.id || "");
+    connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
+    connectUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
+    connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
+
+    console.log("AXIS Connect project created:", data);
+    console.log("Opening Espin Connect URL:", connectUrl.toString());
+
+    showBanner("✅ Sent to Espin Connect. Opening Espin Connect in a new tab...");
+
+    window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
+
+    return true;
+
+  } catch (err) {
+    console.error(err);
+    showBanner("❌ Failed to send to Espin Connect");
+    return false;
+  }
+}
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
