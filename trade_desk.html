@@ -571,6 +571,11 @@ const LIFECYCLE_KEY = "espin_lifecycle_demo_records_v1";
 
 let activeInfoRequestId = "";
 let activePacketId =
+let suppressRenderUntil = 0;
+
+function shouldSuppressRender(){
+  return Date.now() < suppressRenderUntil;
+}
   new URLSearchParams(window.location.search).get("packetId") ||
   localStorage.getItem(ACTIVE_PACKET_KEY) ||
   "";
@@ -639,8 +644,11 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 function buttonSpinConfirm(btn, loadingText, successText, done){
+  suppressRenderUntil = Date.now() + 2500;
+
   if (!btn) {
     if (typeof done === "function") done();
+    suppressRenderUntil = 0;
     return;
   }
 
@@ -649,20 +657,23 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
 
   btn.disabled = true;
   btn.classList.add("is-loading");
-  btn.innerHTML = `<span class="spinner-dot"></span>${loadingText || "Sending..."}`;
+  btn.innerHTML = `<span class="spinner-dot"></span>${loadingText || "Working..."}`;
 
   setTimeout(() => {
     btn.classList.remove("is-loading");
     btn.classList.add("is-success");
-    btn.innerHTML = successText || "Submitted";
+    btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      btn.classList.remove("is-success");
-      btn.disabled = originalDisabled;
-      btn.innerHTML = originalHtml;
-
       if (typeof done === "function") done();
-    }, 700);
+
+      setTimeout(() => {
+        btn.classList.remove("is-success");
+        btn.disabled = originalDisabled;
+        btn.innerHTML = originalHtml;
+        suppressRenderUntil = 0;
+      }, 500);
+    }, 350);
   }, 650);
 }
 function openImagePreview(url, title){
@@ -2664,9 +2675,8 @@ function render(){
   manualCredits.innerHTML = "";
 
   data.forEach(rec => {
-    const safeId = jsSafe(rec.id);
     const rawId = String(rec.id || "");
-
+const safeId = rawId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     tradeDesk.innerHTML += renderTradeDeskPackageCard(rec, safeId, rawId);
 
     const isPreparedOrHasResponses =
@@ -2706,21 +2716,22 @@ window.addEventListener("storage", (e) => {
   e.key === BIDDER_PORTAL_PACKAGES_KEY ||
   e.key === ACTIVE_PACKET_KEY
 ) {
-    if (!isTradeDeskInputFocused()) {
-      importAutomaticIntake();
-      render();
-    }
+    if (!isTradeDeskInputFocused() && !shouldSuppressRender()) {
+  importAutomaticIntake();
+  render();
+}
   }
 });
 
 setInterval(() => {
+  if (shouldSuppressRender()) return;
+
   importAutomaticIntake();
 
   if (!isTradeDeskInputFocused()) {
     render();
   }
 }, 2000);
-
 importAutomaticIntake();
 render();
 </script>
