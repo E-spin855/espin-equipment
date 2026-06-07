@@ -570,15 +570,17 @@ const ACTIVE_PACKET_KEY = "axis_trade_desk_active_packet_id_v1";
 const LIFECYCLE_KEY = "espin_lifecycle_demo_records_v1";
 
 let activeInfoRequestId = "";
+
 let activePacketId =
+  new URLSearchParams(window.location.search).get("packetId") ||
+  localStorage.getItem(ACTIVE_PACKET_KEY) ||
+  "";
+
 let suppressRenderUntil = 0;
 
 function shouldSuppressRender(){
   return Date.now() < suppressRenderUntil;
 }
-  new URLSearchParams(window.location.search).get("packetId") ||
-  localStorage.getItem(ACTIVE_PACKET_KEY) ||
-  "";
 
 const APPROVED_BUYERS = [
   {
@@ -1550,12 +1552,10 @@ if (bidderIdx >= 0) {
 }
 
 saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
-  activePacketId = packetId;
+ activePacketId = packetId;
 localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
 
-  render();
-
-  const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
+const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
   const ccEmail = TRADE_DESK_EMAIL;
 
   const buyerList = matchingBuyers
@@ -1620,7 +1620,8 @@ localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
-  buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
+ buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
+  render();
   window.location.href = mailto;
 });
 }
