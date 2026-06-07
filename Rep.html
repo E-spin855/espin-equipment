@@ -4162,18 +4162,43 @@ function openDecisionModal() {
       $("decisionModal").style.display = "none";
     }
 
-    async function confirmDecision() {
-      const rec = state.records.find(r => r.id === state.selectedId);
-      if (!rec) return;
+   async function confirmDecision() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+  if (!rec) return;
 
-      const modality = String(rec.modality || "").toUpperCase().trim();
-      const magnetEvent = modality === "MRI" ? $("decisionMagnet").value : null;
-      const disposalRequired = String($("decisionDisposal").value).toLowerCase().trim() === "true";
+  const modality = String(rec.modality || "").toUpperCase().trim();
+  const magnetEvent = modality === "MRI" ? $("decisionMagnet").value : null;
+  const disposalRequired = String($("decisionDisposal").value).toLowerCase().trim() === "true";
 
-      closeDecisionModal();
-      await sendToConnectWithDecision(rec, magnetEvent, disposalRequired);
-    }
+  // Open immediately while still inside the user click event.
+  // This reduces popup-blocker problems.
+  const connectWindow = window.open("about:blank", "_blank");
 
+  if (connectWindow) {
+    connectWindow.document.write(`
+      <html>
+        <head>
+          <title>Opening Espin Connect...</title>
+          <style>
+            body{
+              font-family:Arial,sans-serif;
+              padding:30px;
+              color:#333;
+            }
+          </style>
+        </head>
+        <body>
+          <h2>Opening Espin Connect...</h2>
+          <p>Please wait while the project is created.</p>
+        </body>
+      </html>
+    `);
+  }
+
+  closeDecisionModal();
+
+  await sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow);
+}
     async function submitRecord(type, id = null) {
       const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
 
@@ -4440,7 +4465,7 @@ return true;
   }
 }
 
-   async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired) {
+   async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow = null) {
   const banner = $("resultBanner");
 
   if (banner) {
@@ -4530,19 +4555,31 @@ return true;
     connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
 
     console.log("AXIS Connect project created:", data);
-    console.log("Opening Espin Connect URL:", connectUrl.toString());
+console.log("Opening Espin Connect URL:", connectUrl.toString());
 
-    showBanner("✅ Sent to Espin Connect. Opening Espin Connect in a new tab...");
+showBanner("✅ Sent to Espin Connect. Opening Espin Connect in a new tab...");
 
-    window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
+if (connectWindow && !connectWindow.closed) {
+  connectWindow.location.href = connectUrl.toString();
+} else {
+  window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
+}
 
-    return true;
+return true;
 
-  } catch (err) {
-    console.error(err);
-    showBanner("❌ Failed to send to Espin Connect");
-    return false;
+} catch (err) {
+  console.error(err);
+
+  if (connectWindow && !connectWindow.closed) {
+    connectWindow.document.body.innerHTML = `
+      <h2>Espin Connect project could not be opened</h2>
+      <p>The project send failed. Please close this tab and try again from AXIS.</p>
+    `;
   }
+
+  showBanner("❌ Failed to send to Espin Connect");
+  return false;
+}
 }
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
       const controller = new AbortController();
