@@ -4531,135 +4531,82 @@ return true;
   }
 }
 
-   async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow = null) {
+ async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow = null) {
   const banner = $("resultBanner");
+
+  if (!rec) {
+    alert("Open a record first");
+    return false;
+  }
 
   if (banner) {
     banner.style.display = "block";
-    banner.textContent = "Sending to Espin Connect...";
+    banner.textContent = "Opening Espin Connect demo...";
   }
 
-  try {
-    const email = localStorage.getItem("espinUserEmail") || "info@espinmedical.com";
+  const now = new Date().toISOString();
 
-    const payload = {
-      project_name: `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim(),
-      site_address: rec.site_address || "",
-      city: rec.city || "",
-      state: rec.state || "",
-      zip_code: rec.zip_code || "",
-      modality: String(rec.modality || "").toUpperCase().trim() || "OTHER",
-      magnet_event: magnetEvent || null,
-      disposal_required: Boolean(disposalRequired),
+  rec.submitted_to = "connect_demo";
+  rec.connect_sync_status = "demo_opened";
+  rec.submitted_at = now;
+  rec.disposal_required = Boolean(disposalRequired);
+  rec.magnet_event = magnetEvent || "";
 
-      // This is what your Projects.html page can use to show "From"
-      source: "equipment_review",
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "sent_to_connect_demo";
+  rec.manager_flash_text = "Rep opened Espin Connect demo handoff";
 
-      sales_rep_first: rec.sales_rep_first || "",
-      sales_rep_last: rec.sales_rep_last || "",
-      sales_rep_company: rec.sales_rep_company || "",
-      sales_rep_phone: rec.sales_rep_phone || "",
-      sales_rep_email: rec.sales_rep_email || ""
-    };
+  syncFeedStatus(rec);
+  render();
 
-    const res = await fetchWithTimeout(
-      "https://espin-medical-app.vercel.app/api/admin/projects",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-email": email
-        },
-        body: JSON.stringify(payload)
-      }
-    );
+  const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
 
-    const text = await res.text();
+  connectUrl.searchParams.set("source", "axis_demo");
+  connectUrl.searchParams.set("handoff", "disposal_review");
+  connectUrl.searchParams.set("demo", "true");
 
-    if (!res.ok) {
-      console.error("CONNECT CREATE FAILED:", text);
-      throw new Error("Connect project creation failed");
-    }
+  connectUrl.searchParams.set("axis_record_id", rec.id || "");
+  connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
+  connectUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
 
-    let data = {};
+  connectUrl.searchParams.set(
+    "project_name",
+    `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim()
+  );
 
-    try {
-      data = JSON.parse(text);
-    } catch {
-      console.error("CONNECT RAW RESPONSE:", text);
-      data = {};
-    }
+  connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
+  connectUrl.searchParams.set("site_address", rec.site_address || "");
+  connectUrl.searchParams.set("city", rec.city || "");
+  connectUrl.searchParams.set("state", rec.state || "");
+  connectUrl.searchParams.set("zip_code", rec.zip_code || "");
 
-    const connectProjectId = data.id || data.projectId || "";
+  connectUrl.searchParams.set("make", rec.make || "");
+  connectUrl.searchParams.set("model", rec.model || "");
+  connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
+  connectUrl.searchParams.set("serial_number", rec.serial_number || "");
+  connectUrl.searchParams.set("dom", rec.dom || "");
 
-    rec.submitted_to = "connect";
-rec.connect_sync_status = "synced";
-    rec.submitted_at = new Date().toISOString();
-    rec.connect_project_id = connectProjectId;
-    rec.disposal_required = Boolean(disposalRequired);
-    rec.magnet_event = magnetEvent || "";
+  connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
+  connectUrl.searchParams.set("magnet_event", magnetEvent || "");
 
-    rec.manager_unseen_update = true;
-    rec.manager_flash_at = new Date().toISOString();
-    rec.manager_flash_type = "sent_to_connect";
-    rec.manager_flash_text = "Rep sent equipment review record to Espin Connect";
+  connectUrl.searchParams.set("sales_rep_first", rec.sales_rep_first || "");
+  connectUrl.searchParams.set("sales_rep_last", rec.sales_rep_last || "");
+  connectUrl.searchParams.set("sales_rep_company", rec.sales_rep_company || "");
+  connectUrl.searchParams.set("sales_rep_phone", rec.sales_rep_phone || "");
+  connectUrl.searchParams.set("sales_rep_email", rec.sales_rep_email || "");
 
-    syncFeedStatus(rec);
-    render();
+  console.log("Opening Espin Connect demo URL:", connectUrl.toString());
 
-    const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
-
-    connectUrl.searchParams.set("source", "axis_demo");
-   connectUrl.searchParams.set("handoff", "disposal_review");
-connectUrl.searchParams.set("demo", "true");
-connectUrl.searchParams.set("project_name", `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim());
-connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
-connectUrl.searchParams.set("site_address", rec.site_address || "");
-connectUrl.searchParams.set("city", rec.city || "");
-connectUrl.searchParams.set("state", rec.state || "");
-connectUrl.searchParams.set("zip_code", rec.zip_code || "");
-connectUrl.searchParams.set("make", rec.make || "");
-connectUrl.searchParams.set("model", rec.model || "");
-connectUrl.searchParams.set("serial_number", rec.serial_number || "");
-connectUrl.searchParams.set("dom", rec.dom || "");
-connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
-connectUrl.searchParams.set("magnet_event", magnetEvent || "");
-
-    if (connectProjectId) {
-      connectUrl.searchParams.set("projectId", connectProjectId);
-    }
-
-    connectUrl.searchParams.set("axis_record_id", rec.id || "");
-    connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
-    connectUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
-    connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
-
-    console.log("AXIS Connect project created:", data);
-console.log("Opening Espin Connect URL:", connectUrl.toString());
-
-showBanner("✅ Sent to Espin Connect. Opening Espin Connect in a new tab...");
-
-if (connectWindow && !connectWindow.closed) {
-  connectWindow.location.href = connectUrl.toString();
-} else {
-  window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
-}
-
-return true;
-
-} catch (err) {
-  console.error(err);
+  showBanner("✅ Opening Espin Connect demo handoff...");
 
   if (connectWindow && !connectWindow.closed) {
-    connectWindow.document.body.innerHTML = `
-      <h2>Espin Connect project could not be opened</h2>
-      <p>The project send failed. Please close this tab and try again from AXIS.</p>
-    `;
+    connectWindow.location.href = connectUrl.toString();
+  } else {
+    window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
   }
 
-  showBanner("❌ Failed to send to Espin Connect");
-  return false;
-}
+  return true;
 }
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
       const controller = new AbortController();
