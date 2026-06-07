@@ -231,7 +231,7 @@
 
   table-layout:fixed;
 
-  min-width:1440px;
+  min-width:1780px;
 
 }
 tbody tr{
@@ -259,16 +259,32 @@ th,td{
 
 }
 th:nth-child(1),td:nth-child(1){width:145px}
-th:nth-child(2),td:nth-child(2){width:160px}
-th:nth-child(3),td:nth-child(3){width:110px}
-th:nth-child(4),td:nth-child(4){width:90px;text-align:center}
-th:nth-child(5),td:nth-child(5){width:140px}
+
+th:nth-child(2),td:nth-child(2){width:120px}
+
+th:nth-child(3),td:nth-child(3){width:130px}
+
+th:nth-child(4),td:nth-child(4){width:95px;text-align:center}
+
+th:nth-child(5),td:nth-child(5){width:145px}
+
 th:nth-child(6),td:nth-child(6){width:90px;text-align:center}
+
 th:nth-child(7),td:nth-child(7){width:80px;text-align:center}
-th:nth-child(8),td:nth-child(8){width:170px;text-align:center}
-th:nth-child(9),td:nth-child(9){width:240px}
-th:nth-child(10),td:nth-child(10){width:80px;text-align:center}
-th:nth-child(11),td:nth-child(11){width:180px;text-align:center}
+
+th:nth-child(8),td:nth-child(8){width:150px;text-align:center}
+
+th:nth-child(9),td:nth-child(9){width:150px;text-align:center}
+
+th:nth-child(10),td:nth-child(10){width:230px}
+
+th:nth-child(11),td:nth-child(11){width:170px;text-align:center}
+
+th:nth-child(12),td:nth-child(12){width:170px;text-align:center}
+
+th:nth-child(13),td:nth-child(13){width:90px;text-align:center}
+
+th:nth-child(14),td:nth-child(14){width:170px;text-align:center}
     th{
       position:sticky;
       top:0;
@@ -841,16 +857,21 @@ th:nth-child(11),td:nth-child(11){width:180px;text-align:center}
             <table>
              <thead>
   <tr>
-    <th>Project ID</th>
-    <th>Equipment</th>
-    <th>Modality</th>
-    <th>Serial</th>
-    <th>DOM / Age</th>
-    <th>OEM Review Note</th>
-    <th>Facility</th>
-    <th>Source</th>
-    <th>Rep Review Status</th>
-  </tr>
+  <th>Project ID</th>
+  <th>Make</th>
+  <th>Model</th>
+  <th>Modality</th>
+  <th>Serial</th>
+  <th>DOM</th>
+  <th>Age</th>
+  <th>Pressure</th>
+  <th>Trade-In Value</th>
+  <th>Facility</th>
+  <th>Status</th>
+  <th>Next Action</th>
+  <th>Source</th>
+  <th>Actions</th>
+</tr>
 </thead>
               <tbody id="newProjectsTableBody"></tbody>
             </table>
@@ -2027,7 +2048,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
   }
 
   if (!visibleRecords.length) {
-    tbody.innerHTML = '<tr><td colspan="11">No records</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14">No records</td></tr>';
     return;
   }
 
@@ -2050,9 +2071,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
       <strong>${escapeHtml(rec.make || "")}</strong>
     </td>
 
-    <td class="wrap">
-      ${escapeHtml(rec.model || "")}
-    </td>
+    <td class="wrap">${escapeHtml(rec.model || "")}</td>
 
     <td>${escapeHtml(rec.modality || "")}</td>
 
@@ -2064,11 +2083,24 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
     <td>${renderReviewSignalCell(rec)}</td>
 
+    <td>${money(rec.external_tradein_value || rec.tradein_credit || rec.quote_trade_in_credit || 0)}</td>
+
     <td class="wrap">${escapeHtml(rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility")}</td>
+
+    <td>${renderRepReviewStatus(rec)}</td>
+
+    <td>${escapeHtml(rec.rep_action_label || rec.rep_action || rec.next_action || "-")}</td>
 
     <td>${escapeHtml(rec.source || "CSV")}</td>
 
-    <td>${renderRepReviewStatus(rec)}</td>
+    <td>
+      <button
+        class="row-action-btn tradein"
+        onclick="event.stopPropagation(); selectRow('${rec.id}'); submitRecord('tradein_app', '${rec.id}')"
+      >
+        SEND TO<br>TRADE-IN APP
+      </button>
+    </td>
   </tr>
 `;
   }).join("");
