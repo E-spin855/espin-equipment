@@ -4162,43 +4162,38 @@ function openDecisionModal() {
       $("decisionModal").style.display = "none";
     }
 
-   async function confirmDecision() {
+  function confirmDecision() {
   const rec = state.records.find(r => r.id === state.selectedId);
-  if (!rec) return;
+
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
 
   const modality = String(rec.modality || "").toUpperCase().trim();
-  const magnetEvent = modality === "MRI" ? $("decisionMagnet").value : null;
+  const magnetEvent = modality === "MRI" ? $("decisionMagnet").value : "";
   const disposalRequired = String($("decisionDisposal").value).toLowerCase().trim() === "true";
-
-  // Open immediately while still inside the user click event.
-  // This reduces popup-blocker problems.
-  const connectWindow = window.open("about:blank", "_blank");
-
-  if (connectWindow) {
-    connectWindow.document.write(`
-      <html>
-        <head>
-          <title>Opening Espin Connect...</title>
-          <style>
-            body{
-              font-family:Arial,sans-serif;
-              padding:30px;
-              color:#333;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>Opening Espin Connect...</h2>
-          <p>Please wait while the project is created.</p>
-        </body>
-      </html>
-    `);
-  }
 
   closeDecisionModal();
 
-  await sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow);
+  rec.submitted_to = "connect_demo";
+  rec.submitted_at = new Date().toISOString();
+  rec.disposal_required = disposalRequired;
+  rec.magnet_event = magnetEvent;
+
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "sent_to_connect_demo";
+  rec.manager_flash_text = "Rep opened Espin Connect disposal review";
+
+  syncFeedStatus(rec);
+  render();
+
+  openConnectDemoWindow(rec, magnetEvent, disposalRequired);
+
+  showBanner("✅ Opening Espin Connect demo window...");
 }
+function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
     async function submitRecord(type, id = null) {
       const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
 
