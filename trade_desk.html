@@ -1767,46 +1767,58 @@ function createPendingManualCreditReference(rec){
     return;
   }
 
-  const isNewSalesProject =
-    rec.axis_parent_project_type === "new_sales_project" ||
-    rec.project_type === "new_sales_project" ||
-    rec.axis_source === "new_axis_project" ||
-    rec.sync_mode === "sync_tradein_to_new_axis_project" ||
-    rec.sync_mode === "attach_field_intake_to_project_review";
+ const isNewSalesProject =
+  rec.axis_parent_project_type === "new_project_record" ||
+  rec.axis_parent_project_type === "new_sales_project" ||
+  rec.project_type === "new_project_record" ||
+  rec.project_type === "new_sales_project" ||
+  rec.axis_source === "new_axis_project" ||
+  rec.sync_mode === "sync_tradein_to_new_axis_project" ||
+  rec.sync_mode === "attach_field_intake_to_project_review";
 
-  const syncMode = isNewSalesProject
-    ? "attach_field_intake_to_project_review"
-    : "attach_field_intake_to_existing_record";
+const syncMode = isNewSalesProject
+  ? "sync_tradein_to_new_axis_project"
+  : "update_existing_axis_record";
 
-  const payload = {
-    ...rec,
-    key: getRecordKey(rec),
-    axis_record_id: rec.axis_record_id || rec.axis_parent_record_id || "",
-    axis_parent_record_id: rec.axis_parent_record_id || rec.axis_record_id || "",
-    axis_project_id: rec.axis_project_id || rec.oem_project_id || rec.project_id || "",
-    axis_serial_number: rec.axis_serial_number || rec.serial_number || "",
-    axis_parent_project_type: isNewSalesProject ? "new_sales_project" : "lifecycle_equipment",
-    axis_source: isNewSalesProject ? "manual_project_review" : "manual_existing_record_review",
-    sync_mode: syncMode,
+const syncEventId = `manual_credit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const payload = {
+  ...rec,
+
+  sync_event_id: syncEventId,
+  id: syncEventId,
+  trade_desk_id: rec.id || "",
+  source_event: "manual_trade_desk_credit_reference",
+
+  key: getRecordKey(rec),
+  axis_record_id: rec.axis_record_id || rec.axis_parent_record_id || "",
+  axis_parent_record_id: rec.axis_parent_record_id || rec.axis_record_id || "",
+  axis_project_id: rec.axis_project_id || rec.oem_project_id || rec.project_id || "",
+  axis_serial_number: rec.axis_serial_number || rec.serial_number || "",
+  axis_parent_project_type: isNewSalesProject ? "new_project_record" : "equipment_review_record",
+  axis_source: isNewSalesProject ? "new_axis_project" : "existing_axis_equipment",
+  sync_mode: syncMode,
 
     manual_trade_desk_credit_pending: selectedAmount,
-    manual_credit_reference_amount: selectedAmount,
-    manual_credit_status: "Pending Rep Review",
-    manual_credit_source: "Manual Trade Desk Review",
-    manual_credit_note: "Manual credit reference created from buyer response. Rep or manager must review before applying to any quote.",
-    manual_credit_posted_at: new Date().toISOString(),
-    manual_credit_posted_by: "trade.desk@demo.com",
+manual_credit_reference_amount: selectedAmount,
+manual_credit_status: "Pending Rep Review",
+manual_credit_source: "Manual Trade Desk Review",
+manual_credit_note: "Manual credit reference created from buyer response. Rep or manager must review before applying to any quote.",
+manual_credit_posted_at: new Date().toISOString(),
+manual_credit_posted_by: "trade.desk@demo.com",
 
-    trade_in_value: "",
-    trade_in_credit: "",
-    tradein_credit: "",
-    quote_trade_in_credit: "",
-    associated_trade_in_credit: "",
-    associatedTradeInCredit: "",
-    tradein_estimated_value: "",
-    estimated_trade_in_value: "",
+external_tradein_value: selectedAmount,
+trade_in_value: selectedAmount,
+winning_bid_amount: selectedAmount,
+manual_tradein_reference_amount: selectedAmount,
 
-    winning_bid_amount: selectedAmount,
+trade_in_credit: "",
+tradein_credit: "",
+quote_trade_in_credit: "",
+associated_trade_in_credit: "",
+associatedTradeInCredit: "",
+tradein_estimated_value: "",
+estimated_trade_in_value: "",
     winning_bidder: rec.winning_bidder || rec.winningBid?.bidder || "",
     winning_bid_terms: rec.winning_bid_terms || rec.winningBid?.terms || "",
 
