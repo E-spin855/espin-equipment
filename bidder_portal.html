@@ -703,7 +703,11 @@ function setBidButtonState(recordId, state){
   btn.disabled = false;
   btn.textContent = "Submit Bid";
 }
-
+function togglePackageFromEl(el){
+  const recordId = getRecordIdFromEl(el);
+  if (!recordId) return;
+  togglePackage(recordId);
+}
 function togglePackage(recordId){
   const id = String(recordId || "").trim();
   if (!id) return;
@@ -968,7 +972,7 @@ function renderPackageCard(rec){
         </div>
 
         <div class="package-actions">
-          <button onclick="togglePackage('${htmlSafe(recordId)}')">
+          <button data-record-id="${htmlSafe(recordId)}" onclick="togglePackageFromEl(this)">
             ${isOpen ? "Close Package" : "Open Package"}
           </button>
         </div>
@@ -1029,48 +1033,53 @@ function renderPackageCard(rec){
               Enter company name and bid amount.
             </div>
 
-            <label class="form-title">Company Name</label>
-            <input
-              id="bidderCompany_${safeRecordId}"
-              value="${htmlSafe(draft.bidder_company || approvedBidderCompany)}"
-              placeholder="Company Name"
-              autocomplete="organization"
-              oninput="syncDraftFromInputs('${htmlSafe(recordId)}')"
-            >
+           <label class="form-title">Company Name</label>
+<input
+  id="bidderCompany_${safeRecordId}"
+  data-record-id="${htmlSafe(recordId)}"
+  value="${htmlSafe(draft.bidder_company || approvedBidderCompany)}"
+  placeholder="Company Name"
+  autocomplete="organization"
+  oninput="syncDraftFromInputsFromEl(this)"
+>
 
-            <label class="form-title">Bid Amount</label>
-            <input
-              id="bidAmount_${safeRecordId}"
-              type="number"
-              value="${htmlSafe(draft.amount)}"
-              placeholder="Bid Amount"
-              autocomplete="off"
-              oninput="syncDraftFromInputs('${htmlSafe(recordId)}')"
-            >
+<label class="form-title">Bid Amount</label>
+<input
+  id="bidAmount_${safeRecordId}"
+  data-record-id="${htmlSafe(recordId)}"
+  type="number"
+  value="${htmlSafe(draft.amount)}"
+  placeholder="Bid Amount"
+  autocomplete="off"
+  oninput="syncDraftFromInputsFromEl(this)"
+>
 
-            <label class="form-title">Terms / Pickup Notes</label>
-            <textarea
-              id="bidTerms_${safeRecordId}"
-              placeholder="Terms / pickup notes"
-              oninput="syncDraftFromInputs('${htmlSafe(recordId)}')"
-            >${htmlSafe(draft.terms)}</textarea>
+<label class="form-title">Terms / Pickup Notes</label>
+<textarea
+  id="bidTerms_${safeRecordId}"
+  data-record-id="${htmlSafe(recordId)}"
+  placeholder="Terms / pickup notes"
+  oninput="syncDraftFromInputsFromEl(this)"
+>${htmlSafe(draft.terms)}</textarea>
 
-            <label class="form-title">Bid Valid Until</label>
-            <input
-              id="bidExpires_${safeRecordId}"
-              type="date"
-              value="${htmlSafe(draft.expires)}"
-              autocomplete="off"
-              oninput="syncDraftFromInputs('${htmlSafe(recordId)}')"
-            >
+<label class="form-title">Bid Valid Until</label>
+<input
+  id="bidExpires_${safeRecordId}"
+  data-record-id="${htmlSafe(recordId)}"
+  type="date"
+  value="${htmlSafe(draft.expires)}"
+  autocomplete="off"
+  oninput="syncDraftFromInputsFromEl(this)"
+>
 
-            <button
-              id="submitBidBtn_${safeRecordId}"
-              class="green"
-              onclick="submitBid('${htmlSafe(recordId)}')"
-            >
-              Submit Bid
-            </button>
+<button
+  id="submitBidBtn_${safeRecordId}"
+  class="green"
+  data-record-id="${htmlSafe(recordId)}"
+  onclick="submitBidFromEl(this)"
+>
+  Submit Bid
+</button>
           `
           : ""
       }
@@ -1116,6 +1125,26 @@ function render(){
       ${packages.map(renderPackageCard).join("")}
     </div>
   `;
+}
+function getRecordIdFromEl(el){
+  return String(el?.dataset?.recordId || "").trim();
+}
+
+function syncDraftFromInputsFromEl(el){
+  const recordId = getRecordIdFromEl(el);
+  if (!recordId) return;
+  syncDraftFromInputs(recordId);
+}
+
+function submitBidFromEl(el){
+  const recordId = getRecordIdFromEl(el);
+
+  if (!recordId) {
+    alert("Missing bid package record ID.");
+    return;
+  }
+
+  submitBid(recordId);
 }
 
 function submitBid(recordId){
