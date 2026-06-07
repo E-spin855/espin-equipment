@@ -646,7 +646,7 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 function buttonSpinConfirm(btn, loadingText, successText, done){
-  suppressRenderUntil = Date.now() + 2500;
+  suppressRenderUntil = Date.now() + 1800;
 
   if (!btn) {
     if (typeof done === "function") done();
@@ -654,10 +654,11 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     return;
   }
 
-  const originalHtml = btn.innerHTML;
-  const originalDisabled = btn.disabled;
+  const originalHtml = btn.dataset.originalHtml || btn.innerHTML;
 
+  btn.dataset.originalHtml = originalHtml;
   btn.disabled = true;
+  btn.classList.remove("is-success");
   btn.classList.add("is-loading");
   btn.innerHTML = `<span class="spinner-dot"></span>${loadingText || "Working..."}`;
 
@@ -667,15 +668,13 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      if (typeof done === "function") done();
+      btn.classList.remove("is-success");
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      suppressRenderUntil = 0;
 
-      setTimeout(() => {
-        btn.classList.remove("is-success");
-        btn.disabled = originalDisabled;
-        btn.innerHTML = originalHtml;
-        suppressRenderUntil = 0;
-      }, 500);
-    }, 350);
+      if (typeof done === "function") done();
+    }, 700);
   }, 650);
 }
 function openImagePreview(url, title){
@@ -1619,10 +1618,12 @@ const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
     `?cc=${encodeURIComponent(ccEmail)}` +
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
-
- buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
-  render();
+buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   window.location.href = mailto;
+
+  setTimeout(() => {
+    render();
+  }, 300);
 });
 }
 
@@ -1764,10 +1765,13 @@ function sendInfoRequestToRep(btn = null){
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
- buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
+buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   closeInfoRequestModal();
-  render();
   window.location.href = mailto;
+
+  setTimeout(() => {
+    render();
+  }, 300);
 });
 }
 
@@ -2669,6 +2673,8 @@ function renderManualCreditCard(rec){
 }
 
 function render(){
+  if (shouldSuppressRender()) return;
+
   const data = loadData();
 
   tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No field intake records submitted yet.</p>";
