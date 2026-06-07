@@ -242,16 +242,6 @@ hr{
   margin-top:8px;
 }
 
-@media(max-width:900px){
-  .package-head{
-    grid-template-columns:1fr;
-  }
-
-  .top-bar{
-    flex-direction:column;
-  }
-}
-
 .image-preview-overlay{
   position:fixed;
   inset:0;
@@ -294,6 +284,16 @@ hr{
   margin-top:12px;
   background:#1d8cff;
   color:#fff;
+}
+
+@media(max-width:900px){
+  .package-head{
+    grid-template-columns:1fr;
+  }
+
+  .top-bar{
+    flex-direction:column;
+  }
 }
 </style>
 </head>
@@ -372,6 +372,13 @@ function htmlSafe(v){
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function attrSafe(v){
+  return String(v || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;");
 }
 
 function idSafe(v){
@@ -460,14 +467,10 @@ function getBidDeadline(rec){
 
 function formatBidDeadline(rec){
   const raw = getBidDeadline(rec);
-
   if (!raw) return "Not set";
 
   const d = new Date(raw);
-
-  if (!Number.isNaN(d.getTime())) {
-    return d.toLocaleString();
-  }
+  if (!Number.isNaN(d.getTime())) return d.toLocaleString();
 
   return raw;
 }
@@ -682,6 +685,12 @@ function syncDraftFromInputs(recordId){
   draft.expires = String(document.getElementById(`bidExpires_${safeId}`)?.value || draft.expires || "").trim();
 }
 
+function syncDraftFromInputsFromEl(el){
+  const recordId = String(el?.getAttribute("data-record-id") || "").trim();
+  if (!recordId) return;
+  syncDraftFromInputs(recordId);
+}
+
 function setBidButtonState(recordId, state, btnEl = null){
   const safeRecordId = idSafe(recordId);
   const btn = btnEl || document.getElementById(`submitBidBtn_${safeRecordId}`);
@@ -703,6 +712,7 @@ function setBidButtonState(recordId, state, btnEl = null){
   btn.disabled = false;
   btn.textContent = "Submit Bid";
 }
+
 function togglePackage(recordId){
   const id = String(recordId || "").trim();
   if (!id) return;
@@ -729,9 +739,11 @@ function imageHtml(rec){
       ${rec.images.map(img => {
         const url = htmlSafe(img.url || "");
         const title = htmlSafe(img.title || img.type || "Equipment Image");
+        const clickUrl = attrSafe(img.url || "");
+        const clickTitle = attrSafe(img.title || img.type || "Equipment Image");
 
         return `
-          <div class="image-box" onclick="openImagePreview('${url}', '${title}')" style="cursor:pointer;">
+          <div class="image-box" onclick="openImagePreview('${clickUrl}', '${clickTitle}')" style="cursor:pointer;">
             <img src="${url}" alt="${title}">
             <div class="small">${title}</div>
             <div class="small" style="color:#41ff9c;font-weight:800;margin-top:4px;">
@@ -942,6 +954,7 @@ function tradeInFieldRows(rec){
 function renderPackageCard(rec){
   const recordId = String(rec.id || getTradeDeskRecordId(rec) || getBidPackageId(rec) || "");
   const safeRecordId = idSafe(recordId);
+  const clickRecordId = attrSafe(recordId);
   const packageId = getBidPackageId(rec);
   const isOpen = openPackageId === recordId;
   const draft = getDraft(recordId);
@@ -965,15 +978,12 @@ function renderPackageCard(rec){
           <strong>${htmlSafe(rec.availability_timeframe || "-")}</strong>
           <div class="small">Availability</div>
         </div>
-<div class="package-actions">
-  <button
-    type="button"
-    data-action="toggle-package"
-    data-record-id="${htmlSafe(recordId)}"
-  >
-    ${isOpen ? "Close Package" : "Open Package"}
-  </button>
-</div>
+
+        <div class="package-actions">
+          <button type="button" onclick="togglePackage('${clickRecordId}')">
+            ${isOpen ? "Close Package" : "Open Package"}
+          </button>
+        </div>
       </div>
 
       <div class="package-grid">
@@ -1031,54 +1041,53 @@ function renderPackageCard(rec){
               Enter company name and bid amount.
             </div>
 
-           <label class="form-title">Company Name</label>
-<input
-  id="bidderCompany_${safeRecordId}"
-  data-record-id="${htmlSafe(recordId)}"
-  value="${htmlSafe(draft.bidder_company || approvedBidderCompany)}"
-  placeholder="Company Name"
-  autocomplete="organization"
-  oninput="syncDraftFromInputsFromEl(this)"
->
+            <label class="form-title">Company Name</label>
+            <input
+              id="bidderCompany_${safeRecordId}"
+              data-record-id="${htmlSafe(recordId)}"
+              value="${htmlSafe(draft.bidder_company || approvedBidderCompany)}"
+              placeholder="Company Name"
+              autocomplete="organization"
+              oninput="syncDraftFromInputsFromEl(this)"
+            >
 
-<label class="form-title">Bid Amount</label>
-<input
-  id="bidAmount_${safeRecordId}"
-  data-record-id="${htmlSafe(recordId)}"
-  type="number"
-  value="${htmlSafe(draft.amount)}"
-  placeholder="Bid Amount"
-  autocomplete="off"
-  oninput="syncDraftFromInputsFromEl(this)"
->
+            <label class="form-title">Bid Amount</label>
+            <input
+              id="bidAmount_${safeRecordId}"
+              data-record-id="${htmlSafe(recordId)}"
+              type="number"
+              value="${htmlSafe(draft.amount)}"
+              placeholder="Bid Amount"
+              autocomplete="off"
+              oninput="syncDraftFromInputsFromEl(this)"
+            >
 
-<label class="form-title">Terms / Pickup Notes</label>
-<textarea
-  id="bidTerms_${safeRecordId}"
-  data-record-id="${htmlSafe(recordId)}"
-  placeholder="Terms / pickup notes"
-  oninput="syncDraftFromInputsFromEl(this)"
->${htmlSafe(draft.terms)}</textarea>
+            <label class="form-title">Terms / Pickup Notes</label>
+            <textarea
+              id="bidTerms_${safeRecordId}"
+              data-record-id="${htmlSafe(recordId)}"
+              placeholder="Terms / pickup notes"
+              oninput="syncDraftFromInputsFromEl(this)"
+            >${htmlSafe(draft.terms)}</textarea>
 
-<label class="form-title">Bid Valid Until</label>
-<input
-  id="bidExpires_${safeRecordId}"
-  data-record-id="${htmlSafe(recordId)}"
-  type="date"
-  value="${htmlSafe(draft.expires)}"
-  autocomplete="off"
-  oninput="syncDraftFromInputsFromEl(this)"
->
+            <label class="form-title">Bid Valid Until</label>
+            <input
+              id="bidExpires_${safeRecordId}"
+              data-record-id="${htmlSafe(recordId)}"
+              type="date"
+              value="${htmlSafe(draft.expires)}"
+              autocomplete="off"
+              oninput="syncDraftFromInputsFromEl(this)"
+            >
 
-<button
-  type="button"
-  id="submitBidBtn_${safeRecordId}"
-  class="green"
-  data-action="submit-bid"
-  data-record-id="${htmlSafe(recordId)}"
->
-  Submit Bid
-</button>
+            <button
+              type="button"
+              id="submitBidBtn_${safeRecordId}"
+              class="green"
+              onclick="submitBid('${clickRecordId}', this)"
+            >
+              Submit Bid
+            </button>
           `
           : ""
       }
@@ -1125,43 +1134,7 @@ function render(){
     </div>
   `;
 }
-function getRecordIdFromEl(el){
-  return String(el?.dataset?.recordId || "").trim();
-}
 
-function syncDraftFromInputsFromEl(el){
-  const recordId = getRecordIdFromEl(el);
-  if (!recordId) return;
-  syncDraftFromInputs(recordId);
-}
-document.addEventListener("click", function(e){
-  const btn = e.target.closest("button[data-action]");
-  if (!btn) return;
-
-  const root = document.getElementById("packageRoot");
-  if (!root || !root.contains(btn)) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  const action = btn.dataset.action;
-  const recordId = getRecordIdFromEl(btn);
-
-  if (!recordId) {
-    alert("Missing bid package record ID.");
-    return;
-  }
-
-  if (action === "toggle-package") {
-    togglePackage(recordId);
-    return;
-  }
-
-  if (action === "submit-bid") {
-    submitBid(recordId, btn);
-    return;
-  }
-});
 function submitBid(recordId, btnEl = null){
   suppressRenderUntil = Date.now() + 2200;
 
@@ -1182,6 +1155,7 @@ function submitBid(recordId, btnEl = null){
   draft.amount = amountInput?.value || "";
   draft.terms = terms;
   draft.expires = expires;
+
   const errorBox = document.getElementById(`errorBox_${safeRecordId}`);
   const successBox = document.getElementById(`successBox_${safeRecordId}`);
 
