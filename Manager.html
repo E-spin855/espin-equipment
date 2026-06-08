@@ -1432,6 +1432,14 @@ function renderReviewCondition(rec) {
     return `<span class="alert-badge alert-disposal">Overdue</span>`;
   }
 
+  const alerts = getAlerts(rec);
+  const first = alerts[0];
+  const type = lower(first?.type || rec.oem_review_type || rec.review_type || rec.alert_override || "");
+
+  if (type === "tradein" || type === "trade_in") {
+    return `<span class="alert-badge alert-proactive">Trade-In</span>`;
+  }
+
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
     return `<span class="alert-badge alert-proactive">Trade-In</span>`;
   }
@@ -1450,17 +1458,12 @@ function renderReviewCondition(rec) {
     return `<span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">Draft</span>`;
   }
 
-  const alerts = getAlerts(rec);
-
   if (!alerts.length) {
     return `<span class="alert-badge alert-none">Normal</span>`;
   }
 
-  const first = alerts[0];
-  const type = lower(first.type);
-
   let cls = "alert-badge alert-planning";
-  let shortText = "Review";
+  let shortText = first.displayType || "Review";
 
   if (type === "service") {
     cls = "alert-badge alert-service";
@@ -1493,7 +1496,6 @@ function renderReviewCondition(rec) {
 
   return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
 }
-
 function getRepActionLabel(action) {
   const map = {
     quote_review: "Quote Review",
