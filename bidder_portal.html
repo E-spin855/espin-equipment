@@ -27,14 +27,6 @@ h1,h2,h3{
   margin-bottom:16px;
 }
 
-.card{
-  background:#101f38;
-  border:1px solid #2b4a68;
-  border-radius:14px;
-  padding:16px;
-  margin:12px 0;
-}
-
 .package-card{
   background:#101f38;
   border:1px solid #2b4a68;
@@ -146,6 +138,30 @@ hr{
   margin:18px 0;
 }
 
+.top-bar{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:14px;
+}
+
+.package-head{
+  display:grid;
+  grid-template-columns:1.4fr .7fr .7fr .7fr;
+  gap:12px;
+  align-items:center;
+}
+
+.package-title{
+  font-size:17px;
+  font-weight:900;
+}
+
+.package-actions{
+  min-width:140px;
+}
+
 .package-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
@@ -163,6 +179,23 @@ hr{
 .package-box strong{
   display:block;
   margin-bottom:6px;
+}
+
+.deadline-box{
+  background:linear-gradient(90deg,#064e3b,#059669,#10b981);
+  border:2px solid #34d399;
+  color:#ecfdf5;
+  padding:14px;
+  border-radius:12px;
+  font-weight:900;
+  margin:12px 0;
+  box-shadow:0 0 24px rgba(16,185,129,.45);
+}
+
+.form-title{
+  color:#ffffff;
+  font-weight:900;
+  margin-top:8px;
 }
 
 .image-row{
@@ -210,46 +243,14 @@ hr{
   font-weight:800;
 }
 
-.top-bar{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:flex-start;
-  margin-bottom:14px;
-}
-
-.package-head{
-  display:grid;
-  grid-template-columns:1.4fr .7fr .7fr .7fr;
-  gap:12px;
-  align-items:center;
-}
-
-.package-title{
-  font-size:17px;
-  font-weight:900;
-}
-
-.package-actions{
-  min-width:140px;
-}
-
-.deadline-box{
-  background:linear-gradient(90deg,#064e3b,#059669,#10b981);
-  border:2px solid #34d399;
-  color:#ecfdf5;
-  padding:14px;
+.debug-box{
+  background:#07111f;
+  border:1px dashed #2b4a68;
   border-radius:12px;
-  font-weight:900;
-  margin:12px 0;
-  box-shadow:0 0 24px rgba(16,185,129,.45);
-  text-shadow:0 0 8px rgba(52,211,153,.45);
-}
-
-.form-title{
-  color:#ffffff;
-  font-weight:900;
-  margin-top:8px;
+  padding:10px;
+  color:#9db6d2;
+  font-size:12px;
+  margin-top:10px;
 }
 
 .image-preview-overlay{
@@ -321,15 +322,24 @@ hr{
 
 <div id="packageRoot"></div>
 
-<div id="imagePreviewOverlay" class="image-preview-overlay" onclick="closeImagePreview()">
-  <div class="image-preview-box" onclick="event.stopPropagation();">
+<div id="imagePreviewOverlay" class="image-preview-overlay">
+  <div class="image-preview-box">
     <img id="imagePreviewImg" src="" alt="Image preview">
     <div id="imagePreviewTitle" class="image-preview-title"></div>
-    <button class="image-preview-close" onclick="closeImagePreview()">Close Preview</button>
+    <button type="button" id="closePreviewBtn" class="image-preview-close">Close Preview</button>
   </div>
 </div>
 
 <script>
+/* ==========================================================
+   AXIS BIDDER PORTAL — STABLE FULL PAGE
+   Main fix:
+   - No auto-render while package is open.
+   - No auto-render while bid form is focused.
+   - Submit button uses event delegation.
+   - Console logs show click, validation, save, and reset.
+   ========================================================== */
+
 const TRADE_DESK_KEY = "axis_trade_desk_demo_v1";
 const TRADEIN_SYNC_KEY = "axis_tradein_sync_records_v1";
 const LAST_SYNC_KEY = "axis_tradein_last_sync_v1";
@@ -372,6 +382,13 @@ let userManuallyClosedPackage = false;
 let suppressRenderUntil = 0;
 const bidDrafts = {};
 
+console.log("BIDDER PORTAL LOADED", {
+  packageIdFromUrl,
+  recordIdFromUrl,
+  approvedBidderCompany,
+  approvedBidderEmail
+});
+
 function uid(prefix){
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -385,22 +402,20 @@ function htmlSafe(v){
     .replace(/'/g, "&#039;");
 }
 
-function attrSafe(v){
-  return String(v || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'")
-    .replace(/"/g, "&quot;");
-}
-
 function idSafe(v){
   return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+function money(n){
+  return "$" + Number(n || 0).toLocaleString();
+}
+
 function loadArray(key){
-  try {
+  try{
     const data = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(data) ? data : [];
-  } catch {
+  }catch(err){
+    console.warn("loadArray failed", key, err);
     return [];
   }
 }
@@ -409,24 +424,27 @@ function saveArray(key, data){
   localStorage.setItem(key, JSON.stringify(Array.isArray(data) ? data : []));
 }
 
-function openImagePreview(url, title){
-  const overlay = document.getElementById("imagePreviewOverlay");
-  const img = document.getElementById("imagePreviewImg");
-  const titleEl = document.getElementById("imagePreviewTitle");
-
-  if (!overlay || !img || !titleEl) return;
-
-  img.src = url || "";
-  titleEl.textContent = title || "Equipment Image";
-  overlay.style.display = "flex";
+function getV(obj, ...keys){
+  for (const key of keys){
+    const v = obj?.[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
 }
 
-function closeImagePreview(){
-  const overlay = document.getElementById("imagePreviewOverlay");
-  const img = document.getElementById("imagePreviewImg");
+function yesNo(v){
+  const s = String(v || "").trim().toLowerCase();
+  if (["yes", "y", "true", "1"].includes(s)) return "Yes";
+  if (["no", "n", "false", "0"].includes(s)) return "No";
+  return v;
+}
 
-  if (img) img.src = "";
-  if (overlay) overlay.style.display = "none";
+function normalizeModality(v){
+  const s = String(v || "").trim().toUpperCase();
+  if (s === "X-RAY") return "XRAY";
+  if (s === "C-ARM") return "CARM";
+  if (s === "PET") return "PETCT";
+  return s;
 }
 
 function getBidPackageId(rec){
@@ -524,7 +542,7 @@ function normalizePortalPackage(pkg){
   merged.review_packet_id = pkg.review_packet_id || record.review_packet_id || equipment.review_packet_id || merged.package_id;
   merged.bid_package_id = pkg.bid_package_id || record.bid_package_id || equipment.bid_package_id || merged.package_id;
 
-  merged.modality = merged.modality || record.modality || equipment.modality || "";
+  merged.modality = normalizeModality(merged.modality || record.modality || equipment.modality || "");
   merged.make = merged.make || record.make || equipment.make || "";
   merged.model = merged.model || record.model || equipment.model || "";
   merged.serial_number = merged.serial_number || record.serial_number || equipment.serial_number || merged.axis_serial_number || "";
@@ -545,6 +563,12 @@ function normalizePortalPackage(pkg){
     record.buyer_response_status ||
     pkg.status ||
     "Open for Bids";
+
+  merged.buyer_response_status =
+    pkg.buyer_response_status ||
+    record.buyer_response_status ||
+    equipment.buyer_response_status ||
+    "";
 
   merged.response_deadline = pkg.response_deadline || record.response_deadline || equipment.response_deadline || "";
   merged.bid_deadline = pkg.bid_deadline || record.bid_deadline || equipment.bid_deadline || merged.response_deadline || "";
@@ -581,8 +605,6 @@ function packageMatches(pkg, targetRecordId = "", targetPacketId = ""){
 
   if (recordId && ids.includes(recordId)) return true;
   if (packetId && ids.includes(packetId)) return true;
-  if (targetRecordId && ids.includes(String(targetRecordId))) return true;
-  if (targetPacketId && ids.includes(String(targetPacketId))) return true;
 
   return false;
 }
@@ -600,7 +622,7 @@ function getOpenPackages(){
 
   const seen = new Set();
 
-  return combined.filter(pkg => {
+  const open = combined.filter(pkg => {
     const id = getBidPackageId(pkg);
     if (!id || seen.has(id)) return false;
     seen.add(id);
@@ -616,6 +638,15 @@ function getOpenPackages(){
       String(pkg.bid_status || "") === "Bids Received"
     );
   });
+
+  console.log("getOpenPackages()", {
+    portalPackages: portalPackages.length,
+    buyerPackets: buyerPackets.length,
+    tradeDeskRecords: tradeDeskRecords.length,
+    openPackages: open.length
+  });
+
+  return open;
 }
 
 function getVisiblePackages(){
@@ -646,6 +677,13 @@ function isBidFormFocused(){
   );
 }
 
+function shouldBlockAutoRender(){
+  if (Date.now() < suppressRenderUntil) return true;
+  if (isBidFormFocused()) return true;
+  if (openPackageId) return true;
+  return false;
+}
+
 function getDraft(recordId){
   if (!bidDrafts[recordId]) {
     bidDrafts[recordId] = {
@@ -667,23 +705,24 @@ function syncDraftFromInputs(recordId){
   draft.amount = String(document.getElementById(`bidAmount_${safeId}`)?.value || draft.amount || "").trim();
   draft.terms = String(document.getElementById(`bidTerms_${safeId}`)?.value || draft.terms || "").trim();
   draft.expires = String(document.getElementById(`bidExpires_${safeId}`)?.value || draft.expires || "").trim();
-}
 
-function syncDraftFromInputsFromEl(el){
-  const recordId = String(el?.getAttribute("data-record-id") || "").trim();
-  if (!recordId) return;
-  syncDraftFromInputs(recordId);
+  console.log("Draft updated", {
+    recordId,
+    draft
+  });
 }
 
 function setBidButtonState(recordId, state, btnEl = null){
   const safeRecordId = idSafe(recordId);
   const btn = btnEl || document.getElementById(`submitBidBtn_${safeRecordId}`);
 
-  if (!btn) return;
+  console.log("setBidButtonState()", {
+    recordId,
+    state,
+    foundButton: Boolean(btn)
+  });
 
-  if (!btn.dataset.originalText) {
-    btn.dataset.originalText = "Submit Bid";
-  }
+  if (!btn) return;
 
   btn.classList.remove("is-loading", "is-success");
 
@@ -703,23 +742,49 @@ function setBidButtonState(recordId, state, btnEl = null){
 
   btn.disabled = false;
   btn.classList.remove("is-loading", "is-success");
-  btn.textContent = btn.dataset.originalText || "Submit Bid";
+  btn.textContent = "Submit Bid";
 }
 
 function togglePackage(recordId){
   const id = String(recordId || "").trim();
+
+  console.log("togglePackage()", {
+    clickedId: id,
+    previousOpenPackageId: openPackageId
+  });
+
   if (!id) return;
 
   if (openPackageId === id) {
     openPackageId = "";
     userManuallyClosedPackage = true;
-    render();
+    render(true);
     return;
   }
 
   openPackageId = id;
   userManuallyClosedPackage = false;
-  render();
+  render(true);
+}
+
+function openImagePreview(url, title){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+  const titleEl = document.getElementById("imagePreviewTitle");
+
+  if (!overlay || !img || !titleEl) return;
+
+  img.src = url || "";
+  titleEl.textContent = title || "Equipment Image";
+  overlay.style.display = "flex";
+}
+
+function closeImagePreview(){
+  const overlay = document.getElementById("imagePreviewOverlay");
+  const img = document.getElementById("imagePreviewImg");
+
+  if (img) img.src = "";
+  if (overlay) overlay.style.display = "none";
 }
 
 function imageHtml(rec){
@@ -729,14 +794,17 @@ function imageHtml(rec){
 
   return `
     <div class="image-row">
-      ${rec.images.map(img => {
+      ${rec.images.map((img, index) => {
         const url = htmlSafe(img.url || "");
-        const title = htmlSafe(img.title || img.type || "Equipment Image");
-        const clickUrl = attrSafe(img.url || "");
-        const clickTitle = attrSafe(img.title || img.type || "Equipment Image");
+        const title = htmlSafe(img.title || img.type || `Equipment Image ${index + 1}`);
 
         return `
-          <div class="image-box" onclick="openImagePreview('${clickUrl}', '${clickTitle}')" style="cursor:pointer;">
+          <div
+            class="image-box js-preview-image"
+            data-url="${url}"
+            data-title="${title}"
+            style="cursor:pointer;"
+          >
             <img src="${url}" alt="${title}">
             <div class="small">${title}</div>
             <div class="small" style="color:#41ff9c;font-weight:800;margin-top:4px;">
@@ -750,188 +818,84 @@ function imageHtml(rec){
 }
 
 function tradeInFieldRows(rec){
-  const getV = (...keys) => {
-    for (const key of keys) {
-      const v = rec[key];
-      if (v !== undefined && v !== null && String(v).trim() !== "") return v;
-    }
-    return "";
-  };
-
-  const yesNo = (v) => {
-    const s = String(v || "").trim().toLowerCase();
-    if (["yes", "y", "true", "1"].includes(s)) return "Yes";
-    if (["no", "n", "false", "0"].includes(s)) return "No";
-    return v;
-  };
-
-  const shouldShow = (key, value) => {
-    const isYes = (v) => ["y", "yes", "true", "1"].includes(String(v ?? "").trim().toLowerCase());
-    const isNo = (v) => ["n", "no", "false", "0"].includes(String(v ?? "").trim().toLowerCase());
-
-    if (key === "ct_injector_model") return isYes(getV("ct_injector"));
-    if (key === "ct_upgrades_desc") return isYes(getV("ct_upgrades"));
-    if (key === "ct_out_of_use_date") return isNo(getV("ct_in_use", "in_use_status", "tradein_in_use_status"));
-    if (key === "mri_service_name") return isYes(getV("mri_service"));
-    if (key === "mri_out_of_use_date") return isNo(getV("mri_in_use", "in_use_status", "tradein_in_use_status"));
-    if (key === "xray_out_of_use_date") return isNo(getV("xray_in_use", "in_use_status", "tradein_in_use_status"));
-    if (key === "carm_service_name") return isYes(getV("carm_servicing"));
-    if (key === "carm_out_of_use_date") return isNo(getV("carm_in_use", "in_use_status", "tradein_in_use_status"));
-    if (key === "pet_out_of_use_date") return isNo(getV("pet_in_use", "in_use_status", "tradein_in_use_status"));
-    if (key === "mamo_out_of_use_date") return isNo(getV("mamo_in_use", "in_use_status", "tradein_in_use_status"));
-
-    return value !== undefined && value !== null && String(value).trim() !== "";
-  };
-
-  const city = getV("city");
-  const state = getV("state");
-  const zip = getV("zip_code", "zip");
-  const location = [city, state, zip].filter(Boolean).join(" ");
-
-  const modality = String(getV("modality", "tradein_equipment_modality")).toUpperCase();
+  const modality = normalizeModality(getV(rec, "modality", "tradein_equipment_modality"));
 
   const rows = [
-    ["Location", location, "location"],
-    ["Modality", getV("modality", "tradein_equipment_modality"), "modality"]
+    ["Location", [getV(rec, "city"), getV(rec, "state"), getV(rec, "zip_code", "zip")].filter(Boolean).join(" ")],
+    ["Modality", getV(rec, "modality", "tradein_equipment_modality")],
+    ["Manufacturer", getV(rec, "make", "tradein_equipment_make", "ct_manufacturer", "mri_manufacturer", "mamo_manufacturer", "xray_manufacturer", "carm_manufacturer", "pet_manufacturer")],
+    ["Model", getV(rec, "model", "tradein_equipment_model", "ct_model", "mri_model", "mamo_model", "xray_model", "carm_model", "pet_model")],
+    ["Serial", getV(rec, "serial_number", "axis_serial_number", "tradein_equipment_serial_number", "ct_serial", "mri_serial", "mamo_serial", "xray_serial", "carm_serial", "pet_serial")],
+    ["Additional Identifier", getV(rec, "hospital_asset_id", "additional_identifier")],
+    ["Date Manufactured / Year", getV(rec, "dom", "tradein_equipment_dom", "ct_dom", "mri_yom", "mamo_dom", "pet_tube_dom")],
+    ["Installed Date", getV(rec, "installed_date", "ct_installed")],
+    ["System In Use", yesNo(getV(rec, "in_use_status", "tradein_in_use_status", "ct_in_use", "mri_in_use", "mamo_in_use", "xray_in_use", "carm_in_use", "pet_in_use"))],
+    ["Out Of Use Date", getV(rec, "out_of_use_date", "tradein_out_of_use_date", "ct_out_of_use_date", "mri_out_of_use_date", "mamo_out_of_use_date", "xray_out_of_use_date", "carm_out_of_use_date", "pet_out_of_use_date")],
+    ["Availability Timeframe", getV(rec, "availability_timeframe", "tradein_availability_timeframe", "ct_availability_timeframe", "mri_availability_timeframe", "mamo_availability_timeframe", "xray_availability_timeframe", "carm_availability_timeframe", "pet_availability_timeframe")],
+    ["Removal Pathways", getV(rec, "removal_pathways", "tradein_removal_pathways", "ct_removal_pathways", "mri_removal_pathways", "mamo_removal_pathways", "xray_removal_pathways", "pet_removal_pathways")],
+    ["Loading Dock", yesNo(getV(rec, "loading_dock", "tradein_loading_dock", "ct_loading_dock", "mamo_loading_dock", "xray_loading_dock", "pet_loading_dock"))],
+    ["Hard Drives Removed", yesNo(getV(rec, "hard_drive_removed", "tradein_hard_drive_removed", "ct_hard_drive_removed", "mri_hard_drive_removed", "mamo_hard_drive_removed", "carm_hard_drive_removed", "pet_hard_drive_removed"))],
+    ["Software Version", getV(rec, "software_version", "tradein_software_version", "ct_sw_version", "mri_sw_version", "carm_sw_version")],
+    ["Upgrade / Configuration Notes", getV(rec, "upgrade_notes", "tradein_upgrade_notes", "ct_upgrades_desc", "mri_coils")]
   ];
 
   if (modality === "CT") {
     rows.push(
-      ["CT Model", getV("ct_model", "model", "tradein_equipment_model"), "ct_model"],
-      ["CT Manufacturer", getV("ct_manufacturer", "make", "tradein_equipment_make"), "ct_manufacturer"],
-      ["CT Serial", getV("ct_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "ct_serial"],
-      ["CT Installed", getV("ct_installed", "installed_date"), "ct_installed"],
-      ["CT Dom", getV("ct_dom", "dom", "tradein_equipment_dom"), "ct_dom"],
-      ["CT Tube Dom", getV("ct_tube_dom"), "ct_tube_dom"],
-      ["CT Mhu", getV("ct_mhu"), "ct_mhu"],
-      ["CT Tube Mas", getV("ct_tube_mas"), "ct_tube_mas"],
-      ["CT Slices", getV("ct_slices"), "ct_slices"],
-      ["CT In Use", yesNo(getV("ct_in_use", "in_use_status", "tradein_in_use_status")), "ct_in_use"],
-      ["CT Out Of Use Date", getV("ct_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "ct_out_of_use_date"],
-      ["CT Injector", yesNo(getV("ct_injector")), "ct_injector"],
-      ["CT Injector Model", getV("ct_injector_model"), "ct_injector_model"],
-      ["CT Upgrades", yesNo(getV("ct_upgrades")), "ct_upgrades"],
-      ["CT Upgrades Description", getV("ct_upgrades_desc", "upgrade_notes", "tradein_upgrade_notes"), "ct_upgrades_desc"],
-      ["CT Hard Drives Removed", yesNo(getV("ct_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed")), "ct_hard_drive_removed"],
-      ["CT Removal Pathways", getV("ct_removal_pathways", "removal_pathways", "tradein_removal_pathways"), "ct_removal_pathways"],
-      ["CT Loading Dock", getV("ct_loading_dock", "loading_dock", "tradein_loading_dock"), "ct_loading_dock"],
-      ["CT Software Version", getV("ct_sw_version", "software_version", "tradein_software_version"), "ct_sw_version"],
-      ["CT GOC Version", getV("ct_goc_version"), "ct_goc_version"],
-      ["CT Chiller", getV("ct_chiller"), "ct_chiller"],
-      ["CT Availability Time Frame", getV("ct_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "ct_availability_timeframe"]
+      ["CT Slices", getV(rec, "ct_slices")],
+      ["CT Tube DOM", getV(rec, "ct_tube_dom")],
+      ["CT Tube mAs", getV(rec, "ct_tube_mas")],
+      ["CT MHU", getV(rec, "ct_mhu")],
+      ["CT Injector", yesNo(getV(rec, "ct_injector"))],
+      ["CT Injector Model", getV(rec, "ct_injector_model")],
+      ["CT Chiller", yesNo(getV(rec, "ct_chiller"))]
     );
   }
 
   if (modality === "MRI") {
     rows.push(
-      ["MRI Manufacturer", getV("mri_manufacturer", "make", "tradein_equipment_make"), "mri_manufacturer"],
-      ["MRI Model", getV("mri_model", "model", "tradein_equipment_model"), "mri_model"],
-      ["MRI Serial", getV("mri_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "mri_serial"],
-      ["MRI Year", getV("mri_yom", "dom", "tradein_equipment_dom"), "mri_yom"],
-      ["MRI Magnet Type", getV("mri_magnet_type"), "mri_magnet_type"],
-      ["MRI Bore Size", getV("mri_bore_size_cm"), "mri_bore_size_cm"],
-      ["MRI Channels", getV("mri_num_channels"), "mri_num_channels"],
-      ["MRI Gradient", getV("mri_gradient"), "mri_gradient"],
-      ["MRI Software Version", getV("mri_sw_version", "software_version", "tradein_software_version"), "mri_sw_version"],
-      ["MRI Software Options", getV("mri_sw_options"), "mri_sw_options"],
-      ["MRI TIM", getV("mri_tim"), "mri_tim"],
-      ["MRI Coils", getV("mri_coils", "upgrade_notes", "tradein_upgrade_notes"), "mri_coils"],
-      ["MRI Service", yesNo(getV("mri_service")), "mri_service"],
-      ["MRI Service Name", getV("mri_service_name"), "mri_service_name"],
-      ["MRI Under Contract", yesNo(getV("mri_under_contract")), "mri_under_contract"],
-      ["MRI Last PM", getV("mri_last_pm"), "mri_last_pm"],
-      ["MRI In Use", yesNo(getV("mri_in_use", "in_use_status", "tradein_in_use_status")), "mri_in_use"],
-      ["MRI Out Of Use Date", getV("mri_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "mri_out_of_use_date"],
-      ["MRI Hard Drives Removed", yesNo(getV("mri_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed")), "mri_hard_drive_removed"],
-      ["MRI Removal Pathways", getV("mri_removal_pathways", "removal_pathways", "tradein_removal_pathways"), "mri_removal_pathways"],
-      ["MRI Availability Time Frame", getV("mri_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "mri_availability_timeframe"]
+      ["MRI Magnet Type", getV(rec, "mri_magnet_type")],
+      ["MRI Bore Size", getV(rec, "mri_bore_size_cm")],
+      ["MRI Channels", getV(rec, "mri_num_channels")],
+      ["MRI Gradient", getV(rec, "mri_gradient")],
+      ["MRI Coils", getV(rec, "mri_coils")]
     );
   }
 
-  if (modality === "XRAY" || modality === "X-RAY") {
+  if (modality === "XRAY") {
     rows.push(
-      ["X-Ray Manufacturer", getV("xray_manufacturer", "make", "tradein_equipment_make"), "xray_manufacturer"],
-      ["X-Ray Model", getV("xray_model", "model", "tradein_equipment_model"), "xray_model"],
-      ["X-Ray Serial", getV("xray_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "xray_serial"],
-      ["X-Ray DOM", getV("xray_dom", "dom", "tradein_equipment_dom"), "xray_dom"],
-      ["X-Ray Floor Mounted", yesNo(getV("xray_floor_mounted")), "xray_floor_mounted"],
-      ["X-Ray Ceiling Mounted", yesNo(getV("xray_ceiling_mounted")), "xray_ceiling_mounted"],
-      ["X-Ray RF", yesNo(getV("xray_is_rf")), "xray_is_rf"],
-      ["X-Ray In Use", yesNo(getV("xray_in_use", "in_use_status", "tradein_in_use_status")), "xray_in_use"],
-      ["X-Ray Out Of Use Date", getV("xray_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "xray_out_of_use_date"],
-      ["X-Ray Removal Pathways", getV("xray_removal_pathways", "removal_pathways", "tradein_removal_pathways"), "xray_removal_pathways"],
-      ["X-Ray Loading Dock", getV("xray_loading_dock", "loading_dock", "tradein_loading_dock"), "xray_loading_dock"],
-      ["X-Ray Availability Time Frame", getV("xray_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "xray_availability_timeframe"]
+      ["X-Ray Floor Mounted", yesNo(getV(rec, "xray_floor_mounted"))],
+      ["X-Ray Ceiling Mounted", yesNo(getV(rec, "xray_ceiling_mounted"))]
     );
   }
 
-  if (modality === "CARM" || modality === "C-ARM") {
+  if (modality === "CARM") {
     rows.push(
-      ["C-Arm Manufacturer", getV("carm_manufacturer", "make", "tradein_equipment_make"), "carm_manufacturer"],
-      ["C-Arm Model", getV("carm_model", "model", "tradein_equipment_model"), "carm_model"],
-      ["C-Arm Serial", getV("carm_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "carm_serial"],
-      ["C-Arm DOM", getV("carm_dom", "dom", "tradein_equipment_dom"), "carm_dom"],
-      ["C-Arm Monitors", getV("carm_monitors"), "carm_monitors"],
-      ["C-Arm Image Intensifier", getV("carm_image_intensifier"), "carm_image_intensifier"],
-      ["C-Arm Software Version", getV("carm_sw_version", "software_version", "tradein_software_version"), "carm_sw_version"],
-      ["C-Arm Servicing", yesNo(getV("carm_servicing")), "carm_servicing"],
-      ["C-Arm Service Name", getV("carm_service_name"), "carm_service_name"],
-      ["C-Arm In Use", yesNo(getV("carm_in_use", "in_use_status", "tradein_in_use_status")), "carm_in_use"],
-      ["C-Arm Out Of Use Date", getV("carm_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "carm_out_of_use_date"],
-      ["C-Arm Hard Drives Removed", yesNo(getV("carm_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed")), "carm_hard_drive_removed"],
-      ["C-Arm Availability Time Frame", getV("carm_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "carm_availability_timeframe"]
+      ["C-Arm Monitors", getV(rec, "carm_monitors")],
+      ["C-Arm Image Intensifier", getV(rec, "carm_image_intensifier")]
     );
   }
 
-  if (modality === "PET" || modality === "PETCT") {
+  if (modality === "PETCT") {
     rows.push(
-      ["PET Manufacturer", getV("pet_manufacturer", "make", "tradein_equipment_make"), "pet_manufacturer"],
-      ["PET Model", getV("pet_model", "model", "tradein_equipment_model"), "pet_model"],
-      ["PET Serial", getV("pet_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "pet_serial"],
-      ["PET DOM", getV("pet_dom", "dom", "tradein_equipment_dom"), "pet_dom"],
-      ["PET Tube DOM", getV("pet_tube_dom"), "pet_tube_dom"],
-      ["PET Tube mAs", getV("pet_tube_mas"), "pet_tube_mas"],
-      ["PET/CT Slice Count", getV("pet_ct_slices"), "pet_ct_slices"],
-      ["PET In Use", yesNo(getV("pet_in_use", "in_use_status", "tradein_in_use_status")), "pet_in_use"],
-      ["PET Out Of Use Date", getV("pet_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "pet_out_of_use_date"],
-      ["PET Removal Pathways", getV("pet_removal_pathways", "removal_pathways", "tradein_removal_pathways"), "pet_removal_pathways"],
-      ["PET Hard Drives Removed", yesNo(getV("pet_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed")), "pet_hard_drive_removed"],
-      ["PET Loading Dock", getV("pet_loading_dock", "loading_dock", "tradein_loading_dock"), "pet_loading_dock"],
-      ["PET Availability Time Frame", getV("pet_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "pet_availability_timeframe"]
+      ["PET/CT Slice Count", getV(rec, "pet_ct_slices")],
+      ["PET/CT Tube DOM", getV(rec, "pet_tube_dom")],
+      ["PET/CT Tube mAs", getV(rec, "pet_tube_mas")]
     );
   }
 
   if (modality === "MAMMO") {
     rows.push(
-      ["Mammo Manufacturer", getV("mamo_manufacturer", "make", "tradein_equipment_make"), "mamo_manufacturer"],
-      ["Mammo Model", getV("mamo_model", "model", "tradein_equipment_model"), "mamo_model"],
-      ["Mammo Serial", getV("mamo_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "mamo_serial"],
-      ["Mammo DOM", getV("mamo_dom", "dom", "tradein_equipment_dom"), "mamo_dom"],
-      ["Mammo 2D/3D", getV("mamo_dimensionality"), "mamo_dimensionality"],
-      ["Mammo Stereotactic", getV("mamo_stereotactic_options"), "mamo_stereotactic_options"],
-      ["Mammo CAD", getV("mamo_cad"), "mamo_cad"],
-      ["Mammo In Use", yesNo(getV("mamo_in_use", "in_use_status", "tradein_in_use_status")), "mamo_in_use"],
-      ["Mammo Out Of Use Date", getV("mamo_out_of_use_date", "out_of_use_date", "tradein_out_of_use_date"), "mamo_out_of_use_date"],
-      ["Mammo Removal Pathways", getV("mamo_removal_pathways", "removal_pathways", "tradein_removal_pathways"), "mamo_removal_pathways"],
-      ["Mammo Hard Drives Removed", yesNo(getV("mamo_hard_drive_removed", "hard_drive_removed", "tradein_hard_drive_removed")), "mamo_hard_drive_removed"],
-      ["Mammo Loading Dock", getV("mamo_loading_dock", "loading_dock", "tradein_loading_dock"), "mamo_loading_dock"],
-      ["Mammo Availability Time Frame", getV("mamo_availability_timeframe", "availability_timeframe", "tradein_availability_timeframe"), "mamo_availability_timeframe"]
-    );
-  }
-
-  if (modality === "OTHER") {
-    rows.push(
-      ["Other Manufacturer", getV("other_manufacturer", "make", "tradein_equipment_make"), "other_manufacturer"],
-      ["Other Model", getV("other_model", "model", "tradein_equipment_model"), "other_model"],
-      ["Other Serial", getV("other_serial", "serial_number", "axis_serial_number", "tradein_equipment_serial_number"), "other_serial"]
+      ["Mammo 2D / 3D", getV(rec, "mamo_dimensionality")],
+      ["Mammo Stereotactic", getV(rec, "mamo_stereotactic_options")],
+      ["Mammo CAD", getV(rec, "mamo_cad")]
     );
   }
 
   return rows
-    .filter(([, value, rawKey]) => shouldShow(rawKey, value))
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
     .map(([label, value]) => `
       <div class="kv">
-        <strong>${htmlSafe(label)}:</strong> ${htmlSafe(value || "-")}
+        <strong>${htmlSafe(label)}:</strong> ${htmlSafe(value)}
       </div>
     `)
     .join("");
@@ -940,13 +904,12 @@ function tradeInFieldRows(rec){
 function renderPackageCard(rec){
   const recordId = String(rec.id || getTradeDeskRecordId(rec) || getBidPackageId(rec) || "");
   const safeRecordId = idSafe(recordId);
-  const clickRecordId = attrSafe(recordId);
   const packageId = getBidPackageId(rec);
   const isOpen = openPackageId === recordId;
   const draft = getDraft(recordId);
 
   return `
-    <div class="package-card ${isOpen ? "open" : ""}">
+    <div class="package-card ${isOpen ? "open" : ""}" data-record-id="${htmlSafe(recordId)}">
       <div class="package-head">
         <div>
           <div class="small">BID PACKAGE</div>
@@ -958,6 +921,11 @@ function renderPackageCard(rec){
 
         <div>
           <span class="badge blue">${htmlSafe(rec.bid_status || "Open for Bids")}</span>
+          ${
+            Array.isArray(rec.bids) && rec.bids.length
+              ? `<span class="badge greenBadge">${rec.bids.length} Bid${rec.bids.length === 1 ? "" : "s"} Recorded</span>`
+              : ""
+          }
         </div>
 
         <div>
@@ -966,7 +934,11 @@ function renderPackageCard(rec){
         </div>
 
         <div class="package-actions">
-          <button type="button" onclick="togglePackage('${clickRecordId}')">
+          <button
+            type="button"
+            class="js-toggle-package"
+            data-record-id="${htmlSafe(recordId)}"
+          >
             ${isOpen ? "Close Package" : "Open Package"}
           </button>
         </div>
@@ -1005,7 +977,7 @@ function renderPackageCard(rec){
             <hr>
 
             <h2>Equipment Details</h2>
-            ${tradeInFieldRows(rec)}
+            ${tradeInFieldRows(rec) || `<p class="small">No equipment detail fields available.</p>`}
 
             <hr>
 
@@ -1030,40 +1002,40 @@ function renderPackageCard(rec){
             <label class="form-title">Company Name</label>
             <input
               id="bidderCompany_${safeRecordId}"
+              class="js-bid-input"
               data-record-id="${htmlSafe(recordId)}"
               value="${htmlSafe(draft.bidder_company || approvedBidderCompany)}"
               placeholder="Company Name"
               autocomplete="organization"
-              oninput="syncDraftFromInputsFromEl(this)"
             >
 
             <label class="form-title">Bid Amount</label>
             <input
               id="bidAmount_${safeRecordId}"
+              class="js-bid-input"
               data-record-id="${htmlSafe(recordId)}"
               type="number"
               value="${htmlSafe(draft.amount)}"
               placeholder="Bid Amount"
               autocomplete="off"
-              oninput="syncDraftFromInputsFromEl(this)"
             >
 
             <label class="form-title">Terms / Pickup Notes</label>
             <textarea
               id="bidTerms_${safeRecordId}"
+              class="js-bid-input"
               data-record-id="${htmlSafe(recordId)}"
               placeholder="Terms / pickup notes"
-              oninput="syncDraftFromInputsFromEl(this)"
             >${htmlSafe(draft.terms)}</textarea>
 
             <label class="form-title">Bid Valid Until</label>
             <input
               id="bidExpires_${safeRecordId}"
+              class="js-bid-input"
               data-record-id="${htmlSafe(recordId)}"
               type="date"
               value="${htmlSafe(draft.expires)}"
               autocomplete="off"
-              oninput="syncDraftFromInputsFromEl(this)"
             >
 
             <button
@@ -1074,6 +1046,13 @@ function renderPackageCard(rec){
             >
               Submit Bid
             </button>
+
+            <div class="debug-box">
+              Console debug enabled.<br>
+              Button ID: submitBidBtn_${safeRecordId}<br>
+              Record ID: ${htmlSafe(recordId)}<br>
+              Package ID: ${htmlSafe(packageId)}
+            </div>
           `
           : ""
       }
@@ -1081,12 +1060,28 @@ function renderPackageCard(rec){
   `;
 }
 
-function render(){
-  if (Date.now() < suppressRenderUntil) return;
-  if (isBidFormFocused()) return;
+function render(force = false){
+  if (!force && Date.now() < suppressRenderUntil) {
+    console.log("render blocked: suppressRenderUntil active");
+    return;
+  }
+
+  if (!force && isBidFormFocused()) {
+    console.log("render blocked: bid form focused");
+    return;
+  }
 
   const root = document.getElementById("packageRoot");
   const packages = getVisiblePackages();
+
+  console.log("render()", {
+    force,
+    visiblePackages: packages.length,
+    openPackageId,
+    activeElementId: document.activeElement?.id || ""
+  });
+
+  if (!root) return;
 
   if (!packages.length) {
     root.innerHTML = `
@@ -1095,6 +1090,14 @@ function render(){
         <p class="small">
           Open this page from the bid package email link, or release a package from AXIS Trade Desk first.
         </p>
+        <div class="debug-box">
+          Debug:<br>
+          BIDDER_PORTAL_KEY count: ${loadArray(BIDDER_PORTAL_KEY).length}<br>
+          BUYER_PACKET_KEY count: ${loadArray(BUYER_PACKET_KEY).length}<br>
+          TRADE_DESK_KEY count: ${loadArray(TRADE_DESK_KEY).length}<br>
+          URL packageId: ${htmlSafe(packageIdFromUrl || "-")}<br>
+          URL recordId: ${htmlSafe(recordIdFromUrl || "-")}
+        </div>
       </div>
     `;
     return;
@@ -1107,13 +1110,14 @@ function render(){
     (packageIdFromUrl || recordIdFromUrl)
   ) {
     openPackageId = String(packages[0].id || packages[0].trade_desk_record_id || getBidPackageId(packages[0]) || "");
+    console.log("Auto-opened single package", openPackageId);
   }
 
   root.innerHTML = `
     <div class="panel">
       <h2>Open Bid Packages</h2>
       <p class="small">
-        Packages stay closed until opened. Each package opens independently.
+        Packages stay stable while open. Auto-refresh pauses while you are entering a bid.
       </p>
 
       ${packages.map(renderPackageCard).join("")}
@@ -1121,10 +1125,79 @@ function render(){
   `;
 }
 
-function submitBid(recordId, btnEl = null){
-  console.log("submitBid running:", recordId);
+function buildUpdatedPackage(pkg, rec, packetId, tradeDeskRecordId, bidderCompany, bidEmail){
+  return {
+    ...pkg,
+    ...rec,
 
-  suppressRenderUntil = Date.now() + 3000;
+    id: pkg.id || tradeDeskRecordId || packetId,
+    package_id: packetId,
+    packet_id: packetId,
+    review_packet_id: rec.review_packet_id || packetId,
+    bid_package_id: rec.bid_package_id || packetId,
+    trade_desk_record_id: tradeDeskRecordId,
+
+    bids: rec.bids,
+    bid_status: "Bids Received",
+    buyer_response_status: "Buyer Responses Received",
+    crm_status: "Buyer Response Records Received",
+    quote_sync_status: rec.quote_sync_status || "Pending Bid",
+    last_bid_at: rec.last_bid_at,
+    last_bid_received_at: rec.last_bid_received_at,
+    last_bidder_company: bidderCompany,
+    last_bidder_email: bidEmail,
+    bid_count: rec.bids.length,
+
+    record: {
+      ...(pkg.record || {}),
+      ...rec,
+      id: tradeDeskRecordId,
+      trade_desk_record_id: tradeDeskRecordId,
+      package_id: packetId,
+      packet_id: packetId,
+      review_packet_id: rec.review_packet_id || packetId,
+      bid_package_id: rec.bid_package_id || packetId,
+      bids: rec.bids,
+      bid_status: "Bids Received",
+      buyer_response_status: "Buyer Responses Received",
+      crm_status: "Buyer Response Records Received",
+      last_bid_at: rec.last_bid_at,
+      last_bid_received_at: rec.last_bid_received_at,
+      last_bidder_company: bidderCompany,
+      last_bidder_email: bidEmail,
+      bid_count: rec.bids.length
+    },
+
+    equipment: {
+      ...(pkg.equipment || {}),
+      ...rec,
+      id: tradeDeskRecordId,
+      trade_desk_record_id: tradeDeskRecordId,
+      package_id: packetId,
+      packet_id: packetId,
+      review_packet_id: rec.review_packet_id || packetId,
+      bid_package_id: rec.bid_package_id || packetId,
+      bids: rec.bids,
+      bid_status: "Bids Received",
+      buyer_response_status: "Buyer Responses Received",
+      crm_status: "Buyer Response Records Received",
+      last_bid_at: rec.last_bid_at,
+      last_bid_received_at: rec.last_bid_received_at,
+      last_bidder_company: bidderCompany,
+      last_bidder_email: bidEmail,
+      bid_count: rec.bids.length
+    }
+  };
+}
+
+function submitBid(recordId, btnEl = null){
+  console.log("SUBMIT BID START", {
+    recordId,
+    buttonFound: Boolean(btnEl),
+    buttonDisabled: btnEl?.disabled
+  });
+
+  suppressRenderUntil = Date.now() + 10000;
 
   const safeRecordId = idSafe(recordId);
 
@@ -1136,7 +1209,14 @@ function submitBid(recordId, btnEl = null){
   const errorBox = document.getElementById(`errorBox_${safeRecordId}`);
   const successBox = document.getElementById(`successBox_${safeRecordId}`);
 
-  try {
+  try{
+    console.log("Submit form elements", {
+      companyInput: Boolean(companyInput),
+      amountInput: Boolean(amountInput),
+      termsInput: Boolean(termsInput),
+      expiresInput: Boolean(expiresInput)
+    });
+
     const bidderCompany = String(companyInput?.value || approvedBidderCompany || "").trim();
     const amount = Number(amountInput?.value || 0);
     const terms = String(termsInput?.value || "").trim();
@@ -1144,14 +1224,26 @@ function submitBid(recordId, btnEl = null){
 
     const draft = getDraft(recordId);
     draft.bidder_company = bidderCompany;
-    draft.amount = amountInput?.value || "";
+    draft.amount = String(amountInput?.value || "").trim();
     draft.terms = terms;
     draft.expires = expires;
 
     if (errorBox) errorBox.style.display = "none";
     if (successBox) successBox.style.display = "none";
 
+    console.log("Submit validation values", {
+      bidderCompany,
+      amount,
+      terms,
+      expires
+    });
+
     if (!bidderCompany || !amount || amount <= 0) {
+      console.warn("SUBMIT BID VALIDATION FAILED", {
+        bidderCompany,
+        amount
+      });
+
       if (errorBox) {
         errorBox.textContent = "Enter company name and bid amount.";
         errorBox.style.display = "block";
@@ -1167,30 +1259,24 @@ function submitBid(recordId, btnEl = null){
     let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
     let buyerPackets = loadArray(BUYER_PACKET_KEY);
     let tradeDeskRecords = loadArray(TRADE_DESK_KEY);
+    let syncRecords = loadArray(TRADEIN_SYNC_KEY);
 
     const targetRecordId = String(recordId || "").trim();
     const targetPacketId = String(packageIdFromUrl || "").trim();
 
     const allPackages = [
-      ...bidderPackages.map((pkg, index) => ({
-        source: BIDDER_PORTAL_KEY,
-        index,
-        original: pkg,
-        pkg: normalizePortalPackage(pkg)
-      })),
-      ...buyerPackets.map((pkg, index) => ({
-        source: BUYER_PACKET_KEY,
-        index,
-        original: pkg,
-        pkg: normalizePortalPackage(pkg)
-      })),
-      ...tradeDeskRecords.map((pkg, index) => ({
-        source: TRADE_DESK_KEY,
-        index,
-        original: pkg,
-        pkg: normalizePortalPackage(pkg)
-      }))
+      ...bidderPackages.map((pkg, index) => ({ source:BIDDER_PORTAL_KEY, index, original:pkg, pkg:normalizePortalPackage(pkg) })),
+      ...buyerPackets.map((pkg, index) => ({ source:BUYER_PACKET_KEY, index, original:pkg, pkg:normalizePortalPackage(pkg) })),
+      ...tradeDeskRecords.map((pkg, index) => ({ source:TRADE_DESK_KEY, index, original:pkg, pkg:normalizePortalPackage(pkg) }))
     ];
+
+    console.log("Package search pool", {
+      bidderPackages: bidderPackages.length,
+      buyerPackets: buyerPackets.length,
+      tradeDeskRecords: tradeDeskRecords.length,
+      targetRecordId,
+      targetPacketId
+    });
 
     const found = allPackages.find(item => {
       const p = item.pkg;
@@ -1215,6 +1301,11 @@ function submitBid(recordId, btnEl = null){
     });
 
     if (!found) {
+      console.error("SUBMIT BID FAILED: PACKAGE NOT FOUND", {
+        targetRecordId,
+        targetPacketId
+      });
+
       if (errorBox) {
         errorBox.textContent = "Bid package not found. Make sure Trade Desk prepared the package and both pages are opened from the same browser/origin.";
         errorBox.style.display = "block";
@@ -1224,6 +1315,13 @@ function submitBid(recordId, btnEl = null){
       suppressRenderUntil = 0;
       return;
     }
+
+    console.log("Package found", {
+      source: found.source,
+      index: found.index,
+      packageId: getBidPackageId(found.pkg),
+      tradeDeskRecordId: getTradeDeskRecordId(found.pkg)
+    });
 
     const rec = {
       ...found.pkg,
@@ -1288,136 +1386,38 @@ function submitBid(recordId, btnEl = null){
       );
     }
 
-    function updatePacketArray(arr){
+    function updatePacketArray(arr, label){
       let foundMatch = false;
 
       const updated = arr.map(pkg => {
         if (!samePackage(pkg)) return pkg;
 
-        const normalized = normalizePortalPackage(pkg);
         foundMatch = true;
-
-        return {
-          ...pkg,
-          ...rec,
-
-          id: pkg.id || normalized.id || tradeDeskRecordId || packetId,
-          package_id: packetId,
-          packet_id: packetId,
-          review_packet_id: rec.review_packet_id || packetId,
-          bid_package_id: rec.bid_package_id || packetId,
-          trade_desk_record_id: tradeDeskRecordId,
-
-          bids: rec.bids,
-          bid_status: "Bids Received",
-          buyer_response_status: "Buyer Responses Received",
-          crm_status: "Buyer Response Records Received",
-          quote_sync_status: rec.quote_sync_status || "Pending Bid",
-          last_bid_at: rec.last_bid_at,
-          last_bid_received_at: rec.last_bid_received_at,
-          last_bidder_company: bidderCompany,
-          last_bidder_email: approvedBidderEmail,
-          bid_count: rec.bids.length,
-
-          record: {
-            ...(pkg.record || {}),
-            ...rec,
-            id: tradeDeskRecordId,
-            trade_desk_record_id: tradeDeskRecordId,
-            package_id: packetId,
-            packet_id: packetId,
-            review_packet_id: rec.review_packet_id || packetId,
-            bid_package_id: rec.bid_package_id || packetId,
-            bids: rec.bids,
-            bid_status: "Bids Received",
-            buyer_response_status: "Buyer Responses Received",
-            crm_status: "Buyer Response Records Received",
-            last_bid_at: rec.last_bid_at,
-            last_bid_received_at: rec.last_bid_received_at,
-            last_bidder_company: bidderCompany,
-            last_bidder_email: approvedBidderEmail,
-            bid_count: rec.bids.length
-          },
-
-          equipment: {
-            ...(pkg.equipment || {}),
-            ...rec,
-            id: tradeDeskRecordId,
-            trade_desk_record_id: tradeDeskRecordId,
-            package_id: packetId,
-            packet_id: packetId,
-            review_packet_id: rec.review_packet_id || packetId,
-            bid_package_id: rec.bid_package_id || packetId,
-            bids: rec.bids,
-            bid_status: "Bids Received",
-            buyer_response_status: "Buyer Responses Received",
-            crm_status: "Buyer Response Records Received",
-            last_bid_at: rec.last_bid_at,
-            last_bid_received_at: rec.last_bid_received_at,
-            last_bidder_company: bidderCompany,
-            last_bidder_email: approvedBidderEmail,
-            bid_count: rec.bids.length
-          }
-        };
+        return buildUpdatedPackage(pkg, rec, packetId, tradeDeskRecordId, bidderCompany, approvedBidderEmail);
       });
 
       if (!foundMatch) {
-        updated.unshift({
-          ...rec,
-          id: tradeDeskRecordId || packetId,
-          package_id: packetId,
-          packet_id: packetId,
-          review_packet_id: rec.review_packet_id || packetId,
-          bid_package_id: rec.bid_package_id || packetId,
-          trade_desk_record_id: tradeDeskRecordId,
-          bids: rec.bids,
-          bid_status: "Bids Received",
-          buyer_response_status: "Buyer Responses Received",
-          crm_status: "Buyer Response Records Received",
-          quote_sync_status: rec.quote_sync_status || "Pending Bid",
-          last_bid_at: rec.last_bid_at,
-          last_bid_received_at: rec.last_bid_received_at,
-          last_bidder_company: bidderCompany,
-          last_bidder_email: approvedBidderEmail,
-          bid_count: rec.bids.length,
-
-          record: {
-            ...rec,
-            id: tradeDeskRecordId,
-            trade_desk_record_id: tradeDeskRecordId,
-            package_id: packetId,
-            packet_id: packetId,
-            review_packet_id: rec.review_packet_id || packetId,
-            bid_package_id: rec.bid_package_id || packetId,
-            bids: rec.bids
-          },
-
-          equipment: {
-            ...rec,
-            id: tradeDeskRecordId,
-            trade_desk_record_id: tradeDeskRecordId,
-            package_id: packetId,
-            packet_id: packetId,
-            review_packet_id: rec.review_packet_id || packetId,
-            bid_package_id: rec.bid_package_id || packetId,
-            bids: rec.bids
-          }
-        });
+        updated.unshift(buildUpdatedPackage({}, rec, packetId, tradeDeskRecordId, bidderCompany, approvedBidderEmail));
       }
+
+      console.log("updatePacketArray()", {
+        label,
+        before: arr.length,
+        after: updated.length,
+        foundMatch
+      });
 
       return updated;
     }
 
-    bidderPackages = updatePacketArray(bidderPackages);
-    buyerPackets = updatePacketArray(buyerPackets);
-    tradeDeskRecords = updatePacketArray(tradeDeskRecords);
+    bidderPackages = updatePacketArray(bidderPackages, BIDDER_PORTAL_KEY);
+    buyerPackets = updatePacketArray(buyerPackets, BUYER_PACKET_KEY);
+    tradeDeskRecords = updatePacketArray(tradeDeskRecords, TRADE_DESK_KEY);
+    syncRecords = updatePacketArray(syncRecords, TRADEIN_SYNC_KEY);
 
     saveArray(BIDDER_PORTAL_KEY, bidderPackages);
     saveArray(BUYER_PACKET_KEY, buyerPackets);
     saveArray(TRADE_DESK_KEY, tradeDeskRecords);
-
-    let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-    syncRecords = updatePacketArray(syncRecords);
     saveArray(TRADEIN_SYNC_KEY, syncRecords);
 
     const responsePayload = {
@@ -1463,6 +1463,14 @@ function submitBid(recordId, btnEl = null){
     localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(responsePayload));
     localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 
+    console.log("SUBMIT BID SAVED SUCCESSFULLY", {
+      packetId,
+      tradeDeskRecordId,
+      bidsCount: rec.bids.length,
+      responseOutboxCount: responseOutbox.length,
+      bidPayload
+    });
+
     setBidButtonState(recordId, "submitted", btnEl);
 
     if (successBox) {
@@ -1482,13 +1490,17 @@ function submitBid(recordId, btnEl = null){
     openPackageId = String(recordId || tradeDeskRecordId || rec.id || "");
 
     setTimeout(() => {
+      console.log("Submit button reset after success", {
+        recordId
+      });
+
       setBidButtonState(recordId, "reset", btnEl);
       suppressRenderUntil = 0;
-      render();
-    }, 1400);
+      render(true);
+    }, 1500);
 
-  } catch (err) {
-    console.error("Submit bid failed:", err);
+  }catch(err){
+    console.error("SUBMIT BID ERROR", err);
 
     if (errorBox) {
       errorBox.textContent = `Submit bid failed: ${err.message || err}`;
@@ -1502,31 +1514,97 @@ function submitBid(recordId, btnEl = null){
   }
 }
 
+/* ==========================================================
+   EVENT DELEGATION
+   These console lines prove whether the button click works.
+   ========================================================== */
+
 document.addEventListener("click", function(e){
-  const btn = e.target.closest(".js-submit-bid");
-  if (!btn) return;
+  const target = e.target;
 
-  e.preventDefault();
-  e.stopPropagation();
-
-  const recordId = String(btn.getAttribute("data-record-id") || "").trim();
-
-  console.log("Submit Bid clicked:", {
-    recordId,
-    buttonId: btn.id,
-    safeRecordId: idSafe(recordId),
-    disabled: btn.disabled
+  console.log("DOCUMENT CLICK", {
+    targetTag: target?.tagName || "",
+    targetId: target?.id || "",
+    targetClass: target?.className || "",
+    targetText: String(target?.textContent || "").trim().slice(0, 80)
   });
 
-  if (btn.disabled) return;
+  const toggleBtn = target.closest(".js-toggle-package");
+  if (toggleBtn) {
+    e.preventDefault();
+    e.stopPropagation();
 
-  if (!recordId) {
-    alert("No record ID found on Submit Bid button.");
+    const recordId = String(toggleBtn.dataset.recordId || "").trim();
+
+    console.log("OPEN/CLOSE PACKAGE BUTTON CLICKED", {
+      recordId,
+      disabled: toggleBtn.disabled
+    });
+
+    togglePackage(recordId);
     return;
   }
 
-  submitBid(recordId, btn);
+  const submitBtn = target.closest(".js-submit-bid");
+  if (submitBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const recordId = String(submitBtn.dataset.recordId || "").trim();
+
+    console.log("SUBMIT BID BUTTON CLICKED", {
+      recordId,
+      buttonId: submitBtn.id,
+      disabled: submitBtn.disabled,
+      safeRecordId: idSafe(recordId),
+      buttonText: submitBtn.textContent.trim()
+    });
+
+    if (!recordId) {
+      console.error("Submit button has no data-record-id.");
+      alert("No record ID found on Submit Bid button.");
+      return;
+    }
+
+    if (submitBtn.disabled) {
+      console.warn("Submit button clicked but it is disabled.");
+      return;
+    }
+
+    submitBid(recordId, submitBtn);
+    return;
+  }
+
+  const imgBox = target.closest(".js-preview-image");
+  if (imgBox) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    openImagePreview(imgBox.dataset.url || "", imgBox.dataset.title || "Equipment Image");
+  }
 }, true);
+
+document.addEventListener("input", function(e){
+  const input = e.target.closest(".js-bid-input");
+  if (!input) return;
+
+  const recordId = String(input.dataset.recordId || "").trim();
+  if (!recordId) return;
+
+  syncDraftFromInputs(recordId);
+}, true);
+
+document.getElementById("imagePreviewOverlay").addEventListener("click", function(){
+  closeImagePreview();
+});
+
+document.querySelector(".image-preview-box").addEventListener("click", function(e){
+  e.stopPropagation();
+});
+
+document.getElementById("closePreviewBtn").addEventListener("click", function(){
+  closeImagePreview();
+});
 
 window.addEventListener("storage", (e) => {
   if (
@@ -1537,17 +1615,27 @@ window.addEventListener("storage", (e) => {
     e.key === BUYER_RESPONSE_OUTBOX_KEY ||
     e.key === MANAGER_PING_KEY
   ) {
-    if (!isBidFormFocused() && Date.now() >= suppressRenderUntil) {
+    console.log("storage event received", {
+      key: e.key,
+      blocked: shouldBlockAutoRender()
+    });
+
+    if (!shouldBlockAutoRender()) {
       render();
     }
   }
 });
 
 window.addEventListener("focus", () => {
+  console.log("window focus", {
+    openPackageId,
+    suppressRenderUntil
+  });
+
   suppressRenderUntil = 0;
 
-  document.querySelectorAll("button").forEach(btn => {
-    if (btn.disabled && btn.id && btn.id.startsWith("submitBidBtn_")) {
+  document.querySelectorAll("button[id^='submitBidBtn_']").forEach(btn => {
+    if (btn.disabled && !btn.classList.contains("is-success")) {
       btn.disabled = false;
       btn.classList.remove("is-loading", "is-success");
       btn.textContent = "Submit Bid";
@@ -1556,16 +1644,26 @@ window.addEventListener("focus", () => {
 });
 
 window.addEventListener("pageshow", () => {
+  console.log("pageshow event");
   suppressRenderUntil = 0;
 });
 
 setInterval(() => {
-  if (!isBidFormFocused() && Date.now() >= suppressRenderUntil) {
-    render();
+  if (shouldBlockAutoRender()) {
+    console.log("auto-render skipped", {
+      openPackageId,
+      focused: isBidFormFocused(),
+      suppressActive: Date.now() < suppressRenderUntil
+    });
+    return;
   }
-}, 2000);
 
-render();
+  console.log("auto-render running");
+  render();
+}, 2500);
+
+render(true);
 </script>
+
 </body>
 </html>
