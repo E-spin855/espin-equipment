@@ -649,24 +649,24 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 function openMailDraft(mailto){
-  const a = document.createElement("a");
-  a.href = mailto;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
+  resetDemoButtons();
 
   setTimeout(() => {
-    a.remove();
-    resetDemoButtons();
-  }, 250);
+    window.location.href = mailto;
+
+    setTimeout(() => {
+      resetDemoButtons();
+    }, 600);
+  }, 100);
 }
 
 function resetDemoButtons(){
-  document.querySelectorAll("button.is-loading, button.is-success").forEach(btn => {
+  document.querySelectorAll("button").forEach(btn => {
     const originalHtml = btn.dataset.originalHtml;
 
     btn.classList.remove("is-loading", "is-success");
     btn.disabled = false;
+    btn.style.pointerEvents = "";
 
     if (originalHtml) {
       btn.innerHTML = originalHtml;
@@ -675,6 +675,7 @@ function resetDemoButtons(){
 
   suppressRenderUntil = 0;
 }
+
 function buttonSpinConfirm(btn, loadingText, successText, done){
   if (!btn) {
     if (typeof done === "function") done();
@@ -685,6 +686,7 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
   btn.dataset.originalHtml = originalHtml;
 
   btn.disabled = true;
+  btn.style.pointerEvents = "none";
   btn.classList.remove("is-success");
   btn.classList.add("is-loading");
   btn.innerHTML = `<span class="spinner-dot"></span>${loadingText || "Working..."}`;
@@ -695,11 +697,7 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      btn.classList.remove("is-success");
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-
-      suppressRenderUntil = 0;
+      resetDemoButtons();
 
       if (typeof done === "function") {
         done();
@@ -1669,11 +1667,13 @@ const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
     `?cc=${encodeURIComponent(ccEmail)}` +
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
-openMailDraft(mailto);
-
 buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   suppressRenderUntil = 0;
   render();
+
+  setTimeout(() => {
+    openMailDraft(mailto);
+  }, 150);
 });
 }
 
@@ -1815,12 +1815,14 @@ function sendInfoRequestToRep(btn = null){
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
-openMailDraft(mailto);
-
 buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   closeInfoRequestModal();
   suppressRenderUntil = 0;
   render();
+
+  setTimeout(() => {
+    openMailDraft(mailto);
+  }, 150);
 });
 }
 
@@ -2790,6 +2792,13 @@ e.key === ACTIVE_PACKET_KEY
 });
 window.addEventListener("focus", resetDemoButtons);
 window.addEventListener("pageshow", resetDemoButtons);
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    resetDemoButtons();
+  }
+});
+
 setInterval(() => {
   if (shouldSuppressRender()) return;
   if (isTradeDeskInputFocused()) return;
@@ -2800,6 +2809,7 @@ setInterval(() => {
     render();
   }
 }, 2500);
+
 importAutomaticIntake();
 render();
 </script>
