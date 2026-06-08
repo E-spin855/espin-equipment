@@ -663,36 +663,39 @@ function openMailDraft(mailto){
 
   setTimeout(() => {
     a.remove();
-    recoverPageAfterExternalAction();
-  }, 750);
-}
+    resetDemoButtons();
 
+    if (!isTradeDeskInputFocused()) {
+      render();
+    }
+  }, 900);
+}
 function resetDemoButtons(){
   document.querySelectorAll("button").forEach(btn => {
-    const originalHtml = btn.dataset.originalHtml;
-
     btn.classList.remove("is-loading", "is-success");
     btn.disabled = false;
     btn.style.pointerEvents = "";
+    btn.removeAttribute("aria-busy");
 
-    if (originalHtml) {
-      btn.innerHTML = originalHtml;
+    if (btn.dataset.originalHtml) {
+      btn.innerHTML = btn.dataset.originalHtml;
     }
   });
 
   suppressRenderUntil = 0;
 }
-
 function buttonSpinConfirm(btn, loadingText, successText, done){
   if (!btn) {
     if (typeof done === "function") done();
     return;
   }
 
-  const originalHtml = btn.dataset.originalHtml || btn.innerHTML;
-  btn.dataset.originalHtml = originalHtml;
+  if (!btn.dataset.originalHtml) {
+    btn.dataset.originalHtml = btn.innerHTML;
+  }
 
   btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
   btn.style.pointerEvents = "none";
   btn.classList.remove("is-success");
   btn.classList.add("is-loading");
@@ -704,13 +707,15 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      resetDemoButtons();
-
       if (typeof done === "function") {
         done();
       }
-    }, 450);
-  }, 500);
+
+      setTimeout(() => {
+        resetDemoButtons();
+      }, 350);
+    }, 650);
+  }, 550);
 }
 function openImagePreview(url, title){
   const overlay = document.getElementById("imagePreviewOverlay");
@@ -2811,11 +2816,15 @@ function recoverPageAfterExternalAction(){
   resetDemoButtons();
 
   setTimeout(() => {
+    resetDemoButtons();
+
     if (!isTradeDeskInputFocused()) {
       importAutomaticIntake();
       render();
+
+      setTimeout(resetDemoButtons, 250);
     }
-  }, 100);
+  }, 150);
 }
 
 window.addEventListener("focus", recoverPageAfterExternalAction);
