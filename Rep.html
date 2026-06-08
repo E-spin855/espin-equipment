@@ -284,8 +284,8 @@ th:nth-child(8),td:nth-child(8){width:260px}
 
 th:nth-child(9),td:nth-child(9){width:90px;text-align:center}
 
-th:nth-child(10),td:nth-child(10){width:210px;text-align:center}
-  width:260px;
+th:nth-child(10),td:nth-child(10){
+  width:210px;
   text-align:center;
 }
     th{
@@ -1118,6 +1118,8 @@ th{
   <script>
     const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
     const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
+const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
+const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const REP_QUEUE_KEY = "espin_rep_queue";
 const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
     const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
@@ -1815,7 +1817,60 @@ function importRepQueueRecords() {
       localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
       window.dispatchEvent(new Event("rep_feed_update"));
     }
+function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
+  if (!rec || !outcome) return;
 
+  const now = new Date().toISOString();
+
+  let finalSync = [];
+  try {
+    finalSync = JSON.parse(localStorage.getItem(INSTALL_BASE_FINAL_SYNC_KEY) || "[]");
+    if (!Array.isArray(finalSync)) finalSync = [];
+  } catch {
+    finalSync = [];
+  }
+
+  const packet = {
+    id: rec.id || "",
+    key: `${rec.oem_project_id || ""}_${rec.serial_number || ""}`,
+    oem_project_id: rec.oem_project_id || "",
+    serial_number: rec.serial_number || "",
+    make: rec.make || "",
+    model: rec.model || "",
+    modality: rec.modality || "",
+    dom: rec.dom || "",
+    site: rec.site || rec.facility || rec.hospital || "",
+    install_base_final_outcome: outcome,
+    install_base_final_outcome_date: now,
+    install_base_final_outcome_source: "Equipment Review Workspace",
+    install_base_final_outcome_notes: notes,
+    quote_status: rec.quote_status || "",
+    rep_status: rec.rep_status || "",
+    completed_at: rec.completed_at || "",
+    completed_by: rec.completed_by || "",
+    tradein_project_id: rec.tradein_project_id || "",
+    tradein_modality_id: rec.tradein_modality_id || "",
+    quote_amount: rec.quote_amount || "",
+    quote_net_amount: rec.quote_net_amount || ""
+  };
+
+  const existingIndex = finalSync.findIndex(item =>
+    String(item.id || "") === String(packet.id || "") ||
+    (
+      String(item.oem_project_id || "") === String(packet.oem_project_id || "") &&
+      String(item.serial_number || "") === String(packet.serial_number || "")
+    )
+  );
+
+  if (existingIndex >= 0) {
+    finalSync[existingIndex] = { ...finalSync[existingIndex], ...packet };
+  } else {
+    finalSync.unshift(packet);
+  }
+
+  localStorage.setItem(INSTALL_BASE_FINAL_SYNC_KEY, JSON.stringify(finalSync));
+  localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
+}
     function updateAxisShareStatus() {
       const enabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
       const toggle = $("axisShareToggle");
@@ -3307,22 +3362,28 @@ if (
       rec.manager_flash_at = now;
 
       if (status === "won") {
-        rec.rep_status = "won";
-        rec.rep_action = "won";
-        rec.rep_action_label = "Won";
-        rec.project_management_visible = true;
-rec.project_management_status = "Available for PM Review";
-        rec.project_management_created_at = now;
-        rec.manager_flash_type = "quote_won";
-        rec.manager_flash_text = "Quote marked won";
-        rec.next_action_date = "";
-      } else if (status === "lost") {
-        rec.rep_status = "lost";
-        rec.rep_action = "lost";
-        rec.rep_action_label = "Lost";
-        rec.manager_flash_type = "quote_lost";
-        rec.manager_flash_text = "Quote marked lost";
-      } else {
+  rec.rep_status = "won";
+  rec.rep_action = "won";
+  rec.rep_action_label = "Won";
+  rec.project_management_visible = true;
+  rec.project_management_status = "Available for PM Review";
+  rec.project_management_created_at = now;
+  rec.manager_flash_type = "quote_won";
+  rec.manager_flash_text = "Quote marked won";
+  rec.next_action_date = "";
+
+  syncFinalOutcomeToInstallBase(rec, "won", "Quote marked won by rep.");
+
+} else if (status === "lost") {
+  rec.rep_status = "lost";
+  rec.rep_action = "lost";
+  rec.rep_action_label = "Lost";
+  rec.manager_flash_type = "quote_lost";
+  rec.manager_flash_text = "Quote marked lost";
+
+  syncFinalOutcomeToInstallBase(rec, "lost", lossReason || "Quote marked lost by rep.");
+
+} else {
         rec.rep_status = "quote_follow_up_set";
         rec.rep_action = isNewQuote ? "quote_created" : "quote_updated";
         rec.rep_action_label = isNewQuote ? "Quote Created" : "Quote Updated";
