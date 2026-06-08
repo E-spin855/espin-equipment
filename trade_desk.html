@@ -576,13 +576,17 @@ let activePacketId =
   new URLSearchParams(window.location.search).get("packetId") ||
   localStorage.getItem(ACTIVE_PACKET_KEY) ||
   "";
-
 let suppressRenderUntil = 0;
+let userInteractingUntil = 0;
 
-function shouldSuppressRender(){
-  return Date.now() < suppressRenderUntil;
+function holdRender(ms = 2500){
+  userInteractingUntil = Date.now() + ms;
+  suppressRenderUntil = Math.max(suppressRenderUntil, Date.now() + ms);
 }
 
+function shouldSuppressRender(){
+  return Date.now() < suppressRenderUntil || Date.now() < userInteractingUntil;
+}
 const APPROVED_BUYERS = [
   {
     company: "Espin Medical",
@@ -647,7 +651,7 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 function buttonSpinConfirm(btn, loadingText, successText, done){
-  suppressRenderUntil = Date.now() + 1800;
+  holdRender(3200);
 
   if (!btn) {
     if (typeof done === "function") done();
@@ -656,8 +660,8 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
   }
 
   const originalHtml = btn.dataset.originalHtml || btn.innerHTML;
-
   btn.dataset.originalHtml = originalHtml;
+
   btn.disabled = true;
   btn.classList.remove("is-success");
   btn.classList.add("is-loading");
@@ -669,13 +673,16 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      btn.classList.remove("is-success");
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-      suppressRenderUntil = 0;
-
       if (typeof done === "function") done();
-    }, 700);
+
+      setTimeout(() => {
+        btn.classList.remove("is-success");
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        suppressRenderUntil = 0;
+        userInteractingUntil = 0;
+      }, 350);
+    }, 500);
   }, 650);
 }
 function openImagePreview(url, title){
@@ -1330,6 +1337,19 @@ function importBuyerResponses(){
     saveData(deskData);
   }
 }
+document.addEventListener("pointerdown", function(e){
+  const btn = e.target.closest("button");
+  if (!btn) return;
+
+  holdRender(2200);
+}, true);
+
+document.addEventListener("click", function(e){
+  const btn = e.target.closest("button");
+  if (!btn) return;
+
+  holdRender(2600);
+}, true);
 function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
@@ -1644,8 +1664,10 @@ buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   window.location.href = mailto;
 
   setTimeout(() => {
+    suppressRenderUntil = 0;
+    userInteractingUntil = 0;
     render();
-  }, 300);
+  }, 900);
 });
 }
 
@@ -1792,8 +1814,10 @@ buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   window.location.href = mailto;
 
   setTimeout(() => {
+    suppressRenderUntil = 0;
+    userInteractingUntil = 0;
     render();
-  }, 300);
+  }, 900);
 });
 }
 
@@ -2755,13 +2779,14 @@ e.key === ACTIVE_PACKET_KEY
 
 setInterval(() => {
   if (shouldSuppressRender()) return;
+  if (isTradeDeskInputFocused()) return;
 
   importAutomaticIntake();
 
-  if (!isTradeDeskInputFocused()) {
+  if (!shouldSuppressRender() && !isTradeDeskInputFocused()) {
     render();
   }
-}, 2000);
+}, 2500);
 importAutomaticIntake();
 render();
 </script>
