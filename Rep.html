@@ -402,7 +402,20 @@ th{
     .pill.postponed{background:linear-gradient(90deg,#4b255f,#63347a,#7a4592);color:#f4ddff;border-color:rgba(122,69,146,.45)}
     .pill.submitted{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
     .pill.local{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
+.rep-new-flash .pill.local,
+.rep-new-flash .pill.ready,
+.rep-new-flash .pill.pending{
+  animation:repNewPulse 1s ease-in-out infinite!important;
+  box-shadow:
+    0 0 0 3px rgba(65,255,156,.22),
+    0 0 24px rgba(65,255,156,.75)!important;
+}
 
+@keyframes repNewPulse{
+  0%{transform:scale(1);filter:brightness(1);}
+  50%{transform:scale(1.12);filter:brightness(1.35);}
+  100%{transform:scale(1);filter:brightness(1);}
+}
     .next-action-label{
       display:inline-flex;
       align-items:center;
@@ -2162,9 +2175,10 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   tbody.innerHTML = sorted.map(rec => {
     const hasUnseenManagerResponse = rec.manager_response_action && !rec.manager_response_seen_by_rep;
     const selectedClass = [
-      rec.id === state.selectedId ? "selected" : "",
-      hasUnseenManagerResponse ? "manager-response-flash" : ""
-    ].filter(Boolean).join(" ");
+  rec.id === state.selectedId ? "selected" : "",
+  hasUnseenManagerResponse ? "manager-response-flash" : "",
+  rec.install_base_release_new && !rec.install_base_release_seen ? "manager-response-flash" : ""
+].filter(Boolean).join(" ");
 
     const age = ageFromDom(rec.dom);
 
@@ -2193,7 +2207,11 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
 
 <td>${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}</td>
 
-<td>${renderRepReviewStatus(rec)}</td>
+<td>
+  <span class="${rec.install_base_release_new && !rec.install_base_release_seen ? "rep-new-flash" : ""}">
+    ${renderRepReviewStatus(rec)}
+  </span>
+</td>
       </tr>
     `;
   }).join("");
@@ -5189,6 +5207,12 @@ function refreshSelectedRowUI() {
     if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
       rec.manager_response_seen_by_rep = true;
       rec.manager_response_seen_at = new Date().toISOString();
+      changed = true;
+    }
+
+    if (rec.install_base_release_new === true || rec.install_base_release_seen !== true) {
+      rec.install_base_release_new = false;
+      rec.install_base_release_seen = true;
       changed = true;
     }
 
