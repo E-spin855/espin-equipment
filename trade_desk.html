@@ -648,6 +648,33 @@ function saveData(data){
   saveArray(KEY, data);
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
+function openMailDraft(mailto){
+  const a = document.createElement("a");
+  a.href = mailto;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+
+  setTimeout(() => {
+    a.remove();
+    resetDemoButtons();
+  }, 250);
+}
+
+function resetDemoButtons(){
+  document.querySelectorAll("button.is-loading, button.is-success").forEach(btn => {
+    const originalHtml = btn.dataset.originalHtml;
+
+    btn.classList.remove("is-loading", "is-success");
+    btn.disabled = false;
+
+    if (originalHtml) {
+      btn.innerHTML = originalHtml;
+    }
+  });
+
+  suppressRenderUntil = 0;
+}
 function buttonSpinConfirm(btn, loadingText, successText, done){
   if (!btn) {
     if (typeof done === "function") done();
@@ -1642,13 +1669,11 @@ const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
     `?cc=${encodeURIComponent(ccEmail)}` +
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
+openMailDraft(mailto);
+
 buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   suppressRenderUntil = 0;
   render();
-
-  setTimeout(() => {
-    window.location.href = mailto;
-  }, 150);
 });
 }
 
@@ -1790,14 +1815,12 @@ function sendInfoRequestToRep(btn = null){
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 
+openMailDraft(mailto);
+
 buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   closeInfoRequestModal();
   suppressRenderUntil = 0;
   render();
-
-  setTimeout(() => {
-    window.location.href = mailto;
-  }, 150);
 });
 }
 
@@ -2481,7 +2504,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
           <span class="badge">${getResponseCount(rec)} Buyer Responses</span>
         </div>
 
-        <button onclick="openTradeDeskPacket('${htmlSafe(rawId)}')">
+        <button onclick="openTradeDeskPacket('${jsSafe(rawId)}')">
           ${active ? "Close Record" : "Open Record"}
         </button>
       </div>
@@ -2765,7 +2788,8 @@ e.key === ACTIVE_PACKET_KEY
 }
   }
 });
-
+window.addEventListener("focus", resetDemoButtons);
+window.addEventListener("pageshow", resetDemoButtons);
 setInterval(() => {
   if (shouldSuppressRender()) return;
   if (isTradeDeskInputFocused()) return;
