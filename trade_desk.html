@@ -651,13 +651,17 @@ function saveData(data){
 function openMailDraft(mailto){
   resetDemoButtons();
 
-  setTimeout(() => {
-    window.location.href = mailto;
+  const a = document.createElement("a");
+  a.href = mailto;
+  a.style.display = "none";
 
-    setTimeout(() => {
-      resetDemoButtons();
-    }, 600);
-  }, 100);
+  document.body.appendChild(a);
+  a.click();
+
+  setTimeout(() => {
+    a.remove();
+    recoverPageAfterExternalAction();
+  }, 750);
 }
 
 function resetDemoButtons(){
@@ -702,7 +706,7 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
       if (typeof done === "function") {
         done();
       }
-    }, 500);
+    }, 450);
   }, 500);
 }
 function openImagePreview(url, title){
@@ -2790,12 +2794,24 @@ e.key === ACTIVE_PACKET_KEY
 }
   }
 });
-window.addEventListener("focus", resetDemoButtons);
-window.addEventListener("pageshow", resetDemoButtons);
+function recoverPageAfterExternalAction(){
+  suppressRenderUntil = 0;
+  resetDemoButtons();
+
+  setTimeout(() => {
+    if (!isTradeDeskInputFocused()) {
+      importAutomaticIntake();
+      render();
+    }
+  }, 100);
+}
+
+window.addEventListener("focus", recoverPageAfterExternalAction);
+window.addEventListener("pageshow", recoverPageAfterExternalAction);
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
-    resetDemoButtons();
+    recoverPageAfterExternalAction();
   }
 });
 
