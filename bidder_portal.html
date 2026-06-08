@@ -81,23 +81,33 @@ button.secondary{
 }
 
 button:disabled{
-  opacity:.55;
+  opacity:.65;
   cursor:not-allowed;
+}
+
+button.is-loading{
+  opacity:.82;
+  pointer-events:none;
+}
+
+button.is-success{
+  background:#18a558 !important;
+  color:#ffffff !important;
 }
 
 .spinner-dot{
   display:inline-block;
-  width:10px;
-  height:10px;
-  border:2px solid rgba(255,255,255,.35);
-  border-top-color:#fff;
+  width:14px;
+  height:14px;
+  border:2px solid rgba(255,255,255,.45);
+  border-top-color:#ffffff;
   border-radius:50%;
+  animation:spinButton .75s linear infinite;
+  vertical-align:-2px;
   margin-right:8px;
-  vertical-align:-1px;
-  animation:spin .75s linear infinite;
 }
 
-@keyframes spin{
+@keyframes spinButton{
   to{transform:rotate(360deg)}
 }
 
@@ -386,10 +396,6 @@ function idSafe(v){
   return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
-function money(n){
-  return "$" + Number(n || 0).toLocaleString();
-}
-
 function loadArray(key){
   try {
     const data = JSON.parse(localStorage.getItem(key) || "[]");
@@ -540,32 +546,10 @@ function normalizePortalPackage(pkg){
     pkg.status ||
     "Open for Bids";
 
-  merged.response_deadline =
-    pkg.response_deadline ||
-    record.response_deadline ||
-    equipment.response_deadline ||
-    "";
-
-  merged.bid_deadline =
-    pkg.bid_deadline ||
-    record.bid_deadline ||
-    equipment.bid_deadline ||
-    merged.response_deadline ||
-    "";
-
-  merged.bidding_ends_at =
-    pkg.bidding_ends_at ||
-    record.bidding_ends_at ||
-    equipment.bidding_ends_at ||
-    merged.response_deadline ||
-    "";
-
-  merged.bid_expires_at =
-    pkg.bid_expires_at ||
-    record.bid_expires_at ||
-    equipment.bid_expires_at ||
-    merged.response_deadline ||
-    "";
+  merged.response_deadline = pkg.response_deadline || record.response_deadline || equipment.response_deadline || "";
+  merged.bid_deadline = pkg.bid_deadline || record.bid_deadline || equipment.bid_deadline || merged.response_deadline || "";
+  merged.bidding_ends_at = pkg.bidding_ends_at || record.bidding_ends_at || equipment.bidding_ends_at || merged.response_deadline || "";
+  merged.bid_expires_at = pkg.bid_expires_at || record.bid_expires_at || equipment.bid_expires_at || merged.response_deadline || "";
 
   merged.bids = Array.isArray(pkg.bids)
     ? pkg.bids
@@ -597,7 +581,6 @@ function packageMatches(pkg, targetRecordId = "", targetPacketId = ""){
 
   if (recordId && ids.includes(recordId)) return true;
   if (packetId && ids.includes(packetId)) return true;
-
   if (targetRecordId && ids.includes(String(targetRecordId))) return true;
   if (targetPacketId && ids.includes(String(targetPacketId))) return true;
 
@@ -698,20 +681,29 @@ function setBidButtonState(recordId, state, btnEl = null){
 
   if (!btn) return;
 
+  if (!btn.dataset.originalText) {
+    btn.dataset.originalText = "Submit Bid";
+  }
+
+  btn.classList.remove("is-loading", "is-success");
+
   if (state === "loading") {
     btn.disabled = true;
+    btn.classList.add("is-loading");
     btn.innerHTML = `<span class="spinner-dot"></span>Submitting...`;
     return;
   }
 
   if (state === "submitted") {
     btn.disabled = true;
+    btn.classList.add("is-success");
     btn.textContent = "Bid Submitted";
     return;
   }
 
   btn.disabled = false;
-  btn.textContent = "Submit Bid";
+  btn.classList.remove("is-loading", "is-success");
+  btn.textContent = btn.dataset.originalText || "Submit Bid";
 }
 
 function togglePackage(recordId){
@@ -780,17 +772,12 @@ function tradeInFieldRows(rec){
     if (key === "ct_injector_model") return isYes(getV("ct_injector"));
     if (key === "ct_upgrades_desc") return isYes(getV("ct_upgrades"));
     if (key === "ct_out_of_use_date") return isNo(getV("ct_in_use", "in_use_status", "tradein_in_use_status"));
-
     if (key === "mri_service_name") return isYes(getV("mri_service"));
     if (key === "mri_out_of_use_date") return isNo(getV("mri_in_use", "in_use_status", "tradein_in_use_status"));
-
     if (key === "xray_out_of_use_date") return isNo(getV("xray_in_use", "in_use_status", "tradein_in_use_status"));
-
     if (key === "carm_service_name") return isYes(getV("carm_servicing"));
     if (key === "carm_out_of_use_date") return isNo(getV("carm_in_use", "in_use_status", "tradein_in_use_status"));
-
     if (key === "pet_out_of_use_date") return isNo(getV("pet_in_use", "in_use_status", "tradein_in_use_status"));
-
     if (key === "mamo_out_of_use_date") return isNo(getV("mamo_in_use", "in_use_status", "tradein_in_use_status"));
 
     return value !== undefined && value !== null && String(value).trim() !== "";
@@ -801,9 +788,7 @@ function tradeInFieldRows(rec){
   const zip = getV("zip_code", "zip");
   const location = [city, state, zip].filter(Boolean).join(" ");
 
-  const modality = String(
-    getV("modality", "tradein_equipment_modality")
-  ).toUpperCase();
+  const modality = String(getV("modality", "tradein_equipment_modality")).toUpperCase();
 
   const rows = [
     ["Location", location, "location"],
@@ -1082,14 +1067,13 @@ function renderPackageCard(rec){
             >
 
             <button
-  type="button"
-  id="submitBidBtn_${safeRecordId}"
-  class="green"
-  data-record-id="${htmlSafe(recordId)}"
-  onclick="submitBidFromButton(this)"
->
-  Submit Bid
-</button>
+              type="button"
+              id="submitBidBtn_${safeRecordId}"
+              class="green js-submit-bid"
+              data-record-id="${htmlSafe(recordId)}"
+            >
+              Submit Bid
+            </button>
           `
           : ""
       }
@@ -1136,22 +1120,7 @@ function render(){
     </div>
   `;
 }
-function submitBidFromButton(btn){
-  const recordId = String(btn?.dataset?.recordId || "").trim();
 
-  console.log("Submit Bid clicked:", {
-    recordId,
-    buttonId: btn?.id || "",
-    safeRecordId: idSafe(recordId)
-  });
-
-  if (!recordId) {
-    alert("No record ID found on submit button.");
-    return;
-  }
-
-  submitBid(recordId, btn);
-}
 function submitBid(recordId, btnEl = null){
   console.log("submitBid running:", recordId);
 
@@ -1516,7 +1485,7 @@ function submitBid(recordId, btnEl = null){
       setBidButtonState(recordId, "reset", btnEl);
       suppressRenderUntil = 0;
       render();
-    }, 1200);
+    }, 1400);
 
   } catch (err) {
     console.error("Submit bid failed:", err);
@@ -1532,6 +1501,32 @@ function submitBid(recordId, btnEl = null){
     suppressRenderUntil = 0;
   }
 }
+
+document.addEventListener("click", function(e){
+  const btn = e.target.closest(".js-submit-bid");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const recordId = String(btn.getAttribute("data-record-id") || "").trim();
+
+  console.log("Submit Bid clicked:", {
+    recordId,
+    buttonId: btn.id,
+    safeRecordId: idSafe(recordId),
+    disabled: btn.disabled
+  });
+
+  if (btn.disabled) return;
+
+  if (!recordId) {
+    alert("No record ID found on Submit Bid button.");
+    return;
+  }
+
+  submitBid(recordId, btn);
+}, true);
 
 window.addEventListener("storage", (e) => {
   if (
@@ -1554,6 +1549,7 @@ window.addEventListener("focus", () => {
   document.querySelectorAll("button").forEach(btn => {
     if (btn.disabled && btn.id && btn.id.startsWith("submitBidBtn_")) {
       btn.disabled = false;
+      btn.classList.remove("is-loading", "is-success");
       btn.textContent = "Submit Bid";
     }
   });
@@ -1568,18 +1564,6 @@ setInterval(() => {
     render();
   }
 }, 2000);
-
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
-  if (!btn) return;
-
-  console.log("BUTTON CLICK DETECTED:", {
-    text: btn.textContent.trim(),
-    id: btn.id || "",
-    dataRecordId: btn.dataset.recordId || "",
-    disabled: btn.disabled
-  });
-});
 
 render();
 </script>
