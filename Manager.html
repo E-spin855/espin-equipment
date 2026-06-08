@@ -1323,18 +1323,16 @@ function getAlerts(rec) {
       lifecycle_review: "Age",
       tradein: "Review",
 trade_in: "Review",
+quote: "Quote",
+quote_review: "Quote",
+project: "Project",
+project_review: "Project",
 proactive: "Review",
 review: "Review",
-      quote: "Quote",
-      quote_review: "Quote",
-      project: "Project",
-      project_review: "Project",
-      proactive: "Notice",
-      review: "Review",
-      replacement: "Replace",
-      upgrade: "Upgrade",
-      disposal: "Dispose",
-      disposition: "Dispose"
+replacement: "Replace",
+upgrade: "Upgrade",
+disposal: "Dispose",
+disposition: "Dispose"
     };
 
     const safeType = safeTypeMap[importedType] || "review";
@@ -1801,7 +1799,11 @@ function renderActivityTimeline(rec) {
     `;
   }).join("");
 }
-
+function getUpdateLabel(rec) {
+  if (rec.manager_flash_type === "install_base_release") return "New hub release is open for manager review.";
+  if (rec.manager_flash_type === "rep_update") return "New rep update is open for manager review.";
+  return "New update is open for manager review.";
+}
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -1831,7 +1833,10 @@ if (closeBtn) closeBtn.classList.remove("hidden");
 const hasOpenManagerUpdate =
   rec.manager_unseen_update === true &&
   rec.manager_flash_type !== "manager_response";
-
+const hubUpdateCardClass =
+  hasOpenManagerUpdate && rec.manager_flash_type === "install_base_release"
+    ? "detail-card update-detail-card"
+    : "detail-card";
 const repActivityCardClass =
   hasOpenManagerUpdate
     ? "detail-card update-detail-card"
@@ -1874,8 +1879,8 @@ grid.innerHTML = `
 
     <div class="section-title">OEM Review Context</div>
 
-    <div class="detail-card">
-      <div class="k">Review Condition</div>
+   <div class="${hubUpdateCardClass}">
+  <div class="k">Review Condition</div>
       <div class="v">${renderReviewCondition(rec)}</div>
     </div>
 
@@ -1893,7 +1898,7 @@ grid.innerHTML = `
       <div class="k">OEM Display Tag</div>
       <div class="v">${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "None"))}</div>
     </div>
-<div class="detail-card">
+<div class="${hubUpdateCardClass}">
   <div class="k">Install Base Release</div>
   <div class="v">${escapeHtml(rec.install_base_release_status || "Not released from Install Base")}</div>
   <div class="mini">
@@ -1916,20 +1921,20 @@ grid.innerHTML = `
   <div class="k">Rep Action / Status</div>
   <div class="v">${renderRepStatus(rec)}</div>
   ${
-    hasOpenManagerUpdate
-      ? `<div class="mini" style="margin-top:8px;color:#fff2a6;font-weight:900;">New rep update is open for manager review.</div>`
-      : ""
-  }
+  hasOpenManagerUpdate
+    ? `<div class="mini" style="margin-top:8px;color:#fff2a6;font-weight:900;">${escapeHtml(getUpdateLabel(rec))}</div>`
+    : ""
+}
 </div>
 
 <div class="${repFollowUpCardClass}">
   <div class="k">Rep Follow-Up Date</div>
   <div class="v">${renderFollowUpDatePill(rec)}</div>
   ${
-    hasOpenManagerUpdate && getFollowUpDate(rec)
-      ? `<div class="mini" style="margin-top:8px;color:#b8ffd7;font-weight:900;">Follow-up date came from the rep update.</div>`
-      : ""
-  }
+  hasOpenManagerUpdate && getFollowUpDate(rec)
+    ? `<div class="mini" style="margin-top:8px;color:#b8ffd7;font-weight:900;">${escapeHtml(getUpdateLabel(rec))}</div>`
+    : ""
+}
 </div>
     <div class="detail-card full">
       <div class="k">Rep Notes</div>
