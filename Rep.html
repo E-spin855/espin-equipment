@@ -1118,6 +1118,8 @@ th{
   <script>
     const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
     const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
+const REP_QUEUE_KEY = "espin_rep_queue";
+const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
     const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
     const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
     const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
@@ -1689,6 +1691,55 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     state.selectedId = null;
   }
 }
+function importRepQueueRecords() {
+  let queue = [];
+
+  try {
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  if (!queue.length) return;
+
+  let changed = false;
+
+  queue.forEach(item => {
+    const existing = state.records.find(r =>
+      String(r.id || "") === String(item.id || "") ||
+      String(r.key || "") === String(item.key || "") ||
+      (
+        String(r.oem_project_id || "") === String(item.oem_project_id || "") &&
+        String(r.serial_number || "") === String(item.serial_number || "")
+      )
+    );
+
+    const releasedRecord = {
+      ...item,
+      source: item.hub_source || item.source || "AXIS Install Base Workspace",
+      install_base_release_status: item.install_base_release_status || "released_to_rep",
+      rep_status: item.rep_status || "needed",
+      rep_action: item.rep_action || "",
+      rep_action_label: item.rep_action_label || "",
+      manager_response_seen_by_rep: item.manager_response_seen_by_rep ?? true
+    };
+
+    if (existing) {
+      Object.assign(existing, {
+        ...existing,
+        ...releasedRecord,
+        id: existing.id || releasedRecord.id
+      });
+    } else {
+      state.records.unshift(releasedRecord);
+    }
+
+    changed = true;
+  });
+
+  if (changed) saveRecords();
+}
     function saveRecords() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
     }
@@ -2072,7 +2123,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
 <td class="wrap">${escapeHtml(rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility")}</td>
 
-<td>${escapeHtml(rec.source || "CSV")}</td>
+<td>${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}</td>
 
 <td>${renderRepReviewStatus(rec)}</td>
       </tr>
@@ -5013,12 +5064,15 @@ function refreshSelectedRowUI() {
 }
     function init() {
       loadRecords(true);
-      importTradeInSyncRecords();
-      updateAxisShareStatus();
+importRepQueueRecords();
+importTradeInSyncRecords();
+updateAxisShareStatus();
 
       window.addEventListener("storage", (e) => {
   if (
     e.key === STORAGE_KEY ||
+  e.key === REP_QUEUE_KEY ||
+  e.key === REP_SYNC_KEY ||
     e.key === "axis_tradein_sync_records_v1" ||
     e.key === "axis_manager_sync_ping_v1" ||
     e.key === AXIS_SHARE_KEY ||
@@ -5028,6 +5082,7 @@ function refreshSelectedRowUI() {
     e.key === QUOTE_APPROVAL_PING_KEY
   ) {
     loadRecords(true);
+importRepQueueRecords();
     importTradeInSyncRecords();
     importQuoteApprovalDecisions();
     updateAxisShareStatus();

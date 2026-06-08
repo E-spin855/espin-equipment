@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="assets/js/axis-utils.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AXIS Install Base Workspace</title>
+
+<style>
+:root{
+  --bg:#07111f;
+  --panel:#0b1830;
+  --panel2:#0e1f3f;
+  --line:rgba(88,184,255,.25);
+  --blue:#43b0ff;
+  --blue2:#00e5ff;
+  --green:#41ff9c;
+  --yellow:#ffd84d;
+  --red:#ff6b6b;
+  --pink:#ff4fd8;
+  --text:#eef6ff;
+  --muted:#9db6d2;
+  --shadow:0 0 0 1px rgba(67,176,255,.14),0 0 22px rgba(0,229,255,.11),0 0 54px rgba(67,176,255,.08);
+  --radius:18px;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--text);
+  background:
+    radial-gradient(circle at top right,rgba(255,79,216,.10),transparent 26%),
+    radial-gradient(circle at top left,rgba(0,229,255,.12),transparent 28%),
+    linear-gradient(180deg,#040a13 0%,#08111f 35%,#050b16 100%);
+}
+
+.shell{
+  max-width:1450px;
+  margin:0 auto;
+  padding:28px 18px 36px;
+}
+
+h1{
+  margin:0 0 8px;
+  font-size:32px;
+  line-height:1.05;
+}
+
+.subtitle{
+  margin:0;
+  color:var(--muted);
+  font-size:15px;
+  line-height:1.5;
+  max-width:980px;
+}
+
+.strip{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:16px;
+}
+
+.chip{
+  padding:10px 14px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(9,20,39,.8);
+  box-shadow:0 0 14px rgba(0,229,255,.18);
+  font-size:13px;
+  color:#d8ebff;
+}
+
+.notice{
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid rgba(255,216,77,.22);
+  background:rgba(255,216,77,.07);
+  border-radius:14px;
+  color:#d9c98a;
+  font-size:12px;
+  line-height:1.55;
+}
+
+.stats{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin:22px 0 18px;
+}
+
+@media(max-width:900px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+.stat{
+  padding:16px;
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(13,27,54,.95),rgba(9,18,36,.95));
+  border:1px solid rgba(88,184,255,.15);
+  box-shadow:var(--shadow);
+}
+
+.stat .k{
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:8px;
+}
+
+.stat .v{
+  font-size:30px;
+  font-weight:900;
+  line-height:1;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:390px 1fr;
+  gap:18px;
+  align-items:start;
+}
+
+@media(max-width:1080px){
+  .grid{grid-template-columns:1fr}
+}
+
+.panel{
+  background:linear-gradient(180deg,rgba(12,24,49,.94),rgba(8,18,36,.94));
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+.panel-head{
+  padding:16px 18px;
+  border-bottom:1px solid rgba(88,184,255,.12);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.panel-head h2{
+  margin:0;
+  font-size:18px;
+}
+
+.panel-body{
+  padding:18px;
+}
+
+label{
+  display:block;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.11em;
+  color:#8eb3d7;
+  margin-bottom:8px;
+}
+
+input,button,select{
+  font:inherit;
+}
+
+input,select{
+  width:100%;
+  padding:12px 13px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.18);
+  background:#081223;
+  color:var(--text);
+  outline:none;
+}
+
+button{
+  cursor:pointer;
+  border:0;
+  border-radius:12px;
+  padding:12px 14px;
+  color:#03111b;
+  font-weight:800;
+  background:linear-gradient(90deg,var(--blue),var(--blue2));
+  box-shadow:0 0 18px rgba(0,229,255,.22);
+}
+
+button.secondary{
+  background:#102340;
+  color:var(--text);
+  border:1px solid rgba(88,184,255,.18);
+  box-shadow:none;
+}
+
+button.green{
+  background:linear-gradient(90deg,#1fd17a,#41ff9c);
+  color:#03150b;
+}
+
+button.yellow{
+  background:linear-gradient(90deg,#e0b100,#ffd84d);
+  color:#1d1600;
+}
+
+button.danger{
+  background:#3a1820;
+  color:#ffd6dc;
+  border:1px solid rgba(255,107,107,.28);
+  box-shadow:none;
+}
+
+.btns{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.mini{
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.45;
+}
+
+.owner-list{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.owner-card{
+  padding:14px;
+  border-radius:16px;
+  background:rgba(8,18,35,.72);
+  border:1px solid rgba(88,184,255,.16);
+  cursor:pointer;
+  transition:.18s;
+}
+
+.owner-card:hover{
+  background:rgba(14,31,63,.9);
+  border-color:rgba(67,176,255,.55);
+}
+
+.owner-card.active{
+  border-color:#43b0ff;
+  box-shadow:0 0 22px rgba(67,176,255,.22);
+  background:rgba(67,176,255,.09);
+}
+
+.owner-name{
+  font-size:16px;
+  font-weight:900;
+}
+
+.owner-territory{
+  margin-top:5px;
+  font-size:13px;
+  color:#a2f5ff;
+  font-weight:800;
+}
+
+.owner-meta{
+  margin-top:5px;
+  font-size:12px;
+  color:#9db6d2;
+}
+
+.packet-pill{
+  margin-top:10px;
+  display:inline-flex;
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(0,229,255,.12);
+  color:#a2f5ff;
+  font-size:11px;
+  font-weight:800;
+}
+
+.table-wrap{
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:1150px;
+}
+
+th,td{
+  padding:12px 14px;
+  border-bottom:1px solid rgba(88,184,255,.14);
+  text-align:left;
+  font-size:14px;
+  vertical-align:middle;
+}
+
+th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:rgba(9,18,35,.98);
+  color:#a8c8e7;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
+tbody tr{
+  background:rgba(9,18,35,.45);
+}
+
+tbody tr:hover{
+  background:rgba(14,31,63,.8);
+}
+
+tbody tr.selected{
+  background:rgba(67,176,255,.13);
+  outline:1px solid rgba(67,176,255,.45);
+}
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:122px;
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:12px;
+  font-weight:900;
+  text-align:center;
+}
+
+.badge-ok{background:rgba(65,255,156,.12);color:#c8ffdf;border:1px solid rgba(65,255,156,.25)}
+.badge-missing{background:rgba(255,107,107,.14);color:#ffd6dc;border:1px solid rgba(255,107,107,.28)}
+.badge-owner{background:rgba(255,216,77,.13);color:#fff0b8;border:1px solid rgba(255,216,77,.26)}
+.badge-source{background:rgba(255,79,216,.13);color:#ffd7f7;border:1px solid rgba(255,79,216,.26)}
+.badge-staged{background:rgba(67,176,255,.13);color:#b7e1ff;border:1px solid rgba(67,176,255,.28)}
+.badge-released{background:rgba(65,255,156,.15);color:#d8ffe9;border:1px solid rgba(65,255,156,.3)}
+
+.detail-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+@media(max-width:720px){
+  .detail-grid{grid-template-columns:1fr}
+}
+
+.detail-card{
+  padding:14px;
+  border-radius:14px;
+  background:rgba(8,18,35,.72);
+  border:1px solid rgba(88,184,255,.14);
+}
+
+.detail-card .k{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.1em;
+  color:#8fb1cf;
+  margin-bottom:6px;
+}
+
+.detail-card .v{
+  font-size:15px;
+  font-weight:800;
+}
+
+.hidden{
+  display:none!important;
+}
+
+.banner{
+  margin-top:14px;
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(65,255,156,.25);
+  background:rgba(65,255,156,.09);
+  color:#c8ffdf;
+  display:none;
+}
+
+.footer-note{
+  margin-top:14px;
+  font-size:12px;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+.search-row{
+  display:grid;
+  grid-template-columns:1fr 170px;
+  gap:10px;
+  margin-bottom:14px;
+}
+
+@media(max-width:720px){
+  .search-row{grid-template-columns:1fr}
+}
+
+.small-select{
+  padding:10px 11px;
+}
+</style>
+</head>
+
+<body>
+<div class="shell">
+
+  <div class="hero">
+    <h1>AXIS Install Base Workspace</h1>
+    <p class="subtitle">
+      OEM install-base review screen. This workspace imports asset records, highlights data-quality exceptions, confirms ownership, and stages records for manual release into manager or rep review queues.
+    </p>
+
+    <div class="strip">
+      <div class="chip">Import install base</div>
+      <div class="chip">Find missing fields</div>
+      <div class="chip">Confirm owner</div>
+      <div class="chip">Review source conflicts</div>
+      <div class="chip">Stage for manual release</div>
+      <div class="chip">Inspectable by OEM IT</div>
+    </div>
+
+    <div class="notice">
+      AXIS outputs on this page are install-base review aids only. This workspace does not recommend replacement, generate sales opportunities, select a best action, assign best reps, create financial advice, create valuation advice, or direct procurement decisions.
+      <br><br>
+      Final decisions remain with the OEM, customer, and authorized stakeholders.
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Install Base Records</div><div class="v" id="statTotal">0</div></div>
+    <div class="stat"><div class="k">Owner Groups</div><div class="v" id="statOwners">0</div></div>
+    <div class="stat"><div class="k">Rep Owners</div><div class="v" id="statReps">0</div></div>
+    <div class="stat"><div class="k">Data Exceptions</div><div class="v" id="statExceptions">0</div></div>
+  </div>
+
+  <div class="grid">
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Install Base Import</h2>
+        <span class="mini">OEM source input</span>
+      </div>
+
+      <div class="panel-body">
+        <label for="csvInput">Upload CSV / Excel</label>
+        <input id="csvInput" type="file" accept=".xlsx,.xls,.csv" />
+
+        <div class="btns">
+          <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+        </div>
+
+        <div class="footer-note">
+          Useful fields: project ID, asset ID, make, model, modality, serial, DOM/year, site, city, state, assigned rep, manager, source system.
+          <br><br>
+          If manager fields are missing, demo owner groups are assigned only for display. Final ownership confirmation should remain manual.
+        </div>
+
+        <div class="panel" style="margin-top:18px;">
+          <div class="panel-head">
+            <h2>Owner Groups</h2>
+            <span class="mini">Click to filter</span>
+          </div>
+
+          <div class="panel-body">
+            <div id="ownerList" class="owner-list">
+              <div class="mini">Upload data to create owner groups.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+
+      <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-head">
+          <h2 id="tableTitle">Install Base Review</h2>
+          <span class="mini" id="tableSubtitle">All records</span>
+        </div>
+
+        <div class="panel-body">
+          <div class="search-row">
+            <input id="searchInput" type="text" placeholder="Search site, serial, model, rep, manager..." />
+            <select id="exceptionFilter" class="small-select">
+              <option value="">All records</option>
+              <option value="exception">Exceptions only</option>
+              <option value="ready">Ready only</option>
+              <option value="released">Released only</option>
+              <option value="staged">Staged only</option>
+            </select>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project / Asset ID</th>
+                  <th>Owner Group</th>
+                  <th>Territory</th>
+                  <th>Rep Owner</th>
+                  <th>Site</th>
+                  <th>Modality</th>
+                  <th>Make</th>
+                  <th>Model</th>
+                  <th>Serial</th>
+                  <th>DOM</th>
+                  <th>Age</th>
+                  <th>Review Status</th>
+                </tr>
+              </thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Selected Record Detail</h2>
+          <span class="mini">Manual release only</span>
+        </div>
+
+        <div class="panel-body">
+          <div id="emptyState" class="mini">Select a row to inspect install-base data.</div>
+
+          <div id="detailArea" class="hidden">
+            <div class="detail-grid" id="detailGrid"></div>
+
+            <div class="btns">
+              <button type="button" class="green" id="releaseManagerBtn">Release Selected to Manager Review</button>
+              <button type="button" class="yellow" id="releaseRepBtn">Release Selected to Rep Review</button>
+              <button type="button" class="secondary" id="markStagedBtn">Mark as Staged Only</button>
+            </div>
+
+            <div class="banner" id="resultBanner"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
+const INSTALL_BASE_KEY = "axis_install_base_records_v1";
+const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
+const REP_QUEUE_KEY = "espin_rep_queue";
+const VP_QUEUE_KEY = "axis_vp_queue_v1";
+
+const state = {
+  records: [],
+  selectedOwner: "",
+  selectedId: null,
+  search: "",
+  filter: ""
+};
+
+const $ = (id) => document.getElementById(id);
+
+const uuid =
+  window.AxisUtils?.uuid ||
+  (() => "id_" + Math.random().toString(36).slice(2) + Date.now());
+
+const normalizeModality =
+  window.AxisUtils?.normalizeModality ||
+  ((v) => String(v || "").toUpperCase().trim());
+
+const ageFromDom =
+  window.AxisUtils?.ageFromDomEmpty ||
+  ((dom) => {
+    const n = Number(dom);
+    if (!n) return "";
+    return new Date().getFullYear() - n;
+  });
+
+const DEMO_OWNER_GROUPS = [
+  {
+    name: "Karen Whitfield",
+    email: "k.whitfield@oem-demo.com",
+    territory: "West Territory",
+    states: ["WA","OR","CA","AK","HI","NV","ID","MT"]
+  },
+  {
+    name: "Marcus Bennett",
+    email: "m.bennett@oem-demo.com",
+    territory: "Central Territory",
+    states: ["TX","OK","KS","NE","CO","UT","AZ","NM","MO"]
+  },
+  {
+    name: "Alicia Monroe",
+    email: "a.monroe@oem-demo.com",
+    territory: "Northeast Territory",
+    states: ["NY","NJ","PA","MA","CT","RI","VT","NH","ME"]
+  },
+  {
+    name: "Thomas Gallagher",
+    email: "t.gallagher@oem-demo.com",
+    territory: "Southeast Territory",
+    states: ["FL","GA","NC","SC","VA","TN","AL","MS","LA","KY"]
+  },
+  {
+    name: "Priya Shah",
+    email: "p.shah@oem-demo.com",
+    territory: "Great Lakes Territory",
+    states: ["IL","IN","OH","MI","WI","MN","IA","ND","SD"]
+  }
+];
+
+function normalizeKey(k) {
+  return String(k || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\r?\n|\r/g, "")
+    .replace(/&/g, "and")
+    .replace(/\//g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function escapeHtml(v) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function excelDateToISO(val) {
+  if (!val) return "";
+
+  if (!isNaN(val) && String(val).trim() !== "") {
+    const date = new Date((Number(val) - 25569) * 86400 * 1000);
+    if (!isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
+
+  const d = new Date(val);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return String(val || "");
+}
+
+function getRecordKey(rec) {
+  const project = String(rec.oem_project_id || rec.asset_id || "").trim();
+  const serial = String(rec.serial_number || "").trim();
+  return rec.key || `${project}_${serial}` || rec.id || uuid();
+}
+
+function getDemoOwner(seed, stateValue) {
+  const stateCode = String(stateValue || "").toUpperCase().trim();
+
+  if (stateCode) {
+    const byState = DEMO_OWNER_GROUPS.find(m => m.states.includes(stateCode));
+    if (byState) return byState;
+  }
+
+  const index = Math.abs(
+    String(seed || "default")
+      .split("")
+      .reduce((a, c) => a + c.charCodeAt(0), 0)
+  ) % DEMO_OWNER_GROUPS.length;
+
+  return DEMO_OWNER_GROUPS[index];
+}
+
+function getOwnerName(rec) {
+  return rec.manager_name || rec.owner_group_name || "Unassigned Owner Group";
+}
+
+function getOwnerTerritory(rec) {
+  return rec.manager_region || rec.manager_territory || rec.territory || "Unassigned Territory";
+}
+function isDuplicateAsset(rec) {
+  const key = [
+    String(rec.oem_project_id || rec.asset_id || "").trim().toLowerCase(),
+    String(rec.serial_number || "").trim().toLowerCase()
+  ].join("|");
+
+  if (key === "|") return false;
+
+  return state.records.filter(r => {
+    const rKey = [
+      String(r.oem_project_id || r.asset_id || "").trim().toLowerCase(),
+      String(r.serial_number || "").trim().toLowerCase()
+    ].join("|");
+
+    return rKey === key;
+  }).length > 1;
+}
+
+function getDataExceptions(rec) {
+  const issues = [];
+
+  if (!String(rec.serial_number || "").trim()) {
+    issues.push({ type: "missing", label: "Missing Serial" });
+  }
+
+  if (!String(rec.dom || "").trim()) {
+    issues.push({ type: "missing", label: "Missing DOM" });
+  }
+
+  if (!String(rec.site || "").trim() || rec.site === "Unknown Site") {
+    issues.push({ type: "missing", label: "Missing Site" });
+  }
+
+  if (!String(rec.assigned_rep_name || "").trim() || rec.assigned_rep_name === "Unassigned") {
+    issues.push({ type: "owner", label: "Missing Rep Owner" });
+  }
+
+  if (!String(rec.manager_name || "").trim() || rec.manager_name === "Unassigned Owner Group") {
+    issues.push({ type: "owner", label: "Missing Owner Group" });
+  }
+
+  if (
+    String(rec.source_conflict || "").toLowerCase() === "yes" ||
+    String(rec.conflict || "").toLowerCase() === "yes"
+  ) {
+    issues.push({ type: "source", label: "Source Conflict" });
+  }
+
+  if (isDuplicateAsset(rec)) {
+    issues.push({ type: "source", label: "Duplicate Asset" });
+  }
+
+  return issues;
+}
+function getDataExceptions(rec) {
+  const issues = [];
+
+  if (!String(rec.serial_number || "").trim()) {
+    issues.push({ type: "missing", label: "Missing Serial" });
+  }
+
+  if (!String(rec.dom || "").trim()) {
+    issues.push({ type: "missing", label: "Missing DOM" });
+  }
+
+  if (!String(rec.site || "").trim() || rec.site === "Unknown Site") {
+    issues.push({ type: "missing", label: "Missing Site" });
+  }
+
+  if (!String(rec.assigned_rep_name || "").trim() || rec.assigned_rep_name === "Unassigned") {
+    issues.push({ type: "owner", label: "Missing Rep Owner" });
+  }
+if (isDuplicateAsset(rec)) {
+  issues.push({ type: "source", label: "Duplicate Asset" });
+}
+  if (!String(rec.manager_name || "").trim() || rec.manager_name === "Unassigned Owner Group") {
+    issues.push({ type: "owner", label: "Missing Owner Group" });
+  }
+
+  if (
+    String(rec.source_conflict || "").toLowerCase() === "yes" ||
+    String(rec.conflict || "").toLowerCase() === "yes"
+  ) {
+    issues.push({ type: "source", label: "Source Conflict" });
+  }
+
+  return issues;
+}
+
+function getReviewStatus(rec) {
+  const exceptions = getDataExceptions(rec);
+
+  if (rec.install_base_release_status === "released_to_manager") {
+    return { type: "released", label: "Released to Manager" };
+  }
+
+  if (rec.install_base_release_status === "released_to_rep") {
+    return { type: "released", label: "Released to Rep" };
+  }
+
+  if (exceptions.length) {
+    return exceptions[0];
+  }
+
+  return { type: "ok", label: "Ready for Review" };
+}
+
+function getStatusHtml(rec) {
+  const status = getReviewStatus(rec);
+
+  const cls = {
+    ok: "badge-ok",
+    missing: "badge-missing",
+    owner: "badge-owner",
+    source: "badge-source",
+    staged: "badge-staged",
+    released: "badge-released"
+  }[status.type] || "badge-staged";
+
+  return `<span class="badge ${cls}">${escapeHtml(status.label)}</span>`;
+}
+
+function saveRecords() {
+  state.records = state.records.map(r => ({
+    ...r,
+    key: getRecordKey(r)
+  }));
+
+  localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+  localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+}
+
+function loadRecords() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(INSTALL_BASE_KEY) || "[]");
+    state.records = Array.isArray(raw) ? raw : [];
+  } catch {
+    state.records = [];
+  }
+}
+
+function readQueue(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    return parsed || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function releaseSelected(destination) {
+  const rec = findSelectedRecord();
+  if (!rec) return;
+
+  const now = new Date().toISOString();
+
+  const updated = {
+    ...rec,
+    key: getRecordKey(rec),
+    install_base_release_status:
+      destination === "manager" ? "released_to_manager" : "released_to_rep",
+    install_base_released_at: now,
+    install_base_released_to: destination,
+    hub_source: "AXIS Install Base Workspace",
+    manager_visible: true
+  };
+
+  state.records = state.records.map(r =>
+    String(r.id) === String(rec.id) ? updated : r
+  );
+
+  if (destination === "manager") {
+    const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+    const ownerName = getOwnerName(updated);
+
+    if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
+
+    managerQueue[ownerName] = managerQueue[ownerName].filter(r =>
+      String(r.key || "") !== String(updated.key || "")
+    );
+
+    managerQueue[ownerName].push(updated);
+    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
+
+  if (destination === "rep") {
+    const repQueue = readQueue(REP_QUEUE_KEY, []);
+
+    const repRecord = {
+      ...updated,
+      project:
+        updated.site ||
+        updated.site_address ||
+        updated.oem_project_id ||
+        updated.asset_id ||
+        "Unknown Site",
+      rep: updated.assigned_rep_name || "Unassigned",
+      alert: getReviewStatus(updated).label,
+      timestamp: now
+    };
+
+    const cleaned = repQueue.filter(r =>
+      String(r.key || "") !== String(repRecord.key || "")
+    );
+
+    cleaned.push(repRecord);
+    localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
+    localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  }
+
+  const vpQueue = readQueue(VP_QUEUE_KEY, []);
+  const vpCleaned = vpQueue.filter(r => String(r.key || "") !== String(updated.key || ""));
+  vpCleaned.push(updated);
+  localStorage.setItem(VP_QUEUE_KEY, JSON.stringify(vpCleaned));
+
+  saveRecords();
+  render();
+
+  showBanner(
+    destination === "manager"
+      ? "Selected record released to Manager Review."
+      : "Selected record released to Rep Review."
+  );
+}
+
+function markSelectedStaged() {
+  const rec = findSelectedRecord();
+  if (!rec) return;
+
+  state.records = state.records.map(r => {
+    if (String(r.id) !== String(rec.id)) return r;
+
+    return {
+      ...r,
+      install_base_release_status: "staged",
+      install_base_released_at: "",
+      install_base_released_to: ""
+    };
+  });
+
+  saveRecords();
+  render();
+  showBanner("Selected record marked as staged only.");
+}
+
+function parseWorkbook(file) {
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    let workbook;
+
+    try {
+      workbook = XLSX.read(data, { type: "array" });
+    } catch (err) {
+      console.error(err);
+      alert("File failed to parse.");
+      return;
+    }
+
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(sheet, {
+      defval: "",
+      raw: false
+    });
+
+    const newRecords = raw.map(row => {
+      const obj = {};
+
+      Object.keys(row).forEach(k => {
+        obj[normalizeKey(k)] = row[k];
+      });
+
+      const seed =
+        obj.region ||
+        obj.territory ||
+        obj.state ||
+        obj.site ||
+        obj.site_name ||
+        obj.hospital_name ||
+        obj.oem_project_id ||
+        obj.project_id ||
+        obj.asset_id ||
+        obj.serial_number ||
+        obj.serial;
+
+      const demoOwner = getDemoOwner(seed, obj.state);
+
+      const managerName =
+        obj.manager_name ||
+        obj.assigned_manager_name ||
+        obj.regional_manager ||
+        obj.manager ||
+        obj.owner_group_name ||
+        demoOwner.name;
+
+      const managerEmail =
+        obj.manager_email ||
+        obj.assigned_manager_email ||
+        obj.regional_manager_email ||
+        obj.owner_group_email ||
+        demoOwner.email;
+
+      const managerRegion =
+        obj.manager_region ||
+        obj.manager_territory ||
+        obj.region ||
+        obj.territory ||
+        demoOwner.territory;
+
+      const projectId =
+        obj.oem_project_id ||
+        obj.project_id ||
+        obj.asset_id ||
+        obj.equipment_id ||
+        obj.id ||
+        "";
+
+      const serial =
+        obj.serial_number ||
+        obj.serial ||
+        obj.system_serial ||
+        "";
+
+      const site =
+        obj.site_name ||
+        obj.hospital_name ||
+        obj.facility_name ||
+        obj.site ||
+        obj.hospital ||
+        obj.facility ||
+        obj.location_name ||
+        obj.customer_name ||
+        obj.customer ||
+        obj.organization ||
+        obj.org_name ||
+        obj.site_address ||
+        obj.address ||
+        `${obj.city || ""} ${obj.state || ""}`.trim() ||
+        "Unknown Site";
+
+      return {
+        id: uuid(),
+        key: "",
+        source: obj.source || obj.source_system || "Install Base Upload",
+        source_system: obj.source_system || obj.system || obj.source || "Uploaded file",
+        source_file_name: file.name || "",
+
+        manager_name: managerName,
+        manager_email: managerEmail,
+        manager_region: managerRegion,
+
+        assigned_rep_name:
+          (`${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim()) ||
+          obj.sales_rep ||
+          obj.rep_name ||
+          obj.assigned_rep_name ||
+          obj.rep_owner ||
+          "Unassigned",
+
+        assigned_rep_email:
+          obj.sales_rep_email ||
+          obj.rep_email ||
+          obj.assigned_rep_email ||
+          "",
+
+        assigned_rep_phone:
+          obj.sales_rep_phone ||
+          obj.rep_phone ||
+          obj.assigned_rep_phone ||
+          "",
+
+        oem_project_id: projectId,
+        asset_id: obj.asset_id || obj.equipment_id || projectId,
+
+        make: obj.make || obj.manufacturer || "",
+        model: obj.model || "",
+        modality: normalizeModality(obj.modality),
+        serial_number: serial,
+        dom: obj.dom || obj.year || obj.manufacture_year || "",
+
+        site,
+        site_address:
+          obj.site_address ||
+          obj.street_address ||
+          obj.address ||
+          obj.siteaddress ||
+          obj.street ||
+          "",
+
+        city: obj.city || obj.town || "",
+        state: obj.state || obj.province || "",
+        zip_code: obj.zip_code || obj.zip || obj.postal_code || obj.postal || "",
+
+        contact_name: obj.contact_name || "",
+        contact_title: obj.contact_title || "",
+        contact_phone: obj.contact_phone || "",
+        contact_email: obj.contact_email || "",
+
+        source_conflict:
+          obj.source_conflict ||
+          obj.conflict ||
+          "",
+
+        conflict_notes:
+          obj.conflict_notes ||
+          obj.source_notes ||
+          obj.notes ||
+          "",
+
+        next_action_date: excelDateToISO(obj.next_action_date),
+
+        install_base_release_status: "staged",
+        install_base_released_at: "",
+        install_base_released_to: "",
+
+        imported_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+
+        rep_last_action_at: "",
+        rep_status: "new",
+        rep_notes: "",
+
+        manager_visible: false,
+        sla_days: 7
+      };
+    });
+
+    const merged = [];
+
+    newRecords.forEach(newRec => {
+      const existing = state.records.find(r => {
+        const sameProject =
+          String(r.oem_project_id || r.asset_id || "") === String(newRec.oem_project_id || newRec.asset_id || "");
+        const sameSerial =
+          String(r.serial_number || "") === String(newRec.serial_number || "");
+        return sameProject && sameSerial;
+      });
+
+      if (existing) {
+        merged.push({
+          ...existing,
+          ...newRec,
+          id: existing.id || newRec.id,
+          key: existing.key || newRec.key,
+
+          install_base_release_status: existing.install_base_release_status || "staged",
+          install_base_released_at: existing.install_base_released_at || "",
+          install_base_released_to: existing.install_base_released_to || "",
+
+          rep_action: existing.rep_action || "",
+          rep_notes: existing.rep_notes || "",
+          rep_status: existing.rep_status || "new",
+          rep_last_action_at: existing.rep_last_action_at || "",
+
+          lifecycle_completed: existing.lifecycle_completed || false,
+          completed_at: existing.completed_at || "",
+          completed_by: existing.completed_by || "",
+
+          quote_amount: existing.quote_amount || "",
+          quote_estimated_cost: existing.quote_estimated_cost || "",
+          quote_trade_in_credit: existing.quote_trade_in_credit || "",
+          quote_net_amount: existing.quote_net_amount || "",
+          quote_profit: existing.quote_profit || "",
+          quote_margin: existing.quote_margin || "",
+          quote_status: existing.quote_status || "",
+          quote_notes: existing.quote_notes || "",
+          quote_loss_reason: existing.quote_loss_reason || "",
+          quote_created_at: existing.quote_created_at || "",
+          quote_updated_at: existing.quote_updated_at || "",
+          quote_seen: existing.quote_seen || false,
+
+          manager_unseen_update: existing.manager_unseen_update || false,
+          manager_flash_at: existing.manager_flash_at || "",
+          manager_flash_type: existing.manager_flash_type || "",
+          manager_flash_text: existing.manager_flash_text || "",
+
+          manager_response_action: existing.manager_response_action || "",
+          manager_response_date: existing.manager_response_date || "",
+          manager_response_notes: existing.manager_response_notes || "",
+          manager_response_at: existing.manager_response_at || "",
+          manager_response_seen_by_rep: existing.manager_response_seen_by_rep ?? true,
+          manager_response_seen_at: existing.manager_response_seen_at || ""
+        });
+      } else {
+        merged.push(newRec);
+      }
+    });
+
+    state.records.forEach(oldRec => {
+      const stillExists = newRecords.some(r => {
+        const sameProject =
+          String(r.oem_project_id || r.asset_id || "") === String(oldRec.oem_project_id || oldRec.asset_id || "");
+        const sameSerial =
+          String(r.serial_number || "") === String(oldRec.serial_number || "");
+        return sameProject && sameSerial;
+      });
+
+      if (!stillExists) merged.push(oldRec);
+    });
+
+    state.records = merged.map(r => ({
+      ...r,
+      key: getRecordKey(r)
+    }));
+
+    state.selectedOwner = "";
+    state.selectedId = null;
+
+    saveRecords();
+    render();
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function getOwnerGroups() {
+  const groups = {};
+
+  state.records.forEach(rec => {
+    const name = getOwnerName(rec);
+
+    if (!groups[name]) {
+      groups[name] = {
+        name,
+        email: rec.manager_email || "",
+        territory: getOwnerTerritory(rec),
+        count: 0,
+        reps: new Set(),
+        exceptions: 0,
+        released: 0
+      };
+    }
+
+    groups[name].count++;
+    groups[name].reps.add(rec.assigned_rep_name || "Unassigned");
+
+    if (getDataExceptions(rec).length) groups[name].exceptions++;
+
+    if (String(rec.install_base_release_status || "").startsWith("released")) {
+      groups[name].released++;
+    }
+  });
+
+  return Object.values(groups).map(g => ({
+    ...g,
+    reps: Array.from(g.reps)
+  }));
+}
+
+function matchesSearch(rec) {
+  const q = state.search.toLowerCase().trim();
+  if (!q) return true;
+
+  const haystack = [
+    rec.oem_project_id,
+    rec.asset_id,
+    rec.manager_name,
+    rec.manager_region,
+    rec.assigned_rep_name,
+    rec.site,
+    rec.modality,
+    rec.make,
+    rec.model,
+    rec.serial_number,
+    rec.city,
+    rec.state,
+    rec.source_system
+  ].join(" ").toLowerCase();
+
+  return haystack.includes(q);
+}
+
+function matchesFilter(rec) {
+  const filter = state.filter;
+  const exceptions = getDataExceptions(rec);
+  const released = String(rec.install_base_release_status || "").startsWith("released");
+
+  if (!filter) return true;
+  if (filter === "exception") return exceptions.length > 0;
+  if (filter === "ready") return exceptions.length === 0 && !released;
+  if (filter === "released") return released;
+  if (filter === "staged") return !released;
+  return true;
+}
+
+function getFilteredRecords() {
+  return state.records.filter(r => {
+    const ownerMatch = !state.selectedOwner || getOwnerName(r) === state.selectedOwner;
+    return ownerMatch && matchesSearch(r) && matchesFilter(r);
+  });
+}
+
+function renderStats() {
+  const owners = getOwnerGroups();
+  const reps = new Set();
+  let exceptions = 0;
+
+  state.records.forEach(r => {
+    reps.add(r.assigned_rep_name || "Unassigned");
+    if (getDataExceptions(r).length) exceptions++;
+  });
+
+  $("statTotal").textContent = state.records.length;
+  $("statOwners").textContent = owners.length;
+  $("statReps").textContent = reps.size;
+  $("statExceptions").textContent = exceptions;
+}
+
+function renderOwnerGroups() {
+  const el = $("ownerList");
+  const groups = getOwnerGroups();
+
+  if (!groups.length) {
+    el.innerHTML = `<div class="mini">Upload data to create owner groups.</div>`;
+    return;
+  }
+
+  el.innerHTML = groups.map(g => `
+    <div
+      class="owner-card ${state.selectedOwner === g.name ? "active" : ""}"
+      onclick="selectOwner('${String(g.name).replace(/'/g, "\\'")}')"
+    >
+      <div class="owner-name">${escapeHtml(g.name)}</div>
+      <div class="owner-territory">${escapeHtml(g.territory)}</div>
+      <div class="owner-meta">${escapeHtml(g.email || "No owner email")}</div>
+      <div class="owner-meta">Reps: ${escapeHtml(g.reps.join(", "))}</div>
+      <div class="packet-pill">
+        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released
+      </div>
+    </div>
+  `).join("") + `
+    <div class="btns">
+      <button type="button" class="secondary" onclick="selectOwner('')">
+        Show All Records
+      </button>
+    </div>
+  `;
+}
+
+function selectOwner(name) {
+  state.selectedOwner = name || "";
+  state.selectedId = null;
+  render();
+}
+
+function renderTable() {
+  const tbody = $("tableBody");
+  const records = getFilteredRecords();
+
+  $("tableTitle").textContent = state.selectedOwner
+    ? `${state.selectedOwner} Install Base`
+    : "Install Base Review";
+
+  $("tableSubtitle").textContent = state.selectedOwner
+    ? "Filtered owner group"
+    : "All records";
+
+  if (!records.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="12" style="color:#9db6d2;">
+          No records match the current view.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const sorted = [...records].sort((a, b) => {
+    const aa = getDataExceptions(a).length;
+    const bb = getDataExceptions(b).length;
+    if (bb !== aa) return bb - aa;
+    return String(a.site || "").localeCompare(String(b.site || ""));
+  });
+
+  tbody.innerHTML = sorted.map(rec => `
+    <tr
+      onclick="selectRecord('${String(rec.id || "").replace(/'/g, "\\'")}')"
+      class="${String(state.selectedId) === String(rec.id) ? "selected" : ""}"
+      style="cursor:pointer;"
+    >
+      <td>${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</td>
+      <td>${escapeHtml(getOwnerName(rec))}</td>
+      <td>${escapeHtml(getOwnerTerritory(rec))}</td>
+      <td>${escapeHtml(rec.assigned_rep_name || "-")}</td>
+      <td>${escapeHtml(rec.site || "-")}</td>
+      <td>${escapeHtml(rec.modality || "-")}</td>
+      <td>${escapeHtml(rec.make || "-")}</td>
+      <td>${escapeHtml(rec.model || "-")}</td>
+      <td>${escapeHtml(rec.serial_number || "-")}</td>
+      <td>${escapeHtml(rec.dom || "-")}</td>
+      <td>${escapeHtml(ageFromDom(rec.dom) || "-")}</td>
+      <td>${getStatusHtml(rec)}</td>
+    </tr>
+  `).join("");
+}
+
+function selectRecord(id) {
+  state.selectedId = id;
+  render();
+}
+
+function findSelectedRecord() {
+  if (!state.selectedId) return null;
+  return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
+}
+
+function renderDetail() {
+  const rec = findSelectedRecord();
+  const empty = $("emptyState");
+  const detail = $("detailArea");
+  const grid = $("detailGrid");
+
+  if (!rec) {
+    empty.classList.remove("hidden");
+    detail.classList.add("hidden");
+    return;
+  }
+
+  const exceptions = getDataExceptions(rec);
+  const status = getReviewStatus(rec);
+
+  empty.classList.add("hidden");
+  detail.classList.remove("hidden");
+
+  grid.innerHTML = `
+    <div class="detail-card">
+      <div class="k">Owner Group</div>
+      <div class="v">${escapeHtml(getOwnerName(rec))}</div>
+      <div class="mini">${escapeHtml(rec.manager_email || "")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Territory</div>
+      <div class="v">${escapeHtml(getOwnerTerritory(rec))}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Rep Owner</div>
+      <div class="v">${escapeHtml(rec.assigned_rep_name || "-")}</div>
+      <div class="mini">${escapeHtml(rec.assigned_rep_email || "")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Review Status</div>
+      <div class="v">${escapeHtml(status.label)}</div>
+      <div class="mini">
+        ${exceptions.length ? escapeHtml(exceptions.map(e => e.label).join(", ")) : "No data exceptions found."}
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Project / Asset ID</div>
+      <div class="v">${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Equipment</div>
+      <div class="v">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
+      <div class="mini">${escapeHtml(rec.modality || "")} • Serial: ${escapeHtml(rec.serial_number || "-")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Site</div>
+      <div class="v">${escapeHtml(rec.site || "-")}</div>
+      <div class="mini">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`.trim())}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Install Base Inputs</div>
+      <div class="v">DOM: ${escapeHtml(rec.dom || "-")} • Age: ${escapeHtml(ageFromDom(rec.dom) || "-")}</div>
+      <div class="mini">Source system: ${escapeHtml(rec.source_system || rec.source || "Uploaded file")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Source Review Inputs</div>
+      <div class="v">${escapeHtml(rec.source_conflict ? "Conflict noted" : "No conflict noted")}</div>
+      <div class="mini">${escapeHtml(rec.conflict_notes || "No source notes.")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Release Status</div>
+      <div class="v">${escapeHtml(rec.install_base_release_status || "staged")}</div>
+      <div class="mini">
+        Released to: ${escapeHtml(rec.install_base_released_to || "-")}<br>
+        Released at: ${escapeHtml(rec.install_base_released_at || "-")}
+      </div>
+    </div>
+  `;
+}
+
+function showBanner(msg) {
+  const banner = $("resultBanner");
+  if (!banner) return;
+
+  banner.textContent = msg;
+  banner.style.display = "block";
+
+  setTimeout(() => {
+    banner.style.display = "none";
+  }, 2600);
+}
+
+function clearLocalData() {
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(INSTALL_BASE_KEY);
+  localStorage.removeItem(MANAGER_QUEUE_KEY);
+  localStorage.removeItem(REP_QUEUE_KEY);
+  localStorage.removeItem(VP_QUEUE_KEY);
+  localStorage.removeItem("axis_install_base_sync_ping_v1");
+  localStorage.removeItem("axis_manager_sync_ping_v1");
+  localStorage.removeItem("axis_rep_sync_ping_v1");
+
+  state.records = [];
+  state.selectedOwner = "";
+  state.selectedId = null;
+  state.search = "";
+  state.filter = "";
+
+  const input = $("csvInput");
+  if (input) input.value = "";
+
+  const search = $("searchInput");
+  if (search) search.value = "";
+
+  const filter = $("exceptionFilter");
+  if (filter) filter.value = "";
+
+  render();
+}
+
+function render() {
+  renderStats();
+  renderOwnerGroups();
+  renderTable();
+  renderDetail();
+}
+
+function init() {
+  loadRecords();
+  render();
+
+  const input = $("csvInput");
+  if (input) {
+    input.addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      parseWorkbook(file);
+    });
+  }
+
+  const clearBtn = $("clearBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", clearLocalData);
+  }
+
+  const searchInput = $("searchInput");
+  if (searchInput) {
+    searchInput.addEventListener("input", e => {
+      state.search = e.target.value || "";
+      render();
+    });
+  }
+
+  const exceptionFilter = $("exceptionFilter");
+  if (exceptionFilter) {
+    exceptionFilter.addEventListener("change", e => {
+      state.filter = e.target.value || "";
+      render();
+    });
+  }
+
+  const releaseManagerBtn = $("releaseManagerBtn");
+  if (releaseManagerBtn) {
+    releaseManagerBtn.addEventListener("click", () => releaseSelected("manager"));
+  }
+
+  const releaseRepBtn = $("releaseRepBtn");
+  if (releaseRepBtn) {
+    releaseRepBtn.addEventListener("click", () => releaseSelected("rep"));
+  }
+
+  const markStagedBtn = $("markStagedBtn");
+  if (markStagedBtn) {
+    markStagedBtn.addEventListener("click", markSelectedStaged);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+
+</body>
+</html>
