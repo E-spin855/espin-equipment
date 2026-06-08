@@ -2380,7 +2380,6 @@ function init() {
     tableBody.addEventListener("click", function(e) {
       const btn = e.target.closest(".open-record-btn");
       const row = e.target.closest("tr[data-id]");
-
       const id = btn?.dataset?.id || row?.dataset?.id || "";
 
       if (!id) return;
@@ -2392,32 +2391,48 @@ function init() {
     });
   }
 
- const clearBtn = $("clearBtn");
+  const csvInput = $("csvInput");
 
-if (clearBtn) {
-  clearBtn.addEventListener("click", () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(MANAGER_QUEUE_KEY);
-    localStorage.removeItem(MANAGER_SYNC_KEY);
-    localStorage.removeItem(QUOTE_APPROVAL_KEY);
-    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+  if (csvInput) {
+    csvInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
 
-    state.records = [];
-    state.selectedId = null;
-    state.selectedRep = null;
+      if (!file) return;
 
-    const csvInput = $("csvInput");
-    if (csvInput) csvInput.value = "";
+      if (!window.XLSX) {
+        alert("Excel reader did not load. Check internet/CDN access.");
+        return;
+      }
 
-    render();
-  });
-}
+      handleCSVUpload(file);
+    });
+  }
 
-/* ADD THIS RIGHT AFTER CLEAR BUTTON BLOCK */
-const closeSelectedBtn = $("closeSelectedBtn");
+  const clearBtn = $("clearBtn");
 
-if (closeSelectedBtn) {
-  closeSelectedBtn.addEventListener("click", closeSelectedRecord);
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(MANAGER_QUEUE_KEY);
+      localStorage.removeItem(MANAGER_SYNC_KEY);
+      localStorage.removeItem(QUOTE_APPROVAL_KEY);
+      localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+
+      state.records = [];
+      state.selectedId = null;
+      state.selectedRep = null;
+
+      if (csvInput) csvInput.value = "";
+
+      render();
+    });
+  }
+
+  const closeSelectedBtn = $("closeSelectedBtn");
+
+  if (closeSelectedBtn) {
+    closeSelectedBtn.addEventListener("click", closeSelectedRecord);
+  }
 }
 
 const managerDateInput = $("managerResponseDate");
