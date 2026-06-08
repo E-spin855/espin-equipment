@@ -2959,6 +2959,45 @@ $("manualActionSelect").disabled = completed;
 $("repOutcomeNotes").disabled = completed;
 $("repFollowUpDate").disabled = completed;
     }
+function sendInstallBaseCorrection(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) {
+    alert("Record not found.");
+    return;
+  }
+
+  const note = $("installBaseCorrectionNote")?.value || "";
+
+  const updated = {
+    ...rec,
+    serial_number: $("fix_serial_number")?.value || rec.serial_number || "",
+    dom: $("fix_dom")?.value || rec.dom || "",
+    site: $("fix_site")?.value || rec.site || "",
+    assigned_rep_name: $("fix_assigned_rep_name")?.value || rec.assigned_rep_name || "",
+
+    install_base_response_status: "rep_correction_sent",
+    install_base_response_note: note,
+    install_base_response_at: new Date().toISOString(),
+    install_base_response_from: getRepName ? getRepName(rec) : rec.assigned_rep_name || "Rep"
+  };
+
+  state.records = state.records.map(r =>
+    String(r.id) === String(id) ? updated : r
+  );
+
+  saveRecords();
+
+  const queueKey = "axis_install_base_response_queue_v1";
+  const queue = JSON.parse(localStorage.getItem(queueKey) || "[]");
+
+  queue.unshift(updated);
+
+  localStorage.setItem(queueKey, JSON.stringify(queue));
+  localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
+
+  alert("Correction sent back to Install Base.");
+  render();
+}
 function getInstallBaseIssues(rec) {
   const issues = [];
 
@@ -2996,9 +3035,9 @@ function renderInstallBaseCorrectionPanel(rec) {
         <textarea id="installBaseFixReason" placeholder="Example: Serial plate not visible in customer photo; asked site contact for confirmation.">${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
 
         <div class="btns">
-          <button type="button" class="green" onclick="saveInstallBaseFix('${rec.id}')">
-            Save Fix / Send Back to Install Base
-          </button>
+          <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
+  Save Fix / Send Back to Install Base
+</button>
         </div>
       </div>
     </div>
