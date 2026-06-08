@@ -577,15 +577,13 @@ let activePacketId =
   localStorage.getItem(ACTIVE_PACKET_KEY) ||
   "";
 let suppressRenderUntil = 0;
-let userInteractingUntil = 0;
 
-function holdRender(ms = 2500){
-  userInteractingUntil = Date.now() + ms;
-  suppressRenderUntil = Math.max(suppressRenderUntil, Date.now() + ms);
+function holdRender(ms = 1200){
+  suppressRenderUntil = Date.now() + ms;
 }
 
 function shouldSuppressRender(){
-  return Date.now() < suppressRenderUntil || Date.now() < userInteractingUntil;
+  return Date.now() < suppressRenderUntil;
 }
 const APPROVED_BUYERS = [
   {
@@ -651,11 +649,8 @@ function saveData(data){
   localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
 }
 function buttonSpinConfirm(btn, loadingText, successText, done){
-  holdRender(3200);
-
   if (!btn) {
     if (typeof done === "function") done();
-    suppressRenderUntil = 0;
     return;
   }
 
@@ -673,17 +668,17 @@ function buttonSpinConfirm(btn, loadingText, successText, done){
     btn.innerHTML = successText || "Done";
 
     setTimeout(() => {
-      if (typeof done === "function") done();
+      btn.classList.remove("is-success");
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
 
-      setTimeout(() => {
-        btn.classList.remove("is-success");
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-        suppressRenderUntil = 0;
-        userInteractingUntil = 0;
-      }, 350);
+      suppressRenderUntil = 0;
+
+      if (typeof done === "function") {
+        done();
+      }
     }, 500);
-  }, 650);
+  }, 500);
 }
 function openImagePreview(url, title){
   const overlay = document.getElementById("imagePreviewOverlay");
@@ -1337,19 +1332,6 @@ function importBuyerResponses(){
     saveData(deskData);
   }
 }
-document.addEventListener("pointerdown", function(e){
-  const btn = e.target.closest("button");
-  if (!btn) return;
-
-  holdRender(2200);
-}, true);
-
-document.addEventListener("click", function(e){
-  const btn = e.target.closest("button");
-  if (!btn) return;
-
-  holdRender(2600);
-}, true);
 function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
@@ -1661,13 +1643,12 @@ const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
     `&subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
 buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
-  window.location.href = mailto;
+  suppressRenderUntil = 0;
+  render();
 
   setTimeout(() => {
-    suppressRenderUntil = 0;
-    userInteractingUntil = 0;
-    render();
-  }, 900);
+    window.location.href = mailto;
+  }, 150);
 });
 }
 
@@ -1811,13 +1792,12 @@ function sendInfoRequestToRep(btn = null){
 
 buttonSpinConfirm(btn, "Sending request...", "Request Sent", () => {
   closeInfoRequestModal();
-  window.location.href = mailto;
+  suppressRenderUntil = 0;
+  render();
 
   setTimeout(() => {
-    suppressRenderUntil = 0;
-    userInteractingUntil = 0;
-    render();
-  }, 900);
+    window.location.href = mailto;
+  }, 150);
 });
 }
 
@@ -2721,37 +2701,46 @@ function renderManualCreditCard(rec){
 function render(){
   if (shouldSuppressRender()) return;
 
+  const tradeDeskEl = document.getElementById("tradeDesk");
+  const buyerResponsesEl = document.getElementById("buyerResponses");
+  const manualCreditsEl = document.getElementById("manualCredits");
+
+  if (!tradeDeskEl || !buyerResponsesEl || !manualCreditsEl) return;
+
   const data = loadData();
 
-  tradeDesk.innerHTML = data.length ? "" : "<p class='small'>No field intake records submitted yet.</p>";
-  buyerResponses.innerHTML = "";
-  manualCredits.innerHTML = "";
+  tradeDeskEl.innerHTML = data.length ? "" : "<p class='small'>No field intake records submitted yet.</p>";
+  buyerResponsesEl.innerHTML = "";
+  manualCreditsEl.innerHTML = "";
 
   data.forEach(rec => {
     const rawId = String(rec.id || "");
-const safeId = rawId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    tradeDesk.innerHTML += renderTradeDeskPackageCard(rec, safeId, rawId);
+    const safeId = rawId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+    tradeDeskEl.innerHTML += renderTradeDeskPackageCard(rec, safeId, rawId);
 
     const isPreparedOrHasResponses =
       rec.buyer_review_link_visible === true ||
       rec.review_packet_prepared === true ||
       String(rec.trade_desk_status || "").includes("Prepared") ||
+      String(rec.buyer_response_status || "") === "Prepared for Manual Sharing" ||
       String(rec.buyer_response_status || "") === "Prepared for Sharing" ||
       String(rec.buyer_response_status || "") === "Buyer Responses Received" ||
+      String(rec.buyer_response_status || "") === "Manual Response Selected" ||
       String(rec.buyer_response_status || "") === "Response Selected";
 
     if (isPreparedOrHasResponses) {
-      buyerResponses.innerHTML += renderBuyerResponseCard(rec);
+      buyerResponsesEl.innerHTML += renderBuyerResponseCard(rec);
     }
 
-    manualCredits.innerHTML += renderManualCreditCard(rec);
+    manualCreditsEl.innerHTML += renderManualCreditCard(rec);
   });
 
-  if (!buyerResponses.innerHTML.trim()) {
-    buyerResponses.innerHTML = "<p class='small'>No buyer review packets prepared yet.</p>";
+  if (!buyerResponsesEl.innerHTML.trim()) {
+    buyerResponsesEl.innerHTML = "<p class='small'>No buyer review packets prepared yet.</p>";
   }
 
-  manualCredits.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
+  manualCreditsEl.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
 }
 
 window.addEventListener("storage", (e) => {
