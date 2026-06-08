@@ -724,6 +724,13 @@ th{
       50%{box-shadow:0 0 24px rgba(255,216,77,.85)}
       100%{box-shadow:0 0 0 rgba(255,216,77,0)}
     }
+.oem-review-note-card.needs-rep-input{
+  border:2px solid rgba(255,216,77,.85)!important;
+  box-shadow:0 0 24px rgba(255,216,77,.22)!important;
+  background:
+    radial-gradient(circle at top left, rgba(255,216,77,.18), transparent 34%),
+    rgba(8,18,35,.86)!important;
+}
   </style>
 </head>
 
@@ -2570,6 +2577,26 @@ function renderQuoteApprovalActionPanel(rec) {
     </div>
   `;
 }
+function saveRepDataResponse() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+  if (!rec) return;
+
+  const response = $("repDataResponse")?.value || "";
+  const note = $("repDataNote")?.value || "";
+
+  if (!response) {
+    alert("Select a rep data response.");
+    return;
+  }
+
+  rec.rep_data_response = response;
+  rec.rep_data_note = note;
+  rec.rep_data_response_at = new Date().toISOString();
+  rec.install_base_needs_review = response === "send_back_install_base";
+
+  saveRecords();
+  render();
+}
     function renderDetail() {
       const rec = state.records.find(r => r.id === state.selectedId);
       const empty = $("emptyState");
@@ -2618,7 +2645,30 @@ $("repFollowUpDate").value = rec.rep_follow_up_date || rec.next_action_date || "
         <div class="detail-card"><div class="k">Override</div><div class="v">${escapeHtml(rec.alert_override || "None")}</div></div>
 
         ${renderRawSignalDataCard(rec)}
+<div class="detail-card full needs-rep-input">
+  <div class="k">Install Base / Data Quality Response</div>
+  <div class="v">Rep response required for missing, mismatched, or unconfirmed fields.</div>
 
+  <div class="mini" style="margin-top:8px;line-height:1.45;color:#ffd84d;">
+    Use this section to correct the field or send a note back to Install Base explaining why it cannot be confirmed.
+  </div>
+
+  <label style="display:block;margin-top:12px;">Rep Data Response</label>
+  <select id="repDataResponse">
+    <option value="">Select response</option>
+    <option value="corrected">Corrected / confirmed field</option>
+    <option value="unable_to_confirm">Unable to confirm</option>
+    <option value="customer_pending">Waiting on customer/site confirmation</option>
+    <option value="send_back_install_base">Send back to Install Base</option>
+  </select>
+
+  <label style="display:block;margin-top:12px;">Rep Note to Install Base</label>
+  <textarea id="repDataNote" placeholder="Explain correction, missing field, mismatch, or reason..."></textarea>
+
+  <button type="button" class="green" style="margin-top:10px;" onclick="saveRepDataResponse()">
+    Save / Send Back
+  </button>
+</div>
         ${
           rec.tradein_sync_received
             ? `
@@ -2862,7 +2912,27 @@ ${renderQuoteApprovalActionPanel(rec)}
         `;
       }).join("");
     }
+function saveRepDataResponse(){
+  const rec = findSelectedRecord();
+  if (!rec) return alert("Open a record first");
 
+  const response = $("repDataResponse")?.value || "";
+  const note = $("repDataNote")?.value || "";
+
+  if (!response) return alert("Select a response");
+
+  const updated = {
+    ...rec,
+    rep_data_response: response,
+    rep_data_note: note,
+    rep_data_response_at: new Date().toISOString(),
+    install_base_response_needed: response !== "corrected",
+    install_base_note_from_rep: note
+  };
+
+  syncRecordEverywhere(updated);
+  render();
+}
     function render() {
       importTradeInSyncRecords();
       importQuoteApprovalDecisions();
