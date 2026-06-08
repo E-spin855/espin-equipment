@@ -2643,6 +2643,125 @@ function saveRepDataResponse() {
 
   saveRecords();
   render();
+}function getInstallBaseIssueFields(rec) {
+  const issues = [];
+
+  if (!rec.serial_number) issues.push({ key: "serial_number", label: "Serial Number" });
+  if (!rec.dom) issues.push({ key: "dom", label: "DOM / Year" });
+  if (!rec.site) issues.push({ key: "site", label: "Facility / Site" });
+  if (!rec.make) issues.push({ key: "make", label: "Make" });
+  if (!rec.model) issues.push({ key: "model", label: "Model" });
+  if (!rec.modality) issues.push({ key: "modality", label: "Modality" });
+
+  return issues;
+}
+
+function renderInstallBaseCorrectionPanel(rec) {
+  const issues = getInstallBaseIssueFields(rec);
+
+  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
+
+  return `
+    <div class="detail-card full oem-review-note-card needs-rep-input">
+      <div class="k">Install Base Data Correction</div>
+      <div class="v">Rep review needed</div>
+
+      <div class="mini" style="margin-top:8px;line-height:1.5;">
+        Update the missing/mismatched field if known. If not known, send a note back to Install Base with the reason.
+      </div>
+
+      ${issues.map(issue => `
+        <label style="margin-top:12px;">${escapeHtml(issue.label)}</label>
+        <input
+          id="fix_${issue.key}"
+          value="${escapeHtml(rec[issue.key] || "")}"
+          placeholder="Enter corrected ${escapeHtml(issue.label)}"
+        />
+      `).join("")}
+
+      <label style="margin-top:12px;">Reason if unable to fix</label>
+      <textarea id="installBaseCorrectionNote" placeholder="Example: Rep could not confirm serial from customer photo. Needs Install Base verification."></textarea>
+
+      <div class="btns" style="margin-top:12px;">
+        <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
+          Send Correction to Install Base
+        </button>
+
+        <button type="button" class="secondary" onclick="sendInstallBaseUnableToFix('${escapeJs(rec.id)}')">
+          Send Unable-to-Fix Note
+        </button>
+      </div>
+    </div>
+  `;
+}
+function sendInstallBaseCorrection(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  const issues = getInstallBaseIssueFields(rec);
+  const note = $("installBaseCorrectionNote")?.value || "";
+
+  const updated = { ...rec };
+
+  issues.forEach(issue => {
+    const input = $("fix_" + issue.key);
+    if (input && input.value.trim()) {
+      updated[issue.key] = input.value.trim();
+    }
+  });
+
+  updated.install_base_correction_status = "corrected_by_rep";
+  updated.install_base_correction_note = note;
+  updated.install_base_correction_at = new Date().toISOString();
+  updated.install_base_release_seen = true;
+  updated.install_base_release_new = false;
+
+  syncInstallBaseCorrection(updated);
+}
+
+function sendInstallBaseUnableToFix(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  const note = $("installBaseCorrectionNote")?.value || "";
+
+  if (!note.trim()) {
+    alert("Enter a reason before sending back to Install Base.");
+    return;
+  }
+
+  const updated = {
+    ...rec,
+    install_base_correction_status: "unable_to_fix_by_rep",
+    install_base_correction_note: note,
+    install_base_correction_at: new Date().toISOString(),
+    install_base_release_seen: true,
+    install_base_release_new: false
+  };
+
+  syncInstallBaseCorrection(updated);
+}
+function syncInstallBaseCorrection(updated) {
+  state.records = state.records.map(r =>
+    String(r.id) === String(updated.id) ? updated : r
+  );
+
+  saveRecords();
+
+  const hubQueue = JSON.parse(localStorage.getItem("axis_install_base_corrections_v1") || "[]");
+
+  hubQueue.unshift({
+    ...updated,
+    correction_source: "Rep Review Workspace",
+    correction_sent_at: new Date().toISOString()
+  });
+
+  localStorage.setItem("axis_install_base_corrections_v1", JSON.stringify(hubQueue));
+  localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+
+  render();
+
+  alert("Install Base update sent.");
 }
     function renderDetail() {
       const rec = state.records.find(r => r.id === state.selectedId);
@@ -2692,6 +2811,7 @@ $("repFollowUpDate").value = rec.rep_follow_up_date || rec.next_action_date || "
         <div class="detail-card"><div class="k">Override</div><div class="v">${escapeHtml(rec.alert_override || "None")}</div></div>
 
         ${renderRawSignalDataCard(rec)}
+${renderInstallBaseCorrectionPanel(rec)}
 <div class="detail-card full needs-rep-input">
   <div class="k">Install Base / Data Quality Response</div>
   <div class="v">Rep response required for missing, mismatched, or unconfirmed fields.</div>
