@@ -644,9 +644,12 @@ function loadData(){
   return loadArray(KEY);
 }
 
-function saveData(data){
+function saveData(data, ping = false){
   saveArray(KEY, data);
-  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+  if (ping) {
+    localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+  }
 }
 function openMailDraft(mailto){
   resetDemoButtons();
@@ -1303,7 +1306,6 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   return deskData;
 }
-
 function importBuyerResponses(){
   let deskData = loadData();
   const packets = loadArray(BUYER_PACKET_KEY);
@@ -1327,7 +1329,7 @@ function importBuyerResponses(){
 
     const existing = deskData[idx];
 
-    deskData[idx] = {
+    const updated = {
       ...existing,
       bids: Array.isArray(pkg.bids) ? pkg.bids : existing.bids || [],
 
@@ -1354,11 +1356,14 @@ function importBuyerResponses(){
       last_tradein_update_at: pkg.last_bid_at || pkg.last_bid_received_at || existing.last_tradein_update_at || new Date().toISOString()
     };
 
-    changed = true;
+    if (JSON.stringify(existing) !== JSON.stringify(updated)) {
+      deskData[idx] = updated;
+      changed = true;
+    }
   });
 
   if (changed) {
-    saveData(deskData);
+    saveData(deskData, false);
   }
 }
 function importAutomaticIntake(){
@@ -1399,8 +1404,13 @@ function importAutomaticIntake(){
 
       if (!isTradeDeskRelevant) return;
 
+      const before = JSON.stringify(deskData);
       deskData = mergeRecordIntoDesk(deskData, item);
-      changed = true;
+      const after = JSON.stringify(deskData);
+
+      if (before !== after) {
+        changed = true;
+      }
     });
 
     if (key !== TRADEIN_SYNC_KEY) {
@@ -1408,13 +1418,14 @@ function importAutomaticIntake(){
     }
   });
 
-  if (changed) saveData(deskData);
+  if (changed) {
+    saveData(deskData, false);
+  }
 
   importBuyerResponses();
 
   return changed;
 }
-
 function prepareBuyerReviewPacket(id, btn = null){
   const data = loadData();
   const rec = findById(data, id);
@@ -1503,7 +1514,7 @@ function prepareBuyerReviewPacket(id, btn = null){
     bids: Array.isArray(rec.bids) ? rec.bids : []
   };
 
-  saveData(data);
+  saveData(data, true);
 
   let packets = loadArray(BUYER_PACKET_KEY);
   const idx = packets.findIndex(p =>
@@ -1787,7 +1798,7 @@ function sendInfoRequestToRep(btn = null){
   rec.info_request_sent_to = repEmail;
   rec.info_request_sent_at = new Date().toISOString();
 
-  saveData(data);
+  saveData(data, true);
 
   const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
@@ -2017,7 +2028,7 @@ function selectBuyerResponseForManualCredit(id, index){
   rec.crm_status = "Manual Credit Reference Pending Rep Review";
   rec.last_tradein_update_at = new Date().toISOString();
 
-  saveData(data);
+  saveData(data, true);
 
   let packets = loadArray(BUYER_PACKET_KEY);
   packets = packets.map(pkg => {
@@ -2427,7 +2438,7 @@ function saveResponseDeadline(id){
       }))
     : [];
 
-  saveData(data);
+  saveData(data, true);
 
   const packetId = rec.review_packet_id || rec.bid_package_id || getReviewPacketId(rec);
 
@@ -2773,26 +2784,27 @@ function render(){
 }
 
 window.addEventListener("storage", (e) => {
+  const watchedKeys = [
+    AXIS_TRADE_DESK_QUEUE_KEY,
+    AXIS_TRADE_DESK_INBOX_KEY,
+    KEY,
+    TRADEIN_SYNC_KEY,
+    BUYER_PACKET_KEY,
+    BIDDER_PORTAL_PACKAGES_KEY,
+    BUYER_RESPONSE_OUTBOX_KEY,
+    ACTIVE_PACKET_KEY
+  ];
+
   if (e.key === ACTIVE_PACKET_KEY) {
     activePacketId = localStorage.getItem(ACTIVE_PACKET_KEY) || "";
   }
 
-  if (
-  e.key === AXIS_TRADE_DESK_QUEUE_KEY ||
-  e.key === AXIS_TRADE_DESK_INBOX_KEY ||
-  e.key === MANAGER_PING_KEY ||
-  e.key === KEY ||
-  e.key === TRADEIN_SYNC_KEY ||
- e.key === BUYER_PACKET_KEY ||
-e.key === BIDDER_PORTAL_PACKAGES_KEY ||
-e.key === BUYER_RESPONSE_OUTBOX_KEY ||
-e.key === ACTIVE_PACKET_KEY
-) {
-    if (!isTradeDeskInputFocused() && !shouldSuppressRender()) {
+  if (!watchedKeys.includes(e.key)) return;
+  if (isTradeDeskInputFocused()) return;
+  if (shouldSuppressRender()) return;
+
   importAutomaticIntake();
   render();
-}
-  }
 });
 function recoverPageAfterExternalAction(){
   suppressRenderUntil = 0;
@@ -2819,13 +2831,19 @@ setInterval(() => {
   if (shouldSuppressRender()) return;
   if (isTradeDeskInputFocused()) return;
 
-  importAutomaticIntake();
+  const changed = importAutomaticIntake();
 
-  if (!shouldSuppressRender() && !isTradeDeskInputFocused()) {
+  if (changed && !shouldSuppressRender() && !isTradeDeskInputFocused()) {
     render();
   }
-}, 2500);
-
+}, 5000);
+console.log("TRADE DESK LOADED:", {
+  time: new Date().toLocaleTimeString(),
+  records: loadData().length,
+  buyerPackets: loadArray(BUYER_PACKET_KEY).length,
+  bidderPortalPackages: loadArray(BIDDER_PORTAL_PACKAGES_KEY).length,
+  buyerResponseOutbox: loadArray(BUYER_RESPONSE_OUTBOX_KEY).length
+});
 importAutomaticIntake();
 render();
 </script>
