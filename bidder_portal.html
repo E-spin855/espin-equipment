@@ -1137,7 +1137,7 @@ function render(){
 }
 
 function submitBid(recordId, btnEl = null){
-  suppressRenderUntil = Date.now() + 2200;
+  suppressRenderUntil = Date.now() + 3000;
 
   const safeRecordId = idSafe(recordId);
 
@@ -1146,274 +1146,373 @@ function submitBid(recordId, btnEl = null){
   const termsInput = document.getElementById(`bidTerms_${safeRecordId}`);
   const expiresInput = document.getElementById(`bidExpires_${safeRecordId}`);
 
-  const bidderCompany = String(companyInput?.value || approvedBidderCompany || "").trim();
-  const amount = Number(amountInput?.value || 0);
-  const terms = String(termsInput?.value || "").trim();
-  const expires = String(expiresInput?.value || "").trim();
-
-  const draft = getDraft(recordId);
-  draft.bidder_company = bidderCompany;
-  draft.amount = amountInput?.value || "";
-  draft.terms = terms;
-  draft.expires = expires;
-
   const errorBox = document.getElementById(`errorBox_${safeRecordId}`);
   const successBox = document.getElementById(`successBox_${safeRecordId}`);
 
-  if (errorBox) errorBox.style.display = "none";
-  if (successBox) successBox.style.display = "none";
+  try {
+    const bidderCompany = String(companyInput?.value || approvedBidderCompany || "").trim();
+    const amount = Number(amountInput?.value || 0);
+    const terms = String(termsInput?.value || "").trim();
+    const expires = String(expiresInput?.value || "").trim();
 
-  setBidButtonState(recordId, "loading", btnEl);
+    const draft = getDraft(recordId);
+    draft.bidder_company = bidderCompany;
+    draft.amount = amountInput?.value || "";
+    draft.terms = terms;
+    draft.expires = expires;
 
-  if (!bidderCompany || !amount || amount <= 0) {
-    setBidButtonState(recordId, "reset", btnEl);
+    if (errorBox) errorBox.style.display = "none";
+    if (successBox) successBox.style.display = "none";
 
-    if (errorBox) {
-      errorBox.textContent = "Enter company name and bid amount.";
-      errorBox.style.display = "block";
+    if (!bidderCompany || !amount || amount <= 0) {
+      if (errorBox) {
+        errorBox.textContent = "Enter company name and bid amount.";
+        errorBox.style.display = "block";
+      }
+
+      setBidButtonState(recordId, "reset", btnEl);
+      suppressRenderUntil = 0;
+      return;
     }
 
-    suppressRenderUntil = 0;
-    return;
-  }
+    setBidButtonState(recordId, "loading", btnEl);
 
-  let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
-  let buyerPackets = loadArray(BUYER_PACKET_KEY);
-  let tradeDeskRecords = loadArray(TRADE_DESK_KEY);
+    let bidderPackages = loadArray(BIDDER_PORTAL_KEY);
+    let buyerPackets = loadArray(BUYER_PACKET_KEY);
+    let tradeDeskRecords = loadArray(TRADE_DESK_KEY);
 
-  const allPackages = [
-    ...bidderPackages.map((pkg, index) => ({ source: BIDDER_PORTAL_KEY, index, original: pkg, pkg: normalizePortalPackage(pkg) })),
-    ...buyerPackets.map((pkg, index) => ({ source: BUYER_PACKET_KEY, index, original: pkg, pkg: normalizePortalPackage(pkg) })),
-    ...tradeDeskRecords.map((pkg, index) => ({ source: TRADE_DESK_KEY, index, original: pkg, pkg: normalizePortalPackage(pkg) }))
-  ];
+    const targetRecordId = String(recordId || "").trim();
+    const targetPacketId = String(packageIdFromUrl || "").trim();
 
-  const found = allPackages.find(item =>
-    packageMatches(item.pkg, recordId, "") ||
-    packageMatches(item.pkg, "", packageIdFromUrl) ||
-    String(item.pkg.id || "") === String(recordId) ||
-    String(item.pkg.trade_desk_record_id || "") === String(recordId)
-  );
+    const allPackages = [
+      ...bidderPackages.map((pkg, index) => ({
+        source: BIDDER_PORTAL_KEY,
+        index,
+        original: pkg,
+        pkg: normalizePortalPackage(pkg)
+      })),
+      ...buyerPackets.map((pkg, index) => ({
+        source: BUYER_PACKET_KEY,
+        index,
+        original: pkg,
+        pkg: normalizePortalPackage(pkg)
+      })),
+      ...tradeDeskRecords.map((pkg, index) => ({
+        source: TRADE_DESK_KEY,
+        index,
+        original: pkg,
+        pkg: normalizePortalPackage(pkg)
+      }))
+    ];
 
-  if (!found) {
-    setBidButtonState(recordId, "reset", btnEl);
-    suppressRenderUntil = 0;
-    alert("Bid package not found. Make sure Trade Desk prepared the package and both pages are opened from the same browser/origin.");
-    return;
-  }
+    const found = allPackages.find(item => {
+      const p = item.pkg;
 
-  const rec = {
-    ...found.pkg,
-    bids: Array.isArray(found.pkg.bids) ? [...found.pkg.bids] : []
-  };
+      const ids = [
+        p.id,
+        p.trade_desk_record_id,
+        p.package_id,
+        p.packet_id,
+        p.review_packet_id,
+        p.bid_package_id,
+        getBidPackageId(p),
+        getTradeDeskRecordId(p)
+      ].map(v => String(v || "").trim()).filter(Boolean);
 
-  const existingBidIndex = rec.bids.findIndex(b =>
-    String(b.bidder_company || b.bidder || "").toLowerCase().trim() ===
-    bidderCompany.toLowerCase().trim()
-  );
-
-  const bidPayload = {
-    bid_id: existingBidIndex >= 0 ? rec.bids[existingBidIndex].bid_id : uid("bid"),
-    bidder: bidderCompany,
-    bidder_company: bidderCompany,
-    bidder_email: approvedBidderEmail,
-    amount,
-    terms,
-    expires,
-    submitted_at: new Date().toISOString(),
-    source: "AXIS Bidder Portal"
-  };
-
-  if (existingBidIndex >= 0) {
-    rec.bids[existingBidIndex] = bidPayload;
-  } else {
-    rec.bids.push(bidPayload);
-  }
-
-  rec.bid_status = "Bids Received";
-  rec.buyer_response_status = "Buyer Responses Received";
-  rec.crm_status = "Buyer Response Records Received";
-  rec.quote_sync_status = rec.quote_sync_status || "Pending Bid";
-  rec.last_bid_at = new Date().toISOString();
-  rec.last_bid_received_at = rec.last_bid_at;
-  rec.last_bidder_company = bidderCompany;
-  rec.last_bidder_email = approvedBidderEmail;
-  rec.bid_count = rec.bids.length;
-
-  const packetId = getBidPackageId(rec);
-  const tradeDeskRecordId = getTradeDeskRecordId(rec) || recordId;
-
-  function updatePacketArray(arr){
-    let foundMatch = false;
-
-    const updated = arr.map(pkg => {
-      const normalized = normalizePortalPackage(pkg);
-
-      const same =
-        packageMatches(normalized, recordId, packetId) ||
-        String(normalized.id || "") === String(recordId) ||
-        String(normalized.trade_desk_record_id || "") === String(tradeDeskRecordId) ||
-        String(normalized.package_id || "") === String(packetId) ||
-        String(normalized.packet_id || "") === String(packetId) ||
-        String(normalized.review_packet_id || "") === String(packetId) ||
-        String(normalized.bid_package_id || "") === String(packetId);
-
-      if (!same) return pkg;
-
-      foundMatch = true;
-
-      return {
-        ...pkg,
-        ...rec,
-        id: pkg.id || normalized.id || tradeDeskRecordId || packetId,
-        package_id: packetId,
-        packet_id: packetId,
-        review_packet_id: rec.review_packet_id || packetId,
-        bid_package_id: rec.bid_package_id || packetId,
-        trade_desk_record_id: tradeDeskRecordId,
-        bids: rec.bids,
-        bid_status: rec.bid_status,
-        buyer_response_status: rec.buyer_response_status,
-        crm_status: rec.crm_status,
-        last_bid_at: rec.last_bid_at,
-        last_bid_received_at: rec.last_bid_received_at,
-        last_bidder_company: bidderCompany,
-        last_bidder_email: approvedBidderEmail,
-        bid_count: rec.bids.length,
-        record: {
-          ...(pkg.record || {}),
-          ...rec,
-          id: tradeDeskRecordId,
-          trade_desk_record_id: tradeDeskRecordId,
-          package_id: packetId,
-          packet_id: packetId,
-          review_packet_id: rec.review_packet_id || packetId,
-          bid_package_id: rec.bid_package_id || packetId,
-          bids: rec.bids,
-          bid_status: rec.bid_status,
-          buyer_response_status: rec.buyer_response_status
-        },
-        equipment: {
-          ...(pkg.equipment || {}),
-          ...rec,
-          id: tradeDeskRecordId,
-          trade_desk_record_id: tradeDeskRecordId,
-          package_id: packetId,
-          packet_id: packetId,
-          review_packet_id: rec.review_packet_id || packetId,
-          bid_package_id: rec.bid_package_id || packetId,
-          bids: rec.bids,
-          bid_status: rec.bid_status,
-          buyer_response_status: rec.buyer_response_status
-        }
-      };
+      return (
+        ids.includes(targetRecordId) ||
+        (targetPacketId && ids.includes(targetPacketId)) ||
+        packageMatches(p, targetRecordId, "") ||
+        packageMatches(p, "", targetPacketId)
+      );
     });
 
-    if (!foundMatch) {
-      updated.unshift({
-        ...rec,
-        id: tradeDeskRecordId || packetId,
-        package_id: packetId,
-        packet_id: packetId,
-        review_packet_id: rec.review_packet_id || packetId,
-        bid_package_id: rec.bid_package_id || packetId,
-        trade_desk_record_id: tradeDeskRecordId,
-        bids: rec.bids,
-        bid_status: rec.bid_status,
-        buyer_response_status: rec.buyer_response_status,
-        crm_status: rec.crm_status,
-        record: {
-          ...rec,
-          id: tradeDeskRecordId,
-          trade_desk_record_id: tradeDeskRecordId,
-          bids: rec.bids
-        },
-        equipment: {
-          ...rec,
-          id: tradeDeskRecordId,
-          trade_desk_record_id: tradeDeskRecordId,
-          bids: rec.bids
-        }
-      });
+    if (!found) {
+      if (errorBox) {
+        errorBox.textContent = "Bid package not found. Make sure Trade Desk prepared the package and both pages are opened from the same browser/origin.";
+        errorBox.style.display = "block";
+      }
+
+      setBidButtonState(recordId, "reset", btnEl);
+      suppressRenderUntil = 0;
+      return;
     }
 
-    return updated;
-  }
+    const rec = {
+      ...found.pkg,
+      bids: Array.isArray(found.pkg.bids) ? [...found.pkg.bids] : []
+    };
 
-  bidderPackages = updatePacketArray(bidderPackages);
-  buyerPackets = updatePacketArray(buyerPackets);
-  tradeDeskRecords = updatePacketArray(tradeDeskRecords);
+    const packetId = getBidPackageId(rec);
+    const tradeDeskRecordId = getTradeDeskRecordId(rec) || targetRecordId || packetId;
 
-  saveArray(BIDDER_PORTAL_KEY, bidderPackages);
-saveArray(BUYER_PACKET_KEY, buyerPackets);
-saveArray(TRADE_DESK_KEY, tradeDeskRecords);
+    const existingBidIndex = rec.bids.findIndex(b =>
+      String(b.bidder_company || b.bidder || "").toLowerCase().trim() ===
+      bidderCompany.toLowerCase().trim()
+    );
 
-let syncRecords = loadArray(TRADEIN_SYNC_KEY);
-syncRecords = updatePacketArray(syncRecords);
-saveArray(TRADEIN_SYNC_KEY, syncRecords);
+    const bidPayload = {
+      bid_id: existingBidIndex >= 0 ? rec.bids[existingBidIndex].bid_id : uid("bid"),
+      bidder: bidderCompany,
+      bidder_company: bidderCompany,
+      bidder_email: approvedBidderEmail,
+      amount,
+      terms,
+      expires,
+      submitted_at: new Date().toISOString(),
+      source: "AXIS Bidder Portal"
+    };
 
-/* Dedicated outbox for Trade Desk buyer response import */
-let responseOutbox = loadArray(BUYER_RESPONSE_OUTBOX_KEY);
+    if (existingBidIndex >= 0) {
+      rec.bids[existingBidIndex] = bidPayload;
+    } else {
+      rec.bids.push(bidPayload);
+    }
 
-const responsePayload = {
-  id: `buyer_response_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-  source_event: "buyer_response_submitted",
-  trade_desk_record_id: tradeDeskRecordId,
-  package_id: packetId,
-  packet_id: packetId,
-  review_packet_id: rec.review_packet_id || packetId,
-  bid_package_id: rec.bid_package_id || packetId,
-  bids: rec.bids,
-  bid_status: "Bids Received",
-  buyer_response_status: "Buyer Responses Received",
-  crm_status: "Buyer Response Records Received",
-  last_bid_at: rec.last_bid_at,
-  last_bid_received_at: rec.last_bid_received_at,
-  last_bidder_company: bidderCompany,
-  last_bidder_email: approvedBidderEmail,
-  bid_count: rec.bids.length
-};
+    rec.bid_status = "Bids Received";
+    rec.buyer_response_status = "Buyer Responses Received";
+    rec.crm_status = "Buyer Response Records Received";
+    rec.quote_sync_status = rec.quote_sync_status || "Pending Bid";
+    rec.last_bid_at = new Date().toISOString();
+    rec.last_bid_received_at = rec.last_bid_at;
+    rec.last_bidder_company = bidderCompany;
+    rec.last_bidder_email = approvedBidderEmail;
+    rec.bid_count = rec.bids.length;
 
-const outboxIndex = responseOutbox.findIndex(item =>
-  String(item.review_packet_id || "") === String(responsePayload.review_packet_id || "") ||
-  String(item.bid_package_id || "") === String(responsePayload.bid_package_id || "") ||
-  String(item.package_id || "") === String(responsePayload.package_id || "") ||
-  String(item.packet_id || "") === String(responsePayload.packet_id || "") ||
-  String(item.trade_desk_record_id || "") === String(responsePayload.trade_desk_record_id || "")
-);
+    function samePackage(pkg){
+      const normalized = normalizePortalPackage(pkg);
 
-if (outboxIndex >= 0) {
-  responseOutbox[outboxIndex] = {
-    ...responseOutbox[outboxIndex],
-    ...responsePayload
-  };
-} else {
-  responseOutbox.unshift(responsePayload);
-}
+      const ids = [
+        normalized.id,
+        normalized.trade_desk_record_id,
+        normalized.package_id,
+        normalized.packet_id,
+        normalized.review_packet_id,
+        normalized.bid_package_id,
+        getBidPackageId(normalized),
+        getTradeDeskRecordId(normalized)
+      ].map(v => String(v || "").trim()).filter(Boolean);
 
-saveArray(BUYER_RESPONSE_OUTBOX_KEY, responseOutbox);
+      return (
+        ids.includes(targetRecordId) ||
+        ids.includes(tradeDeskRecordId) ||
+        ids.includes(packetId) ||
+        packageMatches(normalized, targetRecordId, packetId)
+      );
+    }
 
-localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(responsePayload));
-localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+    function updatePacketArray(arr){
+      let foundMatch = false;
 
-  setBidButtonState(recordId, "submitted", btnEl);
+      const updated = arr.map(pkg => {
+        if (!samePackage(pkg)) return pkg;
 
-  if (successBox) {
-    successBox.textContent = "Bid submitted successfully to AXIS Trade Desk.";
-    successBox.style.display = "block";
-  }
+        const normalized = normalizePortalPackage(pkg);
+        foundMatch = true;
 
-  draft.amount = "";
-  draft.terms = "";
-  draft.expires = "";
+        return {
+          ...pkg,
+          ...rec,
 
-  userManuallyClosedPackage = false;
-  openPackageId = String(recordId || tradeDeskRecordId || rec.id || "");
+          id: pkg.id || normalized.id || tradeDeskRecordId || packetId,
+          package_id: packetId,
+          packet_id: packetId,
+          review_packet_id: rec.review_packet_id || packetId,
+          bid_package_id: rec.bid_package_id || packetId,
+          trade_desk_record_id: tradeDeskRecordId,
 
-  setTimeout(() => {
+          bids: rec.bids,
+          bid_status: "Bids Received",
+          buyer_response_status: "Buyer Responses Received",
+          crm_status: "Buyer Response Records Received",
+          quote_sync_status: rec.quote_sync_status || "Pending Bid",
+          last_bid_at: rec.last_bid_at,
+          last_bid_received_at: rec.last_bid_received_at,
+          last_bidder_company: bidderCompany,
+          last_bidder_email: approvedBidderEmail,
+          bid_count: rec.bids.length,
+
+          record: {
+            ...(pkg.record || {}),
+            ...rec,
+            id: tradeDeskRecordId,
+            trade_desk_record_id: tradeDeskRecordId,
+            package_id: packetId,
+            packet_id: packetId,
+            review_packet_id: rec.review_packet_id || packetId,
+            bid_package_id: rec.bid_package_id || packetId,
+            bids: rec.bids,
+            bid_status: "Bids Received",
+            buyer_response_status: "Buyer Responses Received",
+            crm_status: "Buyer Response Records Received",
+            last_bid_at: rec.last_bid_at,
+            last_bid_received_at: rec.last_bid_received_at,
+            last_bidder_company: bidderCompany,
+            last_bidder_email: approvedBidderEmail,
+            bid_count: rec.bids.length
+          },
+
+          equipment: {
+            ...(pkg.equipment || {}),
+            ...rec,
+            id: tradeDeskRecordId,
+            trade_desk_record_id: tradeDeskRecordId,
+            package_id: packetId,
+            packet_id: packetId,
+            review_packet_id: rec.review_packet_id || packetId,
+            bid_package_id: rec.bid_package_id || packetId,
+            bids: rec.bids,
+            bid_status: "Bids Received",
+            buyer_response_status: "Buyer Responses Received",
+            crm_status: "Buyer Response Records Received",
+            last_bid_at: rec.last_bid_at,
+            last_bid_received_at: rec.last_bid_received_at,
+            last_bidder_company: bidderCompany,
+            last_bidder_email: approvedBidderEmail,
+            bid_count: rec.bids.length
+          }
+        };
+      });
+
+      if (!foundMatch) {
+        updated.unshift({
+          ...rec,
+          id: tradeDeskRecordId || packetId,
+          package_id: packetId,
+          packet_id: packetId,
+          review_packet_id: rec.review_packet_id || packetId,
+          bid_package_id: rec.bid_package_id || packetId,
+          trade_desk_record_id: tradeDeskRecordId,
+          bids: rec.bids,
+          bid_status: "Bids Received",
+          buyer_response_status: "Buyer Responses Received",
+          crm_status: "Buyer Response Records Received",
+          quote_sync_status: rec.quote_sync_status || "Pending Bid",
+          last_bid_at: rec.last_bid_at,
+          last_bid_received_at: rec.last_bid_received_at,
+          last_bidder_company: bidderCompany,
+          last_bidder_email: approvedBidderEmail,
+          bid_count: rec.bids.length,
+
+          record: {
+            ...rec,
+            id: tradeDeskRecordId,
+            trade_desk_record_id: tradeDeskRecordId,
+            package_id: packetId,
+            packet_id: packetId,
+            review_packet_id: rec.review_packet_id || packetId,
+            bid_package_id: rec.bid_package_id || packetId,
+            bids: rec.bids
+          },
+
+          equipment: {
+            ...rec,
+            id: tradeDeskRecordId,
+            trade_desk_record_id: tradeDeskRecordId,
+            package_id: packetId,
+            packet_id: packetId,
+            review_packet_id: rec.review_packet_id || packetId,
+            bid_package_id: rec.bid_package_id || packetId,
+            bids: rec.bids
+          }
+        });
+      }
+
+      return updated;
+    }
+
+    bidderPackages = updatePacketArray(bidderPackages);
+    buyerPackets = updatePacketArray(buyerPackets);
+    tradeDeskRecords = updatePacketArray(tradeDeskRecords);
+
+    saveArray(BIDDER_PORTAL_KEY, bidderPackages);
+    saveArray(BUYER_PACKET_KEY, buyerPackets);
+    saveArray(TRADE_DESK_KEY, tradeDeskRecords);
+
+    let syncRecords = loadArray(TRADEIN_SYNC_KEY);
+    syncRecords = updatePacketArray(syncRecords);
+    saveArray(TRADEIN_SYNC_KEY, syncRecords);
+
+    const responsePayload = {
+      id: `buyer_response_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      source_event: "buyer_response_submitted",
+      trade_desk_record_id: tradeDeskRecordId,
+      package_id: packetId,
+      packet_id: packetId,
+      review_packet_id: rec.review_packet_id || packetId,
+      bid_package_id: rec.bid_package_id || packetId,
+      bids: rec.bids,
+      bid_status: "Bids Received",
+      buyer_response_status: "Buyer Responses Received",
+      crm_status: "Buyer Response Records Received",
+      last_bid_at: rec.last_bid_at,
+      last_bid_received_at: rec.last_bid_received_at,
+      last_bidder_company: bidderCompany,
+      last_bidder_email: approvedBidderEmail,
+      bid_count: rec.bids.length
+    };
+
+    let responseOutbox = loadArray(BUYER_RESPONSE_OUTBOX_KEY);
+
+    const outboxIndex = responseOutbox.findIndex(item =>
+      String(item.review_packet_id || "") === String(responsePayload.review_packet_id || "") ||
+      String(item.bid_package_id || "") === String(responsePayload.bid_package_id || "") ||
+      String(item.package_id || "") === String(responsePayload.package_id || "") ||
+      String(item.packet_id || "") === String(responsePayload.packet_id || "") ||
+      String(item.trade_desk_record_id || "") === String(responsePayload.trade_desk_record_id || "")
+    );
+
+    if (outboxIndex >= 0) {
+      responseOutbox[outboxIndex] = {
+        ...responseOutbox[outboxIndex],
+        ...responsePayload
+      };
+    } else {
+      responseOutbox.unshift(responsePayload);
+    }
+
+    saveArray(BUYER_RESPONSE_OUTBOX_KEY, responseOutbox);
+
+    localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(responsePayload));
+    localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+
+    setBidButtonState(recordId, "submitted", btnEl);
+
+    if (successBox) {
+      successBox.textContent = "Bid submitted successfully to AXIS Trade Desk.";
+      successBox.style.display = "block";
+    }
+
+    draft.amount = "";
+    draft.terms = "";
+    draft.expires = "";
+
+    if (amountInput) amountInput.value = "";
+    if (termsInput) termsInput.value = "";
+    if (expiresInput) expiresInput.value = "";
+
+    userManuallyClosedPackage = false;
+    openPackageId = String(recordId || tradeDeskRecordId || rec.id || "");
+
+    setTimeout(() => {
+      setBidButtonState(recordId, "reset", btnEl);
+      suppressRenderUntil = 0;
+      render();
+    }, 1200);
+
+  } catch (err) {
+    console.error("Submit bid failed:", err);
+
+    if (errorBox) {
+      errorBox.textContent = `Submit bid failed: ${err.message || err}`;
+      errorBox.style.display = "block";
+    } else {
+      alert(`Submit bid failed: ${err.message || err}`);
+    }
+
     setBidButtonState(recordId, "reset", btnEl);
     suppressRenderUntil = 0;
-    render();
-  }, 1400);
+  }
 }
 
 window.addEventListener("storage", (e) => {
@@ -1422,12 +1521,28 @@ window.addEventListener("storage", (e) => {
     e.key === BUYER_PACKET_KEY ||
     e.key === TRADE_DESK_KEY ||
     e.key === TRADEIN_SYNC_KEY ||
+    e.key === BUYER_RESPONSE_OUTBOX_KEY ||
     e.key === MANAGER_PING_KEY
   ) {
     if (!isBidFormFocused() && Date.now() >= suppressRenderUntil) {
       render();
     }
   }
+});
+
+window.addEventListener("focus", () => {
+  suppressRenderUntil = 0;
+
+  document.querySelectorAll("button").forEach(btn => {
+    if (btn.disabled && btn.id && btn.id.startsWith("submitBidBtn_")) {
+      btn.disabled = false;
+      btn.textContent = "Submit Bid";
+    }
+  });
+});
+
+window.addEventListener("pageshow", () => {
+  suppressRenderUntil = 0;
 });
 
 setInterval(() => {
