@@ -2661,34 +2661,53 @@ function renderInstallBaseCorrectionPanel(rec) {
 
   if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
 
+  const fields = issues.length
+    ? issues
+    : [
+        { key: "serial_number", label: "Serial Number" },
+        { key: "dom", label: "DOM / Year" },
+        { key: "site", label: "Facility / Site" },
+        { key: "make", label: "Make" },
+        { key: "model", label: "Model" },
+        { key: "modality", label: "Modality" }
+      ];
+
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input">
-      <div class="k">Install Base Data Correction</div>
-      <div class="v">Rep review needed</div>
+      <div class="k">Install Base / Data Quality Response</div>
+      <div class="v">Rep response required for missing, mismatched, or unconfirmed fields.</div>
 
-      <div class="mini" style="margin-top:8px;line-height:1.5;">
-        Update the missing/mismatched field if known. If not known, send a note back to Install Base with the reason.
+      <div class="mini" style="margin-top:8px;line-height:1.5;color:#ffd84d;">
+        Correct the field below if known. If it cannot be confirmed, send a note back to Install Base with the reason.
       </div>
 
-      ${issues.map(issue => `
-        <label style="margin-top:12px;">${escapeHtml(issue.label)}</label>
-        <input
-          id="fix_${issue.key}"
-          value="${escapeHtml(rec[issue.key] || "")}"
-          placeholder="Enter corrected ${escapeHtml(issue.label)}"
-        />
-      `).join("")}
+      <div class="detail-grid" style="margin-top:14px;">
+        ${fields.map(issue => `
+          <div class="detail-card">
+            <div class="k">${escapeHtml(issue.label)}</div>
+            <input
+              id="fix_${escapeHtml(issue.key)}"
+              value="${escapeHtml(rec[issue.key] || "")}"
+              placeholder="Enter corrected ${escapeHtml(issue.label)}"
+            />
+          </div>
+        `).join("")}
+      </div>
 
-      <label style="margin-top:12px;">Reason if unable to fix</label>
-      <textarea id="installBaseCorrectionNote" placeholder="Example: Rep could not confirm serial from customer photo. Needs Install Base verification."></textarea>
+      <label style="margin-top:12px;">Rep Response</label>
+      <select id="installBaseCorrectionStatus">
+        <option value="">Select response</option>
+        <option value="corrected">Corrected field(s)</option>
+        <option value="unable_to_confirm">Unable to confirm</option>
+        <option value="needs_install_base_review">Needs Install Base review</option>
+      </select>
+
+      <label style="margin-top:12px;">Rep Note to Install Base</label>
+      <textarea id="installBaseCorrectionNote" placeholder="Explain correction, missing field, mismatch, or reason..."></textarea>
 
       <div class="btns" style="margin-top:12px;">
         <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-          Send Correction to Install Base
-        </button>
-
-        <button type="button" class="secondary" onclick="sendInstallBaseUnableToFix('${escapeJs(rec.id)}')">
-          Send Unable-to-Fix Note
+          Save / Send Back
         </button>
       </div>
     </div>
@@ -2916,7 +2935,85 @@ $("manualActionSelect").disabled = completed;
 $("repOutcomeNotes").disabled = completed;
 $("repFollowUpDate").disabled = completed;
     }
+function getInstallBaseIssues(rec) {
+  const issues = [];
 
+  if (!rec.serial_number) issues.push(["serial_number", "Serial Number"]);
+  if (!rec.dom) issues.push(["dom", "DOM / Year"]);
+  if (!rec.site) issues.push(["site", "Facility"]);
+  if (!rec.site_address) issues.push(["site_address", "Street Address"]);
+  if (!rec.modality) issues.push(["modality", "Modality"]);
+  if (!rec.make) issues.push(["make", "Make"]);
+  if (!rec.model) issues.push(["model", "Model"]);
+
+  return issues;
+}
+
+function renderInstallBaseCorrectionPanel(rec) {
+  const issues = getInstallBaseIssues(rec);
+  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
+
+  return `
+    <div class="detail-card full oem-review-note-card needs-rep-input">
+      <div class="k">Install Base Data Review</div>
+      <div class="v">Install Base requested rep review for missing or mismatched data.</div>
+
+      <div class="mini" style="margin-top:10px;line-height:1.5;">
+        Rep may correct known fields, or send a reason back if the information cannot be confirmed.
+      </div>
+
+      <div style="display:grid;gap:10px;margin-top:14px;">
+        ${issues.map(([field,label]) => `
+          <label>${escapeHtml(label)}</label>
+          <input id="fix_${field}" value="${escapeHtml(rec[field] || "")}" placeholder="Enter ${escapeHtml(label)}" />
+        `).join("")}
+
+        <label>Reason if not corrected</label>
+        <textarea id="installBaseFixReason" placeholder="Example: Serial plate not visible in customer photo; asked site contact for confirmation.">${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
+
+        <div class="btns">
+          <button type="button" class="green" onclick="saveInstallBaseFix('${rec.id}')">
+            Save Fix / Send Back to Install Base
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function saveInstallBaseFix(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  getInstallBaseIssues(rec).forEach(([field]) => {
+    const input = $("fix_" + field);
+    if (input && input.value.trim()) {
+      rec[field] = input.value.trim();
+    }
+  });
+
+  rec.install_base_fix_reason = $("installBaseFixReason")?.value || "";
+  rec.install_base_fix_status = "rep_reviewed";
+  rec.install_base_fix_at = new Date().toISOString();
+  rec.install_base_fix_source = "Equipment Review Workspace";
+
+  syncFinalOutcomeToInstallBase(
+    rec,
+    "rep_data_review_completed",
+    rec.install_base_fix_reason
+  );
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
+
+  const banner = $("resultBanner");
+  if (banner) {
+    banner.style.display = "block";
+    banner.textContent = "Install Base update saved.";
+    setTimeout(() => banner.style.display = "none", 2500);
+  }
+}
     function renderNewProjectDetail(rec) {
       const detail = $("newProjectDetailArea");
       const grid = $("newProjectDetailGrid");
