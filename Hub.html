@@ -840,15 +840,35 @@ function releaseSelected(destination) {
   const now = new Date().toISOString();
 
   const updated = {
-    ...rec,
-    key: getRecordKey(rec),
-    install_base_release_status:
-      destination === "manager" ? "released_to_manager" : "released_to_rep",
-    install_base_released_at: now,
-    install_base_released_to: destination,
-    hub_source: "AXIS Install Base Workspace",
-    manager_visible: true
-  };
+  ...rec,
+  key: getRecordKey(rec),
+
+  install_base_release_status:
+    destination === "manager" ? "released_to_manager" : "released_to_rep",
+  install_base_released_at: now,
+  install_base_released_to: destination,
+  install_base_release_new: true,
+  install_base_release_seen: false,
+
+  hub_source: "AXIS Install Base Workspace",
+  manager_visible: true,
+
+  manager_unseen_update: true,
+  manager_flash_at: now,
+  manager_flash_type: "install_base_release",
+  manager_flash_text:
+    destination === "manager"
+      ? "New install-base record released to manager review"
+      : "New install-base record released to rep review",
+
+  oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
+  oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
+  oem_review_reason: rec.oem_review_reason || rec.review_reason || "",
+  oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
+  oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
+  threshold_years: rec.threshold_years || "",
+  alert_enabled: rec.alert_enabled || "yes"
+};
 
   state.records = state.records.map(r =>
     String(r.id) === String(rec.id) ? updated : r
@@ -1095,7 +1115,20 @@ function parseWorkbook(file) {
           "",
 
         next_action_date: excelDateToISO(obj.next_action_date),
+threshold_years: Number(obj.threshold_years || ""),
+alert_override: obj.alert_override || "",
+alert_enabled: obj.alert_enabled || "yes",
 
+proactive_signal: obj.proactive_signal || "",
+proactive_type: obj.proactive_type || "",
+proactive_date: excelDateToISO(obj.proactive_date),
+proactive_reason: obj.proactive_reason || "",
+
+oem_review_type: obj.oem_review_type || obj.review_type || "",
+oem_review_label: obj.oem_review_label || obj.review_label || "",
+oem_review_reason: obj.oem_review_reason || obj.review_reason || "",
+oem_review_date: excelDateToISO(obj.oem_review_date || obj.review_date || ""),
+oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
         install_base_release_status: "staged",
         install_base_released_at: "",
         install_base_released_to: "",
@@ -1167,6 +1200,14 @@ function parseWorkbook(file) {
           manager_response_at: existing.manager_response_at || "",
           manager_response_seen_by_rep: existing.manager_response_seen_by_rep ?? true,
           manager_response_seen_at: existing.manager_response_seen_at || ""
+oem_review_type: newRec.oem_review_type || existing.oem_review_type || "",
+oem_review_label: newRec.oem_review_label || existing.oem_review_label || "",
+oem_review_reason: newRec.oem_review_reason || existing.oem_review_reason || "",
+oem_review_date: newRec.oem_review_date || existing.oem_review_date || "",
+oem_review_level: newRec.oem_review_level || existing.oem_review_level || "",
+threshold_years: newRec.threshold_years || existing.threshold_years || "",
+alert_override: newRec.alert_override || existing.alert_override || "",
+alert_enabled: newRec.alert_enabled || existing.alert_enabled || "yes",
         });
       } else {
         merged.push(newRec);
