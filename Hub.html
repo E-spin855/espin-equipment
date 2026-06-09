@@ -406,6 +406,32 @@ tbody tr.selected{
 .small-select{
   padding:10px 11px;
 }
+.badge-response{
+  background:linear-gradient(90deg,#41ff9c,#00e5ff);
+  color:#03111b;
+  border:2px solid rgba(255,255,255,.75);
+  box-shadow:0 0 28px rgba(65,255,156,.75);
+}
+
+tr.install-base-response-flash{
+  outline:3px solid rgba(65,255,156,.95)!important;
+  box-shadow:
+    inset 10px 0 0 rgba(65,255,156,.95),
+    0 0 34px rgba(65,255,156,.75)!important;
+  animation:installBaseResponsePulse .9s ease-in-out infinite!important;
+}
+
+@keyframes installBaseResponsePulse{
+  0%,100%{background:rgba(9,18,35,.45);}
+  50%{background:rgba(18,140,100,.92);}
+}
+
+.rep-response-card{
+  grid-column:1 / -1;
+  border:2px solid rgba(65,255,156,.85)!important;
+  background:rgba(65,255,156,.10)!important;
+  box-shadow:0 0 26px rgba(65,255,156,.28)!important;
+}
 </style>
 </head>
 
@@ -556,6 +582,8 @@ const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const REP_QUEUE_KEY = "espin_rep_queue";
 const VP_QUEUE_KEY = "axis_vp_queue_v1";
+const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
+const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 
 const state = {
   records: [],
@@ -577,8 +605,9 @@ const normalizeModality =
 
 const ageFromDom =
   window.AxisUtils?.ageFromDomEmpty ||
+  window.AxisUtils?.ageFromDom ||
   ((dom) => {
-    const n = Number(dom);
+    const n = Number(String(dom || "").match(/\b(19|20)\d{2}\b/)?.[0] || dom);
     if (!n) return "";
     return new Date().getFullYear() - n;
   });
@@ -638,6 +667,10 @@ function escapeHtml(v) {
     .replace(/'/g, "&#039;");
 }
 
+function escapeJs(v) {
+  return String(v || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function excelDateToISO(val) {
   if (!val) return "";
 
@@ -652,10 +685,44 @@ function excelDateToISO(val) {
   return String(val || "");
 }
 
+function clean(v) {
+  return String(v || "").trim();
+}
+
+function lower(v) {
+  return clean(v).toLowerCase();
+}
+
 function getRecordKey(rec) {
-  const project = String(rec.oem_project_id || rec.asset_id || "").trim();
-  const serial = String(rec.serial_number || "").trim();
-  return rec.key || `${project}_${serial}` || rec.id || uuid();
+  if (!rec) return "";
+
+  if (rec.key) return String(rec.key);
+
+  const project = clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "");
+  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+
+  if (project || serial) return `${project}_${serial}`;
+
+  return String(rec.id || uuid());
+}
+
+function sameRecord(a, b) {
+  if (!a || !b) return false;
+
+  const aId = clean(a.id);
+  const bId = clean(b.id);
+  if (aId && bId && aId === bId) return true;
+
+  const aKey = clean(a.key || getRecordKey(a));
+  const bKey = clean(b.key || getRecordKey(b));
+  if (aKey && bKey && aKey === bKey) return true;
+
+  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id);
+  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id);
+  const aSerial = clean(a.serial_number || a.serial || a.system_serial);
+  const bSerial = clean(b.serial_number || b.serial || b.system_serial);
+
+  return Boolean(aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial);
 }
 
 function getDemoOwner(seed, stateValue) {
@@ -682,18 +749,19 @@ function getOwnerName(rec) {
 function getOwnerTerritory(rec) {
   return rec.manager_region || rec.manager_territory || rec.territory || "Unassigned Territory";
 }
+
 function isDuplicateAsset(rec) {
   const key = [
-    String(rec.oem_project_id || rec.asset_id || "").trim().toLowerCase(),
-    String(rec.serial_number || "").trim().toLowerCase()
+    lower(rec.oem_project_id || rec.asset_id),
+    lower(rec.serial_number || rec.serial)
   ].join("|");
 
   if (key === "|") return false;
 
   return state.records.filter(r => {
     const rKey = [
-      String(r.oem_project_id || r.asset_id || "").trim().toLowerCase(),
-      String(r.serial_number || "").trim().toLowerCase()
+      lower(r.oem_project_id || r.asset_id),
+      lower(r.serial_number || r.serial)
     ].join("|");
 
     return rKey === key;
@@ -703,29 +771,30 @@ function isDuplicateAsset(rec) {
 function getDataExceptions(rec) {
   const issues = [];
 
-  if (!String(rec.serial_number || "").trim()) {
+  if (!clean(rec.serial_number || rec.serial)) {
     issues.push({ type: "missing", label: "Missing Serial" });
   }
 
-  if (!String(rec.dom || "").trim()) {
+  if (!clean(rec.dom)) {
     issues.push({ type: "missing", label: "Missing DOM" });
   }
 
-  if (!String(rec.site || "").trim() || rec.site === "Unknown Site") {
+  if (!clean(rec.site) || rec.site === "Unknown Site") {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
-  if (!String(rec.assigned_rep_name || "").trim() || rec.assigned_rep_name === "Unassigned") {
+  if (!clean(rec.assigned_rep_name) || rec.assigned_rep_name === "Unassigned") {
     issues.push({ type: "owner", label: "Missing Rep Owner" });
   }
 
-  if (!String(rec.manager_name || "").trim() || rec.manager_name === "Unassigned Owner Group") {
+  if (!clean(rec.manager_name) || rec.manager_name === "Unassigned Owner Group") {
     issues.push({ type: "owner", label: "Missing Owner Group" });
   }
 
   if (
-    String(rec.source_conflict || "").toLowerCase() === "yes" ||
-    String(rec.conflict || "").toLowerCase() === "yes"
+    lower(rec.source_conflict) === "yes" ||
+    lower(rec.conflict) === "yes" ||
+    lower(rec.install_base_issue_type || "").includes("mismatch")
   ) {
     issues.push({ type: "source", label: "Source Conflict" });
   }
@@ -736,42 +805,12 @@ function getDataExceptions(rec) {
 
   return issues;
 }
-function getDataExceptions(rec) {
-  const issues = [];
-
-  if (!String(rec.serial_number || "").trim()) {
-    issues.push({ type: "missing", label: "Missing Serial" });
-  }
-
-  if (!String(rec.dom || "").trim()) {
-    issues.push({ type: "missing", label: "Missing DOM" });
-  }
-
-  if (!String(rec.site || "").trim() || rec.site === "Unknown Site") {
-    issues.push({ type: "missing", label: "Missing Site" });
-  }
-
-  if (!String(rec.assigned_rep_name || "").trim() || rec.assigned_rep_name === "Unassigned") {
-    issues.push({ type: "owner", label: "Missing Rep Owner" });
-  }
-if (isDuplicateAsset(rec)) {
-  issues.push({ type: "source", label: "Duplicate Asset" });
-}
-  if (!String(rec.manager_name || "").trim() || rec.manager_name === "Unassigned Owner Group") {
-    issues.push({ type: "owner", label: "Missing Owner Group" });
-  }
-
-  if (
-    String(rec.source_conflict || "").toLowerCase() === "yes" ||
-    String(rec.conflict || "").toLowerCase() === "yes"
-  ) {
-    issues.push({ type: "source", label: "Source Conflict" });
-  }
-
-  return issues;
-}
 
 function getReviewStatus(rec) {
+  if (rec.install_base_response_at && !rec.install_base_response_seen) {
+    return { type: "response", label: "Rep Response" };
+  }
+
   const exceptions = getDataExceptions(rec);
 
   if (rec.install_base_release_status === "released_to_manager") {
@@ -792,6 +831,10 @@ function getReviewStatus(rec) {
 function getStatusHtml(rec) {
   const status = getReviewStatus(rec);
 
+  if (status.type === "response") {
+    return `<span class="badge badge-response">Rep Response</span>`;
+  }
+
   const cls = {
     ok: "badge-ok",
     missing: "badge-missing",
@@ -802,6 +845,28 @@ function getStatusHtml(rec) {
   }[status.type] || "badge-staged";
 
   return `<span class="badge ${cls}">${escapeHtml(status.label)}</span>`;
+}
+
+function readArrayKey(key) {
+  try {
+    const data = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeArrayKey(key, arr) {
+  localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
+}
+
+function readQueue(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    return parsed || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function saveRecords() {
@@ -821,15 +886,83 @@ function loadRecords() {
   } catch {
     state.records = [];
   }
+
+  mergeRepResponsesIntoRecords();
 }
 
-function readQueue(key, fallback) {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
-    return parsed || fallback;
-  } catch {
-    return fallback;
-  }
+function mergeRepResponsesIntoRecords() {
+  const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
+
+  responses.forEach(resp => {
+    const respKey = getRecordKey(resp);
+    if (!respKey) return;
+
+    let found = false;
+
+    state.records = state.records.map(rec => {
+      if (!sameRecord(rec, resp) && getRecordKey(rec) !== respKey) return rec;
+
+      found = true;
+
+      const sameResponse =
+        rec.install_base_response_at &&
+        rec.install_base_response_at === resp.install_base_response_at;
+
+      return {
+        ...rec,
+        ...resp,
+        key: getRecordKey(rec),
+
+        install_base_response_seen:
+          sameResponse ? rec.install_base_response_seen === true : false,
+
+        install_base_response_seen_at:
+          sameResponse ? rec.install_base_response_seen_at || "" : ""
+      };
+    });
+
+    if (!found) {
+      state.records.unshift({
+        ...resp,
+        id: resp.id || uuid(),
+        key: respKey,
+        source: resp.source || "Rep Response",
+        source_system: resp.source_system || "Rep Review Page",
+        install_base_response_seen: resp.install_base_response_seen === true,
+        install_base_response_seen_at: resp.install_base_response_seen_at || ""
+      });
+    }
+  });
+}
+
+function markRepResponseSeen(rec) {
+  if (!rec || !rec.install_base_response_at || rec.install_base_response_seen === true) return;
+
+  const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+
+  state.records = state.records.map(r =>
+    getRecordKey(r) === key
+      ? {
+          ...r,
+          install_base_response_seen: true,
+          install_base_response_seen_at: now
+        }
+      : r
+  );
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(r =>
+    getRecordKey(r) === key
+      ? {
+          ...r,
+          install_base_response_seen: true,
+          install_base_response_seen_at: now
+        }
+      : r
+  );
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  saveRecords();
 }
 
 function releaseSelected(destination) {
@@ -839,38 +972,38 @@ function releaseSelected(destination) {
   const now = new Date().toISOString();
 
   const updated = {
-  ...rec,
-  key: getRecordKey(rec),
+    ...rec,
+    key: getRecordKey(rec),
 
-  install_base_release_status:
-    destination === "manager" ? "released_to_manager" : "released_to_rep",
-  install_base_released_at: now,
-  install_base_released_to: destination,
-  install_base_release_new: true,
-  install_base_release_seen: false,
+    install_base_release_status:
+      destination === "manager" ? "released_to_manager" : "released_to_rep",
+    install_base_released_at: now,
+    install_base_released_to: destination,
+    install_base_release_new: true,
+    install_base_release_seen: false,
 
-  hub_source: "AXIS Install Base Workspace",
-  manager_visible: true,
+    hub_source: "AXIS Install Base Workspace",
+    manager_visible: true,
 
-  manager_unseen_update: true,
-  manager_flash_at: now,
-  manager_flash_type: "install_base_release",
-  manager_flash_text:
-    destination === "manager"
-      ? "New install-base record released to manager review"
-      : "New install-base record released to rep review",
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: "install_base_release",
+    manager_flash_text:
+      destination === "manager"
+        ? "New install-base record released to manager review"
+        : "New install-base record released to rep review",
 
-  oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
-  oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
-  oem_review_reason: rec.oem_review_reason || rec.review_reason || "",
-  oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
-  oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
-  threshold_years: rec.threshold_years || "",
-  alert_enabled: rec.alert_enabled || "yes"
-};
+    oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
+    oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
+    oem_review_reason: rec.oem_review_reason || rec.review_reason || rec.install_base_issue_note || "",
+    oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
+    oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
+    threshold_years: rec.threshold_years || "",
+    alert_enabled: rec.alert_enabled || "yes"
+  };
 
   state.records = state.records.map(r =>
-    String(r.id) === String(rec.id) ? updated : r
+    sameRecord(r, rec) ? updated : r
   );
 
   if (destination === "manager") {
@@ -933,7 +1066,7 @@ function markSelectedStaged() {
   if (!rec) return;
 
   state.records = state.records.map(r => {
-    if (String(r.id) !== String(rec.id)) return r;
+    if (!sameRecord(r, rec)) return r;
 
     return {
       ...r,
@@ -1044,7 +1177,7 @@ function parseWorkbook(file) {
         `${obj.city || ""} ${obj.state || ""}`.trim() ||
         "Unknown Site";
 
-      return {
+      const rec = {
         id: uuid(),
         key: "",
         source: obj.source || obj.source_system || "Install Base Upload",
@@ -1114,20 +1247,21 @@ function parseWorkbook(file) {
           "",
 
         next_action_date: excelDateToISO(obj.next_action_date),
-threshold_years: Number(obj.threshold_years || ""),
-alert_override: obj.alert_override || "",
-alert_enabled: obj.alert_enabled || "yes",
+        threshold_years: Number(obj.threshold_years || ""),
+        alert_override: obj.alert_override || "",
+        alert_enabled: obj.alert_enabled || "yes",
 
-proactive_signal: obj.proactive_signal || "",
-proactive_type: obj.proactive_type || "",
-proactive_date: excelDateToISO(obj.proactive_date),
-proactive_reason: obj.proactive_reason || "",
+        proactive_signal: obj.proactive_signal || "",
+        proactive_type: obj.proactive_type || "",
+        proactive_date: excelDateToISO(obj.proactive_date),
+        proactive_reason: obj.proactive_reason || "",
 
-oem_review_type: obj.oem_review_type || obj.review_type || "",
-oem_review_label: obj.oem_review_label || obj.review_label || "",
-oem_review_reason: obj.oem_review_reason || obj.review_reason || "",
-oem_review_date: excelDateToISO(obj.oem_review_date || obj.review_date || ""),
-oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
+        oem_review_type: obj.oem_review_type || obj.review_type || "",
+        oem_review_label: obj.oem_review_label || obj.review_label || "",
+        oem_review_reason: obj.oem_review_reason || obj.review_reason || "",
+        oem_review_date: excelDateToISO(obj.oem_review_date || obj.review_date || ""),
+        oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
+
         install_base_release_status: "staged",
         install_base_released_at: "",
         install_base_released_to: "",
@@ -1142,18 +1276,15 @@ oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_lev
         manager_visible: false,
         sla_days: 7
       };
+
+      rec.key = getRecordKey(rec);
+      return rec;
     });
 
     const merged = [];
 
     newRecords.forEach(newRec => {
-      const existing = state.records.find(r => {
-        const sameProject =
-          String(r.oem_project_id || r.asset_id || "") === String(newRec.oem_project_id || newRec.asset_id || "");
-        const sameSerial =
-          String(r.serial_number || "") === String(newRec.serial_number || "");
-        return sameProject && sameSerial;
-      });
+      const existing = state.records.find(r => sameRecord(r, newRec));
 
       if (existing) {
         merged.push({
@@ -1165,6 +1296,13 @@ oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_lev
           install_base_release_status: existing.install_base_release_status || "staged",
           install_base_released_at: existing.install_base_released_at || "",
           install_base_released_to: existing.install_base_released_to || "",
+
+          install_base_response_status: existing.install_base_response_status || "",
+          install_base_response_note: existing.install_base_response_note || "",
+          install_base_response_by: existing.install_base_response_by || "",
+          install_base_response_at: existing.install_base_response_at || "",
+          install_base_response_seen: existing.install_base_response_seen || false,
+          install_base_response_seen_at: existing.install_base_response_seen_at || "",
 
           rep_action: existing.rep_action || "",
           rep_notes: existing.rep_notes || "",
@@ -1199,14 +1337,15 @@ oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_lev
           manager_response_at: existing.manager_response_at || "",
           manager_response_seen_by_rep: existing.manager_response_seen_by_rep ?? true,
           manager_response_seen_at: existing.manager_response_seen_at || "",
-oem_review_type: newRec.oem_review_type || existing.oem_review_type || "",
-oem_review_label: newRec.oem_review_label || existing.oem_review_label || "",
-oem_review_reason: newRec.oem_review_reason || existing.oem_review_reason || "",
-oem_review_date: newRec.oem_review_date || existing.oem_review_date || "",
-oem_review_level: newRec.oem_review_level || existing.oem_review_level || "",
-threshold_years: newRec.threshold_years || existing.threshold_years || "",
-alert_override: newRec.alert_override || existing.alert_override || "",
-alert_enabled: newRec.alert_enabled || existing.alert_enabled || "yes",
+
+          oem_review_type: newRec.oem_review_type || existing.oem_review_type || "",
+          oem_review_label: newRec.oem_review_label || existing.oem_review_label || "",
+          oem_review_reason: newRec.oem_review_reason || existing.oem_review_reason || "",
+          oem_review_date: newRec.oem_review_date || existing.oem_review_date || "",
+          oem_review_level: newRec.oem_review_level || existing.oem_review_level || "",
+          threshold_years: newRec.threshold_years || existing.threshold_years || "",
+          alert_override: newRec.alert_override || existing.alert_override || "",
+          alert_enabled: newRec.alert_enabled || existing.alert_enabled || "yes"
         });
       } else {
         merged.push(newRec);
@@ -1214,14 +1353,7 @@ alert_enabled: newRec.alert_enabled || existing.alert_enabled || "yes",
     });
 
     state.records.forEach(oldRec => {
-      const stillExists = newRecords.some(r => {
-        const sameProject =
-          String(r.oem_project_id || r.asset_id || "") === String(oldRec.oem_project_id || oldRec.asset_id || "");
-        const sameSerial =
-          String(r.serial_number || "") === String(oldRec.serial_number || "");
-        return sameProject && sameSerial;
-      });
-
+      const stillExists = newRecords.some(r => sameRecord(r, oldRec));
       if (!stillExists) merged.push(oldRec);
     });
 
@@ -1229,6 +1361,8 @@ alert_enabled: newRec.alert_enabled || existing.alert_enabled || "yes",
       ...r,
       key: getRecordKey(r)
     }));
+
+    mergeRepResponsesIntoRecords();
 
     state.selectedOwner = "";
     state.selectedId = null;
@@ -1254,7 +1388,8 @@ function getOwnerGroups() {
         count: 0,
         reps: new Set(),
         exceptions: 0,
-        released: 0
+        released: 0,
+        responses: 0
       };
     }
 
@@ -1265,6 +1400,10 @@ function getOwnerGroups() {
 
     if (String(rec.install_base_release_status || "").startsWith("released")) {
       groups[name].released++;
+    }
+
+    if (rec.install_base_response_at && !rec.install_base_response_seen) {
+      groups[name].responses++;
     }
   });
 
@@ -1291,7 +1430,10 @@ function matchesSearch(rec) {
     rec.serial_number,
     rec.city,
     rec.state,
-    rec.source_system
+    rec.source_system,
+    rec.install_base_response_status,
+    rec.install_base_response_note,
+    rec.install_base_response_by
   ].join(" ").toLowerCase();
 
   return haystack.includes(q);
@@ -1301,12 +1443,14 @@ function matchesFilter(rec) {
   const filter = state.filter;
   const exceptions = getDataExceptions(rec);
   const released = String(rec.install_base_release_status || "").startsWith("released");
+  const responseOpen = rec.install_base_response_at && !rec.install_base_response_seen;
 
   if (!filter) return true;
   if (filter === "exception") return exceptions.length > 0;
   if (filter === "ready") return exceptions.length === 0 && !released;
   if (filter === "released") return released;
   if (filter === "staged") return !released;
+  if (filter === "response") return responseOpen;
   return true;
 }
 
@@ -1345,14 +1489,14 @@ function renderOwnerGroups() {
   el.innerHTML = groups.map(g => `
     <div
       class="owner-card ${state.selectedOwner === g.name ? "active" : ""}"
-      onclick="selectOwner('${String(g.name).replace(/'/g, "\\'")}')"
+      onclick="selectOwner('${escapeJs(g.name)}')"
     >
       <div class="owner-name">${escapeHtml(g.name)}</div>
       <div class="owner-territory">${escapeHtml(g.territory)}</div>
       <div class="owner-meta">${escapeHtml(g.email || "No owner email")}</div>
       <div class="owner-meta">Reps: ${escapeHtml(g.reps.join(", "))}</div>
       <div class="packet-pill">
-        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released
+        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released${g.responses ? ` • ${g.responses} Rep Response` : ""}
       </div>
     </div>
   `).join("") + `
@@ -1394,42 +1538,74 @@ function renderTable() {
   }
 
   const sorted = [...records].sort((a, b) => {
+    const responseA = a.install_base_response_at && !a.install_base_response_seen ? 1 : 0;
+    const responseB = b.install_base_response_at && !b.install_base_response_seen ? 1 : 0;
+    if (responseB !== responseA) return responseB - responseA;
+
     const aa = getDataExceptions(a).length;
     const bb = getDataExceptions(b).length;
     if (bb !== aa) return bb - aa;
+
     return String(a.site || "").localeCompare(String(b.site || ""));
   });
 
-  tbody.innerHTML = sorted.map(rec => `
-    <tr
-      onclick="selectRecord('${String(rec.id || "").replace(/'/g, "\\'")}')"
-      class="${String(state.selectedId) === String(rec.id) ? "selected" : ""}"
-      style="cursor:pointer;"
-    >
-      <td>${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</td>
-      <td>${escapeHtml(getOwnerName(rec))}</td>
-      <td>${escapeHtml(getOwnerTerritory(rec))}</td>
-      <td>${escapeHtml(rec.assigned_rep_name || "-")}</td>
-      <td>${escapeHtml(rec.site || "-")}</td>
-      <td>${escapeHtml(rec.modality || "-")}</td>
-      <td>${escapeHtml(rec.make || "-")}</td>
-      <td>${escapeHtml(rec.model || "-")}</td>
-      <td>${escapeHtml(rec.serial_number || "-")}</td>
-      <td>${escapeHtml(rec.dom || "-")}</td>
-      <td>${escapeHtml(ageFromDom(rec.dom) || "-")}</td>
-      <td>${getStatusHtml(rec)}</td>
-    </tr>
-  `).join("");
+  tbody.innerHTML = sorted.map(rec => {
+    const rowClass = [
+      String(state.selectedId) === String(rec.id) ? "selected" : "",
+      rec.install_base_response_at && !rec.install_base_response_seen ? "install-base-response-flash" : ""
+    ].filter(Boolean).join(" ");
+
+    return `
+      <tr
+        onclick="selectRecord('${escapeJs(rec.id || "")}')"
+        class="${rowClass}"
+        style="cursor:pointer;"
+      >
+        <td>${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</td>
+        <td>${escapeHtml(getOwnerName(rec))}</td>
+        <td>${escapeHtml(getOwnerTerritory(rec))}</td>
+        <td>${escapeHtml(rec.assigned_rep_name || "-")}</td>
+        <td>${escapeHtml(rec.site || "-")}</td>
+        <td>${escapeHtml(rec.modality || "-")}</td>
+        <td>${escapeHtml(rec.make || "-")}</td>
+        <td>${escapeHtml(rec.model || "-")}</td>
+        <td>${escapeHtml(rec.serial_number || rec.serial || "-")}</td>
+        <td>${escapeHtml(rec.dom || "-")}</td>
+        <td>${escapeHtml(ageFromDom(rec.dom) || "-")}</td>
+        <td>${getStatusHtml(rec)}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function selectRecord(id) {
   state.selectedId = id;
+
+  const rec = findSelectedRecord();
+  if (rec) markRepResponseSeen(rec);
+
   render();
 }
 
 function findSelectedRecord() {
   if (!state.selectedId) return null;
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
+}
+
+function renderRepResponseCard(rec) {
+  if (!rec.install_base_response_at) return "";
+
+  return `
+    <div class="detail-card rep-response-card">
+      <div class="k">Rep Response from Review Page</div>
+      <div class="v">${escapeHtml(rec.install_base_response_status || "Response sent")}</div>
+      <div class="mini" style="margin-top:8px;line-height:1.55;">
+        Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
+        Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong><br>
+        Note: ${escapeHtml(rec.install_base_response_note || "No note entered.")}
+      </div>
+    </div>
+  `;
 }
 
 function renderDetail() {
@@ -1441,6 +1617,7 @@ function renderDetail() {
   if (!rec) {
     empty.classList.remove("hidden");
     detail.classList.add("hidden");
+    grid.innerHTML = "";
     return;
   }
 
@@ -1451,6 +1628,8 @@ function renderDetail() {
   detail.classList.remove("hidden");
 
   grid.innerHTML = `
+    ${renderRepResponseCard(rec)}
+
     <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
@@ -1484,7 +1663,7 @@ function renderDetail() {
     <div class="detail-card">
       <div class="k">Equipment</div>
       <div class="v">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
-      <div class="mini">${escapeHtml(rec.modality || "")} • Serial: ${escapeHtml(rec.serial_number || "-")}</div>
+      <div class="mini">${escapeHtml(rec.modality || "")} • Serial: ${escapeHtml(rec.serial_number || rec.serial || "-")}</div>
     </div>
 
     <div class="detail-card">
@@ -1534,6 +1713,8 @@ function clearLocalData() {
   localStorage.removeItem(MANAGER_QUEUE_KEY);
   localStorage.removeItem(REP_QUEUE_KEY);
   localStorage.removeItem(VP_QUEUE_KEY);
+  localStorage.removeItem(INSTALL_BASE_RESPONSE_KEY);
+  localStorage.removeItem(INSTALL_BASE_RESPONSE_PING_KEY);
   localStorage.removeItem("axis_install_base_sync_ping_v1");
   localStorage.removeItem("axis_manager_sync_ping_v1");
   localStorage.removeItem("axis_rep_sync_ping_v1");
@@ -1557,6 +1738,7 @@ function clearLocalData() {
 }
 
 function render() {
+  mergeRepResponsesIntoRecords();
   renderStats();
   renderOwnerGroups();
   renderTable();
@@ -1611,6 +1793,25 @@ function init() {
   if (markStagedBtn) {
     markStagedBtn.addEventListener("click", markSelectedStaged);
   }
+
+  window.addEventListener("storage", e => {
+    if (
+      e.key === INSTALL_BASE_RESPONSE_KEY ||
+      e.key === INSTALL_BASE_RESPONSE_PING_KEY ||
+      e.key === INSTALL_BASE_KEY ||
+      e.key === "axis_install_base_sync_ping_v1"
+    ) {
+      render();
+    }
+  });
+
+  window.addEventListener("install_base_response_update", () => {
+    render();
+  });
+
+  setInterval(() => {
+    render();
+  }, 1800);
 }
 
 document.addEventListener("DOMContentLoaded", init);
