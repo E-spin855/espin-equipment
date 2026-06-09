@@ -2683,7 +2683,40 @@ function saveRepDataResponse() {
 
   return issues;
 }
+function renderInstallBaseCorrectionPanel(rec) {
+  const issues = getInstallBaseIssueFields(rec);
 
+  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
+
+  return `
+    <div class="detail-card full oem-review-note-card needs-rep-input">
+      <div class="k">Install Base Data Review</div>
+      <div class="v">Install Base requested rep review for missing or mismatched data.</div>
+
+      <div class="mini" style="margin-top:8px;line-height:1.5;color:#ffd84d;font-weight:900;">
+        Correct the requested field below. If you cannot confirm it, leave it blank and enter the reason.
+      </div>
+
+      ${issues.map(issue => `
+        <label style="margin-top:14px;">Fix ${escapeHtml(issue.label)}</label>
+        <input
+          id="fix_${issue.key}"
+          value="${escapeHtml(rec[issue.key] || "")}"
+          placeholder="Enter corrected ${escapeHtml(issue.label)}"
+        />
+      `).join("")}
+
+      <label style="margin-top:14px;">Reason if not corrected</label>
+      <textarea id="installBaseCorrectionNote" placeholder="Example: Serial plate not visible in customer photo; asked site contact for confirmation."></textarea>
+
+      <div class="btns" style="margin-top:14px;">
+        <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
+          Save Fix / Send Back to Install Base
+        </button>
+      </div>
+    </div>
+  `;
+}
 function renderInstallBaseCorrectionPanel(rec) {
   const issues = getInstallBaseIssueFields(rec);
 
