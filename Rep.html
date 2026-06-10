@@ -2802,9 +2802,11 @@ function sendInstallBaseCorrection(id) {
     "";
 
   const now = new Date().toISOString();
+  const key = rec.key || getRecordKey(rec);
 
   const updated = {
     ...rec,
+    key,
 
     install_base_response_status: "rep_correction_sent",
     install_base_response_message: message,
@@ -2830,12 +2832,11 @@ function sendInstallBaseCorrection(id) {
     }
   });
 
-  state.records = state.records.map(r =>
-    String(r.id) === String(id) ||
-    String(r.key || "") === String(updated.key || "")
-      ? updated
-      : r
-  );
+  state.records = state.records.map(r => {
+    const sameId = String(r.id || "") === String(updated.id || "");
+    const sameKey = updated.key && String(r.key || "") === String(updated.key);
+    return sameId || sameKey ? updated : r;
+  });
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
 
@@ -2843,25 +2844,18 @@ function sendInstallBaseCorrection(id) {
     localStorage.getItem("axis_install_base_response_queue_v1") || "[]"
   );
 
-  const cleanedQueue = responseQueue.filter(r =>
-    String(r.key || "") !== String(updated.key || "") &&
-    String(r.id || "") !== String(updated.id || "")
-  );
+  const cleanedQueue = responseQueue.filter(r => {
+    const sameId = String(r.id || "") === String(updated.id || "");
+    const sameKey = updated.key && String(r.key || "") === String(updated.key);
+    return !(sameId || sameKey);
+  });
 
   cleanedQueue.push(updated);
 
-  localStorage.setItem(
-    "axis_install_base_response_queue_v1",
-    JSON.stringify(cleanedQueue)
-  );
-
-  localStorage.setItem(
-    "axis_install_base_response_ping_v1",
-    String(Date.now())
-  );
+  localStorage.setItem("axis_install_base_response_queue_v1", JSON.stringify(cleanedQueue));
+  localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
 
   render();
-
   alert("Correction sent back to Install Base.");
 }
 function sendInstallBaseUnableToFix(id) {
