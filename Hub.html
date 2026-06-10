@@ -970,10 +970,11 @@ function releaseSelected(destination) {
   if (!rec) return;
 
   const now = new Date().toISOString();
+  const key = getRecordKey(rec);
 
   const updated = {
     ...rec,
-    key: getRecordKey(rec),
+    key,
 
     install_base_release_status:
       destination === "manager" ? "released_to_manager" : "released_to_rep",
@@ -983,37 +984,32 @@ function releaseSelected(destination) {
     install_base_release_seen: false,
 
     hub_source: "AXIS Install Base Workspace",
-    manager_visible: true,
-asset_id: rec.asset_id || "",
-site_address: rec.site_address || "",
-city: rec.city || "",
-state: rec.state || "",
-zip_code: rec.zip_code || "",
 
-assigned_rep_name: rec.assigned_rep_name || "",
-assigned_rep_email: rec.assigned_rep_email || "",
-assigned_rep_phone: rec.assigned_rep_phone || "",
+    asset_id: rec.asset_id || "",
+    site_address: rec.site_address || "",
+    city: rec.city || "",
+    state: rec.state || "",
+    zip_code: rec.zip_code || "",
 
-manager_name: rec.manager_name || "",
-manager_email: rec.manager_email || "",
-manager_region: rec.manager_region || "",
+    assigned_rep_name: rec.assigned_rep_name || "",
+    assigned_rep_email: rec.assigned_rep_email || "",
+    assigned_rep_phone: rec.assigned_rep_phone || "",
 
-source_system: rec.source_system || "",
-source_conflict: rec.source_conflict || "",
-conflict_notes: rec.conflict_notes || "",
+    manager_name: rec.manager_name || "",
+    manager_email: rec.manager_email || "",
+    manager_region: rec.manager_region || "",
 
-utilization_percent: rec.utilization_percent || "",
-install_base_action_label: rec.install_base_action_label || "",
-install_base_action_reason: rec.install_base_action_reason || "",
-rep_fix_required: rec.rep_fix_required || "",
-install_base_issue_note: rec.install_base_issue_note || "",
-    manager_unseen_update: true,
-    manager_flash_at: now,
-    manager_flash_type: "install_base_release",
-    manager_flash_text:
-      destination === "manager"
-        ? "New install-base record released to manager review"
-        : "New install-base record released to rep review",
+    source_system: rec.source_system || "",
+    source_conflict: rec.source_conflict || "",
+    conflict_notes: rec.conflict_notes || "",
+
+    utilization_percent: rec.utilization_percent || "",
+    install_base_issue_field: rec.install_base_issue_field || "",
+    install_base_issue_type: rec.install_base_issue_type || "",
+    install_base_action_label: rec.install_base_action_label || "",
+    install_base_action_reason: rec.install_base_action_reason || "",
+    rep_fix_required: rec.rep_fix_required || "",
+    install_base_issue_note: rec.install_base_issue_note || "",
 
     oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
     oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
@@ -1024,11 +1020,15 @@ install_base_issue_note: rec.install_base_issue_note || "",
     alert_enabled: rec.alert_enabled || "yes"
   };
 
-  state.records = state.records.map(r =>
-    sameRecord(r, rec) ? updated : r
-  );
+  state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
 
   if (destination === "manager") {
+    updated.manager_visible = true;
+    updated.manager_unseen_update = true;
+    updated.manager_flash_at = now;
+    updated.manager_flash_type = "install_base_release";
+    updated.manager_flash_text = "New install-base record released to manager review";
+
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
@@ -1048,6 +1048,12 @@ install_base_issue_note: rec.install_base_issue_note || "",
 
     const repRecord = {
       ...updated,
+      manager_visible: false,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: "",
+
       project:
         updated.site ||
         updated.site_address ||
@@ -1068,21 +1074,15 @@ install_base_issue_note: rec.install_base_issue_note || "",
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
   }
 
-  const vpQueue = readQueue(VP_QUEUE_KEY, []);
-  const vpCleaned = vpQueue.filter(r => String(r.key || "") !== String(updated.key || ""));
-  vpCleaned.push(updated);
-  localStorage.setItem(VP_QUEUE_KEY, JSON.stringify(vpCleaned));
-
   saveRecords();
   render();
 
   showBanner(
     destination === "manager"
-      ? "Selected record released to Manager Review."
-      : "Selected record released to Rep Review."
+      ? "Selected record released to Manager Review only."
+      : "Selected record released to Rep Review only."
   );
 }
-
 function markSelectedStaged() {
   const rec = findSelectedRecord();
   if (!rec) return;
@@ -1205,7 +1205,32 @@ function parseWorkbook(file) {
         source: obj.source || obj.source_system || "Install Base Upload",
         source_system: obj.source_system || obj.system || obj.source || "Uploaded file",
         source_file_name: file.name || "",
-
+install_base_issue_field: obj.install_base_issue_field || obj.issue_field || "",
+install_base_issue_type: obj.install_base_issue_type || obj.issue_type || "",
+install_base_action_label:
+  obj.install_base_action_label ||
+  obj.rep_fix_required ||
+  obj.install_base_issue_type ||
+  "",
+install_base_action_reason:
+  obj.install_base_action_reason ||
+  obj.install_base_issue_note ||
+  obj.conflict_notes ||
+  obj.source_notes ||
+  obj.notes ||
+  "",
+rep_fix_required: obj.rep_fix_required || "",
+install_base_issue_note:
+  obj.install_base_issue_note ||
+  obj.conflict_notes ||
+  obj.source_notes ||
+  obj.notes ||
+  "",
+utilization_percent:
+  obj.utilization_percent ||
+  obj.utilization ||
+  obj.use_percent ||
+  "",
         manager_name: managerName,
         manager_email: managerEmail,
         manager_region: managerRegion,
@@ -1326,6 +1351,13 @@ function parseWorkbook(file) {
           install_base_response_seen: existing.install_base_response_seen || false,
           install_base_response_seen_at: existing.install_base_response_seen_at || "",
 
+install_base_issue_field: newRec.install_base_issue_field || existing.install_base_issue_field || "",
+install_base_issue_type: newRec.install_base_issue_type || existing.install_base_issue_type || "",
+install_base_action_label: newRec.install_base_action_label || existing.install_base_action_label || "",
+install_base_action_reason: newRec.install_base_action_reason || existing.install_base_action_reason || "",
+rep_fix_required: newRec.rep_fix_required || existing.rep_fix_required || "",
+install_base_issue_note: newRec.install_base_issue_note || existing.install_base_issue_note || "",
+utilization_percent: newRec.utilization_percent || existing.utilization_percent || "",
           rep_action: existing.rep_action || "",
           rep_notes: existing.rep_notes || "",
           rep_status: existing.rep_status || "new",
@@ -1676,7 +1708,14 @@ function renderDetail() {
         ${exceptions.length ? escapeHtml(exceptions.map(e => e.label).join(", ")) : "No data exceptions found."}
       </div>
     </div>
-
+<div class="detail-card">
+  <div class="k">Install Base Request</div>
+  <div class="v">${escapeHtml(rec.install_base_action_label || rec.rep_fix_required || rec.install_base_issue_type || "No specific request")}</div>
+  <div class="mini">
+    Reason: ${escapeHtml(rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || "-")}<br>
+    Field: ${escapeHtml(rec.install_base_issue_field || "-")}
+  </div>
+</div>
     <div class="detail-card">
       <div class="k">Project / Asset ID</div>
       <div class="v">${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</div>
