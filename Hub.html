@@ -972,9 +972,13 @@ function releaseSelected(destination) {
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
 
-  const updated = {
-    ...rec,
-    key,
+ const updated = {
+  ...rec,
+  key,
+
+  release_destination: destination,
+  manager_visible: destination === "manager",
+  rep_visible: destination === "rep",
 
     install_base_release_status:
       destination === "manager" ? "released_to_manager" : "released_to_rep",
@@ -1029,13 +1033,15 @@ install_base_issue_reason:
 
   state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
 
-  if (destination === "manager") {
-    updated.manager_visible = true;
-    updated.manager_unseen_update = true;
-    updated.manager_flash_at = now;
-    updated.manager_flash_type = "install_base_release";
-    updated.manager_flash_text = "New install-base record released to manager review";
+ if (destination === "manager") {
+  updated.manager_visible = true;
+  updated.rep_visible = false;
+  updated.release_destination = "manager";
 
+  updated.manager_unseen_update = true;
+  updated.manager_flash_at = now;
+  updated.manager_flash_type = "install_base_release";
+  updated.manager_flash_text = "New install-base record released to manager review";
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
@@ -1049,9 +1055,12 @@ install_base_issue_reason:
     localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
+if (destination === "rep") {
+  updated.rep_visible = true;
+  updated.manager_visible = false;
+  updated.release_destination = "rep";
 
-  if (destination === "rep") {
-    const repQueue = readQueue(REP_QUEUE_KEY, []);
+  const repQueue = readQueue(REP_QUEUE_KEY, []);
 
     const repRecord = {
       ...updated,

@@ -1776,15 +1776,17 @@ function importRepQueueRecords() {
 
   let changed = false;
 
-  queue.forEach(item => {
-    const existing = state.records.find(r =>
-      String(r.id || "") === String(item.id || "") ||
-      String(r.key || "") === String(item.key || "") ||
-      (
-        String(r.oem_project_id || "") === String(item.oem_project_id || "") &&
-        String(r.serial_number || "") === String(item.serial_number || "")
-      )
-    );
+ queue.forEach(item => {
+  if (item.install_base_released_to === "manager") return;
+
+  const existing = state.records.find(r =>
+    String(r.id || "") === String(item.id || "") ||
+    String(r.key || "") === String(item.key || "") ||
+    (
+      String(r.oem_project_id || "") === String(item.oem_project_id || "") &&
+      String(r.serial_number || "") === String(item.serial_number || "")
+    )
+  );
 
     const releasedRecord = {
       ...item,
@@ -3303,20 +3305,25 @@ function saveRepDataResponse(){
   syncRecordEverywhere(updated);
   render();
 }
-    function render() {
-      importTradeInSyncRecords();
-      importQuoteApprovalDecisions();
+    function visibleToRep(rec) {
+  return rec.release_destination !== "manager" && rec.manager_only !== true;
+}
 
-      renderStats();
-      renderRepMenu();
-      renderFollowUpAlertCenter();
-      renderUnmatchedTradeInLeads();
-      renderNewProjectsTable();
-      renderTable();
-      renderDetail();
-      updateAxisShareStatus();
-    }
+function render() {
+  importTradeInSyncRecords();
+  importQuoteApprovalDecisions();
 
+  state.records = state.records.filter(visibleToRep);
+
+  renderStats();
+  renderRepMenu();
+  renderFollowUpAlertCenter();
+  renderUnmatchedTradeInLeads();
+  renderNewProjectsTable();
+  renderTable();
+  renderDetail();
+  updateAxisShareStatus();
+}
     function handleCSVUpload(file) {
       const reader = new FileReader();
 
