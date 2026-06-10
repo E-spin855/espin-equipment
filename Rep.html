@@ -1786,9 +1786,18 @@ function importRepQueueRecords() {
 
   if (!queue.length) return;
 
-  let changed = false;
+ let changed = false;
+
 queue.forEach(item => {
   if (item.install_base_released_to !== "rep") return;
+
+  if (
+    item.install_base_correction_status === "corrected_by_rep" ||
+    item.install_base_response_status === "rep_correction_sent" ||
+    item.rep_visible === false
+  ) {
+    return;
+  }
 
   const existing = state.records.find(r =>
     String(r.id || "") === String(item.id || "") ||
@@ -2241,10 +2250,16 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
     const hasUnseenHubRelease =
       rec.install_base_release_new && !rec.install_base_release_seen;
 
-    const selectedClass = [
+   const sentBackToInstallBase =
+  rec.install_base_correction_status === "corrected_by_rep" ||
+  rec.install_base_response_status === "rep_correction_sent";
+
+const selectedClass = [
   rec.id === state.selectedId ? "selected" : "",
   hasUnseenManagerResponse ? "manager-response-flash" : "",
-  rec.install_base_release_new && !rec.install_base_release_seen ? "rep-new-row-flash" : ""
+  rec.install_base_release_new && !rec.install_base_release_seen && !sentBackToInstallBase
+    ? "rep-new-row-flash"
+    : ""
 ].filter(Boolean).join(" ");
     const age = ageFromDom(rec.dom);
 
