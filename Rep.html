@@ -1745,13 +1745,19 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
    function loadRecords(preserveSelection = true) {
   const previousSelectedId = state.selectedId;
 
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    state.records = Array.isArray(saved) ? saved : [];
-  } catch {
-    state.records = [];
-  }
+ try {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 
+  state.records = Array.isArray(saved)
+    ? saved.filter(rec =>
+        rec.install_base_released_to !== "manager" &&
+        rec.release_destination !== "manager" &&
+        rec.manager_visible !== true
+      )
+    : [];
+} catch {
+  state.records = [];
+}
   if (
     preserveSelection &&
     previousSelectedId &&
@@ -1775,9 +1781,8 @@ function importRepQueueRecords() {
   if (!queue.length) return;
 
   let changed = false;
-
- queue.forEach(item => {
-  if (item.install_base_released_to === "manager") return;
+queue.forEach(item => {
+  if (item.install_base_released_to !== "rep") return;
 
   const existing = state.records.find(r =>
     String(r.id || "") === String(item.id || "") ||
