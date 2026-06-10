@@ -2796,7 +2796,7 @@ function sendInstallBaseCorrection(id) {
 
   const issues = getInstallBaseIssueFields(rec);
 
-  const note =
+  const message =
     $("installBaseCorrectionNote")?.value?.trim() ||
     $("installBaseFixReason")?.value?.trim() ||
     "";
@@ -2807,20 +2807,20 @@ function sendInstallBaseCorrection(id) {
     ...rec,
 
     install_base_response_status: "rep_correction_sent",
-    install_base_response_note: note,
-    install_base_response_message: note,
-    rep_response_note: note,
-    rep_response_message: note,
+    install_base_response_message: message,
+    install_base_response_note: message,
     install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
     install_base_response_at: now,
     install_base_response_seen: false,
 
     install_base_correction_status: "corrected_by_rep",
-    install_base_correction_note: note,
+    install_base_correction_note: message,
     install_base_correction_at: now,
 
     install_base_release_seen: true,
-    install_base_release_new: false
+    install_base_release_new: false,
+    rep_visible: true,
+    manager_visible: false
   };
 
   issues.forEach(issue => {
@@ -2830,16 +2830,39 @@ function sendInstallBaseCorrection(id) {
     }
   });
 
-  syncInstallBaseCorrection(updated);
-
   state.records = state.records.map(r =>
-    String(r.id) === String(id) ? updated : r
+    String(r.id) === String(id) ||
+    String(r.key || "") === String(updated.key || "")
+      ? updated
+      : r
   );
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+
+  const responseQueue = JSON.parse(
+    localStorage.getItem("axis_install_base_response_queue_v1") || "[]"
+  );
+
+  const cleanedQueue = responseQueue.filter(r =>
+    String(r.key || "") !== String(updated.key || "") &&
+    String(r.id || "") !== String(updated.id || "")
+  );
+
+  cleanedQueue.push(updated);
+
+  localStorage.setItem(
+    "axis_install_base_response_queue_v1",
+    JSON.stringify(cleanedQueue)
+  );
+
+  localStorage.setItem(
+    "axis_install_base_response_ping_v1",
+    String(Date.now())
+  );
 
   render();
+
+  alert("Correction sent back to Install Base.");
 }
 function sendInstallBaseUnableToFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
