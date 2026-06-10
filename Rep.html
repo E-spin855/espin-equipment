@@ -1192,7 +1192,8 @@ const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
     const MANAGER_NAME = new URLSearchParams(window.location.search).get("manager") || "Default Manager";
-
+const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
+const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
     const state = {
       records: [],
       selectedId: null,
@@ -2794,12 +2795,33 @@ function sendInstallBaseCorrection(id) {
   if (!rec) return;
 
   const issues = getInstallBaseIssueFields(rec);
-const note =
-  $("installBaseCorrectionNote")?.value ||
-  $("installBaseFixReason")?.value ||
-  "";
 
-  const updated = { ...rec };
+  const note =
+    $("installBaseCorrectionNote")?.value?.trim() ||
+    $("installBaseFixReason")?.value?.trim() ||
+    "";
+
+  const now = new Date().toISOString();
+
+  const updated = {
+    ...rec,
+
+    install_base_response_status: "rep_correction_sent",
+    install_base_response_note: note,
+    install_base_response_message: note,
+    rep_response_note: note,
+    rep_response_message: note,
+    install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
+    install_base_response_at: now,
+    install_base_response_seen: false,
+
+    install_base_correction_status: "corrected_by_rep",
+    install_base_correction_note: note,
+    install_base_correction_at: now,
+
+    install_base_release_seen: true,
+    install_base_release_new: false
+  };
 
   issues.forEach(issue => {
     const input = $("fix_" + issue.key);
@@ -2808,25 +2830,17 @@ const note =
     }
   });
 
- updated.install_base_correction_status = "corrected_by_rep";
-updated.install_base_correction_note = note;
+  syncInstallBaseCorrection(updated);
 
-updated.install_base_response_status = "rep_correction_sent";
-updated.install_base_response_note = note;
-updated.install_base_response_message = note;
-updated.rep_response_note = note;
-updated.rep_response_message = note;
-updated.install_base_response_by = rec.assigned_rep_name || rec.rep || "Rep";
-updated.install_base_response_at = new Date().toISOString();
-updated.install_base_response_seen = false;
+  state.records = state.records.map(r =>
+    String(r.id) === String(id) ? updated : r
+  );
 
-updated.install_base_correction_at = new Date().toISOString();
-updated.install_base_release_seen = true;
-updated.install_base_release_new = false;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
-syncInstallBaseCorrection(updated);
+  render();
 }
-
 function sendInstallBaseUnableToFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -2850,23 +2864,38 @@ function sendInstallBaseUnableToFix(id) {
   syncInstallBaseCorrection(updated);
 }
 function syncInstallBaseCorrection(updated) {
+  const key =
+    updated.key ||
+    `${updated.oem_project_id || ""}_${updated.serial_number || ""}`;
+
+  let queue = [];
+  try {
+    queue = JSON.parse(localStorage.getItem(INSTALL_BASE_RESPONSE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  const cleaned = queue.filter(item =>
+    String(item.key || "") !== String(key)
+  );
+
+  cleaned.unshift({
+    ...updated,
+    key,
+    source: "Rep Response",
+    source_system: "Rep Review Page",
+    install_base_response_seen: false
+  });
+
+  localStorage.setItem(INSTALL_BASE_RESPONSE_KEY, JSON.stringify(cleaned));
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
   state.records = state.records.map(r =>
     String(r.id) === String(updated.id) ? updated : r
   );
 
   saveRecords();
-
-  const hubQueue = JSON.parse(localStorage.getItem("axis_install_base_corrections_v1") || "[]");
-
-  hubQueue.unshift({
-    ...updated,
-    correction_source: "Rep Review Workspace",
-    correction_sent_at: new Date().toISOString()
-  });
-
-  localStorage.setItem("axis_install_base_corrections_v1", JSON.stringify(hubQueue));
-  localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
-
   render();
 
   alert("Install Base update sent.");
@@ -3024,50 +3053,6 @@ $("manualActionSelect").disabled = completed;
 $("repOutcomeNotes").disabled = completed;
 $("repFollowUpDate").disabled = completed;
     }
-function sendInstallBaseCorrection(id) {
-  const rec = state.records.find(r => String(r.id) === String(id));
-  if (!rec) {
-    alert("Record not found.");
-    return;
-  }
-
-  const note = $("installBaseCorrectionNote")?.value || "";
-
-  const updated = {
-    ...rec,
-    serial_number: $("fix_serial_number")?.value || rec.serial_number || "",
-    dom: $("fix_dom")?.value || rec.dom || "",
-    site: $("fix_site")?.value || rec.site || "",
-    assigned_rep_name: $("fix_assigned_rep_name")?.value || rec.assigned_rep_name || "",
-
-    install_base_response_status: "rep_correction_sent",
-install_base_response_message: note,
-install_base_response_note: note,
-rep_response_message: note,
-    install_base_response_note: note,
-    install_base_response_at: new Date().toISOString(),
-    install_base_response_from:
-  `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-  rec.assigned_rep_name ||
-  "Rep"
-  };
-
-  state.records = state.records.map(r =>
-    String(r.id) === String(id) ? updated : r
-  );
-
-  saveRecords();
-
-  const queueKey = "axis_install_base_response_queue_v1";
-  const queue = JSON.parse(localStorage.getItem(queueKey) || "[]");
-
-  queue.unshift(updated);
-
-  localStorage.setItem(queueKey, JSON.stringify(queue));
-  localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
-
-  alert("Correction sent back to Install Base.");
-  render();
 }
 function getInstallBaseIssues(rec) {
   const issues = [];
