@@ -2800,7 +2800,10 @@ function sendInstallBaseCorrection(id) {
   document.getElementById("installBaseFixReason") ||
   document.getElementById("installBaseCorrectionNote");
 
-const message = messageEl ? messageEl.value.trim() : "";
+const message =
+  messageEl?.value?.trim() ||
+  window.lastInstallBaseFixReason ||
+  "";
 
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
@@ -5614,134 +5617,141 @@ function refreshSelectedRowUI() {
 
   renderDetail();
 }
-    function init() {
+  function init() {
+  loadRecords(true);
+  importRepQueueRecords();
+  importTradeInSyncRecords();
+  updateAxisShareStatus();
+
+  document.addEventListener("input", e => {
+    if (e.target && e.target.id === "installBaseFixReason") {
+      window.lastInstallBaseFixReason = e.target.value;
+    }
+  });
+
+  window.addEventListener("storage", (e) => {
+    if (
+      e.key === STORAGE_KEY ||
+      e.key === REP_QUEUE_KEY ||
+      e.key === REP_SYNC_KEY ||
+      e.key === "axis_tradein_sync_records_v1" ||
+      e.key === "axis_manager_sync_ping_v1" ||
+      e.key === AXIS_SHARE_KEY ||
+      e.key === UNMATCHED_TRADEIN_KEY ||
+      e.key === QUOTE_APPROVAL_SYNC_KEY ||
+      e.key === QUOTE_APPROVAL_KEY ||
+      e.key === QUOTE_APPROVAL_PING_KEY
+    ) {
       loadRecords(true);
-importRepQueueRecords();
-importTradeInSyncRecords();
-updateAxisShareStatus();
+      importRepQueueRecords();
+      importTradeInSyncRecords();
+      importQuoteApprovalDecisions();
+      updateAxisShareStatus();
 
-      window.addEventListener("storage", (e) => {
-  if (
-    e.key === STORAGE_KEY ||
-  e.key === REP_QUEUE_KEY ||
-  e.key === REP_SYNC_KEY ||
-    e.key === "axis_tradein_sync_records_v1" ||
-    e.key === "axis_manager_sync_ping_v1" ||
-    e.key === AXIS_SHARE_KEY ||
-    e.key === UNMATCHED_TRADEIN_KEY ||
-    e.key === QUOTE_APPROVAL_SYNC_KEY ||
-    e.key === QUOTE_APPROVAL_KEY ||
-    e.key === QUOTE_APPROVAL_PING_KEY
-  ) {
-    loadRecords(true);
-importRepQueueRecords();
-    importTradeInSyncRecords();
-    importQuoteApprovalDecisions();
-    updateAxisShareStatus();
+      renderStats();
+      renderRepMenu();
+      renderFollowUpAlertCenter();
+      renderUnmatchedTradeInLeads();
+      renderNewProjectsTable();
+      renderTable();
+      refreshSelectedRowUI();
 
+      if (!document.activeElement || document.activeElement.tagName === "BODY") {
+        renderDetail();
+      }
+    }
+  });
+
+  window.addEventListener("rep_feed_update", () => {
     renderStats();
     renderRepMenu();
     renderFollowUpAlertCenter();
     renderUnmatchedTradeInLeads();
     renderNewProjectsTable();
     renderTable();
-    refreshSelectedRowUI();
 
     if (!document.activeElement || document.activeElement.tagName === "BODY") {
       renderDetail();
     }
-  }
-});
-      window.addEventListener("rep_feed_update", () => {
-        renderStats();
-        renderRepMenu();
-        renderFollowUpAlertCenter();
-        renderUnmatchedTradeInLeads();
-        renderNewProjectsTable();
-        renderTable();
+  });
 
-        if (!document.activeElement || document.activeElement.tagName === "BODY") {
-          renderDetail();
-        }
-      });
+  $("axisShareToggle").addEventListener("change", () => {
+    const value = $("axisShareToggle").value;
+    localStorage.setItem(AXIS_SHARE_KEY, value === "off" ? "off" : "on");
+    updateAxisShareStatus();
+    if (value === "on") importTradeInSyncRecords();
+    render();
+  });
 
-      $("axisShareToggle").addEventListener("change", () => {
-        const value = $("axisShareToggle").value;
-        localStorage.setItem(AXIS_SHARE_KEY, value === "off" ? "off" : "on");
-        updateAxisShareStatus();
-        if (value === "on") importTradeInSyncRecords();
-        render();
-      });
+  $("addNewProjectBtn").addEventListener("click", openNewProjectModal);
 
-      $("addNewProjectBtn").addEventListener("click", openNewProjectModal);
+  [
+    "quoteAmount",
+    "quoteEstimatedCost",
+    "quoteTradeInCredit",
+    "quoteStatus",
+    "quoteFollowUpTag",
+    "quoteExpectedCloseDate",
+    "quoteExpirationDate",
+    "quoteRecipientEmail",
+    "quoteCcEmail",
+    "quoteInstallRequired",
+    "quoteRemovalRequired",
+    "quoteFollowUpAlertDate",
+    "quoteFollowUpAlertNote",
+    "quoteLossReason"
+  ].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("input", updateQuotePreview);
+    el.addEventListener("change", updateQuotePreview);
+  });
 
-      [
-        "quoteAmount",
-        "quoteEstimatedCost",
-        "quoteTradeInCredit",
-        "quoteStatus",
-        "quoteFollowUpTag",
-        "quoteExpectedCloseDate",
-        "quoteExpirationDate",
-        "quoteRecipientEmail",
-        "quoteCcEmail",
-        "quoteInstallRequired",
-        "quoteRemovalRequired",
-        "quoteFollowUpAlertDate",
-        "quoteFollowUpAlertNote",
-        "quoteLossReason"
-      ].forEach(id => {
-        const el = $(id);
-        if (!el) return;
-        el.addEventListener("input", updateQuotePreview);
-        el.addEventListener("change", updateQuotePreview);
-      });
+  $("clearBtn").addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(MANAGER_QUEUE_KEY);
+    localStorage.removeItem("espin_rep_queue");
+    localStorage.removeItem("axis_manager_sync_ping_v1");
+    localStorage.removeItem("axis_tradein_sync_records_v1");
+    localStorage.removeItem("axis_tradein_last_sync_v1");
+    localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
+    localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
+    localStorage.removeItem(QUOTE_APPROVAL_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
 
-      $("clearBtn").addEventListener("click", () => {
-  localStorage.removeItem(STORAGE_KEY);
-  localStorage.removeItem(MANAGER_QUEUE_KEY);
-  localStorage.removeItem("espin_rep_queue");
-  localStorage.removeItem("axis_manager_sync_ping_v1");
-  localStorage.removeItem("axis_tradein_sync_records_v1");
-  localStorage.removeItem("axis_tradein_last_sync_v1");
-  localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
-  localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
-  localStorage.removeItem(QUOTE_APPROVAL_KEY);
-  localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-  localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
+    state.records = [];
+    state.selectedId = null;
+    state.selectedRep = null;
 
-  state.records = [];
-  state.selectedId = null;
-  state.selectedRep = null;
+    $("csvInput").value = "";
+    render();
+  });
 
-  $("csvInput").value = "";
-  render();
-});
+  $("csvInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    handleCSVUpload(file);
+  });
 
-      $("csvInput").addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        handleCSVUpload(file);
-      });
+  setInterval(() => {
+    const before = JSON.stringify(state.records);
 
-      setInterval(() => {
-        const before = JSON.stringify(state.records);
+    importTradeInSyncRecords();
+    importQuoteApprovalDecisions();
 
-        importTradeInSyncRecords();
-        importQuoteApprovalDecisions();
+    const after = JSON.stringify(state.records);
 
-        const after = JSON.stringify(state.records);
-
-        if (before !== after) {
-          saveRecords();
-          render();
-        }
-
-        updateAxisShareStatus();
-      }, 8000);
-
+    if (before !== after) {
+      saveRecords();
       render();
     }
+
+    updateAxisShareStatus();
+  }, 8000);
+
+  render();
+}
 
     document.addEventListener("DOMContentLoaded", init);
   </script>
