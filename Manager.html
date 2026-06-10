@@ -867,6 +867,8 @@ const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const MANAGER_SYNC_KEY = "axis_manager_sync_ping_v1";
 const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
+const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
+const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
@@ -1819,6 +1821,129 @@ function getUpdateLabel(rec) {
   if (rec.manager_flash_type === "rep_update") return "New rep update is open for manager review.";
   return "New update is open for manager review.";
 }
+function getManagerInstallBaseIssueFields(rec) {
+  const fields = [
+    { key:"serial_number", label:"Serial Number" },
+    { key:"asset_id", label:"Asset ID" },
+    { key:"site", label:"Facility / Site" },
+    { key:"site_address", label:"Street Address" },
+    { key:"city", label:"City" },
+    { key:"state", label:"State" },
+    { key:"zip_code", label:"Zip Code" },
+    { key:"make", label:"Make" },
+    { key:"model", label:"Model" },
+    { key:"modality", label:"Modality" },
+    { key:"dom", label:"DOM / Year" },
+    { key:"assigned_rep_name", label:"Rep Owner" },
+    { key:"assigned_rep_email", label:"Rep Email" },
+    { key:"utilization_percent", label:"Utilization %" }
+  ];
+
+  return fields.filter(f => {
+    const required = String(rec.rep_fix_required || rec.install_base_action_label || rec.install_base_issue_note || "").toLowerCase();
+    return !clean(rec[f.key]) || required.includes(f.key.replace(/_/g, " ")) || required.includes(f.label.toLowerCase());
+  });
+}
+
+function renderManagerInstallBaseCorrectionPanel(rec) {
+  const issues = getManagerInstallBaseIssueFields(rec);
+
+  if (!issues.length && !rec.install_base_action_label && !rec.rep_fix_required) return "";
+
+  return `
+    <div class="detail-card full update-detail-card">
+      <div class="k">Manager Response to Install Base</div>
+      <div class="v">Correct fields or send explanation back to Install Base</div>
+
+      <div class="mini" style="margin-top:8px;line-height:1.5;">
+        Requested item: <strong>${escapeHtml(rec.install_base_action_label || rec.rep_fix_required || "Install Base review")}</strong><br>
+        Reason: ${escapeHtml(rec.install_base_action_reason || rec.install_base_issue_note || "-")}
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
+        ${issues.map(issue => `
+          <div>
+            <label>${escapeHtml(issue.label)}</label>
+            <input id="mgr_fix_${issue.key}" value="${escapeHtml(rec[issue.key] || "")}" />
+          </div>
+        `).join("")}
+      </div>
+
+      <label style="margin-top:14px;">Manager Note to Install Base</label>
+      <textarea id="managerInstallBaseCorrectionNote" placeholder="Explain correction, confirmation, or why it could not be verified."></textarea>
+
+      <div class="btns" style="margin-top:12px;">
+        <button type="button" class="green" onclick="sendManagerInstallBaseCorrection('${escapeJs(rec.id)}')">
+          Send Correction to Install Base
+        </button>
+
+        <button type="button" class="secondary" onclick="sendManagerUnableToVerify('${escapeJs(rec.id)}')">
+          Unable to Verify
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function sendManagerInstallBaseCorrection(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  const updated = { ...rec };
+  const issues = getManagerInstallBaseIssueFields(rec);
+  const correctedFields = {};
+
+  issues.forEach(issue => {
+    const input = $("mgr_fix_" + issue.key);
+    if (input && input.value.trim()) {
+      updated[issue.key] = input.value.trim();
+      correctedFields[issue.key] = input.value.trim();
+    }
+  });
+
+  const now = new Date().toISOString();
+
+  updated.install_base_response_status = "manager_correction_sent";
+  updated.install_base_response_note = $("managerInstallBaseCorrectionNote")?.value || "";
+  updated.install_base_response_by = "Manager";
+  updated.install_base_response_at = now;
+  updated.install_base_response_seen = false;
+  updated.corrected_fields = correctedFields;
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
+  queue.unshift(updated);
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
+  syncRecordEverywhere(updated);
+  alert("Correction sent back to Install Base.");
+  render();
+}
+
+function sendManagerUnableToVerify(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  const updated = {
+    ...rec,
+    install_base_response_status: "manager_unable_to_verify",
+    install_base_response_note: $("managerInstallBaseCorrectionNote")?.value || "",
+    install_base_response_by: "Manager",
+    install_base_response_at: new Date().toISOString(),
+    install_base_response_seen: false
+  };
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
+  queue.unshift(updated);
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
+  syncRecordEverywhere(updated);
+  alert("Unable-to-verify note sent back to Install Base.");
+  render();
+}
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -1921,7 +2046,6 @@ grid.innerHTML = `
     Released at: ${escapeHtml(rec.install_base_released_at || "-")}<br>
     Source: ${escapeHtml(rec.hub_source || rec.source_system || rec.source || "-")}
   </div>
-</div>
 <div class="${hubUpdateCardClass}">
   <div class="k">Install Base Action Needed</div>
   <div class="v">${escapeHtml(rec.install_base_action_label || rec.rep_fix_required || "No install-base action requested")}</div>
@@ -1933,6 +2057,11 @@ grid.innerHTML = `
     Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
   </div>
 </div>
+
+${renderManagerInstallBaseCorrectionPanel(rec)}
+
+<div class="detail-card full">
+  <div class="k">OEM-Provided Context</div>
     <div class="detail-card full">
       <div class="k">OEM-Provided Context</div>
       <div class="v">${escapeHtml(rec.oem_review_reason || rec.review_reason || rec.proactive_reason || "No additional OEM context entered.")}</div>
@@ -2446,22 +2575,24 @@ function init() {
   }
 
   const clearBtn = $("clearBtn");
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(MANAGER_QUEUE_KEY);
-      localStorage.removeItem(MANAGER_SYNC_KEY);
-      localStorage.removeItem(QUOTE_APPROVAL_KEY);
-      localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+if (clearBtn) {
+  clearBtn.addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(MANAGER_QUEUE_KEY);
+    localStorage.removeItem(MANAGER_SYNC_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+    localStorage.removeItem(INSTALL_BASE_RESPONSE_KEY);
+    localStorage.removeItem(INSTALL_BASE_RESPONSE_PING_KEY);
 
-      state.records = [];
-      state.selectedId = null;
-      state.selectedRep = null;
+    state.records = [];
+    state.selectedId = null;
+    state.selectedRep = null;
 
-      if (csvInput) csvInput.value = "";
-      render();
-    });
-  }
+    if (csvInput) csvInput.value = "";
+    render();
+  });
+}
 
   const closeSelectedBtn = $("closeSelectedBtn");
   if (closeSelectedBtn) {
