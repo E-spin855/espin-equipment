@@ -460,6 +460,27 @@ tr.install-base-response-flash{
     0 0 24px rgba(65,255,156,.30)!important;
   cursor:pointer;
 }
+.install-base-update-frame{
+  grid-column:1 / -1;
+  border:2px solid rgba(65,255,156,.95)!important;
+  background:rgba(8,18,35,.72)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.22),
+    0 0 24px rgba(65,255,156,.30)!important;
+  cursor:pointer;
+}
+
+tr.install-base-corrected-row-frame{
+  outline:2px solid rgba(65,255,156,.95)!important;
+  outline-offset:-2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(65,255,156,.28),
+    0 0 22px rgba(65,255,156,.28)!important;
+}
+
+tr.install-base-corrected-row-frame td{
+  background:rgba(8,18,35,.72)!important;
+}
 </style>
 </head>
 
@@ -1795,11 +1816,16 @@ if (bb !== aa) return bb - aa;
   rec.install_base_response_status === "rep_correction_sent" ||
   rec.install_base_fix_status === "rep_reviewed";
 
+const correctedUnseen =
+  fixedByRep &&
+  rec.install_base_fixed_seen_by_install_base !== true;
+
 const rowClass = [
   String(state.selectedId) === String(rec.id) ? "selected" : "",
   rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
     ? "install-base-response-flash"
-    : ""
+    : "",
+  correctedUnseen ? "install-base-corrected-row-frame" : ""
 ].filter(Boolean).join(" ");
 
     return `
@@ -1929,8 +1955,10 @@ function selectRecord(id) {
 
   const rec = findSelectedRecord();
 
-  // Do NOT mark the cards as seen just because the row was selected.
-  // The green frame should stay until the user clicks the card itself.
+  if (rec) {
+    markInstallBaseCorrectedFieldsSeen(rec);
+    markRepResponseSeen(rec);
+  }
 
   render();
 }
