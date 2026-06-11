@@ -3099,32 +3099,38 @@ function getFixDataBadge(rec, fieldName) {
 }
 
 function openInstallBaseCommunication(id) {
-  state.selectedId = id;
+  const selectedId = String(id || "").trim();
+  if (!selectedId) return;
+
+  state.selectedId = selectedId;
   state.installBaseCommunicationOpen = true;
-  render();
+
+  refreshSelectedRowUI();
+  renderTable();
+  renderDetail();
+
+  setTimeout(() => {
+    const panel = document.querySelector(".install-base-comm-open");
+    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 50);
 }
 
 function closeInstallBaseCommunication() {
-state.selectedId = id;
   state.installBaseCommunicationOpen = false;
-  render();
+  renderTable();
+  renderDetail();
 }
+
 function renderInstallBaseCorrectionPanel(rec) {
   if (!state.installBaseCommunicationOpen) return "";
 
-  const isSpecificInstallBaseRequest =
-    rec.install_base_released_to === "rep" &&
-    rec.hub_source === "AXIS Install Base Workspace" &&
-    rec.install_base_release_status === "released_to_rep" &&
-    rec.install_base_correction_status !== "corrected_by_rep" &&
-    rec.install_base_response_status !== "rep_correction_sent" &&
-    needsInstallBaseCommunication(rec);
+  const correctionAlreadySent =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent";
 
-  if (!isSpecificInstallBaseRequest) return "";
+  if (correctionAlreadySent || !needsInstallBaseCommunication(rec)) return "";
 
   const issues = getInstallBaseIssues(rec);
-
-  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
 
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
@@ -5619,6 +5625,7 @@ function refreshSelectedRowUI() {
   if (!selectedId) return;
 
   state.selectedId = selectedId;
+  state.installBaseCommunicationOpen = false;
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
 
