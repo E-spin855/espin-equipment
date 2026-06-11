@@ -3127,7 +3127,25 @@ function getInstallBaseIssues(rec) {
 }
 
 function renderInstallBaseCorrectionPanel(rec) {
+  const isSpecificInstallBaseRequest =
+    rec.install_base_released_to === "rep" &&
+    rec.hub_source === "AXIS Install Base Workspace" &&
+    (
+      rec.install_base_issue_field ||
+      rec.install_base_issue_type ||
+      rec.install_base_issue_reason ||
+      rec.install_base_action_label ||
+      rec.install_base_action_reason ||
+      rec.install_base_issue_note ||
+      rec.rep_fix_required ||
+      rec.source_conflict === "yes" ||
+      rec.conflict_notes
+    );
+
+  if (!isSpecificInstallBaseRequest) return "";
+
   const issues = getInstallBaseIssues(rec);
+
   if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
 
   return `
@@ -3150,14 +3168,13 @@ function renderInstallBaseCorrectionPanel(rec) {
 
         <div class="btns">
           <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-  Save Fix / Send Back to Install Base
-</button>
+            Save Fix / Send Back to Install Base
+          </button>
         </div>
       </div>
     </div>
   `;
 }
-
 function saveInstallBaseFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
