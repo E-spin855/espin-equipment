@@ -2335,54 +2335,94 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
     const hasUnseenHubRelease =
       rec.install_base_release_new && !rec.install_base_release_seen;
 
-   const sentBackToInstallBase =
-  rec.install_base_correction_status === "corrected_by_rep" ||
-  rec.install_base_response_status === "rep_correction_sent";
+    const sentBackToInstallBase =
+      rec.install_base_correction_status === "corrected_by_rep" ||
+      rec.install_base_response_status === "rep_correction_sent" ||
+      rec.install_base_fix_status === "rep_reviewed";
 
-const selectedClass = [
-  rec.id === state.selectedId ? "selected" : "",
-  hasUnseenManagerResponse ? "manager-response-flash" : "",
-  rec.install_base_release_new && !rec.install_base_release_seen && !sentBackToInstallBase
-    ? "rep-new-row-flash"
-    : ""
-].filter(Boolean).join(" ");
+    const selectedClass = [
+      rec.id === state.selectedId ? "selected" : "",
+      hasUnseenManagerResponse ? "manager-response-flash" : "",
+      rec.install_base_release_new && !rec.install_base_release_seen && !sentBackToInstallBase
+        ? "rep-new-row-flash"
+        : ""
+    ].filter(Boolean).join(" ");
+
     const age = ageFromDom(rec.dom);
 
-    return `
-      <tr class="${selectedClass}" data-id="${escapeHtml(rec.id)}" onclick="selectRow('${String(rec.id || "").replace(/'/g, "\\'")}')">
-        <td>${escapeHtml(rec.oem_project_id || "")}</td>
+    const fieldOrFix = (fieldName, normalHtml) => {
+      const badge = getFixDataBadge(rec, fieldName);
+      return badge ? badge : normalHtml;
+    };
 
-        <td class="wrap">
-          <strong>${escapeHtml(rec.make || "")}</strong>
-          <div class="mini">${escapeHtml(rec.model || "")}</div>
+    const projectHtml = escapeHtml(rec.oem_project_id || rec.asset_id || "-");
+
+    const equipmentHtml = `
+      <strong>${escapeHtml(rec.make || "-")}</strong>
+      <div class="mini">${escapeHtml(rec.model || "-")}</div>
+    `;
+
+    const modalityHtml = escapeHtml(rec.modality || "-");
+
+    const serialHtml = escapeHtml(rec.serial_number || rec.serial || "-");
+
+    const domHtml = `
+      ${escapeHtml(rec.dom || "-")}
+      <div class="mini">${age ?? "-"} yrs</div>
+    `;
+
+    const facilityHtml = escapeHtml(
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      "Unknown Facility"
+    );
+
+    return `
+      <tr
+        class="${selectedClass}"
+        data-id="${escapeHtml(rec.id)}"
+        onclick="selectRow('${String(rec.id || "").replace(/'/g, "\\'")}')"
+      >
+        <td>
+          ${fieldOrFix("project", projectHtml)}
         </td>
 
-        <td>${escapeHtml(rec.modality || "")}</td>
+        <td class="wrap">
+          ${fieldOrFix("equipment", equipmentHtml)}
+        </td>
 
         <td>
-  ${escapeHtml(rec.serial_number || "-")}
-  ${getFixDataBadge(rec, "serial")}
-</td>
+          ${fieldOrFix("modality", modalityHtml)}
+        </td>
 
-       <td>
-  ${escapeHtml(rec.dom || "-")}
-  <div class="mini">${age ?? "-"} yrs</div>
-  ${getFixDataBadge(rec, "dom")}
-</td>
+        <td>
+          ${fieldOrFix("serial", serialHtml)}
+        </td>
 
-        <td>${renderReviewSignalCell(rec)}</td>
+        <td>
+          ${fieldOrFix("dom", domHtml)}
+        </td>
 
-        <td>${money(rec.external_tradein_value || rec.tradein_credit || rec.quote_trade_in_credit || 0)}</td>
+        <td>
+          ${renderReviewSignalCell(rec)}
+        </td>
+
+        <td>
+          ${money(rec.external_tradein_value || rec.tradein_credit || rec.quote_trade_in_credit || 0)}
+        </td>
 
         <td class="wrap">
-  ${escapeHtml(rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility")}
-  ${getFixDataBadge(rec, "site")}
-</td>
-
-        <td>${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}</td>
+          ${fieldOrFix("site", facilityHtml)}
+        </td>
 
         <td>
-          <span class="${hasUnseenHubRelease ? "rep-new-pill-flash" : ""}">
+          ${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}
+        </td>
+
+        <td>
+          <span class="${hasUnseenHubRelease && !sentBackToInstallBase ? "rep-new-pill-flash" : ""}">
             ${renderRepReviewStatus(rec)}
           </span>
         </td>
@@ -3144,7 +3184,13 @@ function needsInstallBaseCommunication(rec) {
     String(rec.site || "").trim() === "Unknown Site"
   );
 }
+function renderFieldOrFixData(rec, fieldName, valueHtml) {
+  const badge = getFixDataBadge(rec, fieldName);
 
+  if (badge) return badge;
+
+  return valueHtml;
+}
 function getFixDataBadge(rec, fieldName) {
   const fixed =
     rec.install_base_correction_status === "corrected_by_rep" ||
