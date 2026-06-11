@@ -812,23 +812,6 @@ tr.rep-new-row-flash td{
   box-shadow:none;
   cursor:pointer;
 }
-.fixed-data-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:auto;
-  min-width:76px;
-  padding:5px 8px;
-  margin-top:6px;
-  border-radius:8px;
-  border:1px solid rgba(65,255,156,.30);
-  background:rgba(65,255,156,.08);
-  color:#bfffd8;
-  font-size:11px;
-  font-weight:800;
-  letter-spacing:.02em;
-  box-shadow:none;
-}
 .fix-data-badge:hover{
   background:rgba(255,216,77,.13);
   border-color:rgba(255,216,77,.42);
@@ -1783,7 +1766,14 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
   return `<span class="${badgeClass}">${escapeHtml(badgeText)}</span>`;
 }
-   function renderRepReviewStatus(rec) {
+  function renderRepReviewStatus(rec) {
+  if (
+    rec.install_base_release_new &&
+    rec.install_base_release_seen !== true
+  ) {
+    return `<span class="pill submitted">New</span>`;
+  }
+
   if (rec.quote_approval_status === "pending_review" || rec.quote_status === "submitted_for_approval") {
     return `<span class="pill pending">Quote Review Pending</span>`;
   }
@@ -1807,7 +1797,7 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     rec.rep_status ||
     "";
 
-  if (!label || label === "needed") {
+  if (!label || label === "needed" || label === "open") {
     return `<button onclick="event.stopPropagation(); selectRow('${rec.id}')">Open</button>`;
   }
 
@@ -5917,6 +5907,7 @@ function markRepRowUpdateSeen(id) {
 
     return {
       ...r,
+
       install_base_release_seen: true,
       install_base_release_seen_at: now,
       install_base_release_new: false,
@@ -5924,9 +5915,32 @@ function markRepRowUpdateSeen(id) {
       install_base_fixed_seen_by_rep: true,
       install_base_fixed_seen_at: now,
 
+      manager_response_seen_by_rep: true,
+      manager_response_seen_at: now,
+
       rep_unseen_update: false,
       rep_flash_at: "",
-      rep_flash_type: ""
+      rep_flash_type: "",
+
+      // This is the important part:
+      rep_status:
+        r.rep_status === "new" ||
+        r.rep_status === "install_base_data_fixed" ||
+        r.rep_status === "needed"
+          ? "open"
+          : r.rep_status,
+
+      rep_action:
+        r.rep_action === "install_base_data_fixed"
+          ? ""
+          : r.rep_action,
+
+      rep_action_label:
+        r.rep_action_label === "Fixed Data" ||
+        r.rep_action_label === "Updated" ||
+        r.rep_action_label === "New"
+          ? ""
+          : r.rep_action_label
     };
   });
 
@@ -5949,6 +5963,7 @@ function markRepRowUpdateSeen(id) {
 
     return {
       ...r,
+
       install_base_release_seen: true,
       install_base_release_seen_at: now,
       install_base_release_new: false,
@@ -5956,9 +5971,31 @@ function markRepRowUpdateSeen(id) {
       install_base_fixed_seen_by_rep: true,
       install_base_fixed_seen_at: now,
 
+      manager_response_seen_by_rep: true,
+      manager_response_seen_at: now,
+
       rep_unseen_update: false,
       rep_flash_at: "",
-      rep_flash_type: ""
+      rep_flash_type: "",
+
+      rep_status:
+        r.rep_status === "new" ||
+        r.rep_status === "install_base_data_fixed" ||
+        r.rep_status === "needed"
+          ? "open"
+          : r.rep_status,
+
+      rep_action:
+        r.rep_action === "install_base_data_fixed"
+          ? ""
+          : r.rep_action,
+
+      rep_action_label:
+        r.rep_action_label === "Fixed Data" ||
+        r.rep_action_label === "Updated" ||
+        r.rep_action_label === "New"
+          ? ""
+          : r.rep_action_label
     };
   });
 
@@ -5970,39 +6007,34 @@ function markRepRowUpdateSeen(id) {
   if (!selectedId) return;
 
   state.selectedId = selectedId;
-markRepRowUpdateSeen(id);
   state.installBaseCommunicationOpen = false;
+
+  markRepRowUpdateSeen(selectedId);
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
 
   refreshSelectedRowUI();
 
   if (rec) {
-  let changed = false;
+    let changed = false;
 
-  if (rec.install_base_release_new && !rec.install_base_release_seen) {
-    rec.install_base_release_seen = true;
-    rec.install_base_release_new = false;
-    changed = true;
+    if (rec.tradein_seen_by_rep !== true) {
+      rec.tradein_seen_by_rep = true;
+      changed = true;
+    }
+
+    if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+      rec.manager_response_seen_by_rep = true;
+      rec.manager_response_seen_at = new Date().toISOString();
+      changed = true;
+    }
+
+    if (changed) {
+      saveRecords();
+    }
   }
 
-  if (rec.tradein_seen_by_rep !== true) {
-    rec.tradein_seen_by_rep = true;
-    changed = true;
-  }
-
-  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
-    rec.manager_response_seen_by_rep = true;
-    rec.manager_response_seen_at = new Date().toISOString();
-    changed = true;
-  }
-
-  if (changed) {
-    saveRecords();
-    renderTable();
-  }
-}
-
+  renderTable();
   renderDetail();
 }
   function init() {
