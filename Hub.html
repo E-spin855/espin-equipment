@@ -972,6 +972,9 @@ function releaseSelected(destination) {
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
 
+  const managerReleaseId =
+    "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+
  const updated = {
   ...rec,
   key,
@@ -1033,7 +1036,7 @@ install_base_issue_reason:
 
   state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
 
- if (destination === "manager") {
+if (destination === "manager") {
   updated.manager_visible = true;
   updated.rep_visible = false;
   updated.release_destination = "manager";
@@ -1045,13 +1048,14 @@ install_base_issue_reason:
   updated.hub_source = "AXIS Install Base Workspace";
   updated.source = "AXIS Install Base Workspace";
 
-  // Important: reset alert state every time Hub releases to Manager
+  // New unique release marker for every send
+  updated.manager_release_id = managerReleaseId;
+  updated.manager_seen_release_id = "";
+
   updated.manager_unseen_update = true;
   updated.manager_alert_seen = false;
   updated.manager_update_seen_at = "";
 
-  // Important: new timestamp lets Manager know this is a fresh send,
-  // even if this same record was opened before.
   updated.manager_flash_at = now;
   updated.manager_flash_type = "install_base_release";
   updated.manager_flash_text = "New install-base record released to manager review";
@@ -1072,6 +1076,9 @@ if (destination === "rep") {
   updated.rep_visible = true;
   updated.manager_visible = false;
   updated.release_destination = "rep";
+
+  updated.manager_release_id = "";
+  updated.manager_seen_release_id = "";
 
   const repQueue = readQueue(REP_QUEUE_KEY, []);
 

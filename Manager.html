@@ -1430,9 +1430,9 @@ function renderReviewCondition(rec) {
     return `<span class="alert-badge alert-completed">Done</span>`;
   }
 
-  if (rec.manager_unseen_update && rec.manager_flash_type !== "manager_response") {
-    return `<span class="alert-badge manager-flash-pill">New Record</span>`;
-  }
+  if (hasUnseenManagerRelease(rec)) {
+  return `<span class="alert-badge manager-flash-pill">New Record</span>`;
+}
 
   if (hasFollowUpOverdueBy7Days(rec)) {
     return `<span class="alert-badge alert-disposal">Overdue</span>`;
@@ -1693,14 +1693,23 @@ function selectRep(name) {
   state.selectedId = null;
   render();
 }
+function hasUnseenManagerRelease(rec) {
+  if (!rec) return false;
 
+  if (rec.manager_flash_type === "manager_response") return false;
+
+  if (rec.manager_release_id) {
+    return String(rec.manager_release_id || "") !== String(rec.manager_seen_release_id || "");
+  }
+
+  return rec.manager_unseen_update === true;
+}
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
   if (String(rec.id) === String(state.selectedId)) return false;
-  if (rec.manager_alert_seen === true) return false;
 
   return Boolean(
-    (rec.manager_unseen_update === true && rec.manager_flash_type !== "manager_response") ||
+    hasUnseenManagerRelease(rec) ||
     hasFollowUpOverdueBy7Days(rec) ||
     (rec.tradein_sync_received && !rec.tradein_seen_by_rep) ||
     (rec.quote_amount && !rec.quote_seen)
@@ -2389,17 +2398,20 @@ function selectRow(id) {
     id: rec.id || selectedId,
     key: getRecordKey(rec),
 
-    quote_seen: true,
-    manager_alert_seen: true,
+   quote_seen: true,
+manager_alert_seen: true,
 
-    manager_unseen_update: false,
-    manager_update_seen_at: new Date().toISOString(),
+manager_unseen_update: false,
+manager_update_seen_at: new Date().toISOString(),
 
-    manager_flash_at: rec.manager_flash_at || "",
-    manager_flash_type: rec.manager_flash_type || "",
-    manager_flash_text: rec.manager_flash_text || "",
+manager_release_id: rec.manager_release_id || "",
+manager_seen_release_id: rec.manager_release_id || rec.manager_seen_release_id || "",
 
-    install_base_manager_request: rec.install_base_manager_request === true
+manager_flash_at: rec.manager_flash_at || "",
+manager_flash_type: rec.manager_flash_type || "",
+manager_flash_text: rec.manager_flash_text || "",
+
+install_base_manager_request: rec.install_base_manager_request === true
   };
 
   syncRecordEverywhere(updated);
