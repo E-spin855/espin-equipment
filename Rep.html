@@ -788,6 +788,48 @@ tr.rep-new-row-flash{
     radial-gradient(circle at top left, rgba(255,216,77,.18), transparent 34%),
     rgba(8,18,35,.86)!important;
 }
+.oem-review-note-card.needs-rep-input{
+  border:2px solid rgba(255,216,77,.85)!important;
+  box-shadow:0 0 24px rgba(255,216,77,.22)!important;
+  background:
+    radial-gradient(circle at top left, rgba(255,216,77,.18), transparent 34%),
+    rgba(8,18,35,.86)!important;
+}
+.fix-data-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:auto;
+  min-width:68px;
+  padding:5px 8px;
+  margin-top:6px;
+  border-radius:8px;
+  border:1px solid rgba(255,216,77,.28);
+  background:rgba(255,216,77,.08);
+  color:#ffe89a;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.02em;
+  box-shadow:none;
+  cursor:pointer;
+}
+
+.fix-data-badge:hover{
+  background:rgba(255,216,77,.13);
+  border-color:rgba(255,216,77,.42);
+}
+
+.fix-data-badge.active{
+  background:rgba(255,216,77,.20);
+  border-color:rgba(255,216,77,.75);
+  color:#fff4bf;
+  box-shadow:0 0 14px rgba(255,216,77,.22);
+}
+
+.install-base-comm-open{
+  border:1px solid rgba(255,216,77,.45)!important;
+  background:rgba(255,216,77,.07)!important;
+}
   </style>
 </head>
 
@@ -1194,12 +1236,12 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
     const MANAGER_NAME = new URLSearchParams(window.location.search).get("manager") || "Default Manager";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
-    const state = {
-      records: [],
-      selectedId: null,
-      selectedRep: null
-    };
-
+   const state = {
+  records: [],
+  selectedId: null,
+  selectedRep: null,
+  installBaseCommunicationOpen: false
+};
     const $ = (id) => document.getElementById(id);
 
     const AxisFallback = {
@@ -2273,20 +2315,25 @@ const selectedClass = [
 
         <td>${escapeHtml(rec.modality || "")}</td>
 
-        <td>${escapeHtml(rec.serial_number || "")}</td>
-
         <td>
-          ${escapeHtml(rec.dom || "-")}
-          <div class="mini">${age ?? "-"} yrs</div>
-        </td>
+  ${escapeHtml(rec.serial_number || "-")}
+  ${getFixDataBadge(rec, "serial")}
+</td>
+
+       <td>
+  ${escapeHtml(rec.dom || "-")}
+  <div class="mini">${age ?? "-"} yrs</div>
+  ${getFixDataBadge(rec, "dom")}
+</td>
 
         <td>${renderReviewSignalCell(rec)}</td>
 
         <td>${money(rec.external_tradein_value || rec.tradein_credit || rec.quote_trade_in_credit || 0)}</td>
 
         <td class="wrap">
-          ${escapeHtml(rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility")}
-        </td>
+  ${escapeHtml(rec.site || rec.facility || rec.hospital || rec.hospital_name || "Unknown Facility")}
+  ${getFixDataBadge(rec, "site")}
+</td>
 
         <td>${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}</td>
 
@@ -2996,25 +3043,82 @@ function getInstallBaseIssues(rec) {
 
   return issues;
 }
+function needsInstallBaseCommunication(rec) {
+  return Boolean(
+    rec.install_base_show_communication === true ||
+    rec.install_base_has_open_issue === true ||
+    rec.install_base_issue_field ||
+    rec.install_base_issue_type ||
+    rec.install_base_action_label ||
+    rec.rep_fix_required ||
+    String(rec.source_conflict || "").toLowerCase() === "yes" ||
+    rec.conflict_notes ||
+    !String(rec.serial_number || rec.serial || "").trim() ||
+    !String(rec.dom || "").trim() ||
+    !String(rec.site || "").trim() ||
+    String(rec.site || "").trim() === "Unknown Site"
+  );
+}
 
+function getFixDataBadge(rec, fieldName) {
+  let show = false;
+
+  if (fieldName === "serial") {
+    show = !String(rec.serial_number || rec.serial || "").trim();
+  }
+
+  if (fieldName === "dom") {
+    show = !String(rec.dom || "").trim();
+  }
+
+  if (fieldName === "site") {
+    show =
+      !String(rec.site || "").trim() ||
+      String(rec.site || "").trim() === "Unknown Site";
+  }
+
+  if (fieldName === "general") {
+    show = needsInstallBaseCommunication(rec);
+  }
+
+  if (!show) return "";
+
+  const active =
+    state.installBaseCommunicationOpen === true &&
+    String(state.selectedId) === String(rec.id);
+
+  return `
+    <button
+      type="button"
+      class="fix-data-badge ${active ? "active" : ""}"
+      onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}')"
+    >
+      Fix Data
+    </button>
+  `;
+}
+
+function openInstallBaseCommunication(id) {
+  state.selectedId = id;
+  state.installBaseCommunicationOpen = true;
+  render();
+}
+
+function closeInstallBaseCommunication() {
+state.selectedId = id;
+  state.installBaseCommunicationOpen = false;
+  render();
+}
 function renderInstallBaseCorrectionPanel(rec) {
+  if (!state.installBaseCommunicationOpen) return "";
+
   const isSpecificInstallBaseRequest =
     rec.install_base_released_to === "rep" &&
     rec.hub_source === "AXIS Install Base Workspace" &&
     rec.install_base_release_status === "released_to_rep" &&
     rec.install_base_correction_status !== "corrected_by_rep" &&
     rec.install_base_response_status !== "rep_correction_sent" &&
-    (
-      rec.install_base_issue_field ||
-      rec.install_base_issue_type ||
-      rec.install_base_issue_reason ||
-      rec.install_base_action_label ||
-      rec.install_base_action_reason ||
-      rec.install_base_issue_note ||
-      rec.rep_fix_required ||
-      rec.source_conflict === "yes" ||
-      rec.conflict_notes
-    );
+    needsInstallBaseCommunication(rec);
 
   if (!isSpecificInstallBaseRequest) return "";
 
@@ -3023,7 +3127,7 @@ function renderInstallBaseCorrectionPanel(rec) {
   if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
 
   return `
-    <div class="detail-card full oem-review-note-card needs-rep-input">
+    <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
       <div class="k">Install Base Data Review</div>
       <div class="v">Install Base requested rep review for missing or mismatched data.</div>
 
@@ -3041,10 +3145,14 @@ function renderInstallBaseCorrectionPanel(rec) {
         <textarea id="installBaseFixReason" placeholder="Example: Serial plate not visible in customer photo; asked site contact for confirmation.">${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
 
         <div class="btns">
-          <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-            Save Fix / Send Back to Install Base
-          </button>
-        </div>
+  <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
+    Save Fix / Send Back to Install Base
+  </button>
+
+  <button type="button" class="secondary" onclick="closeInstallBaseCommunication()">
+    Close
+  </button>
+</div>
       </div>
     </div>
   `;
