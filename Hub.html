@@ -451,6 +451,14 @@ tr.install-base-response-flash{
   background:rgba(65,255,156,.10)!important;
   box-shadow:0 0 26px rgba(65,255,156,.28)!important;
 }
+.install-base-update-frame{
+  border:2px solid rgba(65,255,156,.85)!important;
+  background:rgba(8,18,35,.72)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.20),
+    0 0 22px rgba(65,255,156,.28)!important;
+  cursor:pointer;
+}
 </style>
 </head>
 
@@ -1964,7 +1972,6 @@ function renderFixedDataCard(rec) {
     </div>
   `;
 }
-
 function renderRepResponseCard(rec) {
   if (!rec.install_base_response_at) return "";
 
@@ -1982,18 +1989,55 @@ function renderRepResponseCard(rec) {
     rec.rep_notes ||
     "No message entered.";
 
+  const cardClass = seen
+    ? "detail-card"
+    : "detail-card install-base-update-frame";
+
   const clickHandler = seen
     ? ""
     : `onclick="markInstallBaseCorrectedFieldsSeen(findSelectedRecord()); markRepResponseSeen(findSelectedRecord()); render();"`;
 
   return `
-    <div
-      class="detail-card ${seen ? "" : "rep-response-card"}"
-      ${clickHandler}
-      style="${seen ? "" : "cursor:pointer;"}"
-    >
+    <div class="${cardClass}" ${clickHandler}>
       <div class="k">Rep Response from Review Page</div>
-      <div class="v">${escapeHtml(rec.install_base_response_status || "Response sent")}</div>
+      <div class="v">${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</div>
+      <div class="mini" style="margin-top:8px;line-height:1.55;">
+        Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
+        Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong><br>
+        Message: ${escapeHtml(msg)}
+      </div>
+    </div>
+  `;
+}
+function renderRepResponseCard(rec) {
+  if (!rec.install_base_response_at) return "";
+
+  const seen =
+    rec.install_base_response_seen === true ||
+    rec.install_base_fixed_seen_by_install_base === true;
+
+  const msg =
+    rec.install_base_response_message ||
+    rec.install_base_response_note ||
+    rec.rep_response_message ||
+    rec.rep_response_note ||
+    rec.response_message ||
+    rec.response_note ||
+    rec.rep_notes ||
+    "No message entered.";
+
+  const cardClass = seen
+    ? "detail-card"
+    : "detail-card install-base-update-frame";
+
+  const clickHandler = seen
+    ? ""
+    : `onclick="markInstallBaseCorrectedFieldsSeen(findSelectedRecord()); markRepResponseSeen(findSelectedRecord()); render();"`;
+
+  return `
+    <div class="${cardClass}" ${clickHandler}>
+      <div class="k">Rep Response from Review Page</div>
+      <div class="v">${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
         Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
         Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong><br>
