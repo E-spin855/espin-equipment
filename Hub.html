@@ -338,6 +338,21 @@ tbody tr.selected{
   color:#d8ffe9;
   border:1px solid rgba(65,255,156,.42);
 }
+.corrected-field-value{
+  display:inline-block;
+  padding:5px 8px;
+  border-radius:8px;
+  background:rgba(65,255,156,.12);
+  color:#bfffd8;
+  border:1px solid rgba(65,255,156,.35);
+  font-weight:900;
+  box-shadow:0 0 12px rgba(65,255,156,.18);
+}
+
+.corrected-field-value .mini{
+  color:#bfffd8;
+  opacity:.9;
+}
 .badge-ok{background:rgba(65,255,156,.12);color:#c8ffdf;border:1px solid rgba(65,255,156,.25)}
 .badge-missing{background:rgba(255,107,107,.14);color:#ffd6dc;border:1px solid rgba(255,107,107,.28)}
 .badge-owner{background:rgba(255,216,77,.13);color:#fff0b8;border:1px solid rgba(255,216,77,.26)}
@@ -809,7 +824,55 @@ function getDataExceptions(rec) {
 
   return issues;
 }
+function isFixedByRep(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed"
+  );
+}
 
+function wasInstallBaseFieldCorrected(rec, fieldName) {
+  if (!isFixedByRep(rec)) return false;
+  if (rec.install_base_fixed_seen_by_install_base === true) return false;
+
+  const fixedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  const fieldAliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+   make: ["make", "manufacturer"],
+model: ["model"],
+equipment: ["equipment"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    owner: ["owner", "manager", "manager_name", "owner_group"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name"]
+  };
+
+  const aliases = fieldAliases[fieldName] || [fieldName];
+
+  return fixedFields.some(f => aliases.includes(f));
+}
+
+function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
+  if (!wasInstallBaseFieldCorrected(rec, fieldName)) return normalHtml;
+
+  return `
+    <div class="corrected-field-value">
+      ${normalHtml}
+    </div>
+  `;
+}
 function getReviewStatus(rec) {
   if (isFixedByRep(rec)) {
   return { type: "fixed", label: "Fixed by Rep" };
@@ -921,29 +984,52 @@ function mergeRepResponsesIntoRecords() {
   ...resp,
   key: getRecordKey(rec),
 
-  install_base_correction_status:
-    resp.install_base_correction_status ||
-    rec.install_base_correction_status ||
-    "",
+ install_base_correction_status:
+  resp.install_base_correction_status ||
+  rec.install_base_correction_status ||
+  "",
 
-  install_base_response_status:
-    resp.install_base_response_status ||
-    rec.install_base_response_status ||
-    "",
+install_base_response_status:
+  resp.install_base_response_status ||
+  rec.install_base_response_status ||
+  "",
 
-  install_base_fix_status:
-    resp.install_base_fix_status ||
-    rec.install_base_fix_status ||
-    "",
+install_base_fix_status:
+  resp.install_base_fix_status ||
+  rec.install_base_fix_status ||
+  "",
 
-  install_base_show_communication: false,
-  install_base_has_open_issue: false,
+install_base_corrected_fields:
+  resp.install_base_corrected_fields ||
+  rec.install_base_corrected_fields ||
+  "",
 
-  install_base_response_seen:
-    sameResponse ? rec.install_base_response_seen === true : false,
+install_base_fixed_seen_by_install_base:
+  resp.install_base_fixed_seen_by_install_base === true ||
+  rec.install_base_fixed_seen_by_install_base === true,
 
-  install_base_response_seen_at:
-    sameResponse ? rec.install_base_response_seen_at || "" : ""
+install_base_fixed_seen_by_install_base_at:
+  resp.install_base_fixed_seen_by_install_base_at ||
+  rec.install_base_fixed_seen_by_install_base_at ||
+  "",
+
+install_base_fixed_seen_by_rep:
+  resp.install_base_fixed_seen_by_rep === true ||
+  rec.install_base_fixed_seen_by_rep === true,
+
+install_base_fixed_seen_at:
+  resp.install_base_fixed_seen_at ||
+  rec.install_base_fixed_seen_at ||
+  "",
+
+install_base_show_communication: false,
+install_base_has_open_issue: false,
+
+install_base_response_seen:
+  sameResponse ? rec.install_base_response_seen === true : false,
+
+install_base_response_seen_at:
+  sameResponse ? rec.install_base_response_seen_at || "" : ""
 };
     });
 
@@ -1584,34 +1670,26 @@ function matchesSearch(rec) {
 
 function matchesFilter(rec) {
   const filter = state.filter;
-  const exceptions = getDataExceptions(rec);
+  const fixed = isFixedByRep(rec);
+  const exceptions = fixed ? [] : getDataExceptions(rec);
   const released = String(rec.install_base_release_status || "").startsWith("released");
-  const responseOpen = rec.install_base_response_at && !rec.install_base_response_seen;
+  const responseOpen = rec.install_base_response_at && !rec.install_base_response_seen && !fixed;
 
   if (!filter) return true;
   if (filter === "exception") return exceptions.length > 0;
-  if (filter === "ready") return exceptions.length === 0 && !released;
+  if (filter === "ready") return exceptions.length === 0 && !released && !fixed;
   if (filter === "released") return released;
   if (filter === "staged") return !released;
   if (filter === "response") return responseOpen;
+
   return true;
 }
-
 function getFilteredRecords() {
   return state.records.filter(r => {
     const ownerMatch = !state.selectedOwner || getOwnerName(r) === state.selectedOwner;
     return ownerMatch && matchesSearch(r) && matchesFilter(r);
   });
 }
-
-function isFixedByRep(rec) {
-  return (
-    rec.install_base_correction_status === "corrected_by_rep" ||
-    rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed"
-  );
-}
-
 function renderStats() {
   const owners = getOwnerGroups();
   const reps = new Set();
@@ -1696,10 +1774,9 @@ function renderTable() {
     const responseB = b.install_base_response_at && !b.install_base_response_seen ? 1 : 0;
     if (responseB !== responseA) return responseB - responseA;
 
-    const aa = getDataExceptions(a).length;
-    const bb = getDataExceptions(b).length;
-    if (bb !== aa) return bb - aa;
-
+   const aa = isFixedByRep(a) ? 0 : getDataExceptions(a).length;
+const bb = isFixedByRep(b) ? 0 : getDataExceptions(b).length;
+if (bb !== aa) return bb - aa;
     return String(a.site || "").localeCompare(String(b.site || ""));
   });
 
@@ -1722,28 +1799,131 @@ const rowClass = [
         class="${rowClass}"
         style="cursor:pointer;"
       >
-        <td>${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</td>
-        <td>${escapeHtml(getOwnerName(rec))}</td>
-        <td>${escapeHtml(getOwnerTerritory(rec))}</td>
-        <td>${escapeHtml(rec.assigned_rep_name || "-")}</td>
-        <td>${escapeHtml(rec.site || "-")}</td>
-        <td>${escapeHtml(rec.modality || "-")}</td>
-        <td>${escapeHtml(rec.make || "-")}</td>
-        <td>${escapeHtml(rec.model || "-")}</td>
-        <td>${escapeHtml(rec.serial_number || rec.serial || "-")}</td>
-        <td>${escapeHtml(rec.dom || "-")}</td>
-        <td>${escapeHtml(ageFromDom(rec.dom) || "-")}</td>
-        <td>${getStatusHtml(rec)}</td>
+       <td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "make",
+    escapeHtml(rec.make || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "model",
+    escapeHtml(rec.model || "-")
+  )}
+</td>
+<td>${escapeHtml(getOwnerTerritory(rec))}</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "rep",
+    escapeHtml(rec.assigned_rep_name || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "site",
+    escapeHtml(rec.site || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "modality",
+    escapeHtml(rec.modality || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "equipment",
+    escapeHtml(rec.make || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "equipment",
+    escapeHtml(rec.model || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "serial",
+    escapeHtml(rec.serial_number || rec.serial || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "dom",
+    escapeHtml(rec.dom || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "dom",
+    escapeHtml(ageFromDom(rec.dom) || "-")
+  )}
+</td>
+
+<td>${getStatusHtml(rec)}</td>
       </tr>
     `;
   }).join("");
 }
+function markInstallBaseCorrectedFieldsSeen(rec) {
+  if (!rec || !isFixedByRep(rec)) return;
+  if (rec.install_base_fixed_seen_by_install_base === true) return;
 
+  const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+
+  state.records = state.records.map(r =>
+    getRecordKey(r) === key
+      ? {
+          ...r,
+          install_base_fixed_seen_by_install_base: true,
+          install_base_fixed_seen_by_install_base_at: now
+        }
+      : r
+  );
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(r =>
+    getRecordKey(r) === key
+      ? {
+          ...r,
+          install_base_fixed_seen_by_install_base: true,
+          install_base_fixed_seen_by_install_base_at: now
+        }
+      : r
+  );
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  saveRecords();
+}
 function selectRecord(id) {
   state.selectedId = id;
 
   const rec = findSelectedRecord();
-  if (rec) markRepResponseSeen(rec);
+
+  if (rec) {
+    markInstallBaseCorrectedFieldsSeen(rec);
+    markRepResponseSeen(rec);
+  }
 
   render();
 }
