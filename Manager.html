@@ -972,11 +972,15 @@ function writeArrayKey(key, arr) {
 function readManagerQueueRecords() {
   try {
     const data = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+
+    if (Array.isArray(data)) return data;
+
     if (!data || typeof data !== "object") return [];
 
-    const own = data[MANAGER_NAME];
-    if (Array.isArray(own)) return own;
-
+    // Important:
+    // Always flatten all manager queue buckets.
+    // Hub writes by owner name, while Manager may write by MANAGER_NAME.
+    // If we only read MANAGER_NAME, repeat Hub sends can be missed.
     return Object.values(data).flat().filter(Boolean);
   } catch {
     return [];
@@ -988,13 +992,20 @@ function writeManagerQueueRecord(rec) {
 
   try {
     data = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-    if (!data || typeof data !== "object") data = {};
+    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
   } catch {
     data = {};
   }
 
   const key = getRecordKey(rec);
-  const list = Array.isArray(data[MANAGER_NAME]) ? data[MANAGER_NAME] : [];
+
+  const bucketName =
+    rec.manager_name ||
+    rec.owner_group_name ||
+    MANAGER_NAME ||
+    "Default Manager";
+
+  const list = Array.isArray(data[bucketName]) ? data[bucketName] : [];
 
   let found = false;
 
@@ -1006,10 +1017,10 @@ function writeManagerQueueRecord(rec) {
 
   if (!found) nextList.unshift({ ...rec, key });
 
-  data[MANAGER_NAME] = nextList;
+  data[bucketName] = nextList;
+
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(data));
 }
-
 function getRecordKey(rec) {
   if (!rec) return "";
 
