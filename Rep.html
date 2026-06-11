@@ -2849,73 +2849,120 @@ function sendInstallBaseCorrection(id) {
   if (!rec) return;
 
   const issues = getInstallBaseIssues(rec).map(([key, label]) => ({ key, label }));
-console.log("INSTALL BASE ISSUES:", issues);
+  console.log("INSTALL BASE ISSUES:", issues);
+
   const messageEl =
-  document.getElementById("installBaseFixReason") ||
-  document.getElementById("installBaseCorrectionNote");
+    document.getElementById("installBaseFixReason") ||
+    document.getElementById("installBaseCorrectionNote");
 
-const typedMessage =
-  messageEl?.value?.trim() ||
-  window.lastInstallBaseFixReason ||
-  "";
+  const typedMessage =
+    messageEl?.value?.trim() ||
+    window.lastInstallBaseFixReason ||
+    "";
 
-const fixedValues = [...document.querySelectorAll("input[id^='fix_'], textarea[id^='fix_']")]
-  .filter(el => el.value && el.value.trim())
-  .map(el => {
-    const cleanId = el.id.replace("fix_", "").replace(/_/g, " ");
-    return `${cleanId}: ${el.value.trim()}`;
-  })
-  .join("; ");
+  const fixedInputs = [...document.querySelectorAll("input[id^='fix_'], textarea[id^='fix_']")]
+    .filter(el => el.value && el.value.trim());
 
-const message = typedMessage || fixedValues || "Rep sent correction.";
+  const fixedValues = fixedInputs
+    .map(el => {
+      const cleanId = el.id.replace("fix_", "").replace(/_/g, " ");
+      return `${cleanId}: ${el.value.trim()}`;
+    })
+    .join("; ");
+
+  const message = typedMessage || fixedValues || "Rep sent correction.";
 
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
+
+  const normalizeCorrectedFieldName = (rawKey) => {
+    const k = String(rawKey || "")
+      .toLowerCase()
+      .replace(/^fix_/, "")
+      .trim();
+
+    if (["serial", "serial_number", "system_serial"].includes(k)) return "serial";
+    if (["dom", "year", "manufacture_year"].includes(k)) return "dom";
+    if (["site", "facility", "hospital", "hospital_name", "customer", "location"].includes(k)) return "site";
+    if (["make", "manufacturer"].includes(k)) return "make";
+    if (["model"].includes(k)) return "model";
+    if (["modality"].includes(k)) return "modality";
+    if (["project", "project_id", "oem_project_id", "asset_id"].includes(k)) return "project";
+
+    return k;
+  };
+
+  const correctedFields = [];
 
   const updated = {
     ...rec,
     key,
 
     install_base_response_status: "rep_correction_sent",
-install_base_response_message: message,
-install_base_response_note: message,
-rep_response_message: message,
-response_message: message,
-install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
-install_base_response_at: now,
-install_base_response_seen: false,
+    install_base_response_message: message,
+    install_base_response_note: message,
+    rep_response_message: message,
+    response_message: message,
+    install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
+    install_base_response_at: now,
+    install_base_response_seen: false,
 
     install_base_correction_status: "corrected_by_rep",
     install_base_correction_note: message,
     install_base_correction_at: now,
 
-install_base_release_seen: true,
-install_base_release_new: false,
+    install_base_release_seen: true,
+    install_base_release_new: false,
 
-rep_visible: true,
-install_base_visible: true,
-manager_visible: false,
+    rep_visible: true,
+    install_base_visible: true,
+    manager_visible: false,
 
-install_base_show_communication: false,
-install_base_has_open_issue: false,
-install_base_release_seen: true,
-install_base_release_new: false,
+    install_base_show_communication: false,
+    install_base_has_open_issue: false,
 
-rep_status: "install_base_data_fixed",
-rep_action: "install_base_data_fixed",
-rep_action_label: "Fixed Data",
+    rep_status: "install_base_data_fixed",
+    rep_action: "install_base_data_fixed",
+    rep_action_label: "Updated",
 
-rep_flash_at: "",
-rep_flash_type: "",
-rep_unseen_update: false
-};
+    rep_flash_at: "",
+    rep_flash_type: "",
+    rep_unseen_update: false,
 
-issues.forEach(issue => {
-  const input = $("fix_" + issue.key);
-  if (input && input.value.trim()) {
-    updated[issue.key] = input.value.trim();
-  }
-});
+    install_base_fixed_seen_by_rep: false,
+    install_base_fixed_seen_at: "",
+
+    install_base_fixed_seen_by_install_base: false,
+    install_base_fixed_seen_by_install_base_at: ""
+  };
+
+  fixedInputs.forEach(input => {
+    const rawKey = input.id.replace(/^fix_/, "");
+    const value = input.value.trim();
+    if (!value) return;
+
+    updated[rawKey] = value;
+
+    const correctedField = normalizeCorrectedFieldName(rawKey);
+    if (correctedField && !correctedFields.includes(correctedField)) {
+      correctedFields.push(correctedField);
+    }
+  });
+
+  issues.forEach(issue => {
+    const input = $("fix_" + issue.key);
+    if (input && input.value.trim()) {
+      updated[issue.key] = input.value.trim();
+
+      const correctedField = normalizeCorrectedFieldName(issue.key);
+      if (correctedField && !correctedFields.includes(correctedField)) {
+        correctedFields.push(correctedField);
+      }
+    }
+  });
+
+  updated.install_base_corrected_fields = correctedFields.join(",");
+
   state.records = state.records.map(r => {
     const sameId = String(r.id || "") === String(updated.id || "");
     const sameKey = updated.key && String(r.key || "") === String(updated.key);
@@ -2923,47 +2970,54 @@ issues.forEach(issue => {
   });
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-let repQueue = [];
 
-try {
-  repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
-  if (!Array.isArray(repQueue)) repQueue = [];
-} catch {
-  repQueue = [];
-}
+  let repQueue = [];
 
-let foundRepQueueItem = false;
+  try {
+    repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(repQueue)) repQueue = [];
+  } catch {
+    repQueue = [];
+  }
 
-repQueue = repQueue.map(r => {
-  const sameId = String(r.id || "") === String(updated.id || "");
-  const sameKey = updated.key && String(r.key || "") === String(updated.key);
+  let foundRepQueueItem = false;
 
-  if (!sameId && !sameKey) return r;
+  repQueue = repQueue.map(r => {
+    const sameId = String(r.id || "") === String(updated.id || "");
+    const sameKey = updated.key && String(r.key || "") === String(updated.key);
 
-  foundRepQueueItem = true;
+    if (!sameId && !sameKey) return r;
 
-  return {
-    ...r,
-    ...updated,
-    rep_visible: true,
-    install_base_visible: true,
-    install_base_show_communication: false,
-    install_base_has_open_issue: false,
-    rep_status: "install_base_data_fixed",
-    rep_action: "install_base_data_fixed",
-    rep_action_label: "Fixed Data"
-  };
-});
+    foundRepQueueItem = true;
 
-if (!foundRepQueueItem) {
-  repQueue.unshift(updated);
-}
+    return {
+      ...r,
+      ...updated,
+      rep_visible: true,
+      install_base_visible: true,
+      install_base_show_communication: false,
+      install_base_has_open_issue: false,
+      rep_status: "install_base_data_fixed",
+      rep_action: "install_base_data_fixed",
+      rep_action_label: "Updated"
+    };
+  });
 
-localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
-localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
-  const responseQueue = JSON.parse(
-    localStorage.getItem("axis_install_base_response_queue_v1") || "[]"
-  );
+  if (!foundRepQueueItem) {
+    repQueue.unshift(updated);
+  }
+
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+
+  let responseQueue = [];
+
+  try {
+    responseQueue = JSON.parse(localStorage.getItem(INSTALL_BASE_RESPONSE_KEY) || "[]");
+    if (!Array.isArray(responseQueue)) responseQueue = [];
+  } catch {
+    responseQueue = [];
+  }
 
   const cleanedQueue = responseQueue.filter(r => {
     const sameId = String(r.id || "") === String(updated.id || "");
@@ -2972,14 +3026,16 @@ localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
   });
 
   cleanedQueue.push(updated);
-console.log("INSTALL BASE RESPONSE SENT:", updated);
-  localStorage.setItem("axis_install_base_response_queue_v1", JSON.stringify(cleanedQueue));
-localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
 
-state.installBaseCommunicationOpen = false;
+  console.log("INSTALL BASE RESPONSE SENT:", updated);
 
-render();
-alert("Correction sent back to Install Base.");
+  localStorage.setItem(INSTALL_BASE_RESPONSE_KEY, JSON.stringify(cleanedQueue));
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
+  state.installBaseCommunicationOpen = false;
+
+  render();
+  alert("Correction sent back to Install Base.");
 }
 function sendInstallBaseUnableToFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
@@ -3278,11 +3334,18 @@ function isInstallBaseFixedByRep(rec) {
 }
 
 function wasRepFieldCorrected(rec, fieldName) {
-  if (!isInstallBaseFixedByRep(rec)) return false;
+  const fixed =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed";
+
+  if (!fixed) return false;
   if (rec.install_base_fixed_seen_by_rep === true) return false;
 
   const correctedFields = String(
-    rec.install_base_corrected_fields || ""
+    rec.install_base_corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
   )
     .toLowerCase()
     .split(",")
@@ -3302,7 +3365,6 @@ function wasRepFieldCorrected(rec, fieldName) {
 
   return correctedFields.some(f => aliases.includes(f));
 }
-
 function renderCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasRepFieldCorrected(rec, fieldName)) return normalHtml;
 
