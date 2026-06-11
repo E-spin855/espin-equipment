@@ -1902,37 +1902,72 @@ function isManagerInstallBaseRequest(rec) {
     !alreadyResolved
   );
 }
+function isManagerInstallBaseRequest(rec) {
+  if (!rec) return false;
+
+  const releasedToManager =
+    rec.install_base_released_to === "manager" ||
+    rec.release_destination === "manager" ||
+    rec.manager_visible === true ||
+    rec.manager_flash_type === "install_base_release" ||
+    rec.install_base_release_status === "released_to_manager";
+
+  const fromInstallBase =
+    rec.hub_source === "AXIS Install Base Workspace" ||
+    rec.source === "AXIS Install Base Workspace" ||
+    rec.install_base_release_status === "released_to_manager";
+
+  const alreadyResolved =
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_response_status === "manager_unable_to_verify" ||
+    rec.install_base_correction_status === "corrected_by_manager";
+
+  return Boolean(releasedToManager && fromInstallBase && !alreadyResolved);
+}
 function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
-  const issues = getManagerInstallBaseIssueFields(rec);
+  let issues = getManagerInstallBaseIssueFields(rec);
 
-  if (!issues.length && !rec.install_base_action_label && !rec.rep_fix_required) return "";
+  // If the hub released the record to Manager Review but did not provide
+  // a specific issue-field label, still show a useful manager response panel.
+  if (!issues.length) {
+    issues = [
+      { key: "serial_number", label: "Serial Number" },
+      { key: "dom", label: "DOM / Year" },
+      { key: "make", label: "Make" },
+      { key: "model", label: "Model" },
+      { key: "modality", label: "Modality" },
+      { key: "site", label: "Facility / Site" }
+    ];
+  }
+
+  const requestedItem =
+    rec.install_base_action_label ||
+    rec.rep_fix_required ||
+    rec.install_base_issue_type ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    "Install Base review";
+
+  const reason =
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.proactive_reason ||
+    "-";
+
   return `
     <div class="detail-card full update-detail-card">
       <div class="k">Manager Response to Install Base</div>
       <div class="v">Correct fields or send explanation back to Install Base</div>
 
       <div class="mini" style="margin-top:8px;line-height:1.5;">
-        Requested item: <strong>${escapeHtml(
-  rec.install_base_action_label ||
-  rec.rep_fix_required ||
-  rec.install_base_issue_type ||
-  rec.oem_review_reason ||
-  rec.review_reason ||
-  "Install Base review"
-)}</strong><br>
-
-Reason: ${escapeHtml(
-  rec.install_base_issue_reason ||
-  rec.install_base_action_reason ||
-  rec.install_base_issue_note ||
-  rec.conflict_notes ||
-  rec.oem_review_reason ||
-  rec.review_reason ||
-  rec.proactive_reason ||
-  "-"
-)}
+        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
+        Reason: ${escapeHtml(reason)}
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
@@ -1959,7 +1994,6 @@ Reason: ${escapeHtml(
     </div>
   `;
 }
-
 function sendManagerInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
