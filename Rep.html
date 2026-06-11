@@ -2679,25 +2679,6 @@ function renderQuoteApprovalActionPanel(rec) {
     </div>
   `;
 }
-function saveRepDataResponse() {
-  const rec = state.records.find(r => r.id === state.selectedId);
-  if (!rec) return;
-
-  const response = $("repDataResponse")?.value || "";
-  const note = $("repDataNote")?.value || "";
-
-  if (!response) {
-    alert("Select a rep data response.");
-    return;
-  }
-
-  rec.rep_data_response = response;
-  rec.rep_data_note = note;
-  rec.rep_data_response_at = new Date().toISOString();
-  rec.install_base_needs_review = response === "send_back_install_base";
-
-  saveRecords();
-  render();
 }function getInstallBaseIssueFields(rec) {
   const issues = [];
 
@@ -2712,97 +2693,6 @@ if (!rec.manager_email) issues.push({ key:"manager_email", label:"Manager Email"
 if (!rec.utilization_percent) issues.push({ key:"utilization_percent", label:"Utilization %" });
 
   return issues;
-}
-function renderInstallBaseCorrectionPanel(rec) {
-  const issues = getInstallBaseIssueFields(rec);
-
-  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
-
-  return `
-    <div class="detail-card full oem-review-note-card needs-rep-input">
-      <div class="k">Install Base Data Review</div>
-      <div class="v">Install Base requested rep review for missing or mismatched data.</div>
-
-      <div class="mini" style="margin-top:8px;line-height:1.5;color:#ffd84d;font-weight:900;">
-        Correct the requested field below. If you cannot confirm it, leave it blank and enter the reason.
-      </div>
-
-      ${issues.map(issue => `
-        <label style="margin-top:14px;">Fix ${escapeHtml(issue.label)}</label>
-        <input
-          id="fix_${issue.key}"
-          value="${escapeHtml(rec[issue.key] || "")}"
-          placeholder="Enter corrected ${escapeHtml(issue.label)}"
-        />
-      `).join("")}
-
-      <label style="margin-top:14px;">Reason if not corrected</label>
-      <textarea id="installBaseCorrectionNote" placeholder="Example: Serial plate not visible in customer photo; asked site contact for confirmation."></textarea>
-
-      <div class="btns" style="margin-top:14px;">
-        <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-          Save Fix / Send Back to Install Base
-        </button>
-      </div>
-    </div>
-  `;
-}
-function renderInstallBaseCorrectionPanel(rec) {
-  const issues = getInstallBaseIssueFields(rec);
-
-  if (!issues.length && !rec.source_conflict && !rec.conflict_notes) return "";
-
-  const fields = issues.length
-    ? issues
-    : [
-        { key: "serial_number", label: "Serial Number" },
-        { key: "dom", label: "DOM / Year" },
-        { key: "site", label: "Facility / Site" },
-        { key: "make", label: "Make" },
-        { key: "model", label: "Model" },
-        { key: "modality", label: "Modality" }
-      ];
-
-  return `
-    <div class="detail-card full oem-review-note-card needs-rep-input">
-      <div class="k">Install Base / Data Quality Response</div>
-      <div class="v">Rep response required for missing, mismatched, or unconfirmed fields.</div>
-
-      <div class="mini" style="margin-top:8px;line-height:1.5;color:#ffd84d;">
-        Correct the field below if known. If it cannot be confirmed, send a note back to Install Base with the reason.
-      </div>
-
-      <div class="detail-grid" style="margin-top:14px;">
-        ${fields.map(issue => `
-          <div class="detail-card">
-            <div class="k">${escapeHtml(issue.label)}</div>
-            <input
-              id="fix_${escapeHtml(issue.key)}"
-              value="${escapeHtml(rec[issue.key] || "")}"
-              placeholder="Enter corrected ${escapeHtml(issue.label)}"
-            />
-          </div>
-        `).join("")}
-      </div>
-
-      <label style="margin-top:12px;">Rep Response</label>
-      <select id="installBaseCorrectionStatus">
-        <option value="">Select response</option>
-        <option value="corrected">Corrected field(s)</option>
-        <option value="unable_to_confirm">Unable to confirm</option>
-        <option value="needs_install_base_review">Needs Install Base review</option>
-      </select>
-
-      <label style="margin-top:12px;">Rep Note to Install Base</label>
-      <textarea id="installBaseCorrectionNote" placeholder="Explain correction, missing field, mismatch, or reason..."></textarea>
-
-      <div class="btns" style="margin-top:12px;">
-        <button type="button" class="green" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-          Save / Send Back
-        </button>
-      </div>
-    </div>
-  `;
 }
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
@@ -3130,6 +3020,9 @@ function renderInstallBaseCorrectionPanel(rec) {
   const isSpecificInstallBaseRequest =
     rec.install_base_released_to === "rep" &&
     rec.hub_source === "AXIS Install Base Workspace" &&
+    rec.install_base_release_status === "released_to_rep" &&
+    rec.install_base_correction_status !== "corrected_by_rep" &&
+    rec.install_base_response_status !== "rep_correction_sent" &&
     (
       rec.install_base_issue_field ||
       rec.install_base_issue_type ||
