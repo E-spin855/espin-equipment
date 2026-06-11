@@ -333,7 +333,11 @@ tbody tr.selected{
   font-weight:900;
   text-align:center;
 }
-
+.badge-fixed{
+  background:rgba(65,255,156,.16);
+  color:#d8ffe9;
+  border:1px solid rgba(65,255,156,.42);
+}
 .badge-ok{background:rgba(65,255,156,.12);color:#c8ffdf;border:1px solid rgba(65,255,156,.25)}
 .badge-missing{background:rgba(255,107,107,.14);color:#ffd6dc;border:1px solid rgba(255,107,107,.28)}
 .badge-owner{background:rgba(255,216,77,.13);color:#fff0b8;border:1px solid rgba(255,216,77,.26)}
@@ -807,10 +811,13 @@ function getDataExceptions(rec) {
 }
 
 function getReviewStatus(rec) {
+  if (isFixedByRep(rec)) {
+  return { type: "fixed", label: "Fixed by Rep" };
+}
+
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
     return { type: "response", label: "Rep Response" };
   }
-
   const exceptions = getDataExceptions(rec);
 
   if (rec.install_base_release_status === "released_to_manager") {
@@ -836,13 +843,14 @@ function getStatusHtml(rec) {
   }
 
   const cls = {
-    ok: "badge-ok",
-    missing: "badge-missing",
-    owner: "badge-owner",
-    source: "badge-source",
-    staged: "badge-staged",
-    released: "badge-released"
-  }[status.type] || "badge-staged";
+  ok: "badge-ok",
+  missing: "badge-missing",
+  owner: "badge-owner",
+  source: "badge-source",
+  staged: "badge-staged",
+  released: "badge-released",
+  fixed: "badge-fixed"
+}[status.type] || "badge-staged";
 
   return `<span class="badge ${cls}">${escapeHtml(status.label)}</span>`;
 }
@@ -908,17 +916,35 @@ function mergeRepResponsesIntoRecords() {
         rec.install_base_response_at &&
         rec.install_base_response_at === resp.install_base_response_at;
 
-      return {
-        ...rec,
-        ...resp,
-        key: getRecordKey(rec),
+     return {
+  ...rec,
+  ...resp,
+  key: getRecordKey(rec),
 
-        install_base_response_seen:
-          sameResponse ? rec.install_base_response_seen === true : false,
+  install_base_correction_status:
+    resp.install_base_correction_status ||
+    rec.install_base_correction_status ||
+    "",
 
-        install_base_response_seen_at:
-          sameResponse ? rec.install_base_response_seen_at || "" : ""
-      };
+  install_base_response_status:
+    resp.install_base_response_status ||
+    rec.install_base_response_status ||
+    "",
+
+  install_base_fix_status:
+    resp.install_base_fix_status ||
+    rec.install_base_fix_status ||
+    "",
+
+  install_base_show_communication: false,
+  install_base_has_open_issue: false,
+
+  install_base_response_seen:
+    sameResponse ? rec.install_base_response_seen === true : false,
+
+  install_base_response_seen_at:
+    sameResponse ? rec.install_base_response_seen_at || "" : ""
+};
     });
 
     if (!found) {
@@ -1511,7 +1537,9 @@ function getOwnerGroups() {
     groups[name].count++;
     groups[name].reps.add(rec.assigned_rep_name || "Unassigned");
 
-    if (getDataExceptions(rec).length) groups[name].exceptions++;
+   if (!isFixedByRep(rec) && getDataExceptions(rec).length) {
+  groups[name].exceptions++;
+}
 
     if (String(rec.install_base_release_status || "").startsWith("released")) {
       groups[name].released++;
@@ -1576,6 +1604,14 @@ function getFilteredRecords() {
   });
 }
 
+function isFixedByRep(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed"
+  );
+}
+
 function renderStats() {
   const owners = getOwnerGroups();
   const reps = new Set();
@@ -1583,7 +1619,10 @@ function renderStats() {
 
   state.records.forEach(r => {
     reps.add(r.assigned_rep_name || "Unassigned");
-    if (getDataExceptions(r).length) exceptions++;
+
+    if (!isFixedByRep(r) && getDataExceptions(r).length) {
+      exceptions++;
+    }
   });
 
   $("statTotal").textContent = state.records.length;
@@ -1665,10 +1704,17 @@ function renderTable() {
   });
 
   tbody.innerHTML = sorted.map(rec => {
-    const rowClass = [
-      String(state.selectedId) === String(rec.id) ? "selected" : "",
-      rec.install_base_response_at && !rec.install_base_response_seen ? "install-base-response-flash" : ""
-    ].filter(Boolean).join(" ");
+   const fixedByRep =
+  rec.install_base_correction_status === "corrected_by_rep" ||
+  rec.install_base_response_status === "rep_correction_sent" ||
+  rec.install_base_fix_status === "rep_reviewed";
+
+const rowClass = [
+  String(state.selectedId) === String(rec.id) ? "selected" : "",
+  rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
+    ? "install-base-response-flash"
+    : ""
+].filter(Boolean).join(" ");
 
     return `
       <tr
@@ -1706,7 +1752,33 @@ function findSelectedRecord() {
   if (!state.selectedId) return null;
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
 }
+function renderFixedDataCard(rec) {
+  const fixedByRep =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed";
 
+  if (!fixedByRep) return "";
+
+  const msg =
+    rec.install_base_correction_note ||
+    rec.install_base_response_note ||
+    rec.install_base_response_message ||
+    rec.rep_notes ||
+    "Rep marked install-base data as fixed.";
+
+  return `
+    <div class="detail-card rep-response-card">
+      <div class="k">Install Base Data Fixed</div>
+      <div class="v">Fixed by Rep</div>
+      <div class="mini" style="margin-top:8px;line-height:1.55;">
+        Fixed by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
+        Fixed at: <strong>${escapeHtml(rec.install_base_correction_at || rec.install_base_response_at || "-")}</strong><br>
+        Note: ${escapeHtml(msg)}
+      </div>
+    </div>
+  `;
+}
 function renderRepResponseCard(rec) {
   if (!rec.install_base_response_at) return "";
 
@@ -1754,7 +1826,7 @@ function renderDetail() {
 
   grid.innerHTML = `
     ${renderRepResponseCard(rec)}
-
+${renderFixedDataCard(rec)}
        <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>

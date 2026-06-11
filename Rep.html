@@ -813,7 +813,23 @@ tr.rep-new-row-flash{
   box-shadow:none;
   cursor:pointer;
 }
-
+.fixed-data-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:auto;
+  min-width:76px;
+  padding:5px 8px;
+  margin-top:6px;
+  border-radius:8px;
+  border:1px solid rgba(65,255,156,.30);
+  background:rgba(65,255,156,.08);
+  color:#bfffd8;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.02em;
+  box-shadow:none;
+}
 .fix-data-badge:hover{
   background:rgba(255,216,77,.13);
   border-color:rgba(255,216,77,.42);
@@ -2794,8 +2810,18 @@ install_base_response_seen: false,
 install_base_release_seen: true,
 install_base_release_new: false,
 
-rep_visible: false,
+rep_visible: true,
+install_base_visible: true,
 manager_visible: false,
+
+install_base_show_communication: false,
+install_base_has_open_issue: false,
+install_base_release_seen: true,
+install_base_release_new: false,
+
+rep_status: "install_base_data_fixed",
+rep_action: "install_base_data_fixed",
+rep_action_label: "Fixed Data",
 
 rep_flash_at: "",
 rep_flash_type: "",
@@ -2815,14 +2841,43 @@ issues.forEach(issue => {
   });
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-const repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+let repQueue = [];
 
-const cleanedRepQueue = repQueue.filter(r =>
-  String(r.id || "") !== String(updated.id || "") &&
-  String(r.key || "") !== String(updated.key || "")
-);
+try {
+  repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+  if (!Array.isArray(repQueue)) repQueue = [];
+} catch {
+  repQueue = [];
+}
 
-localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleanedRepQueue));
+let foundRepQueueItem = false;
+
+repQueue = repQueue.map(r => {
+  const sameId = String(r.id || "") === String(updated.id || "");
+  const sameKey = updated.key && String(r.key || "") === String(updated.key);
+
+  if (!sameId && !sameKey) return r;
+
+  foundRepQueueItem = true;
+
+  return {
+    ...r,
+    ...updated,
+    rep_visible: true,
+    install_base_visible: true,
+    install_base_show_communication: false,
+    install_base_has_open_issue: false,
+    rep_status: "install_base_data_fixed",
+    rep_action: "install_base_data_fixed",
+    rep_action_label: "Fixed Data"
+  };
+});
+
+if (!foundRepQueueItem) {
+  repQueue.unshift(updated);
+}
+
+localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
 localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
   const responseQueue = JSON.parse(
     localStorage.getItem("axis_install_base_response_queue_v1") || "[]"
@@ -2837,10 +2892,12 @@ localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
   cleanedQueue.push(updated);
 console.log("INSTALL BASE RESPONSE SENT:", updated);
   localStorage.setItem("axis_install_base_response_queue_v1", JSON.stringify(cleanedQueue));
-  localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
+localStorage.setItem("axis_install_base_response_ping_v1", String(Date.now()));
 
-  render();
-  alert("Correction sent back to Install Base.");
+state.installBaseCommunicationOpen = false;
+
+render();
+alert("Correction sent back to Install Base.");
 }
 function sendInstallBaseUnableToFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
@@ -3061,6 +3118,15 @@ function needsInstallBaseCommunication(rec) {
 }
 
 function getFixDataBadge(rec, fieldName) {
+  const fixed =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed";
+
+  if (fixed) {
+    return `<span class="fixed-data-badge">Fixed Data</span>`;
+  }
+
   let show = false;
 
   if (fieldName === "serial") {
@@ -3097,7 +3163,6 @@ function getFixDataBadge(rec, fieldName) {
     </button>
   `;
 }
-
 function openInstallBaseCommunication(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
