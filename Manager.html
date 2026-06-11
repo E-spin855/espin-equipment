@@ -409,30 +409,30 @@
   transform:none!important;
   filter:none!important;
 }
+.manager-corrected-value{
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:9px;
+  background:rgba(65,255,156,.18);
+  color:#d8ffe9;
+  border:1px solid rgba(65,255,156,.70);
+  font-weight:950;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.16),
+    0 0 16px rgba(65,255,156,.26);
+}
+tr.manager-row-flash{
+  outline:2px solid rgba(65,255,156,.95)!important;
+  outline-offset:-2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(65,255,156,.24),
+    0 0 22px rgba(65,255,156,.24)!important;
+}
 
-    tr.manager-row-flash,
-    tr.manager-row-flash td{
-      background:rgba(18,140,100,.92)!important;
-      animation:managerRowGreenPulse .85s ease-in-out infinite!important;
-    }
-
-    tr.manager-row-flash{
-      outline:3px solid rgba(65,255,156,1)!important;
-      box-shadow:
-        inset 10px 0 0 rgba(65,255,156,1),
-        0 0 0 3px rgba(0,229,255,.35),
-        0 0 34px rgba(65,255,156,.85)!important;
-    }
-
-    tr.manager-row-flash td{
-      border-bottom-color:rgba(65,255,156,.52)!important;
-    }
-
-    @keyframes managerRowGreenPulse{
-      0%,100%{background:rgba(9,18,35,.45);}
-      50%{background:rgba(18,140,100,.92);}
-    }
-
+tr.manager-row-flash td{
+  background:rgba(9,18,35,.45)!important;
+  border-bottom-color:rgba(65,255,156,.34)!important;
+}
     .followup-date-pill{
       display:inline-flex;
       align-items:center;
@@ -1564,7 +1564,6 @@ function renderRepStatus(rec) {
     rec.rep_selected_manual_action_label ||
     rec.rep_action_label ||
     getRepActionLabel(rec.rep_action) ||
-    rec.rep_status ||
     "";
 
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
@@ -1573,6 +1572,10 @@ function renderRepStatus(rec) {
 
   if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
     return `<span class="pill ready">Manager Response Sent</span>`;
+  }
+
+  if (isRepInstallBaseFix(rec) && rec.manager_alert_seen !== true) {
+    return `<span class="pill submitted">Fixed Data</span>`;
   }
 
   if (rec.quote_status === "won" || rec.rep_status === "won") {
@@ -1587,7 +1590,11 @@ function renderRepStatus(rec) {
     return `<span class="pill postponed">Follow-Up Overdue</span>`;
   }
 
-  if (rec.rep_action === "follow_up" || rec.rep_status === "follow_up_scheduled" || getFollowUpDate(rec)) {
+  if (
+    rec.rep_action === "follow_up" ||
+    rec.rep_status === "follow_up_scheduled" ||
+    rec.rep_action === "schedule_follow_up"
+  ) {
     return `<span class="pill pending">Follow-Up Set</span>`;
   }
 
@@ -1595,13 +1602,12 @@ function renderRepStatus(rec) {
     return `<span class="pill postponed">Removed</span>`;
   }
 
-  if (label && label !== "needed" && label !== "new") {
+  if (label && label !== "needed" && label !== "new" && label !== "open") {
     return `<span class="pill local">${escapeHtml(label)}</span>`;
   }
 
-  return `<span class="mini">No rep action</span>`;
+  return `<button type="button" class="open-record-btn" data-id="${escapeHtml(rec.id || "")}">Open</button>`;
 }
-
 function getDisplayOrderWeight(rec) {
   if (!rec) return 0;
 
@@ -1734,12 +1740,58 @@ function shouldManagerRowFlash(rec) {
 
   return Boolean(
     hasUnseenManagerRelease(rec) ||
+    (isRepInstallBaseFix(rec) && rec.manager_alert_seen !== true) ||
     hasFollowUpOverdueBy7Days(rec) ||
     (rec.tradein_sync_received && !rec.tradein_seen_by_rep) ||
     (rec.quote_amount && !rec.quote_seen)
   );
 }
+function isRepInstallBaseFix(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.manager_flash_type === "rep_update"
+  );
+}
 
+function wasManagerFieldCorrected(rec, fieldName) {
+  if (!isRepInstallBaseFix(rec)) return false;
+  if (rec.manager_alert_seen === true) return false;
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"]
+  }[fieldName] || [fieldName];
+
+  return correctedFields.some(f => aliases.includes(f));
+}
+
+function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
+  if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
+
+  return `
+    <span class="manager-corrected-value">
+      ${normalHtml}
+    </span>
+  `;
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1782,15 +1834,72 @@ function renderTable() {
 
     return `
       <tr class="${selectedClass}" data-id="${escapeHtml(id)}" style="cursor:pointer;">
-        <td>${escapeHtml(rec.oem_project_id || rec.project_id || "")}</td>
-        <td>${escapeHtml(rec.make || "")}</td>
-        <td>${escapeHtml(rec.model || "")}</td>
-        <td>${escapeHtml(rec.modality || "")}</td>
-        <td>${escapeHtml(rec.serial_number || rec.serial || "")}</td>
-        <td>${escapeHtml(rec.dom || "")}</td>
-        <td>${ageFromDom(rec.dom) ?? "-"}</td>
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "project",
+            escapeHtml(rec.oem_project_id || rec.project_id || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "make",
+            escapeHtml(rec.make || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "model",
+            escapeHtml(rec.model || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "modality",
+            escapeHtml(rec.modality || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "serial",
+            escapeHtml(rec.serial_number || rec.serial || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "dom",
+            escapeHtml(rec.dom || "")
+          )}
+        </td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "dom",
+            escapeHtml(ageFromDom(rec.dom) ?? "-")
+          )}
+        </td>
+
         <td>${tradeRef ? escapeHtml(money(tradeRef)) : "-"}</td>
-        <td>${escapeHtml(getFacility(rec))}</td>
+
+        <td>
+          ${renderManagerCorrectedValue(
+            rec,
+            "site",
+            escapeHtml(getFacility(rec))
+          )}
+        </td>
+
         <td>${renderReviewCondition(rec)}</td>
         <td>${renderRepStatus(rec)}</td>
         <td>${escapeHtml(rec.hub_source || rec.source_system || rec.source || "Local")}</td>
@@ -1803,7 +1912,6 @@ function renderTable() {
     `;
   }).join("");
 }
-
 function findSelectedRecord() {
   if (!state.selectedId) return null;
 
@@ -2675,16 +2783,54 @@ function handleCSVUpload(file) {
 
   reader.readAsArrayBuffer(file);
 }
+function readInstallBaseResponseRecordsForManager() {
+  return readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(rec => {
+    const isRepFix =
+      rec.install_base_correction_status === "corrected_by_rep" ||
+      rec.install_base_response_status === "rep_correction_sent" ||
+      rec.install_base_fix_status === "rep_reviewed";
 
+    if (!isRepFix) return rec;
+
+    return {
+      ...rec,
+      key: getRecordKey(rec),
+
+      manager_unseen_update:
+        rec.manager_alert_seen === true ? false : true,
+
+      manager_alert_seen:
+        rec.manager_alert_seen === true ? true : false,
+
+      manager_update_seen_at:
+        rec.manager_update_seen_at || "",
+
+      manager_flash_type: "rep_update",
+      manager_flash_text: "Rep corrected install-base data",
+
+      manager_visible: true,
+      source: rec.source || "Rep Review Page",
+      hub_source: rec.hub_source || "Rep Review Page"
+    };
+  });
+}
 function render() {
   const main = readArrayKey(STORAGE_KEY);
   const managerQueue = readManagerQueueRecords();
+  const installBaseResponses = readInstallBaseResponseRecordsForManager();
 
-  state.records = mergeRecordsByKey(main, managerQueue);
+  state.records = mergeRecordsByKey(
+    main,
+    managerQueue,
+    installBaseResponses
+  );
 
   writeArrayKey(STORAGE_KEY, state.records);
 
-  if (state.selectedId && !state.records.some(r => String(r.id || "") === String(state.selectedId))) {
+  if (
+    state.selectedId &&
+    !state.records.some(r => String(r.id || "") === String(state.selectedId))
+  ) {
     state.selectedId = null;
   }
 
@@ -2693,7 +2839,6 @@ function render() {
   renderTable();
   renderDetail();
 }
-
 function init() {
   render();
 
@@ -2748,17 +2893,19 @@ function init() {
     closeSelectedBtn.addEventListener("click", closeSelectedRecord);
   }
 
-  window.addEventListener("storage", (e) => {
-    if (
-      e.key === STORAGE_KEY ||
-      e.key === MANAGER_QUEUE_KEY ||
-      e.key === MANAGER_SYNC_KEY ||
-      e.key === QUOTE_APPROVAL_KEY ||
-      e.key === QUOTE_APPROVAL_SYNC_KEY
-    ) {
-      render();
-    }
-  });
+ window.addEventListener("storage", (e) => {
+  if (
+    e.key === STORAGE_KEY ||
+    e.key === MANAGER_QUEUE_KEY ||
+    e.key === MANAGER_SYNC_KEY ||
+    e.key === QUOTE_APPROVAL_KEY ||
+    e.key === QUOTE_APPROVAL_SYNC_KEY ||
+    e.key === INSTALL_BASE_RESPONSE_KEY ||
+    e.key === INSTALL_BASE_RESPONSE_PING_KEY
+  ) {
+    render();
+  }
+});
 
   window.addEventListener("rep_feed_update", () => {
     render();
