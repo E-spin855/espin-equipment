@@ -402,18 +402,17 @@ th{
     .pill.postponed{background:linear-gradient(90deg,#4b255f,#63347a,#7a4592);color:#f4ddff;border-color:rgba(122,69,146,.45)}
     .pill.submitted{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
     .pill.local{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
-tr.rep-new-row-flash,
-tr.rep-new-row-flash td{
-  background:rgba(18,140,100,.92)!important;
-  animation:repNewRowPulse .85s ease-in-out infinite!important;
+tr.rep-new-row-flash{
+  outline:3px solid rgba(65,255,156,.95)!important;
+  background:rgba(9,18,35,.45)!important;
+  box-shadow:
+    inset 6px 0 0 rgba(65,255,156,.95),
+    0 0 0 1px rgba(65,255,156,.38),
+    0 0 24px rgba(65,255,156,.30)!important;
 }
 
-tr.rep-new-row-flash{
-  outline:3px solid rgba(65,255,156,1)!important;
-  box-shadow:
-    inset 10px 0 0 rgba(65,255,156,1),
-    0 0 0 3px rgba(0,229,255,.35),
-    0 0 34px rgba(65,255,156,.85)!important;
+tr.rep-new-row-flash td{
+  background:transparent!important;
 }
 
 .rep-new-pill-flash .pill,
@@ -2336,17 +2335,25 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
       rec.install_base_release_new && !rec.install_base_release_seen;
 
     const sentBackToInstallBase =
-      rec.install_base_correction_status === "corrected_by_rep" ||
-      rec.install_base_response_status === "rep_correction_sent" ||
-      rec.install_base_fix_status === "rep_reviewed";
+  rec.install_base_correction_status === "corrected_by_rep" ||
+  rec.install_base_response_status === "rep_correction_sent" ||
+  rec.install_base_fix_status === "rep_reviewed";
 
-    const selectedClass = [
-      rec.id === state.selectedId ? "selected" : "",
-      hasUnseenManagerResponse ? "manager-response-flash" : "",
-      rec.install_base_release_new && !rec.install_base_release_seen && !sentBackToInstallBase
-        ? "rep-new-row-flash"
-        : ""
-    ].filter(Boolean).join(" ");
+const hasUnseenFixedData =
+  sentBackToInstallBase &&
+  rec.install_base_fixed_seen_by_rep !== true;
+
+const hasUnseenInstallBaseUpdate =
+  rec.install_base_release_new &&
+  !rec.install_base_release_seen;
+
+const selectedClass = [
+  rec.id === state.selectedId ? "selected" : "",
+  hasUnseenManagerResponse ? "manager-response-flash" : "",
+  hasUnseenInstallBaseUpdate || hasUnseenFixedData
+    ? "rep-new-row-flash"
+    : ""
+].filter(Boolean).join(" ");
 
     const age = ageFromDom(rec.dom);
 
@@ -5896,11 +5903,74 @@ function refreshSelectedRowUI() {
     .querySelectorAll(`[data-id="${safeId}"]`)
     .forEach(row => row.classList.add("selected"));
 }
+function markRepRowUpdateSeen(id) {
+  const now = new Date().toISOString();
+
+  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+  if (!rec) return;
+
+  state.records = state.records.map(r => {
+    const sameId = String(r.id || "") === String(id || "");
+    const sameKey = rec.key && String(r.key || "") === String(rec.key || "");
+
+    if (!sameId && !sameKey) return r;
+
+    return {
+      ...r,
+      install_base_release_seen: true,
+      install_base_release_seen_at: now,
+      install_base_release_new: false,
+
+      install_base_fixed_seen_by_rep: true,
+      install_base_fixed_seen_at: now,
+
+      rep_unseen_update: false,
+      rep_flash_at: "",
+      rep_flash_type: ""
+    };
+  });
+
+  saveRecords();
+
+  let repQueue = [];
+
+  try {
+    repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(repQueue)) repQueue = [];
+  } catch {
+    repQueue = [];
+  }
+
+  repQueue = repQueue.map(r => {
+    const sameId = String(r.id || "") === String(id || "");
+    const sameKey = rec.key && String(r.key || "") === String(rec.key || "");
+
+    if (!sameId && !sameKey) return r;
+
+    return {
+      ...r,
+      install_base_release_seen: true,
+      install_base_release_seen_at: now,
+      install_base_release_new: false,
+
+      install_base_fixed_seen_by_rep: true,
+      install_base_fixed_seen_at: now,
+
+      rep_unseen_update: false,
+      rep_flash_at: "",
+      rep_flash_type: ""
+    };
+  });
+
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+}
     function selectRow(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
   state.selectedId = selectedId;
+markRepRowUpdateSeen(id);
   state.installBaseCommunicationOpen = false;
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
