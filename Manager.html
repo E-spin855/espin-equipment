@@ -2019,6 +2019,15 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 function isManagerInstallBaseRequest(rec) {
   if (!rec) return false;
 
+  const repSyncedFix =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.manager_flash_type === "rep_update";
+
+  // Rep-corrected data synced into Manager is NOT a Manager install-base request.
+  if (repSyncedFix) return false;
+
   const alreadyResolved =
     rec.install_base_response_status === "manager_correction_sent" ||
     rec.install_base_response_status === "manager_unable_to_verify" ||
@@ -2030,12 +2039,10 @@ function isManagerInstallBaseRequest(rec) {
     rec.install_base_manager_request === true ||
     rec.install_base_released_to === "manager" ||
     rec.release_destination === "manager" ||
-    rec.manager_visible === true ||
     rec.install_base_release_status === "released_to_manager" ||
     rec.manager_flash_type === "install_base_release"
   );
 }
-
 function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
