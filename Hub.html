@@ -358,6 +358,10 @@ tbody tr.selected{
   border:1px solid rgba(88,184,255,.14);
 }
 
+.detail-card.full{
+  grid-column:1 / -1;
+}
+
 .detail-card .k{
   font-size:11px;
   text-transform:uppercase;
@@ -394,7 +398,7 @@ tbody tr.selected{
 
 .search-row{
   display:grid;
-  grid-template-columns:1fr 170px;
+  grid-template-columns:1fr 230px;
   gap:10px;
   margin-bottom:14px;
 }
@@ -414,16 +418,14 @@ tbody tr.selected{
 }
 
 tr.install-base-response-flash{
-  outline:3px solid rgba(65,255,156,.95)!important;
-  box-shadow:
-    inset 10px 0 0 rgba(65,255,156,.95),
-    0 0 34px rgba(65,255,156,.75)!important;
-  animation:installBaseResponsePulse .9s ease-in-out infinite!important;
+  outline:2px solid rgba(65,255,156,.80)!important;
+  box-shadow:inset 7px 0 0 rgba(65,255,156,.80),0 0 18px rgba(65,255,156,.38)!important;
+  animation:installBaseResponsePulse 1.35s ease-in-out infinite!important;
 }
 
 @keyframes installBaseResponsePulse{
   0%,100%{background:rgba(9,18,35,.45);}
-  50%{background:rgba(18,140,100,.92);}
+  50%{background:rgba(18,110,86,.62);}
 }
 
 .rep-response-card{
@@ -431,6 +433,12 @@ tr.install-base-response-flash{
   border:2px solid rgba(65,255,156,.85)!important;
   background:rgba(65,255,156,.10)!important;
   box-shadow:0 0 26px rgba(65,255,156,.28)!important;
+}
+
+.issue-card{
+  grid-column:1 / -1;
+  border:1px solid rgba(255,216,77,.38)!important;
+  background:rgba(255,216,77,.08)!important;
 }
 </style>
 </head>
@@ -441,7 +449,7 @@ tr.install-base-response-flash{
   <div class="hero">
     <h1>AXIS Install Base Workspace</h1>
     <p class="subtitle">
-      OEM install-base review screen. This workspace imports asset records, highlights data-quality exceptions, confirms ownership, and stages records for manual release into manager or rep review queues.
+      OEM install-base review screen. This workspace imports asset records, confirms ownership fields, makes assigned equipment visible to the named rep, and sends issue or clarification requests only when Install Base needs follow-up.
     </p>
 
     <div class="strip">
@@ -449,12 +457,12 @@ tr.install-base-response-flash{
       <div class="chip">Find missing fields</div>
       <div class="chip">Confirm owner</div>
       <div class="chip">Review source conflicts</div>
-      <div class="chip">Stage for manual release</div>
+      <div class="chip">Visible to assigned rep</div>
       <div class="chip">Inspectable by OEM IT</div>
     </div>
 
     <div class="notice">
-      AXIS outputs on this page are install-base review aids only. This workspace does not recommend replacement, generate sales opportunities, select a best action, assign best reps, create financial advice, create valuation advice, or direct procurement decisions.
+      AXIS outputs on this page are install-base review aids only. Records are routed by explicit owner fields already present in the uploaded source file. This workspace does not recommend replacement, generate sales opportunities, select a best action, assign best reps, create financial advice, create valuation advice, or direct procurement decisions.
       <br><br>
       Final decisions remain with the OEM, customer, and authorized stakeholders.
     </div>
@@ -519,8 +527,12 @@ tr.install-base-response-flash{
               <option value="">All records</option>
               <option value="exception">Exceptions only</option>
               <option value="ready">Ready only</option>
-              <option value="released">Released only</option>
+              <option value="released">Visible / Released only</option>
+              <option value="released_rep">Visible to Rep only</option>
+              <option value="rep_issue">Rep Issue / Clarification only</option>
+              <option value="released_manager">Manager Issue only</option>
               <option value="staged">Staged only</option>
+              <option value="response">Rep responses only</option>
             </select>
           </div>
 
@@ -551,7 +563,7 @@ tr.install-base-response-flash{
       <div class="panel">
         <div class="panel-head">
           <h2>Selected Record Detail</h2>
-          <span class="mini">Manual release only</span>
+          <span class="mini">Assigned-rep visibility / issue push only</span>
         </div>
 
         <div class="panel-body">
@@ -561,8 +573,8 @@ tr.install-base-response-flash{
             <div class="detail-grid" id="detailGrid"></div>
 
             <div class="btns">
-              <button type="button" class="green" id="releaseManagerBtn">Release Selected to Manager Review</button>
-              <button type="button" class="yellow" id="releaseRepBtn">Release Selected to Rep Review</button>
+              <button type="button" class="green" id="releaseManagerBtn">Push Issue / Clarification to Manager</button>
+              <button type="button" class="yellow" id="releaseRepBtn">Push Issue / Clarification to Rep</button>
               <button type="button" class="secondary" id="markStagedBtn">Mark as Staged Only</button>
             </div>
 
@@ -585,6 +597,12 @@ const VP_QUEUE_KEY = "axis_vp_queue_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 
+// AXIS Install Base routing boundary:
+// Records are made visible to the rep already named in the source install-base file.
+// AXIS does not select the best rep, recommend replacement, recommend upgrade,
+// generate sales opportunities, rank opportunities, recommend quotes,
+// recommend trade-in action, or make procurement decisions.
+
 const state = {
   records: [],
   selectedOwner: "",
@@ -592,6 +610,9 @@ const state = {
   search: "",
   filter: ""
 };
+
+let isRendering = false;
+let isAutoReleasing = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -698,10 +719,26 @@ function getRecordKey(rec) {
 
   if (rec.key) return String(rec.key);
 
-  const project = clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "");
+  const project = clean(rec.oem_project_id || rec.project_id || "");
+  const asset = clean(rec.asset_id || rec.equipment_id || "");
   const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const make = clean(rec.make || rec.manufacturer || "");
+  const model = clean(rec.model || "");
+  const site = clean(rec.site || rec.site_name || rec.hospital_name || rec.facility_name || "");
+  const dom = clean(rec.dom || rec.year || rec.manufacture_year || "");
 
-  if (project || serial) return `${project}_${serial}`;
+  if (project || asset || serial || make || model || site) {
+    return [
+      "installbase",
+      project || "no_project",
+      asset || "no_asset",
+      serial || "no_serial",
+      make || "no_make",
+      model || "no_model",
+      site || "no_site",
+      dom || "no_dom"
+    ].join("|").toLowerCase();
+  }
 
   return String(rec.id || uuid());
 }
@@ -711,18 +748,36 @@ function sameRecord(a, b) {
 
   const aId = clean(a.id);
   const bId = clean(b.id);
+
   if (aId && bId && aId === bId) return true;
 
   const aKey = clean(a.key || getRecordKey(a));
   const bKey = clean(b.key || getRecordKey(b));
+
   if (aKey && bKey && aKey === bKey) return true;
 
-  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id);
-  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id);
-  const aSerial = clean(a.serial_number || a.serial || a.system_serial);
-  const bSerial = clean(b.serial_number || b.serial || b.system_serial);
+  const aProject = clean(a.oem_project_id || a.project_id || "");
+  const bProject = clean(b.oem_project_id || b.project_id || "");
 
-  return Boolean(aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial);
+  const aAsset = clean(a.asset_id || a.equipment_id || "");
+  const bAsset = clean(b.asset_id || b.equipment_id || "");
+
+  const aSerial = clean(a.serial_number || a.serial || a.system_serial || "");
+  const bSerial = clean(b.serial_number || b.serial || b.system_serial || "");
+
+  if (aProject && bProject && aProject === bProject && aAsset && bAsset && aAsset === bAsset) {
+    return true;
+  }
+
+  if (aProject && bProject && aProject === bProject && aSerial && bSerial && aSerial === bSerial) {
+    return true;
+  }
+
+  if (aAsset && bAsset && aAsset === bAsset && aSerial && bSerial && aSerial === bSerial) {
+    return true;
+  }
+
+  return false;
 }
 
 function getDemoOwner(seed, stateValue) {
@@ -751,21 +806,25 @@ function getOwnerTerritory(rec) {
 }
 
 function isDuplicateAsset(rec) {
-  const key = [
-    lower(rec.oem_project_id || rec.asset_id),
-    lower(rec.serial_number || rec.serial)
-  ].join("|");
+  const project = lower(rec.oem_project_id || rec.project_id);
+  const asset = lower(rec.asset_id || rec.equipment_id);
+  const serial = lower(rec.serial_number || rec.serial);
 
-  if (key === "|") return false;
+  if (!project && !asset && !serial) return false;
 
   return state.records.filter(r => {
-    const rKey = [
-      lower(r.oem_project_id || r.asset_id),
-      lower(r.serial_number || r.serial)
-    ].join("|");
+    if (r === rec) return false;
 
-    return rKey === key;
-  }).length > 1;
+    const rProject = lower(r.oem_project_id || r.project_id);
+    const rAsset = lower(r.asset_id || r.equipment_id);
+    const rSerial = lower(r.serial_number || r.serial);
+
+    if (project && rProject && project === rProject && asset && rAsset && asset === rAsset) return true;
+    if (project && rProject && project === rProject && serial && rSerial && serial === rSerial) return true;
+    if (asset && rAsset && asset === rAsset && serial && rSerial && serial === rSerial) return true;
+
+    return false;
+  }).length > 0;
 }
 
 function getDataExceptions(rec) {
@@ -806,6 +865,50 @@ function getDataExceptions(rec) {
   return issues;
 }
 
+function getInstallBaseIssueReason(rec) {
+  return (
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
+}
+
+function needsInstallBaseCommunication(rec) {
+  const exceptions = getDataExceptions(rec);
+  const reason = getInstallBaseIssueReason(rec);
+
+  return Boolean(
+    exceptions.length ||
+    reason ||
+    rec.install_base_issue_field ||
+    rec.install_base_issue_type ||
+    rec.install_base_action_label ||
+    rec.rep_fix_required ||
+    lower(rec.source_conflict) === "yes" ||
+    lower(rec.conflict) === "yes" ||
+    lower(rec.install_base_request_type).includes("follow") ||
+    lower(rec.install_base_request_type).includes("clarification") ||
+    lower(rec.install_base_action_label).includes("follow") ||
+    lower(rec.install_base_action_label).includes("clarification")
+  );
+}
+
+function getInstallBasePushKey(rec) {
+  return [
+    getRecordKey(rec),
+    rec.install_base_issue_field || "",
+    rec.install_base_issue_type || "",
+    rec.install_base_action_label || "",
+    getInstallBaseIssueReason(rec),
+    rec.source_conflict || "",
+    rec.conflict_notes || ""
+  ].join("|").toLowerCase();
+}
+
 function getReviewStatus(rec) {
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
     return { type: "response", label: "Rep Response" };
@@ -814,11 +917,15 @@ function getReviewStatus(rec) {
   const exceptions = getDataExceptions(rec);
 
   if (rec.install_base_release_status === "released_to_manager") {
-    return { type: "released", label: "Released to Manager" };
+    return { type: "released", label: "Manager Follow-Up" };
   }
 
   if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Released to Rep" };
+    if (needsInstallBaseCommunication(rec)) {
+      return { type: "released", label: "Rep Follow-Up Needed" };
+    }
+
+    return { type: "released", label: "Visible to Rep" };
   }
 
   if (exceptions.length) {
@@ -888,6 +995,7 @@ function loadRecords() {
   }
 
   mergeRepResponsesIntoRecords();
+  autoReleaseAssignedRepRecords();
 }
 
 function mergeRepResponsesIntoRecords() {
@@ -965,23 +1073,189 @@ function markRepResponseSeen(rec) {
   saveRecords();
 }
 
+function autoReleaseAssignedRepRecords() {
+  if (isAutoReleasing) return;
+  isAutoReleasing = true;
+
+  const now = new Date().toISOString();
+  const repQueue = readQueue(REP_QUEUE_KEY, []);
+  const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+
+  const nextRepQueue = [...repQueue];
+  let repChanged = false;
+  let managerChanged = false;
+  let recordsChanged = false;
+
+  state.records = state.records.map(rec => {
+    const hasRep =
+      clean(rec.assigned_rep_name) &&
+      rec.assigned_rep_name !== "Unassigned";
+
+    if (!hasRep) return rec;
+
+    const key = getRecordKey(rec);
+    const issueOpen = needsInstallBaseCommunication(rec);
+    const pushKey = getInstallBasePushKey(rec);
+    const previousPushKey = rec.install_base_last_push_key || "";
+    const isNewPush = issueOpen && previousPushKey !== pushKey;
+
+    const updated = {
+      ...rec,
+      key,
+
+      rep_visible: true,
+      manager_visible: false,
+
+      install_base_visible: true,
+      install_base_origin: true,
+      install_base_auto_released: true,
+
+      install_base_released_to: "rep",
+      install_base_release_status: "released_to_rep",
+      install_base_released_at: rec.install_base_released_at || now,
+
+      install_base_has_open_issue: issueOpen,
+      install_base_show_communication: issueOpen,
+
+      install_base_last_push_key: issueOpen ? pushKey : previousPushKey,
+
+      hub_source: "AXIS Install Base Workspace",
+      source: rec.source || "AXIS Install Base Workspace"
+    };
+
+    if (
+      rec.rep_visible !== updated.rep_visible ||
+      rec.install_base_visible !== updated.install_base_visible ||
+      rec.install_base_release_status !== updated.install_base_release_status ||
+      rec.install_base_has_open_issue !== updated.install_base_has_open_issue ||
+      rec.install_base_last_push_key !== updated.install_base_last_push_key
+    ) {
+      recordsChanged = true;
+    }
+
+    const repRecord = {
+      ...updated,
+
+      manager_visible: false,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: "",
+
+      project:
+        updated.site ||
+        updated.site_address ||
+        updated.oem_project_id ||
+        updated.asset_id ||
+        "Unknown Site",
+
+      rep: updated.assigned_rep_name || "Unassigned",
+
+      alert: issueOpen
+        ? getReviewStatus(updated).label
+        : "Install Base Record",
+
+      timestamp: isNewPush ? now : updated.timestamp || now,
+
+      install_base_release_new: isNewPush,
+      install_base_release_seen: isNewPush
+        ? false
+        : updated.install_base_release_seen ?? true,
+
+      install_base_push_type: issueOpen
+        ? "issue_or_clarification"
+        : "record_visibility",
+
+      install_base_push_at: isNewPush
+        ? now
+        : updated.install_base_push_at || ""
+    };
+
+    const existingIndex = nextRepQueue.findIndex(r => sameRecord(r, repRecord));
+
+    if (existingIndex >= 0) {
+      const mergedRepRecord = {
+        ...nextRepQueue[existingIndex],
+        ...repRecord,
+        id: nextRepQueue[existingIndex].id || repRecord.id,
+        key: repRecord.key
+      };
+
+      if (JSON.stringify(nextRepQueue[existingIndex]) !== JSON.stringify(mergedRepRecord)) {
+        nextRepQueue[existingIndex] = mergedRepRecord;
+        repChanged = true;
+      }
+    } else {
+      nextRepQueue.push(repRecord);
+      repChanged = true;
+    }
+
+    if (isNewPush) {
+      const ownerName = getOwnerName(updated);
+
+      if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
+
+      const managerRecord = {
+        ...updated,
+        manager_visible: true,
+        rep_visible: true,
+
+        install_base_manager_request: true,
+
+        manager_unseen_update: true,
+        manager_alert_seen: false,
+        manager_update_seen_at: "",
+
+        manager_flash_at: now,
+        manager_flash_type: "install_base_issue",
+        manager_flash_text: "Install-base issue, follow-up, or clarification request"
+      };
+
+      managerQueue[ownerName] = managerQueue[ownerName].filter(r => !sameRecord(r, managerRecord));
+      managerQueue[ownerName].push(managerRecord);
+
+      managerChanged = true;
+    }
+
+    return updated;
+  });
+
+  if (repChanged) {
+    localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(nextRepQueue));
+    localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  }
+
+  if (managerChanged) {
+    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
+
+  if (recordsChanged) {
+    localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
+    localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+  }
+
+  isAutoReleasing = false;
+}
+
 function releaseSelected(destination) {
   const rec = findSelectedRecord();
   if (!rec) return;
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+  const issueOpen = needsInstallBaseCommunication(rec);
 
   const managerReleaseId =
-    "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+    "mgr_issue_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 
- const updated = {
-  ...rec,
-  key,
+  const updated = {
+    ...rec,
+    key,
 
-  release_destination: destination,
-  manager_visible: destination === "manager",
-  rep_visible: destination === "rep",
+    release_destination: destination,
+    manager_visible: destination === "manager",
+    rep_visible: true,
 
     install_base_release_status:
       destination === "manager" ? "released_to_manager" : "released_to_rep",
@@ -989,6 +1263,11 @@ function releaseSelected(destination) {
     install_base_released_to: destination,
     install_base_release_new: true,
     install_base_release_seen: false,
+    install_base_visible: true,
+    install_base_origin: true,
+    install_base_has_open_issue: issueOpen,
+    install_base_show_communication: issueOpen,
+    install_base_last_push_key: issueOpen ? getInstallBasePushKey(rec) : rec.install_base_last_push_key || "",
 
     hub_source: "AXIS Install Base Workspace",
 
@@ -1017,14 +1296,14 @@ function releaseSelected(destination) {
     install_base_action_reason: rec.install_base_action_reason || "",
     rep_fix_required: rec.rep_fix_required || "",
     install_base_issue_note: rec.install_base_issue_note || "",
-install_base_issue_reason:
-  rec.install_base_issue_reason ||
-  rec.install_base_action_reason ||
-  rec.install_base_issue_note ||
-  rec.conflict_notes ||
-  rec.oem_review_reason ||
-  rec.review_reason ||
-  "",
+    install_base_issue_reason:
+      rec.install_base_issue_reason ||
+      rec.install_base_action_reason ||
+      rec.install_base_issue_note ||
+      rec.conflict_notes ||
+      rec.oem_review_reason ||
+      rec.review_reason ||
+      "",
     oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
     oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
     oem_review_reason: rec.oem_review_reason || rec.review_reason || rec.install_base_issue_note || "",
@@ -1036,51 +1315,50 @@ install_base_issue_reason:
 
   state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
 
-if (destination === "manager") {
-  updated.manager_visible = true;
-  updated.rep_visible = false;
-  updated.release_destination = "manager";
+  if (destination === "manager") {
+    updated.manager_visible = true;
+    updated.rep_visible = true;
+    updated.release_destination = "manager";
 
-  updated.install_base_released_to = "manager";
-  updated.install_base_release_status = "released_to_manager";
-  updated.install_base_manager_request = true;
+    updated.install_base_released_to = "manager";
+    updated.install_base_release_status = "released_to_manager";
+    updated.install_base_manager_request = true;
 
-  updated.hub_source = "AXIS Install Base Workspace";
-  updated.source = "AXIS Install Base Workspace";
+    updated.hub_source = "AXIS Install Base Workspace";
+    updated.source = "AXIS Install Base Workspace";
 
-  // New unique release marker for every send
-  updated.manager_release_id = managerReleaseId;
-  updated.manager_seen_release_id = "";
+    updated.manager_release_id = managerReleaseId;
+    updated.manager_seen_release_id = "";
 
-  updated.manager_unseen_update = true;
-  updated.manager_alert_seen = false;
-  updated.manager_update_seen_at = "";
+    updated.manager_unseen_update = true;
+    updated.manager_alert_seen = false;
+    updated.manager_update_seen_at = "";
 
-  updated.manager_flash_at = now;
-  updated.manager_flash_type = "install_base_release";
-  updated.manager_flash_text = "New install-base record released to manager review";
+    updated.manager_flash_at = now;
+    updated.manager_flash_type = "install_base_issue";
+    updated.manager_flash_text = "Install-base issue or clarification request";
+
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
     if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
 
-    managerQueue[ownerName] = managerQueue[ownerName].filter(r =>
-      String(r.key || "") !== String(updated.key || "")
-    );
-
+    managerQueue[ownerName] = managerQueue[ownerName].filter(r => !sameRecord(r, updated));
     managerQueue[ownerName].push(updated);
+
     localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
-if (destination === "rep") {
-  updated.rep_visible = true;
-  updated.manager_visible = false;
-  updated.release_destination = "rep";
 
-  updated.manager_release_id = "";
-  updated.manager_seen_release_id = "";
+  if (destination === "rep") {
+    updated.rep_visible = true;
+    updated.manager_visible = false;
+    updated.release_destination = "rep";
 
-  const repQueue = readQueue(REP_QUEUE_KEY, []);
+    updated.manager_release_id = "";
+    updated.manager_seen_release_id = "";
+
+    const repQueue = readQueue(REP_QUEUE_KEY, []);
 
     const repRecord = {
       ...updated,
@@ -1097,15 +1375,15 @@ if (destination === "rep") {
         updated.asset_id ||
         "Unknown Site",
       rep: updated.assigned_rep_name || "Unassigned",
-      alert: getReviewStatus(updated).label,
-      timestamp: now
+      alert: issueOpen ? getReviewStatus(updated).label : "Install Base Record",
+      timestamp: now,
+      install_base_push_type: issueOpen ? "issue_or_clarification" : "record_visibility",
+      install_base_push_at: now
     };
 
-    const cleaned = repQueue.filter(r =>
-      String(r.key || "") !== String(repRecord.key || "")
-    );
-
+    const cleaned = repQueue.filter(r => !sameRecord(r, repRecord));
     cleaned.push(repRecord);
+
     localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
   }
@@ -1115,10 +1393,11 @@ if (destination === "rep") {
 
   showBanner(
     destination === "manager"
-      ? "Selected record released to Manager Review only."
-      : "Selected record released to Rep Review only."
+      ? "Issue or clarification pushed to Manager visibility."
+      : "Issue or clarification pushed to assigned Rep."
   );
 }
+
 function markSelectedStaged() {
   const rec = findSelectedRecord();
   if (!rec) return;
@@ -1128,6 +1407,13 @@ function markSelectedStaged() {
 
     return {
       ...r,
+      rep_visible: false,
+      manager_visible: false,
+      install_base_visible: false,
+      install_base_origin: false,
+      install_base_auto_released: false,
+      install_base_has_open_issue: false,
+      install_base_show_communication: false,
       install_base_release_status: "staged",
       install_base_released_at: "",
       install_base_released_to: ""
@@ -1235,62 +1521,65 @@ function parseWorkbook(file) {
         `${obj.city || ""} ${obj.state || ""}`.trim() ||
         "Unknown Site";
 
-    const cleanInstallBaseAsk = String(
-  obj.rep_fix_required ||
-  obj.install_base_action_label ||
-  obj.install_base_action_reason ||
-  obj.install_base_issue_note ||
-  ""
-).replace(/\bRep Asked\b/gi, "Install Base Asked");
+      const cleanInstallBaseAsk = String(
+        obj.rep_fix_required ||
+        obj.install_base_action_label ||
+        obj.install_base_action_reason ||
+        obj.install_base_issue_note ||
+        ""
+      ).replace(/\bRep Asked\b/gi, "Install Base Asked");
 
-const rec = {
-  id: uuid(),
-  key: "",
-  source: obj.source || obj.source_system || "Install Base Upload",
-  source_system: obj.source_system || obj.system || obj.source || "Uploaded file",
-  source_file_name: file.name || "",
+      const rec = {
+        id: uuid(),
+        key: "",
+        source: obj.source || obj.source_system || "Install Base Upload",
+        source_system: obj.source_system || obj.system || obj.source || "Uploaded file",
+        source_file_name: file.name || "",
 
-  install_base_issue_field: obj.install_base_issue_field || obj.issue_field || "",
-  install_base_issue_type: obj.install_base_issue_type || obj.issue_type || "",
+        install_base_issue_field: obj.install_base_issue_field || obj.issue_field || "",
+        install_base_issue_type: obj.install_base_issue_type || obj.issue_type || "",
 
-install_base_action_label:
-  obj.install_base_action_label ||
-  cleanInstallBaseAsk ||
-  obj.install_base_issue_type ||
-  "",
+        install_base_action_label:
+          obj.install_base_action_label ||
+          cleanInstallBaseAsk ||
+          obj.install_base_issue_type ||
+          "",
 
-install_base_action_reason:
-  obj.install_base_action_reason ||
-  obj.install_base_issue_note ||
-  cleanInstallBaseAsk ||
-  obj.conflict_notes ||
-  obj.source_notes ||
-  obj.notes ||
-  "",
+        install_base_action_reason:
+          obj.install_base_action_reason ||
+          obj.install_base_issue_note ||
+          cleanInstallBaseAsk ||
+          obj.conflict_notes ||
+          obj.source_notes ||
+          obj.notes ||
+          "",
 
-rep_fix_required: cleanInstallBaseAsk,
+        rep_fix_required: cleanInstallBaseAsk,
 
-install_base_issue_note:
-  obj.install_base_issue_note ||
-  cleanInstallBaseAsk ||
-  obj.conflict_notes ||
-  obj.source_notes ||
-  obj.notes ||
-  "",
-install_base_issue_reason:
-  obj.install_base_issue_reason ||
-  obj.install_base_action_reason ||
-  obj.install_base_issue_note ||
-  obj.conflict_notes ||
-  obj.source_notes ||
-  obj.notes ||
-  obj.review_reason ||
-  "",
-utilization_percent:
-  obj.utilization_percent ||
-  obj.utilization ||
-  obj.use_percent ||
-  "",
+        install_base_issue_note:
+          obj.install_base_issue_note ||
+          cleanInstallBaseAsk ||
+          obj.conflict_notes ||
+          obj.source_notes ||
+          obj.notes ||
+          "",
+
+        install_base_issue_reason:
+          obj.install_base_issue_reason ||
+          obj.install_base_action_reason ||
+          obj.install_base_issue_note ||
+          obj.conflict_notes ||
+          obj.source_notes ||
+          obj.notes ||
+          obj.review_reason ||
+          "",
+
+        utilization_percent:
+          obj.utilization_percent ||
+          obj.utilization ||
+          obj.use_percent ||
+          "",
+
         manager_name: managerName,
         manager_email: managerEmail,
         manager_region: managerRegion,
@@ -1372,6 +1661,12 @@ utilization_percent:
         install_base_release_status: "staged",
         install_base_released_at: "",
         install_base_released_to: "",
+        install_base_visible: false,
+        install_base_origin: true,
+        install_base_auto_released: false,
+        install_base_has_open_issue: false,
+        install_base_show_communication: false,
+        install_base_last_push_key: "",
 
         imported_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -1379,7 +1674,7 @@ utilization_percent:
         rep_last_action_at: "",
         rep_status: "new",
         rep_notes: "",
-
+        rep_visible: false,
         manager_visible: false,
         sla_days: 7
       };
@@ -1400,9 +1695,18 @@ utilization_percent:
           id: existing.id || newRec.id,
           key: existing.key || newRec.key,
 
-          install_base_release_status: existing.install_base_release_status || "staged",
+          install_base_release_status: existing.install_base_release_status || newRec.install_base_release_status || "staged",
           install_base_released_at: existing.install_base_released_at || "",
           install_base_released_to: existing.install_base_released_to || "",
+          install_base_visible: existing.install_base_visible || false,
+          install_base_origin: true,
+          install_base_auto_released: existing.install_base_auto_released || false,
+          install_base_has_open_issue: existing.install_base_has_open_issue || false,
+          install_base_show_communication: existing.install_base_show_communication || false,
+          install_base_last_push_key: existing.install_base_last_push_key || "",
+
+          rep_visible: existing.rep_visible || false,
+          manager_visible: existing.manager_visible || false,
 
           install_base_response_status: existing.install_base_response_status || "",
           install_base_response_note: existing.install_base_response_note || "",
@@ -1411,14 +1715,15 @@ utilization_percent:
           install_base_response_seen: existing.install_base_response_seen || false,
           install_base_response_seen_at: existing.install_base_response_seen_at || "",
 
-install_base_issue_field: newRec.install_base_issue_field || existing.install_base_issue_field || "",
-install_base_issue_type: newRec.install_base_issue_type || existing.install_base_issue_type || "",
-install_base_action_label: newRec.install_base_action_label || existing.install_base_action_label || "",
-install_base_action_reason: newRec.install_base_action_reason || existing.install_base_action_reason || "",
-rep_fix_required: newRec.rep_fix_required || existing.rep_fix_required || "",
-install_base_issue_note: newRec.install_base_issue_note || existing.install_base_issue_note || "",
-install_base_issue_reason: newRec.install_base_issue_reason || existing.install_base_issue_reason || "",
-utilization_percent: newRec.utilization_percent || existing.utilization_percent || "",
+          install_base_issue_field: newRec.install_base_issue_field || existing.install_base_issue_field || "",
+          install_base_issue_type: newRec.install_base_issue_type || existing.install_base_issue_type || "",
+          install_base_action_label: newRec.install_base_action_label || existing.install_base_action_label || "",
+          install_base_action_reason: newRec.install_base_action_reason || existing.install_base_action_reason || "",
+          rep_fix_required: newRec.rep_fix_required || existing.rep_fix_required || "",
+          install_base_issue_note: newRec.install_base_issue_note || existing.install_base_issue_note || "",
+          install_base_issue_reason: newRec.install_base_issue_reason || existing.install_base_issue_reason || "",
+          utilization_percent: newRec.utilization_percent || existing.utilization_percent || "",
+
           rep_action: existing.rep_action || "",
           rep_notes: existing.rep_notes || "",
           rep_status: existing.rep_status || "new",
@@ -1478,6 +1783,7 @@ utilization_percent: newRec.utilization_percent || existing.utilization_percent 
     }));
 
     mergeRepResponsesIntoRecords();
+    autoReleaseAssignedRepRecords();
 
     state.selectedOwner = "";
     state.selectedId = null;
@@ -1513,7 +1819,7 @@ function getOwnerGroups() {
 
     if (getDataExceptions(rec).length) groups[name].exceptions++;
 
-    if (String(rec.install_base_release_status || "").startsWith("released")) {
+    if (String(rec.install_base_release_status || "").startsWith("released") || rec.rep_visible === true) {
       groups[name].released++;
     }
 
@@ -1557,15 +1863,21 @@ function matchesSearch(rec) {
 function matchesFilter(rec) {
   const filter = state.filter;
   const exceptions = getDataExceptions(rec);
-  const released = String(rec.install_base_release_status || "").startsWith("released");
+  const status = String(rec.install_base_release_status || "");
+  const released = status.startsWith("released");
   const responseOpen = rec.install_base_response_at && !rec.install_base_response_seen;
+  const communicationOpen = needsInstallBaseCommunication(rec);
 
   if (!filter) return true;
   if (filter === "exception") return exceptions.length > 0;
-  if (filter === "ready") return exceptions.length === 0 && !released;
-  if (filter === "released") return released;
-  if (filter === "staged") return !released;
+  if (filter === "ready") return exceptions.length === 0 && !communicationOpen;
+  if (filter === "released") return released || rec.rep_visible === true || rec.manager_visible === true;
+  if (filter === "released_rep") return status === "released_to_rep" || rec.rep_visible === true;
+  if (filter === "rep_issue") return rec.rep_visible === true && communicationOpen;
+  if (filter === "released_manager") return rec.manager_visible === true || rec.install_base_manager_request === true;
+  if (filter === "staged") return !released && rec.rep_visible !== true && rec.manager_visible !== true;
   if (filter === "response") return responseOpen;
+
   return true;
 }
 
@@ -1611,7 +1923,7 @@ function renderOwnerGroups() {
       <div class="owner-meta">${escapeHtml(g.email || "No owner email")}</div>
       <div class="owner-meta">Reps: ${escapeHtml(g.reps.join(", "))}</div>
       <div class="packet-pill">
-        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released${g.responses ? ` • ${g.responses} Rep Response` : ""}
+        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Visible${g.responses ? ` • ${g.responses} Rep Response` : ""}
       </div>
     </div>
   `).join("") + `
@@ -1656,6 +1968,10 @@ function renderTable() {
     const responseA = a.install_base_response_at && !a.install_base_response_seen ? 1 : 0;
     const responseB = b.install_base_response_at && !b.install_base_response_seen ? 1 : 0;
     if (responseB !== responseA) return responseB - responseA;
+
+    const issueA = needsInstallBaseCommunication(a) ? 1 : 0;
+    const issueB = needsInstallBaseCommunication(b) ? 1 : 0;
+    if (issueB !== issueA) return issueB - issueA;
 
     const aa = getDataExceptions(a).length;
     const bb = getDataExceptions(b).length;
@@ -1733,6 +2049,28 @@ function renderRepResponseCard(rec) {
   `;
 }
 
+function renderInstallBaseIssueCard(rec) {
+  if (!needsInstallBaseCommunication(rec)) return "";
+
+  const issueLabel =
+    rec.install_base_action_label ||
+    rec.install_base_issue_type ||
+    getDataExceptions(rec).map(e => e.label).join(", ") ||
+    "Install Base Follow-Up";
+
+  const issueReason = getInstallBaseIssueReason(rec) || "Install Base requested clarification on this record.";
+
+  return `
+    <div class="detail-card issue-card">
+      <div class="k">Install Base Follow-Up / Clarification</div>
+      <div class="v">${escapeHtml(issueLabel)}</div>
+      <div class="mini" style="margin-top:8px;line-height:1.55;">
+        ${escapeHtml(issueReason)}
+      </div>
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -1754,8 +2092,9 @@ function renderDetail() {
 
   grid.innerHTML = `
     ${renderRepResponseCard(rec)}
+    ${renderInstallBaseIssueCard(rec)}
 
-       <div class="detail-card">
+    <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
       <div class="mini">${escapeHtml(rec.manager_email || "")}</div>
@@ -1804,6 +2143,7 @@ function renderDetail() {
     </div>
   `;
 }
+
 function showBanner(msg) {
   const banner = $("resultBanner");
   if (!banner) return;
@@ -1847,11 +2187,16 @@ function clearLocalData() {
 }
 
 function render() {
+  if (isRendering) return;
+  isRendering = true;
+
   mergeRepResponsesIntoRecords();
   renderStats();
   renderOwnerGroups();
   renderTable();
   renderDetail();
+
+  isRendering = false;
 }
 
 function init() {
@@ -1910,17 +2255,25 @@ function init() {
       e.key === INSTALL_BASE_KEY ||
       e.key === "axis_install_base_sync_ping_v1"
     ) {
+      try {
+        const raw = JSON.parse(localStorage.getItem(INSTALL_BASE_KEY) || "[]");
+        state.records = Array.isArray(raw) ? raw : state.records;
+      } catch {}
+
+      mergeRepResponsesIntoRecords();
       render();
     }
   });
 
   window.addEventListener("install_base_response_update", () => {
+    mergeRepResponsesIntoRecords();
     render();
   });
 
   setInterval(() => {
+    mergeRepResponsesIntoRecords();
     render();
-  }, 1800);
+  }, 2200);
 }
 
 document.addEventListener("DOMContentLoaded", init);
