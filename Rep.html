@@ -2351,25 +2351,26 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
     const age = ageFromDom(rec.dom);
 
     const fieldOrFix = (fieldName, normalHtml) => {
-      const badge = getFixDataBadge(rec, fieldName);
+  const badge = getFixDataBadge(rec, fieldName);
 
-      if (badge) {
-        return `
-          <div class="fix-data-cell">
-            ${badge}
-          </div>
-        `;
-      }
+  if (badge) {
+    return `
+      <div class="fix-data-cell">
+        ${badge}
+      </div>
+    `;
+  }
 
-      return normalHtml;
-    };
-
+  return renderCorrectedValue(rec, fieldName, normalHtml);
+};
     const projectHtml = escapeHtml(rec.oem_project_id || rec.asset_id || "");
 
     const equipmentHtml = `
-      <strong>${escapeHtml(rec.make || "")}</strong>
-      <div class="mini">${escapeHtml(rec.model || "")}</div>
-    `;
+  <strong>${renderCorrectedValue(rec, "make", escapeHtml(rec.make || ""))}</strong>
+  <div class="mini">${renderCorrectedValue(rec, "model", escapeHtml(rec.model || ""))}</div>
+`;
+
+const equipmentBadge = getFixDataBadge(rec, "equipment");
 
     const modalityHtml = escapeHtml(rec.modality || "");
 
@@ -2399,8 +2400,12 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
         </td>
 
         <td class="wrap">
-          ${fieldOrFix("equipment", equipmentHtml)}
-        </td>
+  ${
+    equipmentBadge
+      ? `<div class="fix-data-cell">${equipmentBadge}</div>`
+      : equipmentHtml
+  }
+</td>
 
         <td>
           ${fieldOrFix("modality", modalityHtml)}
@@ -3201,16 +3206,29 @@ function renderFieldOrFixData(rec, fieldName, valueHtml) {
   return valueHtml;
 }
 function getFixDataBadge(rec, fieldName) {
-  const fixed =
-    rec.install_base_correction_status === "corrected_by_rep" ||
-    rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed";
+  let show = false;
 
-  if (fixed) {
-    return `<span class="fixed-data-badge">Fixed Data</span>`;
+  if (fieldName === "project") {
+    show = !String(rec.oem_project_id || rec.asset_id || "").trim();
   }
 
-  let show = false;
+  if (fieldName === "equipment") {
+    show =
+      !String(rec.make || "").trim() ||
+      !String(rec.model || "").trim();
+  }
+
+  if (fieldName === "make") {
+    show = !String(rec.make || "").trim();
+  }
+
+  if (fieldName === "model") {
+    show = !String(rec.model || "").trim();
+  }
+
+  if (fieldName === "modality") {
+    show = !String(rec.modality || "").trim();
+  }
 
   if (fieldName === "serial") {
     show = !String(rec.serial_number || rec.serial || "").trim();
@@ -3221,13 +3239,18 @@ function getFixDataBadge(rec, fieldName) {
   }
 
   if (fieldName === "site") {
-    show =
-      !String(rec.site || "").trim() ||
-      String(rec.site || "").trim() === "Unknown Site";
-  }
+    const site = String(
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      ""
+    ).trim();
 
-  if (fieldName === "general") {
-    show = needsInstallBaseCommunication(rec);
+    show =
+      !site ||
+      site === "Unknown Site" ||
+      site === "Unknown Facility";
   }
 
   if (!show) return "";
@@ -3244,6 +3267,49 @@ function getFixDataBadge(rec, fieldName) {
     >
       Fix Data
     </button>
+  `;
+}
+function isInstallBaseFixedByRep(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed"
+  );
+}
+
+function wasRepFieldCorrected(rec, fieldName) {
+  if (!isInstallBaseFixedByRep(rec)) return false;
+  if (rec.install_base_fixed_seen_by_rep === true) return false;
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields || ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    equipment: ["equipment"],
+    make: ["make", "manufacturer"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"]
+  }[fieldName] || [fieldName];
+
+  return correctedFields.some(f => aliases.includes(f));
+}
+
+function renderCorrectedValue(rec, fieldName, normalHtml) {
+  if (!wasRepFieldCorrected(rec, fieldName)) return normalHtml;
+
+  return `
+    <div class="corrected-field-value">
+      ${normalHtml}
+    </div>
   `;
 }
 function openInstallBaseCommunication(id) {
