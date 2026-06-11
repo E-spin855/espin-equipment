@@ -1933,12 +1933,9 @@ function findSelectedRecord() {
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
 }
 function renderFixedDataCard(rec) {
-  const fixedByRep =
-    rec.install_base_correction_status === "corrected_by_rep" ||
-    rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed";
+  if (!isFixedByRep(rec)) return "";
 
-  if (!fixedByRep) return "";
+  const seen = rec.install_base_fixed_seen_by_install_base === true;
 
   const msg =
     rec.install_base_correction_note ||
@@ -1947,8 +1944,16 @@ function renderFixedDataCard(rec) {
     rec.rep_notes ||
     "Rep marked install-base data as fixed.";
 
+  const clickHandler = seen
+    ? ""
+    : `onclick="markInstallBaseCorrectedFieldsSeen(findSelectedRecord()); render();"`;
+
   return `
-    <div class="detail-card rep-response-card">
+    <div
+      class="detail-card ${seen ? "" : "rep-response-card"}"
+      ${clickHandler}
+      style="${seen ? "" : "cursor:pointer;"}"
+    >
       <div class="k">Install Base Data Fixed</div>
       <div class="v">Fixed by Rep</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
@@ -1959,8 +1964,13 @@ function renderFixedDataCard(rec) {
     </div>
   `;
 }
+
 function renderRepResponseCard(rec) {
   if (!rec.install_base_response_at) return "";
+
+  const seen =
+    rec.install_base_response_seen === true ||
+    rec.install_base_fixed_seen_by_install_base === true;
 
   const msg =
     rec.install_base_response_message ||
@@ -1972,8 +1982,16 @@ function renderRepResponseCard(rec) {
     rec.rep_notes ||
     "No message entered.";
 
+  const clickHandler = seen
+    ? ""
+    : `onclick="markInstallBaseCorrectedFieldsSeen(findSelectedRecord()); markRepResponseSeen(findSelectedRecord()); render();"`;
+
   return `
-    <div class="detail-card rep-response-card">
+    <div
+      class="detail-card ${seen ? "" : "rep-response-card"}"
+      ${clickHandler}
+      style="${seen ? "" : "cursor:pointer;"}"
+    >
       <div class="k">Rep Response from Review Page</div>
       <div class="v">${escapeHtml(rec.install_base_response_status || "Response sent")}</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
@@ -1984,7 +2002,6 @@ function renderRepResponseCard(rec) {
     </div>
   `;
 }
-
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
