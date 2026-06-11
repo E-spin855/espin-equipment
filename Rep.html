@@ -1335,6 +1335,34 @@ function escapeJs(v) {
     .replace(/\\/g, "\\\\")
     .replace(/'/g, "\\'");
 }
+function getRecordKey(rec) {
+  if (!rec) return "";
+
+  if (rec.key) return String(rec.key);
+
+  const project = clean(rec.oem_project_id || rec.project_id || "");
+  const asset = clean(rec.asset_id || rec.equipment_id || "");
+  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const make = clean(rec.make || rec.manufacturer || "");
+  const model = clean(rec.model || "");
+  const site = clean(rec.site || rec.facility || rec.hospital || rec.hospital_name || "");
+  const dom = clean(rec.dom || rec.year || rec.manufacture_year || "");
+
+  if (project || asset || serial || make || model || site) {
+    return [
+      "installbase",
+      project || "no_project",
+      asset || "no_asset",
+      serial || "no_serial",
+      make || "no_make",
+      model || "no_model",
+      site || "no_site",
+      dom || "no_dom"
+    ].join("|").toLowerCase();
+  }
+
+  return String(rec.id || uuid());
+}
     function normalizeKey(k) {
       return String(k || "")
         .trim()
