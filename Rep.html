@@ -2849,6 +2849,77 @@ if (!rec.utilization_percent) issues.push({ key:"utilization_percent", label:"Ut
 
   return issues;
 }
+function syncInstallBaseFixToManager(updated) {
+  if (!updated) return;
+
+  const now = new Date().toISOString();
+
+  const packet = {
+    ...updated,
+
+    key:
+      updated.key ||
+      getRecordKey(updated),
+
+    manager_visible: true,
+    release_destination: "manager",
+
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+
+    manager_flash_at: now,
+    manager_flash_type: "rep_update",
+    manager_flash_text: "Rep corrected install-base data",
+
+    install_base_manager_request: false,
+
+    source: updated.source || "Rep Review Page",
+    hub_source: updated.hub_source || "Rep Review Page",
+
+    rep_action: "install_base_data_fixed",
+    rep_action_label: "Updated",
+    rep_status: "install_base_data_fixed"
+  };
+
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) {
+      managerQueue = {};
+    }
+  } catch {
+    managerQueue = {};
+  }
+
+  const bucketName =
+    packet.manager_name ||
+    packet.owner_group_name ||
+    MANAGER_NAME ||
+    "Default Manager";
+
+  const list = Array.isArray(managerQueue[bucketName])
+    ? managerQueue[bucketName]
+    : [];
+
+  const cleaned = list.filter(item => {
+    const sameId = String(item.id || "") === String(packet.id || "");
+    const sameKey = packet.key && String(item.key || "") === String(packet.key);
+    const sameProjectSerial =
+      String(item.oem_project_id || item.project_id || "") === String(packet.oem_project_id || packet.project_id || "") &&
+      String(item.serial_number || item.serial || "") === String(packet.serial_number || packet.serial || "");
+
+    return !(sameId || sameKey || sameProjectSerial);
+  });
+
+  cleaned.unshift(packet);
+
+  managerQueue[bucketName] = cleaned;
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+}
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
