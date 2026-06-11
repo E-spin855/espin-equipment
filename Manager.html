@@ -1865,11 +1865,49 @@ function getManagerInstallBaseIssueFields(rec) {
 
   return fields;
 }
+function isManagerInstallBaseRequest(rec) {
+  if (!rec) return false;
+
+  const releasedToManager =
+    rec.install_base_released_to === "manager" ||
+    rec.release_destination === "manager" ||
+    rec.manager_visible === true ||
+    rec.manager_flash_type === "install_base_release";
+
+  const fromInstallBase =
+    rec.hub_source === "AXIS Install Base Workspace" ||
+    rec.source === "AXIS Install Base Workspace" ||
+    rec.source_system === "AXIS Install Base Workspace";
+
+  const hasInstallBaseIssue =
+    rec.install_base_issue_field ||
+    rec.install_base_issue_type ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_label ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.rep_fix_required ||
+    rec.source_conflict === "yes" ||
+    rec.conflict_notes;
+
+  const alreadyResolved =
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_response_status === "manager_unable_to_verify" ||
+    rec.install_base_correction_status === "corrected_by_manager";
+
+  return Boolean(
+    releasedToManager &&
+    fromInstallBase &&
+    hasInstallBaseIssue &&
+    !alreadyResolved
+  );
+}
 function renderManagerInstallBaseCorrectionPanel(rec) {
+  if (!isManagerInstallBaseRequest(rec)) return "";
+
   const issues = getManagerInstallBaseIssueFields(rec);
 
   if (!issues.length && !rec.install_base_action_label && !rec.rep_fix_required) return "";
-
   return `
     <div class="detail-card full update-detail-card">
       <div class="k">Manager Response to Install Base</div>
@@ -2092,19 +2130,24 @@ grid.innerHTML = `
   <div class="k">OEM Display Tag</div>
   <div class="v">${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "None"))}</div>
 </div>
-<div class="${hasOpenInstallBaseRequest ? "detail-card full install-base-request-alert" : "detail-card full"}">
-  <div class="k">Install Base Action Needed</div>
-  <div class="v">${escapeHtml(getInstallBaseRequestText(rec))}</div>
-  <div class="mini" style="margin-top:8px;line-height:1.45;">
-    Request: ${escapeHtml(getInstallBaseRequestText(rec))}<br>
-    Reason: ${escapeHtml(rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || "-")}<br>
-    Source System: ${escapeHtml(rec.source_system || rec.source || "-")}<br>
-    Source Conflict: ${escapeHtml(rec.source_conflict || "-")}<br>
-    Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
-  </div>
-</div>
-${renderManagerInstallBaseCorrectionPanel(rec)}
-
+${
+  isManagerInstallBaseRequest(rec)
+    ? `
+      <div class="${hasOpenInstallBaseRequest ? "detail-card full install-base-request-alert" : "detail-card full"}">
+        <div class="k">Install Base Action Needed</div>
+        <div class="v">${escapeHtml(getInstallBaseRequestText(rec))}</div>
+        <div class="mini" style="margin-top:8px;line-height:1.45;">
+          Request: ${escapeHtml(getInstallBaseRequestText(rec))}<br>
+          Reason: ${escapeHtml(rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || "-")}<br>
+          Source System: ${escapeHtml(rec.source_system || rec.source || "-")}<br>
+          Source Conflict: ${escapeHtml(rec.source_conflict || "-")}<br>
+          Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
+        </div>
+      </div>
+      ${renderManagerInstallBaseCorrectionPanel(rec)}
+    `
+    : ""
+}
 <div class="detail-card full">
   <div class="k">OEM-Provided Context</div>
   <div class="v">${escapeHtml(rec.oem_review_reason || rec.review_reason || rec.proactive_reason || "No additional OEM context entered.")}</div>
