@@ -1057,45 +1057,55 @@ function mergeRecordsByKey(...groups) {
 
     const existing = map.get(key) || {};
 
-    const incomingIsManagerResponse = rec.manager_flash_type === "manager_response";
+    const incomingReleaseId = rec.manager_release_id || "";
+    const existingReleaseId = existing.manager_release_id || "";
 
-    const incomingWasAcknowledged =
-      rec.manager_unseen_update === false &&
-      !!rec.manager_update_seen_at;
+    const incomingSeenReleaseId = rec.manager_seen_release_id || "";
+    const existingSeenReleaseId = existing.manager_seen_release_id || "";
 
-    const existingWasAcknowledged =
-      existing.manager_unseen_update === false &&
-      !!existing.manager_update_seen_at;
+    const isNewRelease =
+      incomingReleaseId &&
+      incomingReleaseId !== existingReleaseId;
 
-    const updateSeenAt =
-      rec.manager_update_seen_at ||
-      existing.manager_update_seen_at ||
+    const finalReleaseId =
+      incomingReleaseId ||
+      existingReleaseId ||
       "";
 
-    let shouldFlash = false;
+    const finalSeenReleaseId =
+      isNewRelease
+        ? incomingSeenReleaseId || ""
+        : incomingSeenReleaseId || existingSeenReleaseId || "";
 
-    if (incomingIsManagerResponse) {
-      shouldFlash = false;
-    } else if (incomingWasAcknowledged || existingWasAcknowledged) {
-      shouldFlash = false;
-    } else if (rec.manager_unseen_update === true || existing.manager_unseen_update === true) {
-      shouldFlash = true;
-    }
-
-    const preservedFlashType =
+    const finalFlashType =
       rec.manager_flash_type ||
       existing.manager_flash_type ||
       "";
 
-    const preservedFlashText =
+    const finalFlashText =
       rec.manager_flash_text ||
       existing.manager_flash_text ||
       "";
 
-    const preservedFlashAt =
+    const finalFlashAt =
       rec.manager_flash_at ||
       existing.manager_flash_at ||
       "";
+
+    const releaseIsUnseen =
+      finalReleaseId &&
+      finalReleaseId !== finalSeenReleaseId &&
+      finalFlashType !== "manager_response";
+
+    const legacyUnseen =
+      !finalReleaseId &&
+      (
+        rec.manager_unseen_update === true ||
+        existing.manager_unseen_update === true
+      ) &&
+      finalFlashType !== "manager_response";
+
+    const shouldFlash = releaseIsUnseen || legacyUnseen;
 
     map.set(key, {
       ...existing,
@@ -1115,12 +1125,24 @@ function mergeRecordsByKey(...groups) {
             existing.manager_response_seen_by_rep ??
             true,
 
-      manager_unseen_update: shouldFlash,
-      manager_update_seen_at: updateSeenAt,
+      manager_release_id: finalReleaseId,
+      manager_seen_release_id: finalSeenReleaseId,
 
-      manager_flash_at: preservedFlashAt,
-      manager_flash_type: preservedFlashType,
-      manager_flash_text: preservedFlashText,
+      manager_unseen_update: shouldFlash,
+
+      manager_alert_seen:
+        shouldFlash
+          ? false
+          : rec.manager_alert_seen ?? existing.manager_alert_seen ?? false,
+
+      manager_update_seen_at:
+        shouldFlash
+          ? ""
+          : rec.manager_update_seen_at || existing.manager_update_seen_at || "",
+
+      manager_flash_at: finalFlashAt,
+      manager_flash_type: finalFlashType,
+      manager_flash_text: finalFlashText,
 
       install_base_manager_request:
         rec.install_base_manager_request === true ||
@@ -1136,7 +1158,6 @@ function mergeRecordsByKey(...groups) {
 
   return Array.from(map.values());
 }
-
 function getRepName(rec) {
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
@@ -1581,7 +1602,7 @@ function renderRepStatus(rec) {
 function getDisplayOrderWeight(rec) {
   if (!rec) return 0;
 
-  if (rec.manager_unseen_update && rec.manager_flash_type !== "manager_response") return 60;
+  if (hasUnseenManagerRelease(rec)) return 60;
   if (hasFollowUpOverdueBy7Days(rec)) return 55;
   if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 45;
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) return 40;
