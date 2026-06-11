@@ -1972,6 +1972,19 @@ function sendManagerUnableToVerify(id) {
   alert("Unable-to-verify note sent back to Install Base.");
   render();
 }
+function getInstallBaseRequestText(rec) {
+  return (
+    rec.install_base_action_label ||
+    rec.rep_fix_required ||
+    rec.install_base_issue_type ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    "No install-base action requested"
+  );
+}
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -2066,11 +2079,12 @@ grid.innerHTML = `
   <div class="k">OEM Display Tag</div>
   <div class="v">${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "None"))}</div>
 </div>
-<div class="${hubUpdateCardClass}">
+<div class="${hasOpenManagerUpdate ? "detail-card update-detail-card full" : "detail-card full"}">
   <div class="k">Install Base Action Needed</div>
-  <div class="v">${escapeHtml(rec.install_base_action_label || rec.rep_fix_required || rec.install_base_issue_type || "No install-base action requested")}</div>
+  <div class="v">${escapeHtml(getInstallBaseRequestText(rec))}</div>
   <div class="mini" style="margin-top:8px;line-height:1.45;">
-    Reason: ${escapeHtml(rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || rec.oem_review_reason || rec.review_reason || "-")}<br>
+    Request: ${escapeHtml(getInstallBaseRequestText(rec))}<br>
+    Reason: ${escapeHtml(rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || "-")}<br>
     Source System: ${escapeHtml(rec.source_system || rec.source || "-")}<br>
     Source Conflict: ${escapeHtml(rec.source_conflict || "-")}<br>
     Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
