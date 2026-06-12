@@ -1803,6 +1803,118 @@ function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
     </span>
   `;
 }
+function renderManagerFixOrValue(rec, fieldName, normalHtml) {
+  const textValue = String(normalHtml || "").replace(/<[^>]*>/g, "").trim();
+
+  if (wasManagerFieldCorrected(rec, fieldName)) {
+    return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
+  }
+
+  if (!textValue || textValue === "-") {
+    const labelMap = {
+      project: "Fix Project ID",
+      make: "Fix Make",
+      model: "Fix Model",
+      modality: "Fix Modality",
+      serial: "Fix Serial",
+      dom: "Fix DOM",
+      age: "Fix DOM",
+      facility: "Fix Facility"
+    };
+
+    return `
+      <span class="alert-badge alert-none">
+        ${escapeHtml(labelMap[fieldName] || "Fix Data")}
+      </span>
+    `;
+  }
+
+  return normalHtml;
+}
+function isManagerRecordFixed(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+
+    rec.install_base_correction_status === "corrected_by_manager" ||
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_fix_status === "manager_reviewed"
+  );
+}
+
+function managerCorrectedFieldsList(rec) {
+  return String(rec.install_base_corrected_fields || "")
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+}
+
+function wasManagerFieldCorrected(rec, fieldName) {
+  if (!isManagerRecordFixed(rec)) return false;
+
+  const fixedFields = managerCorrectedFieldsList(rec);
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    age: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name"]
+  }[fieldName] || [fieldName];
+
+  return fixedFields.some(f => aliases.includes(f));
+}
+
+function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
+  if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
+
+  return `
+    <span class="manager-corrected-value">
+      ${normalHtml}
+    </span>
+  `;
+}
+
+function getManagerMissingFieldLabel(rec, fieldName) {
+  const labels = {
+    serial: "Fix Serial",
+    dom: "Fix DOM",
+    age: "Fix DOM",
+    site: "Fix Site",
+    owner: "Fix Owner Group",
+    rep: "Fix Rep Owner",
+    make: "Fix Make",
+    model: "Fix Model",
+    modality: "Fix Modality"
+  };
+
+  return labels[fieldName] || "Fix Data";
+}
+
+function renderManagerFixOrValue(rec, fieldName, valueHtml) {
+  const rawValue = String(valueHtml || "").replace(/<[^>]*>/g, "").trim();
+
+  if (wasManagerFieldCorrected(rec, fieldName)) {
+    return renderManagerCorrectedValue(rec, fieldName, valueHtml);
+  }
+
+  if (!rawValue || rawValue === "-") {
+    return `
+      <span class="alert-badge alert-none">
+        ${escapeHtml(getManagerMissingFieldLabel(rec, fieldName))}
+      </span>
+    `;
+  }
+
+  return valueHtml;
+}
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -1846,15 +1958,8 @@ function renderTable() {
     return `
       <tr class="${selectedClass}" data-id="${escapeHtml(id)}" style="cursor:pointer;">
         <td>
-          ${renderManagerCorrectedValue(
-            rec,
-            "project",
-            escapeHtml(rec.oem_project_id || rec.project_id || "")
-          )}
-        </td>
-
-        <td>
-          ${renderManagerCorrectedValue(
+                  <td>
+          ${renderManagerFixOrValue(
             rec,
             "make",
             escapeHtml(rec.make || "")
@@ -1862,15 +1967,13 @@ function renderTable() {
         </td>
 
         <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
             "model",
             escapeHtml(rec.model || "")
           )}
         </td>
-
-        <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
             "modality",
             escapeHtml(rec.modality || "")
@@ -1878,7 +1981,7 @@ function renderTable() {
         </td>
 
         <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
             "serial",
             escapeHtml(rec.serial_number || rec.serial || "")
@@ -1886,7 +1989,7 @@ function renderTable() {
         </td>
 
         <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
             "dom",
             escapeHtml(rec.dom || "")
@@ -1894,20 +1997,20 @@ function renderTable() {
         </td>
 
         <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
-            "dom",
-            escapeHtml(ageFromDom(rec.dom) ?? "-")
+            "age",
+            escapeHtml(ageFromDom(rec.dom) || "")
           )}
         </td>
 
         <td>${tradeRef ? escapeHtml(money(tradeRef)) : "-"}</td>
 
         <td>
-          ${renderManagerCorrectedValue(
+          ${renderManagerFixOrValue(
             rec,
             "site",
-            escapeHtml(getFacility(rec))
+            escapeHtml(getFacility(rec) || "")
           )}
         </td>
 
