@@ -1133,16 +1133,16 @@ function mergeRecordsByKey(...groups) {
 
       manager_unseen_update: shouldFlash,
 
-      manager_alert_seen:
-        shouldFlash
-          ? false
-          : rec.manager_alert_seen ?? existing.manager_alert_seen ?? false,
+     manager_alert_seen:
+  existing.manager_alert_seen === true ||
+  rec.manager_alert_seen === true,
 
-      manager_update_seen_at:
-        shouldFlash
-          ? ""
-          : rec.manager_update_seen_at || existing.manager_update_seen_at || "",
-
+manager_update_seen_at:
+  existing.manager_alert_seen === true || rec.manager_alert_seen === true
+    ? rec.manager_update_seen_at || existing.manager_update_seen_at || ""
+    : shouldFlash
+      ? ""
+      : rec.manager_update_seen_at || existing.manager_update_seen_at || "",
       manager_flash_at: finalFlashAt,
       manager_flash_type: finalFlashType,
       manager_flash_text: finalFlashText,
@@ -2532,28 +2532,52 @@ function selectRow(id) {
     return;
   }
 
+  const now = new Date().toISOString();
+
   const updated = {
     ...rec,
     id: rec.id || selectedId,
     key: getRecordKey(rec),
 
-   quote_seen: true,
-manager_alert_seen: true,
+    quote_seen: true,
 
-manager_unseen_update: false,
-manager_update_seen_at: new Date().toISOString(),
+    manager_alert_seen: true,
+    manager_unseen_update: false,
+    manager_update_seen_at: now,
 
-manager_release_id: rec.manager_release_id || "",
-manager_seen_release_id: rec.manager_release_id || rec.manager_seen_release_id || "",
+    manager_release_id: rec.manager_release_id || "",
+    manager_seen_release_id: rec.manager_release_id || rec.manager_seen_release_id || "",
 
-manager_flash_at: "",
-manager_flash_type: "",
-manager_flash_text: "",
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: "",
 
-install_base_manager_request: rec.install_base_manager_request === true
+    install_base_manager_request: rec.install_base_manager_request === true
   };
 
+  // Update main storage + manager queue
   syncRecordEverywhere(updated);
+
+  // Important: also update the install-base response queue.
+  // Otherwise Manager keeps re-reading the old unseen rep-fix record.
+  let responseQueue = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
+
+  responseQueue = responseQueue.map(item =>
+    sameRecord(item, updated)
+      ? {
+          ...item,
+          manager_alert_seen: true,
+          manager_unseen_update: false,
+          manager_update_seen_at: now,
+          manager_flash_at: "",
+          manager_flash_type: "",
+          manager_flash_text: ""
+        }
+      : item
+  );
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
 
   state.selectedId = updated.id;
 
@@ -2562,7 +2586,6 @@ install_base_manager_request: rec.install_base_manager_request === true
   renderTable();
   renderDetail();
 }
-
 function closeSelectedRecord() {
   const rec = findSelectedRecord();
 
