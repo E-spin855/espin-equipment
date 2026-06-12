@@ -3498,6 +3498,744 @@ function closeSelectedRecord() {
   render();
 }
 
+
+/* =========================================================
+   FINAL MANAGER REP-FIX GREEN UPDATE BEHAVIOR
+   Goal:
+   - Rep sends Fix Data to Install Base.
+   - Manager receives same rep-fix update.
+   - Manager row, corrected fields, and detail update card show green.
+   - Clicking/opening the row marks only that specific correction revision seen.
+   - Old main-storage manager_alert_seen=true does NOT suppress a newer rep fix.
+   ========================================================= */
+
+(function installManagerRepFixGreenStyle(){
+  if (document.getElementById("managerRepFixGreenStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "managerRepFixGreenStyle";
+  style.textContent = `
+    .detail-card.update-detail-card{
+      border:2px solid rgba(65,255,156,.95)!important;
+      background:
+        radial-gradient(circle at top left, rgba(65,255,156,.24), transparent 34%),
+        linear-gradient(180deg,rgba(0,229,255,.12),rgba(8,18,35,.88))!important;
+      box-shadow:
+        0 0 0 1px rgba(65,255,156,.25),
+        0 0 24px rgba(65,255,156,.30),
+        0 0 38px rgba(0,229,255,.16)!important;
+    }
+
+    .detail-card.update-detail-card .k{
+      color:#d8ffe9!important;
+    }
+
+    .detail-card.update-detail-card .v{
+      color:#ffffff!important;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+function managerTokenClean(v) {
+  return String(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function getManagerRecordBaseTokens(rec) {
+  if (!rec) return [];
+
+  const tokens = [];
+  const add = (prefix, value) => {
+    const cleaned = managerTokenClean(value);
+    if (!cleaned) return;
+    const token = `${prefix}:${cleaned}`;
+    if (!tokens.includes(token)) tokens.push(token);
+  };
+
+  const project = rec.oem_project_id || rec.project_id || rec.asset_id || "";
+  const serial = rec.serial_number || rec.serial || "";
+  const make = rec.make || "";
+  const model = rec.model || "";
+  const site = rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || "";
+
+  add("id", rec.id);
+  add("key", rec.key);
+  add("project_serial", `${project}|${serial}`);
+  add("asset_serial", `${rec.asset_id || ""}|${serial}`);
+  add("serial", serial);
+  add("equipment_site", `${make}|${model}|${site}`);
+  add("computed", getRecordKey({ ...rec, key: "" }));
+
+  return tokens;
+}
+
+function getManagerRepFixRevision(rec) {
+  if (!rec) return "";
+
+  return managerTokenClean(
+    rec.install_base_response_id ||
+    rec.install_base_correction_id ||
+    rec.install_base_response_at ||
+    rec.install_base_correction_at ||
+    rec.install_base_fixed_at ||
+    rec.rep_last_action_at ||
+    rec.manager_flash_at ||
+    [
+      rec.install_base_response_status,
+      rec.install_base_correction_status,
+      rec.install_base_fix_status,
+      rec.install_base_corrected_fields,
+      rec.corrected_fields,
+      rec.install_base_response_note
+    ].filter(Boolean).join("|") ||
+    "rep-fix-current"
+  );
+}
+
+function getManagerSeenFixTokens(rec) {
+  const rev = getManagerRepFixRevision(rec);
+  return getManagerRecordBaseTokens(rec).map(token => `${token}::rev::${rev}`);
+}
+
+function readManagerSeenFixKeys() {
+  try {
+    const data = JSON.parse(localStorage.getItem(MANAGER_SEEN_FIX_KEY) || "[]");
+    return Array.isArray(data) ? data.map(managerTokenClean).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeManagerSeenFixKeys(list) {
+  const cleanList = Array.from(new Set(
+    (Array.isArray(list) ? list : [])
+      .map(managerTokenClean)
+      .filter(Boolean)
+  ));
+
+  localStorage.setItem(MANAGER_SEEN_FIX_KEY, JSON.stringify(cleanList));
+}
+
+function markManagerFixSeen(rec) {
+  if (!isRepInstallBaseFix(rec)) return;
+
+  const existing = readManagerSeenFixKeys();
+  const tokens = getManagerSeenFixTokens(rec);
+
+  tokens.forEach(token => {
+    const cleaned = managerTokenClean(token);
+    if (cleaned && !existing.includes(cleaned)) existing.push(cleaned);
+  });
+
+  writeManagerSeenFixKeys(existing);
+}
+
+function hasManagerSeenFix(rec) {
+  if (!isRepInstallBaseFix(rec)) return false;
+
+  const existing = readManagerSeenFixKeys();
+  const tokens = getManagerSeenFixTokens(rec).map(managerTokenClean);
+
+  return tokens.some(token => existing.includes(token));
+}
+
+function managerSameBaseRecord(a, b) {
+  const aTokens = getManagerRecordBaseTokens(a).map(managerTokenClean);
+  const bTokens = getManagerRecordBaseTokens(b).map(managerTokenClean);
+
+  return aTokens.some(token => bTokens.includes(token));
+}
+
+function managerSameRepFixRevision(a, b) {
+  return getManagerRepFixRevision(a) === getManagerRepFixRevision(b);
+}
+
+function managerSameRepFix(a, b) {
+  return (
+    managerSameBaseRecord(a, b) &&
+    managerSameRepFixRevision(a, b)
+  );
+}
+
+function applyManagerSeenFlags(item, now) {
+  return {
+    ...item,
+    manager_alert_seen: true,
+    manager_unseen_update: false,
+    manager_update_seen_at: item.manager_update_seen_at || now,
+    manager_seen_release_id: item.manager_release_id || item.manager_seen_release_id || "",
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: ""
+  };
+}
+
+function markManagerFixSeenEverywhere(rec, now) {
+  if (isRepInstallBaseFix(rec)) markManagerFixSeen(rec);
+
+  const touchList = (list) => list.map(item => {
+    if (!item || typeof item !== "object") return item;
+
+    const same =
+      sameRecord(item, rec) ||
+      (
+        isRepInstallBaseFix(item) &&
+        isRepInstallBaseFix(rec) &&
+        managerSameRepFix(item, rec)
+      );
+
+    return same ? applyManagerSeenFlags(item, now) : item;
+  });
+
+  const main = touchList(readArrayKey(STORAGE_KEY));
+  writeArrayKey(STORAGE_KEY, main);
+
+  const responseQueue = touchList(readArrayKey(INSTALL_BASE_RESPONSE_KEY));
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
+  let managerQueueData = {};
+  try {
+    managerQueueData = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+  } catch {
+    managerQueueData = {};
+  }
+
+  if (Array.isArray(managerQueueData)) {
+    managerQueueData = touchList(managerQueueData);
+  } else if (managerQueueData && typeof managerQueueData === "object") {
+    Object.keys(managerQueueData).forEach(bucket => {
+      if (Array.isArray(managerQueueData[bucket])) {
+        managerQueueData[bucket] = touchList(managerQueueData[bucket]);
+      }
+    });
+  }
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueueData));
+}
+
+function isManagerRepFixUnseen(rec) {
+  return Boolean(
+    isRepInstallBaseFix(rec) &&
+    rec.manager_alert_seen !== true &&
+    !hasManagerSeenFix(rec)
+  );
+}
+
+function mergeRecordsByKey(...groups) {
+  const map = new Map();
+
+  groups.flat().forEach(rec => {
+    if (!rec || typeof rec !== "object") return;
+
+    const key = getRecordKey(rec);
+    if (!key) return;
+
+    const existing = map.get(key) || {};
+
+    const incomingReleaseId = rec.manager_release_id || "";
+    const existingReleaseId = existing.manager_release_id || "";
+
+    const incomingSeenReleaseId = rec.manager_seen_release_id || "";
+    const existingSeenReleaseId = existing.manager_seen_release_id || "";
+
+    const isNewRelease =
+      incomingReleaseId &&
+      incomingReleaseId !== existingReleaseId;
+
+    const finalReleaseId =
+      incomingReleaseId ||
+      existingReleaseId ||
+      "";
+
+    const finalSeenReleaseId =
+      isNewRelease
+        ? incomingSeenReleaseId || ""
+        : incomingSeenReleaseId || existingSeenReleaseId || "";
+
+    const repFixRecord =
+      isRepInstallBaseFix(rec) ||
+      isRepInstallBaseFix(existing);
+
+    /*
+      Critical difference:
+      For rep-fix updates, do NOT let an old manager_alert_seen=true
+      from main storage suppress a newer correction revision.
+      Only the revision-token seen list or the incoming queue item itself
+      can mark this exact correction seen.
+    */
+    const repFixSeen =
+      repFixRecord &&
+      (
+        hasManagerSeenFix(rec) ||
+        hasManagerSeenFix(existing) ||
+        (
+          isRepInstallBaseFix(rec) &&
+          rec.manager_alert_seen === true
+        )
+      );
+
+    const finalFlashType =
+      repFixSeen
+        ? ""
+        : rec.manager_flash_type || existing.manager_flash_type || "";
+
+    const finalFlashText =
+      repFixSeen
+        ? ""
+        : rec.manager_flash_text || existing.manager_flash_text || "";
+
+    const finalFlashAt =
+      repFixSeen
+        ? ""
+        : rec.manager_flash_at || existing.manager_flash_at || "";
+
+    const releaseIsUnseen =
+      !repFixSeen &&
+      finalReleaseId &&
+      finalReleaseId !== finalSeenReleaseId &&
+      finalFlashType !== "manager_response";
+
+    const legacyUnseen =
+      !repFixSeen &&
+      !finalReleaseId &&
+      (
+        rec.manager_unseen_update === true ||
+        existing.manager_unseen_update === true
+      ) &&
+      finalFlashType !== "manager_response";
+
+    const repFixUnseen =
+      repFixRecord &&
+      !repFixSeen &&
+      (
+        rec.manager_unseen_update === true ||
+        rec.manager_flash_type === "rep_update" ||
+        rec.install_base_response_status === "rep_correction_sent" ||
+        rec.install_base_correction_status === "corrected_by_rep" ||
+        rec.install_base_fix_status === "rep_reviewed"
+      );
+
+    const shouldFlash = releaseIsUnseen || legacyUnseen || repFixUnseen;
+
+    const normalSeen =
+      existing.manager_alert_seen === true ||
+      rec.manager_alert_seen === true;
+
+    map.set(key, {
+      ...existing,
+      ...rec,
+      key,
+
+      quote_seen:
+        existing.quote_seen === true ||
+        rec.quote_seen === true,
+
+      manager_response_seen_by_rep:
+        rec.manager_response_seen_by_rep === false
+          ? false
+          : existing.manager_response_seen_by_rep === false
+          ? false
+          : rec.manager_response_seen_by_rep ??
+            existing.manager_response_seen_by_rep ??
+            true,
+
+      manager_release_id: finalReleaseId,
+
+      manager_seen_release_id:
+        repFixSeen
+          ? finalReleaseId || finalSeenReleaseId
+          : finalSeenReleaseId,
+
+      manager_alert_seen:
+        repFixRecord
+          ? repFixSeen
+          : normalSeen,
+
+      manager_unseen_update: shouldFlash,
+
+      manager_update_seen_at:
+        repFixSeen || (!repFixRecord && normalSeen)
+          ? rec.manager_update_seen_at || existing.manager_update_seen_at || ""
+          : shouldFlash
+          ? ""
+          : rec.manager_update_seen_at || existing.manager_update_seen_at || "",
+
+      manager_flash_at: finalFlashAt,
+      manager_flash_type:
+        repFixUnseen
+          ? "rep_update"
+          : finalFlashType,
+      manager_flash_text:
+        repFixUnseen
+          ? "Rep corrected install-base data"
+          : finalFlashText,
+
+      install_base_manager_request:
+        rec.install_base_manager_request === true ||
+        existing.install_base_manager_request === true ||
+        rec.install_base_release_status === "released_to_manager" ||
+        rec.install_base_released_to === "manager" ||
+        rec.release_destination === "manager" ||
+        existing.install_base_release_status === "released_to_manager" ||
+        existing.install_base_released_to === "manager" ||
+        existing.release_destination === "manager"
+    });
+  });
+
+  return Array.from(map.values());
+}
+
+function hasUnseenManagerRelease(rec) {
+  if (!rec) return false;
+  if (rec.manager_flash_type === "manager_response") return false;
+  if (isRepInstallBaseFix(rec)) return isManagerRepFixUnseen(rec);
+
+  if (rec.manager_release_id) {
+    return String(rec.manager_release_id || "") !== String(rec.manager_seen_release_id || "");
+  }
+
+  return rec.manager_unseen_update === true;
+}
+
+function shouldManagerRowFlash(rec) {
+  if (!rec) return false;
+  if (String(rec.id) === String(state.selectedId)) return false;
+
+  return Boolean(
+    hasUnseenManagerRelease(rec) ||
+    isManagerRepFixUnseen(rec) ||
+    hasFollowUpOverdueBy7Days(rec) ||
+    (rec.tradein_sync_received && !rec.tradein_seen_by_rep) ||
+    (rec.quote_amount && !rec.quote_seen)
+  );
+}
+
+function wasManagerFieldCorrected(rec, fieldName) {
+  if (!isManagerRepFixUnseen(rec)) return false;
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"]
+  }[fieldName] || [fieldName];
+
+  return correctedFields.some(f => aliases.includes(f));
+}
+
+function renderReviewCondition(rec) {
+  if (rec.lifecycle_completed || rec.rep_status === "completed") {
+    return `<span class="alert-badge alert-completed">Done</span>`;
+  }
+
+  if (hasUnseenManagerRelease(rec) || isManagerRepFixUnseen(rec)) {
+    return `<span class="alert-badge manager-flash-pill">New</span>`;
+  }
+
+  if (hasFollowUpOverdueBy7Days(rec)) {
+    return `<span class="alert-badge alert-disposal">Overdue</span>`;
+  }
+
+  const alerts = getAlerts(rec);
+  const first = alerts[0];
+  const type = lower(first?.type || rec.oem_review_type || rec.review_type || rec.alert_override || "");
+
+  if (type === "tradein" || type === "trade_in") {
+    return `<span class="alert-badge alert-proactive">Review</span>`;
+  }
+
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+    return `<span class="alert-badge alert-proactive">Review</span>`;
+  }
+
+  if (rec.quote_amount) {
+    const status = String(rec.quote_status || "draft").toLowerCase();
+
+    if (status === "sent") return `<span class="pill pending">Sent</span>`;
+    if (status === "won") return `<span class="pill submitted">Won</span>`;
+    if (status === "lost") return `<span class="pill postponed">Lost</span>`;
+    if (status === "submitted_for_approval") return `<span class="pill pending">Review</span>`;
+    if (status === "approved_for_customer_release") return `<span class="pill submitted">Approved</span>`;
+    if (status === "revision_needed") return `<span class="pill pending">Revise</span>`;
+    if (status === "rejected") return `<span class="pill postponed">Rejected</span>`;
+
+    return `<span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">Draft</span>`;
+  }
+
+  if (!alerts.length) {
+    return `<span class="alert-badge alert-none">Normal</span>`;
+  }
+
+  let cls = "alert-badge alert-planning";
+  let shortText = first.displayType || "Review";
+
+  if (type === "service") {
+    cls = "alert-badge alert-service";
+    shortText = "Service";
+  } else if (type === "upgrade") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Upgrade";
+  } else if (type === "utilization") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Use";
+  } else if (type === "replacement") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Replace";
+  } else if (type === "lifecycle") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Age";
+  } else if (type === "disposal" || type === "disposition") {
+    cls = "alert-badge alert-disposal";
+    shortText = "Dispose";
+  } else if (type === "postponed") {
+    cls = "alert-badge alert-postponed";
+    shortText = "Follow-Up";
+  } else if (type === "planning") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Planning";
+  } else if (type === "proactive" || type === "review") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Review";
+  }
+
+  return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
+}
+
+function renderRepStatus(rec) {
+  const label =
+    rec.rep_selected_manual_action_label ||
+    rec.rep_action_label ||
+    getRepActionLabel(rec.rep_action) ||
+    "";
+
+  if (rec.lifecycle_completed || rec.rep_status === "completed") {
+    return `<span class="pill submitted">Completed</span>`;
+  }
+
+  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+    return `<span class="pill ready">Manager Response Sent</span>`;
+  }
+
+  if (isManagerRepFixUnseen(rec)) {
+    return `<span class="pill submitted">Fixed Data</span>`;
+  }
+
+  if (rec.quote_status === "won" || rec.rep_status === "won") {
+    return `<span class="pill submitted">Won</span>`;
+  }
+
+  if (rec.quote_status === "lost" || rec.rep_status === "lost") {
+    return `<span class="pill postponed">Lost</span>`;
+  }
+
+  if (hasFollowUpOverdueBy7Days(rec)) {
+    return `<span class="pill postponed">Follow-Up Overdue</span>`;
+  }
+
+  if (
+    rec.rep_action === "follow_up" ||
+    rec.rep_status === "follow_up_scheduled" ||
+    rec.rep_action === "schedule_follow_up"
+  ) {
+    return `<span class="pill pending">Follow-Up Set</span>`;
+  }
+
+  if (rec.rep_deleted || rec.rep_action === "remove" || rec.rep_status === "remove") {
+    return `<span class="pill postponed">Removed</span>`;
+  }
+
+  if (label && label !== "needed" && label !== "new" && label !== "open") {
+    return `<span class="pill local">${escapeHtml(label)}</span>`;
+  }
+
+  return `<button type="button" class="open-record-btn" data-id="${escapeHtml(rec.id || "")}">Open</button>`;
+}
+
+function getDisplayOrderWeight(rec) {
+  if (!rec) return 0;
+
+  if (isManagerRepFixUnseen(rec)) return 65;
+  if (hasUnseenManagerRelease(rec)) return 60;
+  if (hasFollowUpOverdueBy7Days(rec)) return 55;
+  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 45;
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) return 40;
+  if (rec.quote_amount && rec.quote_status !== "won" && rec.quote_status !== "lost") return 30;
+  if (getAlerts(rec).length) return 20;
+  if (rec.quote_status === "won" || rec.quote_status === "lost") return 10;
+  if (rec.lifecycle_completed) return 0;
+
+  return 0;
+}
+
+function readInstallBaseResponseRecordsForManager() {
+  return readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(rec => {
+    const isRepFix =
+      rec.install_base_correction_status === "corrected_by_rep" ||
+      rec.install_base_response_status === "rep_correction_sent" ||
+      rec.install_base_fix_status === "rep_reviewed";
+
+    if (!isRepFix) return rec;
+
+    const seenByManager =
+      rec.manager_alert_seen === true ||
+      hasManagerSeenFix(rec);
+
+    return {
+      ...rec,
+      key: getRecordKey(rec),
+
+      manager_alert_seen: seenByManager,
+      manager_unseen_update: !seenByManager,
+
+      manager_update_seen_at:
+        seenByManager
+          ? rec.manager_update_seen_at || new Date().toISOString()
+          : rec.manager_update_seen_at || "",
+
+      manager_flash_type: seenByManager ? "" : "rep_update",
+      manager_flash_text: seenByManager ? "" : "Rep corrected install-base data",
+
+      manager_visible: true,
+      source: rec.source || "Rep Review Page",
+      hub_source: rec.hub_source || "Rep Review Page"
+    };
+  });
+}
+
+function selectRow(id) {
+  const selectedId = clean(id);
+  if (!selectedId) return;
+
+  const rec = state.records.find(item =>
+    String(item.id || "") === selectedId ||
+    String(item.key || "") === selectedId
+  );
+
+  if (!rec) {
+    alert("Record not found. Reload or clear local data.");
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = {
+    ...rec,
+    id: rec.id || selectedId,
+    key: getRecordKey(rec),
+
+    quote_seen: true,
+
+    manager_alert_seen: true,
+    manager_unseen_update: false,
+    manager_update_seen_at: now,
+
+    manager_release_id: rec.manager_release_id || "",
+    manager_seen_release_id: rec.manager_release_id || rec.manager_seen_release_id || "",
+
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: "",
+
+    install_base_manager_request: rec.install_base_manager_request === true
+  };
+
+  markManagerFixSeenEverywhere(updated, now);
+  syncRecordEverywhere(updated);
+  markManagerFixSeenEverywhere(updated, now);
+
+  state.records = mergeRecordsByKey(
+    readArrayKey(STORAGE_KEY),
+    readManagerQueueRecords(),
+    readInstallBaseResponseRecordsForManager()
+  );
+
+  state.selectedId = updated.id;
+
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+}
+
+function closeSelectedRecord() {
+  const rec = findSelectedRecord();
+
+  if (!rec) {
+    state.selectedId = null;
+    render();
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = {
+    ...rec,
+    key: getRecordKey(rec),
+
+    manager_alert_seen: true,
+    manager_unseen_update: false,
+    manager_update_seen_at: now,
+
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: "",
+
+    install_base_manager_request: rec.install_base_manager_request === true
+  };
+
+  markManagerFixSeenEverywhere(updated, now);
+  syncRecordEverywhere(updated);
+  markManagerFixSeenEverywhere(updated, now);
+
+  state.selectedId = null;
+  pingLifecycleSync();
+  render();
+}
+
+function render() {
+  const main = readArrayKey(STORAGE_KEY);
+  const managerQueue = readManagerQueueRecords();
+  const installBaseResponses = readInstallBaseResponseRecordsForManager();
+
+  state.records = mergeRecordsByKey(
+    main,
+    managerQueue,
+    installBaseResponses
+  );
+
+  writeArrayKey(STORAGE_KEY, state.records);
+
+  if (
+    state.selectedId &&
+    !state.records.some(r => String(r.id || "") === String(state.selectedId))
+  ) {
+    state.selectedId = null;
+  }
+
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+}
+
 document.addEventListener("DOMContentLoaded", init);
 </script>
 </body>
