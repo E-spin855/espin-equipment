@@ -2031,7 +2031,37 @@ function renderRepResponseCard(rec) {
     rec.response_note ||
     rec.rep_notes ||
     "No message entered.";
+const correctedFieldsObj =
+  rec.corrected_fields && typeof rec.corrected_fields === "object"
+    ? rec.corrected_fields
+    : {};
 
+const correctedFieldsHtml = Object.keys(correctedFieldsObj).length
+  ? `
+    <div class="mini" style="margin-top:12px;line-height:1.6;">
+      <strong>Corrected fields:</strong><br>
+      ${Object.entries(correctedFieldsObj).map(([field, value]) => {
+        const labelMap = {
+          dom: "DOM / Year",
+          manager_name: "Owner Group",
+          owner_group_name: "Owner Group",
+          assigned_rep_name: "Rep Owner",
+          serial_number: "Serial Number",
+          serial: "Serial Number",
+          site: "Site",
+          model: "Model",
+          make: "Make",
+          modality: "Modality"
+        };
+
+        return `
+          ${escapeHtml(labelMap[field] || field)}:
+          <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>
+        `;
+      }).join("")}
+    </div>
+  `
+  : "";
   const clickHandler = seen
     ? ""
     : `onclick="markRepResponseSeen(findSelectedRecord()); render();"`;
@@ -2047,6 +2077,7 @@ function renderRepResponseCard(rec) {
         Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
         Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong><br>
         Message: ${escapeHtml(msg)}
+${correctedFieldsHtml}
       </div>
     </div>
   `;
