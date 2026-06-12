@@ -414,7 +414,23 @@ tr.rep-new-row-flash{
 tr.rep-new-row-flash td{
   background:transparent!important;
 }
-
+.rep-fix-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:90px;
+  min-height:34px;
+  padding:7px 12px;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:950;
+  text-align:center;
+  line-height:1.05;
+  background:linear-gradient(90deg,#8a5a12,#ffd84d);
+  color:#1c1204;
+  border:1px solid rgba(255,216,120,.75);
+  box-shadow:0 0 14px rgba(240,180,41,.26);
+}
 .rep-new-pill-flash .pill,
 .rep-new-pill-flash .alert-badge,
 .rep-new-flash .pill.local,
@@ -2331,6 +2347,36 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
 
   return 0;
 }
+function getRepMissingFieldLabel(fieldName) {
+  const labels = {
+    serial: "Fix Serial",
+    serial_number: "Fix Serial",
+    dom: "Fix DOM",
+    make: "Fix Make",
+    model: "Fix Model",
+    modality: "Fix Modality",
+    site: "Fix Site",
+    facility: "Fix Site",
+    owner: "Fix Owner",
+    rep: "Fix Rep"
+  };
+
+  return labels[fieldName] || "Fix Data";
+}
+
+function renderRepFixOrValue(fieldName, valueHtml) {
+  const rawValue = String(valueHtml || "").replace(/<[^>]*>/g, "").trim();
+
+  if (!rawValue || rawValue === "-") {
+    return `
+      <span class="rep-fix-badge">
+        ${escapeHtml(getRepMissingFieldLabel(fieldName))}
+      </span>
+    `;
+  }
+
+  return valueHtml;
+}
     function renderTable() {
   const tbody = $("tableBody");
 
@@ -3375,7 +3421,7 @@ function getFixDataBadge(rec, fieldName) {
   let show = false;
 
   if (fieldName === "project") {
-    show = !String(rec.oem_project_id || rec.asset_id || "").trim();
+    show = !String(rec.oem_project_id || rec.project_id || rec.asset_id || "").trim();
   }
 
   if (fieldName === "equipment") {
@@ -3410,6 +3456,7 @@ function getFixDataBadge(rec, fieldName) {
       rec.facility ||
       rec.hospital ||
       rec.hospital_name ||
+      rec.customer ||
       ""
     ).trim();
 
@@ -3421,6 +3468,19 @@ function getFixDataBadge(rec, fieldName) {
 
   if (!show) return "";
 
+  const labelMap = {
+    project: "Fix Project ID",
+    equipment: "Fix Equipment",
+    make: "Fix Make",
+    model: "Fix Model",
+    modality: "Fix Modality",
+    serial: "Fix Serial",
+    dom: "Fix DOM",
+    site: "Fix Site"
+  };
+
+  const label = labelMap[fieldName] || "Fix Data";
+
   const active =
     state.installBaseCommunicationOpen === true &&
     String(state.selectedId) === String(rec.id);
@@ -3431,7 +3491,7 @@ function getFixDataBadge(rec, fieldName) {
       class="fix-data-badge ${active ? "active" : ""}"
       onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}')"
     >
-      Fix Data
+      ${escapeHtml(label)}
     </button>
   `;
 }
