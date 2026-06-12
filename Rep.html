@@ -1384,7 +1384,7 @@ function getRecordKey(rec) {
 
       return String(val).slice(0, 10);
     }
-function getAlerts(rec) {
+function getAlerts(rec, today = todayISO()) {
   if (!rec || rec.alert_enabled === "no") return [];
 
   const hasManualRepFollowUp =
@@ -1395,7 +1395,7 @@ function getAlerts(rec) {
 
 const followUpDate = rec.rep_follow_up_date || "";
 
-if (hasManualRepFollowUp && followUpDate && followUpDate > todayISO()) {
+if (hasManualRepFollowUp && followUpDate && followUpDate > today) {
   return [{
     type: "postponed",
     label: "Follow-up scheduled by rep.",
@@ -1870,6 +1870,21 @@ function importRepQueueRecords() {
 
   if (!queue.length) return;
 
+  const byId = new Map();
+  const byKey = new Map();
+  const byProjectSerial = new Map();
+
+  state.records.forEach(rec => {
+    if (rec.id) byId.set(String(rec.id), rec);
+    if (rec.key) byKey.set(String(rec.key), rec);
+    if (rec.oem_project_id || rec.serial_number) {
+      byProjectSerial.set(
+        `${String(rec.oem_project_id || "")}\u0000${String(rec.serial_number || "")}`,
+        rec
+      );
+    }
+  });
+
  let changed = false;
 
 queue.forEach(item => {
@@ -1883,14 +1898,15 @@ queue.forEach(item => {
     return;
   }
 
-  const existing = state.records.find(r =>
-    String(r.id || "") === String(item.id || "") ||
-    String(r.key || "") === String(item.key || "") ||
+  const existing =
+    (item.id && byId.get(String(item.id))) ||
+    (item.key && byKey.get(String(item.key))) ||
     (
-      String(r.oem_project_id || "") === String(item.oem_project_id || "") &&
-      String(r.serial_number || "") === String(item.serial_number || "")
-    )
-  );
+      (item.oem_project_id || item.serial_number) &&
+      byProjectSerial.get(
+        `${String(item.oem_project_id || "")}\u0000${String(item.serial_number || "")}`
+      )
+    );
     const releasedRecord = {
       ...item,
       source: item.hub_source || item.source || "AXIS Install Base Workspace",
@@ -1902,16 +1918,28 @@ queue.forEach(item => {
     };
 
     if (existing) {
-      Object.assign(existing, {
+      const merged = {
         ...existing,
         ...releasedRecord,
         id: existing.id || releasedRecord.id
-      });
+      };
+
+      if (Object.keys(merged).some(key => existing[key] !== merged[key])) {
+        Object.assign(existing, merged);
+        changed = true;
+      }
     } else {
       state.records.unshift(releasedRecord);
+      if (releasedRecord.id) byId.set(String(releasedRecord.id), releasedRecord);
+      if (releasedRecord.key) byKey.set(String(releasedRecord.key), releasedRecord);
+      if (releasedRecord.oem_project_id || releasedRecord.serial_number) {
+        byProjectSerial.set(
+          `${String(releasedRecord.oem_project_id || "")}\u0000${String(releasedRecord.serial_number || "")}`,
+          releasedRecord
+        );
+      }
+      changed = true;
     }
-
-    changed = true;
   });
 
   if (changed) saveRecords();
@@ -2108,24 +2136,27 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
 
     function renderStats() {
       const total = state.records.length;
+      const today = todayISO();
+      let ready = 0;
+      let postponed = 0;
+      let submitted = 0;
 
-      const ready = state.records.filter(rec =>
-        !rec.lifecycle_completed &&
-        !rec.submitted_to &&
-        getAlerts(rec).length
-      ).length;
-
-     const postponed = state.records.filter(rec =>
-  (
-    rec.rep_action === "follow_up" ||
-    rec.rep_status === "follow_up_scheduled" ||
-    rec.rep_status === "schedule_follow_up" ||
-    rec.rep_follow_up_date
-  ) &&
-  rec.rep_follow_up_date &&
-  rec.rep_follow_up_date > todayISO()
-).length;
-      const submitted = state.records.filter(rec => rec.submitted_to).length;
+      state.records.forEach(rec => {
+        if (!rec.lifecycle_completed && !rec.submitted_to && getAlerts(rec, today).length) ready++;
+        if (
+          (
+            rec.rep_action === "follow_up" ||
+            rec.rep_status === "follow_up_scheduled" ||
+            rec.rep_status === "schedule_follow_up" ||
+            rec.rep_follow_up_date
+          ) &&
+          rec.rep_follow_up_date &&
+          rec.rep_follow_up_date > today
+        ) {
+          postponed++;
+        }
+        if (rec.submitted_to) submitted++;
+      });
 
       $("statTotal").textContent = total;
       $("statReady").textContent = ready;
@@ -2137,13 +2168,15 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
       const el = $("repFeed");
       if (!el) return;
 
-      const reps = [...new Set(
-        state.records.map(rec =>
+      const repCounts = new Map();
+      state.records.forEach(rec => {
+        const rep =
           `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
           rec.assigned_rep_name ||
-          "Unassigned"
-        )
-      )];
+          "Unassigned";
+        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+      });
+      const reps = [...repCounts.keys()];
 
       if (!reps.length) {
         el.innerHTML = `<div class="mini">No reps available</div>`;
@@ -2160,10 +2193,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
         ${reps.map(rep => {
           const safeRep = escapeHtml(rep);
           const jsRep = String(rep).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-          const count = state.records.filter(rec => {
-            const name = `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() || rec.assigned_rep_name || "Unassigned";
-            return name === rep;
-          }).length;
+          const count = repCounts.get(rep);
           const active = state.selectedRep === rep;
 
           return `
@@ -2268,7 +2298,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   }).join("");
 }
 
-    function getDisplayOrderWeight(rec) {
+    function getDisplayOrderWeight(rec, today = todayISO()) {
   /*
     Display ordering only.
     This is not a recommendation, ranking, score, offer prioritization,
@@ -2283,7 +2313,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   // Completed/submitted/postponed items are lower because no immediate display attention is needed.
   if (rec.lifecycle_completed) return 0;
   if (rec.submitted_to) return 0;
-  if (rec.next_action_date && rec.next_action_date > todayISO()) return 5;
+  if (rec.next_action_date && rec.next_action_date > today) return 5;
 
   const status = lower(rec.quote_status);
 
@@ -2297,7 +2327,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
 
   // OEM Review Fields are grouped for display only.
   // AXIS does not decide importance or recommend action.
-  if (getAlerts(rec).length) return 20;
+  if (getAlerts(rec, today).length) return 20;
 
   return 0;
 }
@@ -2322,9 +2352,11 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
     return;
   }
 
-  const sorted = [...visibleRecords].sort(
-    (a, b) => getDisplayOrderWeight(b) - getDisplayOrderWeight(a)
-  );
+  const today = todayISO();
+  const sorted = visibleRecords
+    .map(rec => ({ rec, weight: getDisplayOrderWeight(rec, today) }))
+    .sort((a, b) => b.weight - a.weight)
+    .map(item => item.rec);
 
   tbody.innerHTML = sorted.map(rec => {
     const hasUnseenManagerResponse =
@@ -3237,7 +3269,7 @@ ${renderInstallBaseCorrectionPanel(rec)}
                   Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
                 </div>
                 <label style="display:block;margin-top:12px;">Trade-In Reference</label>
-                <input id="newProjectTradeInCreditInput" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
+                <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
                 <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${rec.id}')">Save Trade-In Value</button>
                 <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${rec.id}')">Apply Trade-In Reference to Quote</button>
               </div>
@@ -3590,7 +3622,7 @@ function saveInstallBaseFix(id) {
                   Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
                 </div>
                 <label style="display:block;margin-top:12px;">Trade-In Reference</label>
-                <input id="newProjectTradeInCreditInput" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
+                <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
                 <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${rec.id}')">Save Trade-In Value</button>
                 <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${rec.id}')">Apply Trade-In Reference to Quote</button>
               </div>
@@ -4543,7 +4575,8 @@ rec.manager_flash_text = `Rep selected: ${label}`;
         return;
       }
 
-      const input = $("newProjectTradeInCreditInput");
+      const input = [...document.querySelectorAll("[data-tradein-credit-input]")]
+        .find(el => el.dataset.recordId === String(rec.id));
 
       if (!input) {
         alert("Trade-in value input not found");
@@ -4876,7 +4909,7 @@ function reviewApprovedQuote() {
         sync = [];
       }
 
-      if (!sync.length) return;
+      if (!sync.length) return false;
 
       let changed = false;
 
@@ -4923,6 +4956,8 @@ function reviewApprovedQuote() {
         localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
         localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
       }
+
+      return changed;
     }
 
     function buildQuotePDF(rec, shouldSave = true) {
@@ -5618,11 +5653,16 @@ return true;
     }
 
     function getTradeInSyncSeenKey(item) {
-      return String(
+      const identity =
         item.sync_event_id ||
         item.id ||
-        `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}_${item.last_tradein_update_at || ""}`
-      ).trim();
+        `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
+      const version =
+        item.last_tradein_update_at ||
+        item.updated_at ||
+        `${item.trade_in_value || item.trade_in_credit || item.tradein_credit || ""}_${item.image_count || item.images?.length || 0}`;
+
+      return `${identity}_${version}`.trim();
     }
 
     function readProcessedTradeInSyncKeys() {
@@ -5676,7 +5716,7 @@ return true;
 */
     function importTradeInSyncRecords() {
       const shareEnabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
-      if (!shareEnabled) return;
+      if (!shareEnabled) return false;
 
       let synced = [];
 
@@ -5687,7 +5727,7 @@ return true;
         synced = [];
       }
 
-      if (!synced.length) return;
+      if (!synced.length) return false;
 
       const processedSet = new Set(readProcessedTradeInSyncKeys());
       let changed = false;
@@ -5695,6 +5735,7 @@ return true;
       synced.forEach(item => {
         const syncSeenKey = getTradeInSyncSeenKey(item);
         const alreadyProcessed = syncSeenKey && processedSet.has(syncSeenKey);
+        if (alreadyProcessed) return;
 
         const serial = clean(item.serial_number || item.axis_serial_number || "");
         const projectId = clean(item.project_id || "");
@@ -5779,6 +5820,8 @@ return true;
         writeProcessedTradeInSyncKeys([...processedSet]);
         localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
       }
+
+      return changed;
     }
 
     function applyTradeInSyncToRecord(rec, item, tradeInValue, projectId, modalityId, serial, alreadyProcessed, flashType) {
@@ -6236,19 +6279,12 @@ function markRepRowUpdateSeen(id) {
   });
 
   setInterval(() => {
-    const before = JSON.stringify(state.records);
-
-    importTradeInSyncRecords();
-    importQuoteApprovalDecisions();
-
-    const after = JSON.stringify(state.records);
-
-    if (before !== after) {
-      saveRecords();
-      render();
-    }
+    const tradeInChanged = importTradeInSyncRecords();
+    const approvalChanged = importQuoteApprovalDecisions();
 
     updateAxisShareStatus();
+
+    if (tradeInChanged || approvalChanged) render();
   }, 8000);
 
   render();
