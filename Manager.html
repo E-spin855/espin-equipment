@@ -2005,7 +2005,22 @@ function getManagerInstallBaseIssueFields(rec) {
   if (requestText.includes("city")) add("city", "City");
   if (requestText.includes("state")) add("state", "State");
   if (requestText.includes("zip") || requestText.includes("postal")) add("zip_code", "Zip Code");
-  if (requestText.includes("rep owner") || requestText.includes("owner")) add("assigned_rep_name", "Rep Owner");
+  if (
+  requestText.includes("owner group") ||
+  requestText.includes("manager assignment") ||
+  requestText.includes("manager owner") ||
+  requestText.includes("manager")
+) {
+  add("manager_name", "Owner Group / Manager");
+}
+
+if (
+  requestText.includes("rep owner") ||
+  requestText.includes("sales owner") ||
+  requestText.includes("assigned rep")
+) {
+  add("assigned_rep_name", "Rep Owner");
+}
   if (requestText.includes("rep email")) add("assigned_rep_email", "Rep Email");
   if (requestText.includes("utilization")) add("utilization_percent", "Utilization %");
 
@@ -2136,6 +2151,16 @@ function sendManagerInstallBaseCorrection(id) {
   updated.install_base_response_at = now;
   updated.install_base_response_seen = false;
   updated.corrected_fields = correctedFields;
+updated.install_base_corrected_fields = Object.keys(correctedFields).join(",");
+updated.install_base_correction_status = "corrected_by_manager";
+
+if (correctedFields.manager_name) {
+  updated.owner_group_name = correctedFields.manager_name;
+}
+
+if (correctedFields.assigned_rep_name) {
+  updated.assigned_rep_name = correctedFields.assigned_rep_name;
+}
 
   const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
   queue.unshift(updated);
