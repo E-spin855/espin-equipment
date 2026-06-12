@@ -1784,43 +1784,6 @@ function isRepInstallBaseFix(rec) {
     rec.manager_flash_type === "rep_update"
   );
 }
-
-function wasManagerFieldCorrected(rec, fieldName) {
-  if (!isManagerRepFixUnseen(rec)) return false;
-
-  const correctedFields = String(
-    rec.install_base_corrected_fields ||
-    rec.corrected_fields ||
-    rec.install_base_issue_field ||
-    ""
-  )
-    .toLowerCase()
-    .split(",")
-    .map(v => v.trim())
-    .filter(Boolean);
-
-  const aliases = {
-    project: ["project", "project_id", "oem_project_id", "asset_id"],
-    make: ["make", "manufacturer"],
-    model: ["model"],
-    modality: ["modality"],
-    serial: ["serial", "serial_number", "system_serial"],
-    dom: ["dom", "year", "manufacture_year"],
-    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"]
-  }[fieldName] || [fieldName];
-
-  return correctedFields.some(f => aliases.includes(f));
-}
-
-function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
-  if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
-
-  return `
-    <span class="manager-corrected-value">
-      ${normalHtml}
-    </span>
-  `;
-}
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   const textValue = String(normalHtml || "").replace(/<[^>]*>/g, "").trim();
 
@@ -1866,11 +1829,18 @@ function isManagerRecordFixed(rec) {
 }
 
 function managerCorrectedFieldsList(rec) {
-  return String(rec.install_base_corrected_fields || "")
+  const fromString = String(rec.install_base_corrected_fields || "")
     .toLowerCase()
     .split(",")
     .map(v => v.trim())
     .filter(Boolean);
+
+  const fromObject =
+    rec.corrected_fields && typeof rec.corrected_fields === "object"
+      ? Object.keys(rec.corrected_fields).map(v => v.toLowerCase().trim())
+      : [];
+
+  return Array.from(new Set([...fromString, ...fromObject]));
 }
 
 function wasManagerFieldCorrected(rec, fieldName) {
@@ -1902,40 +1872,6 @@ function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
       ${normalHtml}
     </span>
   `;
-}
-
-function getManagerMissingFieldLabel(rec, fieldName) {
-  const labels = {
-    serial: "Fix Serial",
-    dom: "Fix DOM",
-    age: "Fix DOM",
-    site: "Fix Site",
-    owner: "Fix Owner Group",
-    rep: "Fix Rep Owner",
-    make: "Fix Make",
-    model: "Fix Model",
-    modality: "Fix Modality"
-  };
-
-  return labels[fieldName] || "Fix Data";
-}
-
-function renderManagerFixOrValue(rec, fieldName, valueHtml) {
-  const rawValue = String(valueHtml || "").replace(/<[^>]*>/g, "").trim();
-
-  if (wasManagerFieldCorrected(rec, fieldName)) {
-    return renderManagerCorrectedValue(rec, fieldName, valueHtml);
-  }
-
-  if (!rawValue || rawValue === "-") {
-    return `
-      <span class="alert-badge alert-none">
-        ${escapeHtml(getManagerMissingFieldLabel(rec, fieldName))}
-      </span>
-    `;
-  }
-
-  return valueHtml;
 }
 function renderTable() {
   const tbody = $("tableBody");
