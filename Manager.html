@@ -844,6 +844,7 @@ const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
+const MANAGER_SEEN_FIX_KEY = "axis_manager_seen_install_base_fixes_v1";
 
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
@@ -2534,6 +2535,8 @@ function selectRow(id) {
 
   const now = new Date().toISOString();
 
+  markManagerFixSeen(rec);
+
   const updated = {
     ...rec,
     id: rec.id || selectedId,
@@ -2555,26 +2558,27 @@ function selectRow(id) {
     install_base_manager_request: rec.install_base_manager_request === true
   };
 
-  // Update main storage + manager queue
   syncRecordEverywhere(updated);
 
-  // Important: also update the install-base response queue.
-  // Otherwise Manager keeps re-reading the old unseen rep-fix record.
   let responseQueue = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
 
-  responseQueue = responseQueue.map(item =>
-    sameRecord(item, updated)
-      ? {
-          ...item,
-          manager_alert_seen: true,
-          manager_unseen_update: false,
-          manager_update_seen_at: now,
-          manager_flash_at: "",
-          manager_flash_type: "",
-          manager_flash_text: ""
-        }
-      : item
-  );
+  responseQueue = responseQueue.map(item => {
+    const same =
+      sameRecord(item, updated) ||
+      getRecordKey(item) === getRecordKey(updated);
+
+    if (!same) return item;
+
+    return {
+      ...item,
+      manager_alert_seen: true,
+      manager_unseen_update: false,
+      manager_update_seen_at: now,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: ""
+    };
+  });
 
   writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
@@ -2813,6 +2817,32 @@ function handleCSVUpload(file) {
 
   reader.readAsArrayBuffer(file);
 }
+function readManagerSeenFixKeys() {
+  try {
+    const data = JSON.parse(localStorage.getItem(MANAGER_SEEN_FIX_KEY) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function markManagerFixSeen(rec) {
+  const key = getRecordKey(rec);
+  if (!key) return;
+
+  const list = readManagerSeenFixKeys();
+
+  if (!list.includes(key)) {
+    list.push(key);
+    localStorage.setItem(MANAGER_SEEN_FIX_KEY, JSON.stringify(list));
+  }
+}
+
+function hasManagerSeenFix(rec) {
+  const key = getRecordKey(rec);
+  if (!key) return false;
+  return readManagerSeenFixKeys().includes(key);
+}
 function readInstallBaseResponseRecordsForManager() {
   return readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(rec => {
     const isRepFix =
@@ -2822,21 +2852,24 @@ function readInstallBaseResponseRecordsForManager() {
 
     if (!isRepFix) return rec;
 
+    const seenByManager =
+      rec.manager_alert_seen === true ||
+      hasManagerSeenFix(rec);
+
     return {
       ...rec,
       key: getRecordKey(rec),
 
-      manager_unseen_update:
-        rec.manager_alert_seen === true ? false : true,
-
-      manager_alert_seen:
-        rec.manager_alert_seen === true ? true : false,
+      manager_alert_seen: seenByManager,
+      manager_unseen_update: !seenByManager,
 
       manager_update_seen_at:
-        rec.manager_update_seen_at || "",
+        seenByManager
+          ? rec.manager_update_seen_at || new Date().toISOString()
+          : rec.manager_update_seen_at || "",
 
-      manager_flash_type: "rep_update",
-      manager_flash_text: "Rep corrected install-base data",
+      manager_flash_type: seenByManager ? "" : "rep_update",
+      manager_flash_text: seenByManager ? "" : "Rep corrected install-base data",
 
       manager_visible: true,
       source: rec.source || "Rep Review Page",
