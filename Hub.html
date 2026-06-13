@@ -987,8 +987,16 @@ function getReviewStatus(rec) {
     return { type: "fixed", label: "Project Completed" };
   }
 
-  if (!isAutoSyncEligible(rec) && !String(rec.install_base_release_status || "").startsWith("released")) {
-    return { type: "source", label: "Clarification Needed" };
+  if (
+    !isAutoSyncEligible(rec) &&
+    rec.install_base_release_status !== "released_to_rep" &&
+    rec.install_base_release_status !== "released_to_manager"
+  ) {
+    return { type: "source", label: "Manual Send Needed" };
+  }
+
+  if (rec.install_base_release_status === "auto_synced") {
+    return { type: "released", label: "Auto-Synced" };
   }
 
   if (isFixedByRep(rec)) {
@@ -1377,7 +1385,25 @@ function markSelectedStaged() {
   render();
   showBanner("Selected record marked as staged only.");
 }
+function markSelectedStaged() {
+  const rec = findSelectedRecord();
+  if (!rec) return;
 
+  state.records = state.records.map(r => {
+    if (!sameRecord(r, rec)) return r;
+
+    return {
+      ...r,
+      install_base_release_status: "staged",
+      install_base_released_at: "",
+      install_base_released_to: ""
+    };
+  });
+
+  saveRecords();
+  render();
+  showBanner("Selected record marked as staged only.");
+}
 function parseWorkbook(file) {
   const reader = new FileReader();
 
@@ -1744,11 +1770,13 @@ utilization_percent: newRec.utilization_percent || existing.utilization_percent 
 
     mergeRepResponsesIntoRecords();
 
-    state.selectedOwner = "";
-    state.selectedId = null;
+state.selectedOwner = "";
+state.selectedId = null;
 
-    saveRecords();
-    render();
+autoSyncEligibleRecordsToRepAndManager();
+
+saveRecords();
+render();
   };
 
   reader.readAsArrayBuffer(file);
