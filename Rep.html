@@ -3380,7 +3380,6 @@ ${renderInstallBaseCorrectionPanel(rec)}
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
 
       document.querySelector('button[onclick="confirmManualAction()"]').disabled = completed;
-document.querySelector('button[onclick="completeLifecycleProject()"]').disabled = completed;
 $("manualActionSelect").disabled = completed;
 $("repOutcomeNotes").disabled = completed;
 $("repFollowUpDate").disabled = completed;
@@ -4667,12 +4666,30 @@ rec.manager_flash_text = `Rep selected: ${label}`;
     key: getRecordKey(rec)
   };
 
-  state.records = state.records.map(r =>
-    sameRecord(r, updated) ? updated : r
-  );
+  const sameRepRecord = (a, b) => {
+  if (!a || !b) return false;
 
-  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
-  queue.unshift(updated);
+  if (a.id && b.id && String(a.id) === String(b.id)) return true;
+
+  const aKey = String(a.key || getRecordKey(a) || "");
+  const bKey = String(b.key || getRecordKey(b) || "");
+
+  if (aKey && bKey && aKey === bKey) return true;
+
+  const aProject = String(a.oem_project_id || a.project_id || "");
+  const bProject = String(b.oem_project_id || b.project_id || "");
+  const aSerial = String(a.serial_number || a.serial || "");
+  const bSerial = String(b.serial_number || b.serial || "");
+
+  return Boolean(aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial);
+};
+
+state.records = state.records.map(r =>
+  sameRepRecord(r, updated) ? updated : r
+);
+
+const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRepRecord(r, updated));
+queue.unshift(updated);
 
   writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
