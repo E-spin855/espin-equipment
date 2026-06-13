@@ -1732,42 +1732,48 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     }
 
   function renderReviewSignalCell(rec) {
-  if (
-    rec.hub_source === "AXIS Install Base Workspace" ||
-    rec.install_base_sync_type ||
-    rec.install_base_received_by_rep
-  ) {
-    const label =
-      rec.oem_review_label ||
-      rec.review_label ||
-      rec.oem_review_type ||
-      rec.review_type ||
-      rec.rep_action_label ||
-      rec.rep_selected_manual_action_label ||
-      rec.install_base_action_label ||
-      rec.install_base_issue_type ||
-      "Planning";
+ if (
+  rec.hub_source === "AXIS Install Base Workspace" ||
+  rec.install_base_sync_type ||
+  rec.install_base_received_by_rep
+) {
+  const isManualClarification =
+    rec.rep_status === "clarification_needed" ||
+    rec.install_base_sync_type === "manual_clarification";
 
-    const normalized = String(label).toLowerCase();
+  const fixed =
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.install_base_response_status === "rep_correction_sent";
 
-    let cls = "alert-planning";
+  const label =
+    isManualClarification && !fixed
+      ? "New Record"
+      : (
+          rec.oem_review_label ||
+          rec.review_label ||
+          rec.oem_review_type ||
+          rec.review_type ||
+          "Planning"
+        );
 
-    if (normalized.includes("service")) cls = "alert-service";
-    if (normalized.includes("planning")) cls = "alert-planning";
-    if (normalized.includes("age")) cls = "alert-age";
-    if (normalized.includes("project")) cls = "alert-proactive";
-    if (normalized.includes("quote")) cls = "alert-planning";
-    if (normalized.includes("source")) cls = "alert-postponed";
-    if (normalized.includes("owner")) cls = "alert-proactive";
-    if (normalized.includes("site")) cls = "alert-none";
-    if (normalized.includes("data")) cls = "alert-none";
+  const normalized = String(label).toLowerCase();
 
-    return `
-      <span class="alert-badge ${cls}">
-        ${escapeHtml(label)}
-      </span>
-    `;
-  }  
+  let cls = "alert-planning";
+
+  if (normalized.includes("service")) cls = "alert-service";
+  if (normalized.includes("planning")) cls = "alert-planning";
+  if (normalized.includes("age")) cls = "alert-age";
+  if (normalized.includes("project")) cls = "alert-proactive";
+  if (normalized.includes("quote")) cls = "alert-planning";
+  if (normalized.includes("new")) cls = "alert-proactive";
+
+  return `
+    <span class="alert-badge ${cls}">
+      ${escapeHtml(label)}
+    </span>
+  `;
+}
 if (rec.lifecycle_completed) {
     return `<span class="alert-badge alert-completed">Reviewed</span>`;
   }

@@ -1066,20 +1066,29 @@ function getReviewStatus(rec) {
 }
 
 function getRepLifecycleLabelForInstallBaseRecord(rec) {
-  if (rec.oem_review_label) return rec.oem_review_label;
-  if (rec.review_label) return rec.review_label;
-  if (rec.oem_review_type) return rec.oem_review_type;
-  if (rec.review_type) return rec.review_type;
-  if (rec.proactive_reason) return rec.proactive_reason;
-  if (rec.install_base_action_label) return rec.install_base_action_label;
-  if (rec.install_base_issue_type) return rec.install_base_issue_type;
+  const label =
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    rec.proactive_signal ||
+    "";
 
-  const status = getReviewStatus(rec);
-  if (status.label && status.label !== "Auto-Synced") return status.label;
+  const normalized = String(label).toLowerCase();
 
+  if (normalized.includes("service")) return "Service";
+  if (normalized.includes("planning")) return "Planning";
+  if (normalized.includes("age")) return "Age";
+  if (normalized.includes("project")) return "Project";
+  if (normalized.includes("quote")) return "Quote";
+  if (normalized.includes("upgrade")) return "Planning";
+  if (normalized.includes("replacement")) return "Age";
+
+  // If OEM did not provide a review label, use a safe default.
   return "Planning";
 }
-
 function getRepLifecycleReasonForInstallBaseRecord(rec) {
   return (
     rec.oem_review_reason ||
