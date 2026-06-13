@@ -799,7 +799,20 @@ function clean(v) {
 function lower(v) {
   return clean(v).toLowerCase();
 }
+function isAutoSyncEligible(rec) {
+  const value = lower(rec.axis_auto_sync_eligible);
 
+  // Default is yes. Only explicit "no" holds the record for manual clarification.
+  return value !== "no";
+}
+
+function getManualRouteTarget(rec) {
+  return lower(rec.axis_manual_route_target);
+}
+
+function getClarificationReason(rec) {
+  return clean(rec.axis_clarification_reason);
+}
 function getRecordKey(rec) {
   if (!rec) return "";
 
@@ -972,6 +985,10 @@ function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
     return { type: "fixed", label: "Project Completed" };
+  }
+
+  if (!isAutoSyncEligible(rec) && !String(rec.install_base_release_status || "").startsWith("released")) {
+    return { type: "source", label: "Clarification Needed" };
   }
 
   if (isFixedByRep(rec)) {
@@ -1203,7 +1220,17 @@ function releaseSelected(destination) {
     install_base_release_seen: false,
 
     hub_source: "AXIS Install Base Workspace",
+install_base_sync_type: isAutoSyncEligible(rec)
+  ? "manual_release"
+  : "manual_clarification",
 
+install_base_manual_route: true,
+
+install_base_clarification_reason:
+  getClarificationReason(rec) ||
+  rec.install_base_issue_reason ||
+  rec.conflict_notes ||
+  "",
     asset_id: rec.asset_id || "",
     site_address: rec.site_address || "",
     city: rec.city || "",
@@ -1564,7 +1591,20 @@ utilization_percent:
           obj.source_notes ||
           obj.notes ||
           "",
+axis_auto_sync_eligible:
+  obj.axis_auto_sync_eligible ||
+  obj.auto_sync_eligible ||
+  "yes",
 
+axis_manual_route_target:
+  obj.axis_manual_route_target ||
+  obj.manual_route_target ||
+  "",
+
+axis_clarification_reason:
+  obj.axis_clarification_reason ||
+  obj.clarification_reason ||
+  "",
         next_action_date: excelDateToISO(obj.next_action_date),
         threshold_years: Number(obj.threshold_years || ""),
         alert_override: obj.alert_override || "",
@@ -1622,7 +1662,20 @@ utilization_percent:
           install_base_response_at: existing.install_base_response_at || "",
           install_base_response_seen: existing.install_base_response_seen || false,
           install_base_response_seen_at: existing.install_base_response_seen_at || "",
+axis_auto_sync_eligible:
+  newRec.axis_auto_sync_eligible ||
+  existing.axis_auto_sync_eligible ||
+  "yes",
 
+axis_manual_route_target:
+  newRec.axis_manual_route_target ||
+  existing.axis_manual_route_target ||
+  "",
+
+axis_clarification_reason:
+  newRec.axis_clarification_reason ||
+  existing.axis_clarification_reason ||
+  "",
 install_base_issue_field: newRec.install_base_issue_field || existing.install_base_issue_field || "",
 install_base_issue_type: newRec.install_base_issue_type || existing.install_base_issue_type || "",
 install_base_action_label: newRec.install_base_action_label || existing.install_base_action_label || "",
@@ -2183,9 +2236,21 @@ function renderDetail() {
   empty.classList.add("hidden");
   detail.classList.remove("hidden");
 
-  grid.innerHTML = `
+ grid.innerHTML = `
     ${renderRepResponseCard(rec)}
-${renderFixedDataCard(rec)}
+    ${renderFixedDataCard(rec)}
+
+    ${!isAutoSyncEligible(rec) ? `
+      <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.75);background:rgba(255,216,77,.10);">
+        <div class="k">Sync Hold</div>
+        <div class="v">Held for Install Base clarification</div>
+        <div class="mini" style="margin-top:8px;line-height:1.55;">
+          Manual route target: <strong>${escapeHtml(getManualRouteTarget(rec) || "Not specified")}</strong><br>
+          Reason: ${escapeHtml(getClarificationReason(rec) || "No clarification reason provided.")}
+        </div>
+      </div>
+    ` : ""}
+
        <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
