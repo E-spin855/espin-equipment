@@ -919,7 +919,15 @@ function isFixedByRep(rec) {
     rec.install_base_fix_status === "rep_reviewed"
   );
 }
-
+function isCompletedByRep(rec) {
+  return (
+    rec.lifecycle_completed === true ||
+    rec.rep_status === "completed" ||
+    rec.rep_action === "completed" ||
+    rec.install_base_completion_status === "completed_by_rep" ||
+    rec.install_base_response_status === "project_completed_by_rep"
+  );
+}
 function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
   if (rec.install_base_fixed_seen_by_install_base === true) return false;
@@ -962,13 +970,18 @@ function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
   `;
 }
 function getReviewStatus(rec) {
+  if (isCompletedByRep(rec)) {
+    return { type: "fixed", label: "Project Completed" };
+  }
+
   if (isFixedByRep(rec)) {
-  return { type: "fixed", label: "Fixed by Rep" };
-}
+    return { type: "fixed", label: "Fixed by Rep" };
+  }
 
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
     return { type: "response", label: "Rep Response" };
   }
+
   const exceptions = getDataExceptions(rec);
 
   if (rec.install_base_release_status === "released_to_manager") {
@@ -985,7 +998,6 @@ function getReviewStatus(rec) {
 
   return { type: "ok", label: "Ready for Review" };
 }
-
 function getStatusHtml(rec) {
   const status = getReviewStatus(rec);
 
@@ -1869,21 +1881,24 @@ if (bb !== aa) return bb - aa;
   });
 
   tbody.innerHTML = sorted.map(rec => {
-   const fixedByRep =
-  rec.install_base_correction_status === "corrected_by_rep" ||
-  rec.install_base_response_status === "rep_correction_sent" ||
-  rec.install_base_fix_status === "rep_reviewed";
+   const fixedByRep = isFixedByRep(rec);
+const completedByRep = isCompletedByRep(rec);
 
 const correctedUnseen =
   fixedByRep &&
   rec.install_base_fixed_seen_by_install_base !== true;
 
+const completionUnseen =
+  completedByRep &&
+  rec.install_base_response_seen !== true;
+
 const rowClass = [
   String(state.selectedId) === String(rec.id) ? "selected" : "",
-  rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
-    ? "install-base-response-flash"
-    : "",
-  correctedUnseen ? "install-base-corrected-row-frame" : ""
+rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
+  ? "install-base-response-flash"
+  : "",
+correctedUnseen ? "install-base-corrected-row-frame" : "",
+completionUnseen ? "install-base-response-flash" : ""
 ].filter(Boolean).join(" ");
 
     return `
@@ -2063,6 +2078,15 @@ function formatInstallBaseResponseStatus(value) {
     rep_correction_sent: "Correction Sent by Rep",
     corrected_by_rep: "Fixed by Rep",
     rep_reviewed: "Fixed by Rep",
+
+    project_completed_by_rep: "Project Completed by Rep",
+    completed_by_rep: "Project Completed by Rep",
+
+    manager_correction_sent: "Correction Sent by Manager",
+    corrected_by_manager: "Fixed by Manager",
+    manager_reviewed: "Fixed by Manager",
+    manager_unable_to_verify: "Unable to Verify",
+
     response_sent: "Response Sent",
     install_base_data_fixed: "Data Fixed"
   };
