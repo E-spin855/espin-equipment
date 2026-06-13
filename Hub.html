@@ -1385,24 +1385,103 @@ function markSelectedStaged() {
   render();
   showBanner("Selected record marked as staged only.");
 }
-function markSelectedStaged() {
-  const rec = findSelectedRecord();
-  if (!rec) return;
+function autoSyncEligibleRecordsToRepAndManager() {
+  const now = new Date().toISOString();
 
-  state.records = state.records.map(r => {
-    if (!sameRecord(r, rec)) return r;
+  let repQueue = readQueue(REP_QUEUE_KEY, []);
+  let managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+
+  const currentInstallBaseKeys = new Set(
+    state.records.map(r => String(getRecordKey(r)))
+  );
+
+  // Remove current Install Base records from Rep queue first.
+  // Then add back only auto-sync eligible records.
+  repQueue = repQueue.filter(r => {
+    const key = String(r.key || getRecordKey(r));
+    return !currentInstallBaseKeys.has(key);
+  });
+
+  // Remove current Install Base records from every Manager queue first.
+  Object.keys(managerQueue).forEach(ownerName => {
+    managerQueue[ownerName] = (managerQueue[ownerName] || []).filter(r => {
+      const key = String(r.key || getRecordKey(r));
+      return !currentInstallBaseKeys.has(key);
+    });
+  });
+
+  state.records = state.records.map(rec => {
+    const key = getRecordKey(rec);
+
+    if (!isAutoSyncEligible(rec)) {
+      return {
+        ...rec,
+        key,
+        rep_visible: false,
+        manager_visible: false,
+        install_base_release_status: "manual_hold",
+        install_base_sync_type: "manual_clarification_hold",
+        install_base_manual_route: false,
+        install_base_clarification_reason:
+          getClarificationReason(rec) ||
+          rec.install_base_issue_reason ||
+          rec.conflict_notes ||
+          ""
+      };
+    }
 
     return {
-      ...r,
-      install_base_release_status: "staged",
-      install_base_released_at: "",
-      install_base_released_to: ""
+      ...rec,
+      key,
+      hub_source: "AXIS Install Base Workspace",
+      source: rec.source || "AXIS Install Base Workspace",
+
+      install_base_sync_type: "automatic",
+      install_base_manual_route: false,
+      install_base_release_status: "auto_synced",
+      install_base_released_at: rec.install_base_released_at || now,
+      install_base_released_to: "rep_and_manager",
+
+      rep_visible: true,
+      manager_visible: true,
+
+      manager_unseen_update: true,
+      manager_alert_seen: false,
+      manager_flash_at: now,
+      manager_flash_type: "install_base_auto_sync",
+      manager_flash_text: "Install-base record auto-synced from OEM feed"
     };
   });
 
-  saveRecords();
-  render();
-  showBanner("Selected record marked as staged only.");
+  state.records
+    .filter(rec => isAutoSyncEligible(rec))
+    .forEach(rec => {
+      const repRecord = {
+        ...rec,
+        project:
+          rec.site ||
+          rec.site_address ||
+          rec.oem_project_id ||
+          rec.asset_id ||
+          "Unknown Site",
+        rep: rec.assigned_rep_name || "Unassigned",
+        alert: getReviewStatus(rec).label,
+        timestamp: now
+      };
+
+      repQueue.push(repRecord);
+
+      const ownerName = getOwnerName(rec);
+      if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
+
+      managerQueue[ownerName].push(rec);
+    });
+
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+
+  localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 }
 function parseWorkbook(file) {
   const reader = new FileReader();
