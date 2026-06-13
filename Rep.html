@@ -1732,7 +1732,43 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
     }
 
   function renderReviewSignalCell(rec) {
-  if (rec.lifecycle_completed) {
+  if (
+    rec.hub_source === "AXIS Install Base Workspace" ||
+    rec.install_base_sync_type ||
+    rec.install_base_received_by_rep
+  ) {
+    const label =
+      rec.oem_review_label ||
+      rec.review_label ||
+      rec.oem_review_type ||
+      rec.review_type ||
+      rec.rep_action_label ||
+      rec.rep_selected_manual_action_label ||
+      rec.install_base_action_label ||
+      rec.install_base_issue_type ||
+      "Planning";
+
+    const normalized = String(label).toLowerCase();
+
+    let cls = "alert-planning";
+
+    if (normalized.includes("service")) cls = "alert-service";
+    if (normalized.includes("planning")) cls = "alert-planning";
+    if (normalized.includes("age")) cls = "alert-age";
+    if (normalized.includes("project")) cls = "alert-proactive";
+    if (normalized.includes("quote")) cls = "alert-planning";
+    if (normalized.includes("source")) cls = "alert-postponed";
+    if (normalized.includes("owner")) cls = "alert-proactive";
+    if (normalized.includes("site")) cls = "alert-none";
+    if (normalized.includes("data")) cls = "alert-none";
+
+    return `
+      <span class="alert-badge ${cls}">
+        ${escapeHtml(label)}
+      </span>
+    `;
+  }  
+if (rec.lifecycle_completed) {
     return `<span class="alert-badge alert-completed">Reviewed</span>`;
   }
 
