@@ -1023,6 +1023,75 @@ function getReviewStatus(rec) {
 
   return { type: "ok", label: "Ready for Review" };
 }
+function getReviewStatus(rec) {
+  if (isCompletedByRep(rec)) {
+    return { type: "fixed", label: "Project Completed" };
+  }
+
+  if (
+    !isAutoSyncEligible(rec) &&
+    rec.install_base_release_status !== "released_to_rep" &&
+    rec.install_base_release_status !== "released_to_manager"
+  ) {
+    return { type: "source", label: "Manual Send Needed" };
+  }
+
+  if (rec.install_base_release_status === "auto_synced") {
+    return { type: "released", label: "Auto-Synced" };
+  }
+
+  if (isFixedByRep(rec)) {
+    return { type: "fixed", label: "Fixed by Rep" };
+  }
+
+  if (rec.install_base_response_at && !rec.install_base_response_seen) {
+    return { type: "response", label: "Rep Response" };
+  }
+
+  const exceptions = getDataExceptions(rec);
+
+  if (rec.install_base_release_status === "released_to_manager") {
+    return { type: "released", label: "Released to Manager" };
+  }
+
+  if (rec.install_base_release_status === "released_to_rep") {
+    return { type: "released", label: "Released to Rep" };
+  }
+
+  if (exceptions.length) {
+    return exceptions[0];
+  }
+
+  return { type: "ok", label: "Ready for Review" };
+}
+
+function getRepLifecycleLabelForInstallBaseRecord(rec) {
+  if (rec.oem_review_label) return rec.oem_review_label;
+  if (rec.review_label) return rec.review_label;
+  if (rec.oem_review_type) return rec.oem_review_type;
+  if (rec.review_type) return rec.review_type;
+  if (rec.proactive_reason) return rec.proactive_reason;
+  if (rec.install_base_action_label) return rec.install_base_action_label;
+  if (rec.install_base_issue_type) return rec.install_base_issue_type;
+
+  const status = getReviewStatus(rec);
+  if (status.label && status.label !== "Auto-Synced") return status.label;
+
+  return "Planning";
+}
+
+function getRepLifecycleReasonForInstallBaseRecord(rec) {
+  return (
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.proactive_reason ||
+    "OEM install-base record synced for rep review."
+  );
+}
 function getStatusHtml(rec) {
   const status = getReviewStatus(rec);
 

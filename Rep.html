@@ -1925,6 +1925,27 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
     if (!key) return;
 
+    const reviewLabel =
+      incoming.oem_review_label ||
+      incoming.review_condition ||
+      incoming.review_type ||
+      incoming.oem_review_type ||
+      incoming.rep_action_label ||
+      incoming.rep_selected_manual_action_label ||
+      incoming.install_base_action_label ||
+      incoming.install_base_issue_type ||
+      "Planning";
+
+    const reviewReason =
+      incoming.oem_review_reason ||
+      incoming.review_reason ||
+      incoming.install_base_issue_reason ||
+      incoming.install_base_action_reason ||
+      incoming.install_base_issue_note ||
+      incoming.conflict_notes ||
+      incoming.proactive_reason ||
+      "OEM install-base record synced for rep review.";
+
     const repRecord = {
       ...incoming,
       key,
@@ -1939,7 +1960,19 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
       rep_visible: true,
       manager_visible: false,
-      rep_status: incoming.rep_status || "new"
+
+      // This prevents synced install-base records from showing as NEW
+      rep_status: "active_review",
+      rep_action: "review_condition",
+      rep_action_label: reviewLabel,
+      rep_selected_manual_action_label: reviewLabel,
+
+      // These feed the Review Condition badge and detail note
+      oem_review_label: reviewLabel,
+      oem_review_reason: reviewReason,
+
+      install_base_issue_reason: reviewReason,
+      install_base_issue_note: reviewReason
     };
 
     const existingIndex = state.records.findIndex(r => {
