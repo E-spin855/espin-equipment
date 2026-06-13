@@ -439,6 +439,34 @@
   border:1px solid rgba(255,216,120,.65);
   box-shadow:0 0 12px rgba(240,180,41,.22);
 }
+.manager-fix-clickable{
+  cursor:pointer;
+}
+
+.manager-fix-clickable:hover{
+  transform:translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(255,216,77,.24),
+    0 0 18px rgba(255,216,77,.42);
+}
+
+.manager-waiting-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:96px;
+  min-height:30px;
+  padding:6px 9px;
+  border-radius:10px;
+  font-size:11px;
+  font-weight:900;
+  text-align:center;
+  line-height:1.05;
+  background:rgba(255,216,77,.10);
+  color:#fff1b8;
+  border:1px solid rgba(255,216,77,.34);
+  box-shadow:none;
+}
 tr.manager-row-flash{
   outline:2px solid rgba(65,255,156,.95)!important;
   outline-offset:-2px;
@@ -1791,28 +1819,48 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
   }
 
- if (!textValue || textValue === "-") {
-  if (fieldName === "age") {
-    return "-";
+  if (!textValue || textValue === "-") {
+    if (fieldName === "age") {
+      return "-";
+    }
+
+    const labelMap = {
+      project: "Fix Project ID",
+      make: "Fix Make",
+      model: "Fix Model",
+      modality: "Fix Modality",
+      serial: "Fix Serial",
+      dom: "Fix DOM",
+      site: "Fix Site",
+      facility: "Fix Facility"
+    };
+
+    const fixLabel = labelMap[fieldName] || "Fix Data";
+    const id = rec.id || "";
+
+    if (isManagerInstallBaseRequest(rec)) {
+      return `
+        <button
+          type="button"
+          class="manager-fix-badge manager-fix-clickable open-record-btn"
+          data-id="${escapeHtml(id)}"
+          title="Install Base sent this correction request to Manager"
+          onclick="event.preventDefault(); event.stopPropagation(); selectRow('${escapeJs(id)}')"
+        >
+          ${escapeHtml(fixLabel)}
+        </button>
+      `;
+    }
+
+    return `
+      <span
+        class="manager-waiting-badge"
+        title="Rep correction expected from rep workspace"
+      >
+        Waiting on Rep
+      </span>
+    `;
   }
-
-  const labelMap = {
-    project: "Fix Project ID",
-    make: "Fix Make",
-    model: "Fix Model",
-    modality: "Fix Modality",
-    serial: "Fix Serial",
-    dom: "Fix DOM",
-    site: "Fix Site",
-    facility: "Fix Facility"
-  };
-
-  return `
-    <span class="manager-fix-badge">
-      ${escapeHtml(labelMap[fieldName] || "Fix Data")}
-    </span>
-  `;
-}
 
   return normalHtml;
 }
