@@ -1911,22 +1911,81 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
+function mergeInstallBaseQueueIntoRepRecords() {
+  const queue = readArrayKey("espin_rep_queue");
+  if (!queue.length) return;
+
+  let changed = false;
+
+  queue.forEach(incoming => {
+    const key =
+      incoming.key ||
+      getRecordKey(incoming) ||
+      `${incoming.oem_project_id || incoming.asset_id || ""}_${incoming.serial_number || incoming.serial || ""}`;
+
+    if (!key) return;
+
+    const repRecord = {
+      ...incoming,
+      key,
+      id: incoming.id || key,
+
+      hub_source: incoming.hub_source || "AXIS Install Base Workspace",
+      source: incoming.source || "AXIS Install Base Workspace",
+
+      install_base_received_by_rep: true,
+      install_base_received_at:
+        incoming.install_base_received_at || new Date().toISOString(),
+
+      rep_visible: true,
+      manager_visible: false,
+      rep_status: incoming.rep_status || "new"
+    };
+
+    const existingIndex = state.records.findIndex(r => {
+      const existingKey =
+        r.key ||
+        getRecordKey(r) ||
+        `${r.oem_project_id || r.asset_id || ""}_${r.serial_number || r.serial || ""}`;
+
+      return String(existingKey) === String(key);
+    });
+
+    if (existingIndex >= 0) {
+      state.records[existingIndex] = {
+        ...state.records[existingIndex],
+        ...repRecord
+      };
+    } else {
+      state.records.unshift(repRecord);
+    }
+
+    changed = true;
+  });
+
+  if (changed) {
+    saveRecords();
+  }
+}
    function loadRecords(preserveSelection = true) {
   const previousSelectedId = state.selectedId;
 
- try {
-  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 
-  state.records = Array.isArray(saved)
-    ? saved.filter(rec =>
-        rec.install_base_released_to !== "manager" &&
-        rec.release_destination !== "manager" &&
-        rec.manager_visible !== true
-      )
-    : [];
-} catch {
-  state.records = [];
-}
+    state.records = Array.isArray(saved)
+      ? saved.filter(rec =>
+          rec.install_base_released_to !== "manager" &&
+          rec.release_destination !== "manager" &&
+          rec.manager_visible !== true
+        )
+      : [];
+  } catch {
+    state.records = [];
+  }
+
+  mergeInstallBaseQueueIntoRepRecords();
+
   if (
     preserveSelection &&
     previousSelectedId &&
