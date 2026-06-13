@@ -1925,6 +1925,11 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
     if (!key) return;
 
+    const isManualClarification =
+      incoming.install_base_sync_type === "manual_clarification" ||
+      incoming.install_base_manual_route === true ||
+      incoming.install_base_release_status === "released_to_rep";
+
     const reviewLabel =
       incoming.oem_review_label ||
       incoming.review_condition ||
@@ -1946,6 +1951,13 @@ function mergeInstallBaseQueueIntoRepRecords() {
       incoming.proactive_reason ||
       "OEM install-base record synced for rep review.";
 
+    const fixLabel = getInstallBaseFixLabel(incoming);
+
+    const alreadyFixed =
+      incoming.install_base_correction_status === "corrected_by_rep" ||
+      incoming.install_base_fix_status === "rep_reviewed" ||
+      incoming.install_base_response_status === "rep_correction_sent";
+
     const repRecord = {
       ...incoming,
       key,
@@ -1961,18 +1973,27 @@ function mergeInstallBaseQueueIntoRepRecords() {
       rep_visible: true,
       manager_visible: false,
 
-      // This prevents synced install-base records from showing as NEW
-      rep_status: "active_review",
-      rep_action: "review_condition",
-      rep_action_label: reviewLabel,
-      rep_selected_manual_action_label: reviewLabel,
-
-      // These feed the Review Condition badge and detail note
       oem_review_label: reviewLabel,
       oem_review_reason: reviewReason,
 
       install_base_issue_reason: reviewReason,
-      install_base_issue_note: reviewReason
+      install_base_issue_note: reviewReason,
+
+      rep_status: isManualClarification && !alreadyFixed
+        ? "clarification_needed"
+        : "open",
+
+      rep_action: isManualClarification && !alreadyFixed
+        ? "fix_install_base_data"
+        : "review_condition",
+
+      rep_action_label: isManualClarification && !alreadyFixed
+        ? fixLabel
+        : reviewLabel,
+
+      rep_selected_manual_action_label: isManualClarification && !alreadyFixed
+        ? fixLabel
+        : reviewLabel
     };
 
     const existingIndex = state.records.findIndex(r => {
@@ -2016,7 +2037,42 @@ function mergeInstallBaseQueueIntoRepRecords() {
   } catch {
     state.records = [];
   }
+function getInstallBaseFixLabel(rec) {
+  const field = String(
+    rec.install_base_issue_field ||
+    rec.axis_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    ""
+  ).toLowerCase();
 
+  if (field.includes("site") || field.includes("facility") || field.includes("location")) {
+    return "Fix Site";
+  }
+
+  if (field.includes("serial")) {
+    return "Fix Serial";
+  }
+
+  if (field.includes("dom") || field.includes("year") || field.includes("age")) {
+    return "Fix DOM";
+  }
+
+  if (field.includes("owner") || field.includes("rep")) {
+    return "Fix Owner";
+  }
+
+  if (field.includes("source") || field.includes("conflict") || field.includes("mismatch")) {
+    return "Source Conflict";
+  }
+
+  if (field.includes("duplicate")) {
+    return "Duplicate Review";
+  }
+
+  return "Fix Data";
+}
   mergeInstallBaseQueueIntoRepRecords();
 
   if (
@@ -2686,14 +2742,33 @@ const equipmentBadge = getFixDataBadge(rec, "equipment");
           ${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}
         </td>
 
-        <td>
-          <span>
-  ${renderRepReviewStatus(rec)}
-</span>
-        </td>
+       <td>
+  ${renderRepStatusCell(rec)}
+</td>
       </tr>
     `;
   }).join("");
+}
+function renderRepStatusCell(rec) {
+  const status = String(rec.rep_status || "").toLowerCase();
+
+  if (status === "clarification_needed") {
+    return `
+      <span class="pill pending">
+        ${escapeHtml(rec.rep_action_label || "Fix Data")}
+      </span>
+    `;
+  }
+
+  return `
+    <button
+      type="button"
+      class="open-record-btn"
+      onclick="event.stopPropagation(); selectRow('${escapeJs(rec.id)}')"
+    >
+      Open
+    </button>
+  `;
 }
 function getReviewNoteStyle(type) {
   const t = String(type || "").toLowerCase().trim();
