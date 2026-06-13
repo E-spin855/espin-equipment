@@ -4590,33 +4590,94 @@ rec.manager_flash_text = `Rep selected: ${label}`;
     }
 
     function completeLifecycleProject() {
-      const rec = state.records.find(r => r.id === state.selectedId);
+  const rec = state.records.find(r => String(r.id) === String(state.selectedId));
 
-      if (!rec) {
-        alert("Open a record first");
-        return;
-      }
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
 
-      if (!confirm("Mark project as completed?")) return;
+  if (!confirm("Mark project as completed?")) return;
 
-      rec.lifecycle_completed = true;
-      rec.rep_status = "completed";
-      rec.rep_action = "completed";
-      rec.rep_action_label = "Completed";
-      rec.completed_at = new Date().toISOString();
-      rec.completed_by = `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim();
-      rec.rep_deleted = false;
+  const now = new Date().toISOString();
 
-      rec.manager_unseen_update = true;
-      rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "completed";
-      rec.manager_flash_text = "Rep completed project";
+  const repName =
+    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+    rec.assigned_rep_name ||
+    "Rep";
 
-      syncFeedStatus(rec);
-      render();
-      showBanner("✅ Project completed");
-    }
+  const note =
+    $("repOutcomeNotes")?.value?.trim() ||
+    rec.rep_notes ||
+    "Rep marked project completed.";
 
+  const updated = {
+    ...rec,
+
+    // Rep completion status
+    lifecycle_completed: true,
+    rep_status: "completed",
+    rep_action: "completed",
+    rep_action_label: "Project Completed",
+    rep_selected_manual_action: "complete",
+    rep_selected_manual_action_label: "Project Completed",
+    rep_last_action_at: now,
+    completed_at: now,
+    completed_by: repName,
+    rep_deleted: false,
+
+    // Keep existing manager response fields intact.
+    manager_response_action: rec.manager_response_action || "",
+    manager_response_date: rec.manager_response_date || "",
+    manager_response_notes: rec.manager_response_notes || "",
+    manager_response_at: rec.manager_response_at || "",
+    manager_response_seen_by_rep: rec.manager_response_seen_by_rep ?? true,
+    manager_response_seen_at: rec.manager_response_seen_at || "",
+
+    // Manager visibility: notify manager that rep completed project.
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_flash_at: now,
+    manager_flash_type: "rep_update",
+    manager_flash_text: "Rep completed project",
+
+    // Install Base visibility
+    install_base_response_status: "project_completed_by_rep",
+    install_base_response_note: note,
+    install_base_response_by: repName,
+    install_base_response_at: now,
+    install_base_response_seen: false,
+
+    install_base_completion_status: "completed_by_rep",
+    install_base_completed_at: now,
+    install_base_completed_by: repName,
+
+    install_base_fixed_seen_by_install_base: false,
+    install_base_show_communication: false,
+    install_base_has_open_issue: false,
+
+    key: getRecordKey(rec)
+  };
+
+  state.records = state.records.map(r =>
+    sameRecord(r, updated) ? updated : r
+  );
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
+  queue.unshift(updated);
+
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+
+  syncFeedStatus(updated);
+  saveRecords();
+
+  state.selectedId = updated.id;
+
+  render();
+
+  showBanner("✅ Project completed and sent back to Install Base.");
+}
     function deleteFromRepOnly() {
       const rec = state.records.find(r => r.id === state.selectedId);
       if (!rec) return;
