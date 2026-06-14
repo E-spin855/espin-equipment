@@ -1316,6 +1316,8 @@ const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 
+const INSTALL_BASE_KEY = "axis_install_base_records_v1";
+
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
 
@@ -2375,6 +2377,24 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   if (!rec || !outcome) return;
 
   const now = new Date().toISOString();
+  const installBaseRecordsKey = "axis_install_base_records_v1";
+  const normalizedOutcome = String(outcome || "").toLowerCase();
+  const isWon = normalizedOutcome === "won";
+
+  const projectId = clean(rec.oem_project_id || rec.project_id || rec.id || "");
+  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const site = clean(rec.site || rec.facility || rec.hospital || rec.customer || "");
+  const facility = clean(rec.facility || rec.site || rec.hospital || rec.customer || "");
+
+  const key =
+    rec.key ||
+    getRecordKey(rec) ||
+    [
+      isWon ? "won_project" : "project_outcome",
+      projectId || "no_project",
+      serial || "no_serial",
+      site || "no_site"
+    ].join("|").toLowerCase();
 
   let finalSync = [];
   try {
@@ -2385,45 +2405,195 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   }
 
   const packet = {
-    id: rec.id || "",
-    key: `${rec.oem_project_id || ""}_${rec.serial_number || ""}`,
-    oem_project_id: rec.oem_project_id || "",
-    serial_number: rec.serial_number || "",
-    make: rec.make || "",
-    model: rec.model || "",
-    modality: rec.modality || "",
-    dom: rec.dom || "",
-    site: rec.site || rec.facility || rec.hospital || "",
-    install_base_final_outcome: outcome,
+    ...rec,
+
+    id: rec.id || key,
+    key,
+
+    oem_project_id: projectId,
+    project_id: projectId,
+    asset_id: rec.asset_id || projectId,
+
+    serial_number: serial,
+    serial,
+
+    make: rec.make || rec.tradein_equipment_make || "",
+    model: rec.model || rec.tradein_equipment_model || rec.new_project_name || "",
+    modality: rec.modality || rec.tradein_equipment_modality || "PROJECT",
+    dom: rec.dom || rec.tradein_equipment_dom || "",
+    age: rec.age || "",
+
+    site,
+    facility,
+    hospital: rec.hospital || facility,
+
+    customer: rec.customer || facility,
+    customer_name: rec.customer_name || facility,
+
+    assigned_rep:
+      rec.assigned_rep ||
+      rec.rep_owner ||
+      rec.rep_name ||
+      `${rec.rep_first_name || ""} ${rec.rep_last_name || ""}`.trim(),
+
+    rep_owner:
+      rec.rep_owner ||
+      rec.assigned_rep ||
+      rec.rep_name ||
+      `${rec.rep_first_name || ""} ${rec.rep_last_name || ""}`.trim(),
+
+    install_base_final_outcome: normalizedOutcome,
     install_base_final_outcome_date: now,
     install_base_final_outcome_source: "Equipment Review Workspace",
     install_base_final_outcome_notes: notes,
-    quote_status: rec.quote_status || "",
-    rep_status: rec.rep_status || "",
-    completed_at: rec.completed_at || "",
-    completed_by: rec.completed_by || "",
+
+    quote_status: normalizedOutcome,
+    rep_status: normalizedOutcome,
+
+    completed_at: rec.completed_at || now,
+    completed_by: rec.completed_by || "Rep",
+
     tradein_project_id: rec.tradein_project_id || "",
     tradein_modality_id: rec.tradein_modality_id || "",
     quote_amount: rec.quote_amount || "",
-    quote_net_amount: rec.quote_net_amount || ""
+    quote_net_amount: rec.quote_net_amount || "",
+
+    install_base_sync_type: isWon
+      ? "won_project_lifecycle_entry"
+      : "project_final_outcome",
+
+    install_base_lifecycle_entry: isWon,
+    install_base_lifecycle_status: isWon ? "active" : "",
+    install_base_review_status: isWon
+      ? "lifecycle_active"
+      : "final_outcome_received",
+
+    install_base_received_from_rep: true,
+    install_base_received_from_rep_at: now,
+    install_base_received_at: now,
+
+    install_base_source: isWon ? "Rep Won Project" : "Rep Final Outcome",
+    source: isWon ? "Rep Won Project" : "Equipment Review Workspace",
+    hub_source: "Equipment Review Workspace",
+
+    oem_review_type: isWon ? "project" : (rec.oem_review_type || rec.review_type || ""),
+    review_type: isWon ? "project" : (rec.review_type || rec.oem_review_type || ""),
+
+    oem_review_label: isWon
+      ? "Project Won - Enter Lifecycle Review"
+      : (rec.oem_review_label || rec.review_label || ""),
+
+    review_label: isWon
+      ? "Project Won - Enter Lifecycle Review"
+      : (rec.review_label || rec.oem_review_label || ""),
+
+    oem_review_reason: isWon
+      ? "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility."
+      : (notes || rec.oem_review_reason || rec.review_reason || ""),
+
+    review_reason: isWon
+      ? "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility."
+      : (notes || rec.review_reason || rec.oem_review_reason || ""),
+
+    lifecycle_source_project_id: projectId,
+    lifecycle_created_from_quote_won: isWon,
+    lifecycle_created_at: isWon ? now : (rec.lifecycle_created_at || ""),
+    lifecycle_completed: false,
+
+    rep_action_label: rec.rep_action_label || (isWon ? "Won" : normalizedOutcome),
+
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: isWon
+      ? "won_project_lifecycle_entry"
+      : "project_final_outcome",
+
+    manager_flash_text: isWon
+      ? "Won project synced to Install Base lifecycle"
+      : "Project final outcome synced to Install Base"
   };
 
-  const existingIndex = finalSync.findIndex(item =>
+  const samePacket = item =>
     String(item.id || "") === String(packet.id || "") ||
+    String(item.key || "") === String(packet.key || "") ||
     (
-      String(item.oem_project_id || "") === String(packet.oem_project_id || "") &&
-      String(item.serial_number || "") === String(packet.serial_number || "")
-    )
-  );
+      String(item.oem_project_id || item.project_id || "") === String(packet.oem_project_id || packet.project_id || "") &&
+      String(item.serial_number || item.serial || "") === String(packet.serial_number || packet.serial || "") &&
+      String(item.site || item.facility || item.hospital || "") === String(packet.site || packet.facility || packet.hospital || "")
+    );
 
-  if (existingIndex >= 0) {
-    finalSync[existingIndex] = { ...finalSync[existingIndex], ...packet };
+  const existingFinalIndex = finalSync.findIndex(samePacket);
+
+  if (existingFinalIndex >= 0) {
+    finalSync[existingFinalIndex] = {
+      ...finalSync[existingFinalIndex],
+      ...packet
+    };
   } else {
     finalSync.unshift(packet);
   }
 
   localStorage.setItem(INSTALL_BASE_FINAL_SYNC_KEY, JSON.stringify(finalSync));
   localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
+
+  /*
+    Won projects must also go directly into the Install Base visible table source:
+    axis_install_base_records_v1
+  */
+  if (isWon) {
+    let installBaseRecords = [];
+
+    try {
+      installBaseRecords = JSON.parse(localStorage.getItem(installBaseRecordsKey) || "[]");
+      if (!Array.isArray(installBaseRecords)) installBaseRecords = [];
+    } catch {
+      installBaseRecords = [];
+    }
+
+    const installBasePacket = {
+      ...packet,
+
+      source: "Rep Won Project",
+      install_base_source: "Rep Won Project",
+
+      review_status: "lifecycle_active",
+      status: "Lifecycle Active",
+
+      released_to_install_base: true,
+      staged_for_lifecycle: true,
+
+      install_base_lifecycle_entry: true,
+      install_base_lifecycle_status: "active",
+      install_base_review_status: "lifecycle_active",
+      install_base_sync_type: "won_project_lifecycle_entry"
+    };
+
+    const existingInstallBaseIndex = installBaseRecords.findIndex(samePacket);
+
+    if (existingInstallBaseIndex >= 0) {
+      installBaseRecords[existingInstallBaseIndex] = {
+        ...installBaseRecords[existingInstallBaseIndex],
+        ...installBasePacket
+      };
+    } else {
+      installBaseRecords.unshift(installBasePacket);
+    }
+
+    localStorage.setItem(installBaseRecordsKey, JSON.stringify(installBaseRecords));
+
+    localStorage.setItem("axis_install_base_records_ping_v1", String(Date.now()));
+    localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: installBaseRecordsKey,
+      newValue: JSON.stringify(installBaseRecords)
+    }));
+  }
+
+  window.dispatchEvent(new StorageEvent("storage", {
+    key: INSTALL_BASE_FINAL_SYNC_KEY,
+    newValue: JSON.stringify(finalSync)
+  }));
 }
     function updateAxisShareStatus() {
       const enabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
@@ -4733,7 +4903,7 @@ if (
 
             showBanner(
   status === "won"
-    ? "✅ Quote marked won — project details available for PM review"
+    ? "✅ Quote marked won — synced to Install Base lifecycle"
           : status === "lost"
           ? "✅ Quote marked lost"
           : "✅ Quote saved with follow-up alert"
