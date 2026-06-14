@@ -1832,11 +1832,30 @@ function hasUnseenManagerRelease(rec) {
   if (rec.manager_flash_type === "manager_response") return false;
   if (isRepInstallBaseFix(rec)) return isManagerRepFixUnseen(rec);
 
-  if (rec.manager_release_id) {
-    return String(rec.manager_release_id || "") !== String(rec.manager_seen_release_id || "");
+  // Do NOT green-frame normal auto-synced install-base records.
+  // They should appear as regular synced records.
+  if (
+    rec.install_base_release_status === "auto_synced" ||
+    rec.install_base_sync_type === "automatic"
+  ) {
+    return false;
   }
 
-  return rec.manager_unseen_update === true;
+  // Green frame only for a NEW manual release from Install Base to Manager.
+  if (
+    rec.manager_flash_type === "install_base_release" ||
+    rec.install_base_release_status === "released_to_manager" ||
+    rec.install_base_released_to === "manager" ||
+    rec.release_destination === "manager"
+  ) {
+    if (rec.manager_release_id) {
+      return String(rec.manager_release_id || "") !== String(rec.manager_seen_release_id || "");
+    }
+
+    return rec.manager_unseen_update === true;
+  }
+
+  return false;
 }
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
