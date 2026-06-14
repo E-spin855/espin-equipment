@@ -2811,10 +2811,10 @@ const equipmentBadge = getFixDataBadge(rec, "equipment");
 
     return `
       <tr
-        class="${selectedClass}"
-        data-id="${escapeHtml(rec.id)}"
-        onclick="selectRow('${String(rec.id || "").replace(/'/g, "\\'")}')"
-      >
+  class="${selectedClass}"
+  data-id="${escapeHtml(rec.id)}"
+  onclick="handleRepRowClick('${escapeJs(rec.id)}')"
+>
         <td>
           ${fieldOrFix("project", projectHtml)}
         </td>
@@ -6627,6 +6627,31 @@ function markRepRowUpdateSeen(id) {
 
   localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+}
+function handleRepRowClick(id) {
+  const rec = state.records.find(r =>
+    String(r.id || "") === String(id) ||
+    String(r.key || "") === String(id)
+  );
+
+  if (!rec) {
+    selectRow(id);
+    return;
+  }
+
+  const isInstallBaseRepRequest =
+    rec.install_base_released_to === "rep" ||
+    rec.release_destination === "rep" ||
+    rec.install_base_release_status === "released_to_rep" ||
+    rec.install_base_sync_type === "manual_clarification" ||
+    rec.install_base_manual_route === true;
+
+  if (isInstallBaseRepRequest) {
+    openInstallBaseCommunication(id);
+    return;
+  }
+
+  selectRow(id);
 }
     function selectRow(id) {
   const selectedId = String(id || "").trim();
