@@ -691,7 +691,8 @@ const REP_QUEUE_KEY = "espin_rep_queue";
 const VP_QUEUE_KEY = "axis_vp_queue_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
-
+const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
+const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const state = {
   records: [],
   selectedOwner: "",
@@ -983,6 +984,13 @@ function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
   `;
 }
 function getReviewStatus(rec) {
+if (
+  rec.install_base_sync_type === "won_project_lifecycle_entry" ||
+  rec.install_base_lifecycle_entry === true ||
+  rec.lifecycle_created_from_quote_won === true
+) {
+  return { type: "released", label: "Lifecycle Active" };
+}
   if (isCompletedByRep(rec)) {
     return { type: "fixed", label: "Project Completed" };
   }
@@ -1161,9 +1169,161 @@ function loadRecords() {
     state.records = [];
   }
 
+  mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
 }
+function mergeWonProjectsFromRepIntoInstallBase() {
+  const directRecords = readArrayKey(INSTALL_BASE_KEY);
+  const finalSyncRecords = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
 
+  const incoming = [...directRecords, ...finalSyncRecords];
+
+  const wonProjects = incoming.filter(rec =>
+    rec.install_base_sync_type === "won_project_lifecycle_entry" ||
+    rec.install_base_lifecycle_entry === true ||
+    rec.lifecycle_created_from_quote_won === true ||
+    rec.install_base_final_outcome === "won" ||
+    rec.quote_status === "won" ||
+    rec.rep_status === "won"
+  );
+
+  if (!wonProjects.length) return false;
+
+  let changed = false;
+
+  wonProjects.forEach(incomingRec => {
+    const projectId = clean(
+      incomingRec.oem_project_id ||
+      incomingRec.project_id ||
+      incomingRec.asset_id ||
+      incomingRec.id ||
+      ""
+    );
+
+    const serial = clean(
+      incomingRec.serial_number ||
+      incomingRec.serial ||
+      incomingRec.system_serial ||
+      ""
+    );
+
+    const site = clean(
+      incomingRec.site ||
+      incomingRec.facility ||
+      incomingRec.hospital ||
+      incomingRec.customer ||
+      ""
+    );
+
+    const key =
+      incomingRec.key ||
+      getRecordKey(incomingRec) ||
+      [
+        "won_project",
+        projectId || "no_project",
+        serial || "no_serial",
+        site || "no_site"
+      ].join("|").toLowerCase();
+
+    const normalized = {
+      ...incomingRec,
+
+      id: incomingRec.id || key,
+      key,
+
+      oem_project_id: projectId,
+      project_id: projectId,
+      asset_id: incomingRec.asset_id || projectId,
+
+      serial_number: serial,
+      serial,
+
+      site: site || "New Won Project",
+      facility: incomingRec.facility || site || "New Won Project",
+
+      make: incomingRec.make || incomingRec.tradein_equipment_make || "",
+      model:
+        incomingRec.model ||
+        incomingRec.tradein_equipment_model ||
+        incomingRec.new_project_name ||
+        "Won Project",
+
+      modality:
+        incomingRec.modality ||
+        incomingRec.tradein_equipment_modality ||
+        "PROJECT",
+
+      source: "Rep Won Project",
+      source_system: "Equipment Review Workspace",
+      hub_source: "Equipment Review Workspace",
+
+      install_base_sync_type: "won_project_lifecycle_entry",
+      install_base_lifecycle_entry: true,
+      install_base_lifecycle_status: "active",
+      install_base_review_status: "lifecycle_active",
+
+      install_base_final_outcome: "won",
+      install_base_received_from_rep: true,
+      install_base_received_at:
+        incomingRec.install_base_received_at ||
+        incomingRec.install_base_received_from_rep_at ||
+        new Date().toISOString(),
+
+      review_status: "lifecycle_active",
+      status: "Lifecycle Active",
+
+      oem_review_type: incomingRec.oem_review_type || "project",
+      review_type: incomingRec.review_type || "project",
+
+      oem_review_label:
+        incomingRec.oem_review_label ||
+        "Project Won - Enter Lifecycle Review",
+
+      review_label:
+        incomingRec.review_label ||
+        "Project Won - Enter Lifecycle Review",
+
+      oem_review_reason:
+        incomingRec.oem_review_reason ||
+        incomingRec.review_reason ||
+        "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility.",
+
+      lifecycle_created_from_quote_won: true,
+      lifecycle_created_at:
+        incomingRec.lifecycle_created_at ||
+        new Date().toISOString(),
+
+      lifecycle_completed: false
+    };
+
+    const existingIndex = state.records.findIndex(rec =>
+      sameRecord(rec, normalized) ||
+      String(rec.key || "") === String(normalized.key || "") ||
+      (
+        String(rec.oem_project_id || rec.project_id || rec.asset_id || "") === String(normalized.oem_project_id || normalized.project_id || normalized.asset_id || "") &&
+        String(rec.serial_number || rec.serial || "") === String(normalized.serial_number || normalized.serial || "")
+      )
+    );
+
+    if (existingIndex >= 0) {
+      state.records[existingIndex] = {
+        ...state.records[existingIndex],
+        ...normalized
+      };
+    } else {
+      state.records.unshift(normalized);
+    }
+
+    changed = true;
+  });
+
+  if (changed) {
+    localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
+    localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+  }
+
+  return changed;
+}
 function mergeRepResponsesIntoRecords() {
   const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
 
@@ -2604,24 +2764,26 @@ function init() {
   }
 
   window.addEventListener("storage", e => {
-    if (
-      e.key === INSTALL_BASE_RESPONSE_KEY ||
-      e.key === INSTALL_BASE_RESPONSE_PING_KEY ||
-      e.key === INSTALL_BASE_KEY ||
-      e.key === "axis_install_base_sync_ping_v1"
-    ) {
-      render();
-    }
-  });
-
+  if (
+    e.key === INSTALL_BASE_RESPONSE_KEY ||
+    e.key === INSTALL_BASE_RESPONSE_PING_KEY ||
+    e.key === INSTALL_BASE_KEY ||
+    e.key === INSTALL_BASE_FINAL_SYNC_KEY ||
+    e.key === INSTALL_BASE_FINAL_SYNC_PING_KEY ||
+    e.key === "axis_install_base_records_ping_v1" ||
+    e.key === "axis_install_base_sync_ping_v1"
+  ) {
+    loadRecords();
+    render();
+  }
+});
   window.addEventListener("install_base_response_update", () => {
     render();
   });
-
-  setInterval(() => {
-    render();
-  }, 1800);
-}
+setInterval(() => {
+  loadRecords();
+  render();
+}, 1800);
 
 document.addEventListener("DOMContentLoaded", init);
 </script>
