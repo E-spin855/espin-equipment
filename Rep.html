@@ -1930,7 +1930,7 @@ function renderReviewSignalCell(rec) {
     "";
 
   if (!label || label === "needed" || label === "open") {
-    return `<button onclick="event.stopPropagation(); selectRow('${rec.id}')">Open</button>`;
+    return `<button type="button" data-select-record-id="${escapeHtml(rec.id)}">Open</button>`;
   }
 
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
@@ -2621,7 +2621,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
     const age = ageFromDom(rec.dom);
 
     return `
-      <tr class="${selectedClass}" data-id="${rec.id}" onclick="selectRow('${rec.id}')">
+      <tr class="${selectedClass}" data-record-id="${escapeHtml(rec.id)}">
         <td>${escapeHtml(rec.oem_project_id || rec.id || "-")}</td>
 
         <td class="wrap">
@@ -2812,8 +2812,7 @@ const equipmentBadge = getFixDataBadge(rec, "equipment");
     return `
       <tr
   class="${selectedClass}"
-  data-id="${escapeHtml(rec.id)}"
-  onclick="handleRepRowClick('${escapeJs(rec.id)}')"
+  data-record-id="${escapeHtml(rec.id)}"
 >
         <td>
           ${fieldOrFix("project", projectHtml)}
@@ -2877,7 +2876,7 @@ function renderRepStatusCell(rec) {
     <button
       type="button"
       class="open-record-btn"
-      onclick="event.stopPropagation(); selectRow('${escapeJs(rec.id)}')"
+      data-select-record-id="${escapeHtml(rec.id)}"
     >
       Open
     </button>
@@ -3902,11 +3901,16 @@ function openInstallBaseCommunication(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
+  const selectionChanged =
+    String(state.selectedId || "") !== selectedId ||
+    state.installBaseCommunicationOpen !== true;
+
+  if (!selectionChanged) return;
+
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = true;
 
   refreshSelectedRowUI();
-  renderTable();
   renderDetail();
 
   setTimeout(() => {
@@ -3916,8 +3920,8 @@ function openInstallBaseCommunication(id) {
 }
 
 function closeInstallBaseCommunication() {
+  if (!state.installBaseCommunicationOpen) return;
   state.installBaseCommunicationOpen = false;
-  renderTable();
   renderDetail();
 }
 
@@ -6508,22 +6512,43 @@ return true;
     }
 function refreshSelectedRowUI() {
   document
-    .querySelectorAll("#tableBody tr.selected, #newProjectsTableBody tr.selected")
-    .forEach(row => row.classList.remove("selected"));
+  .querySelectorAll("#tableBody tr.selected, #newProjectsTableBody tr.selected")
+  .forEach(row => row.classList.remove("selected"));
 
   if (!state.selectedId) return;
 
-  const safeId = String(state.selectedId).replace(/"/g, '\\"');
-
   document
-    .querySelectorAll(`[data-id="${safeId}"]`)
-    .forEach(row => row.classList.add("selected"));
+    .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
+    .forEach(row => {
+      if (String(row.dataset.recordId || "") === String(state.selectedId)) {
+        row.classList.add("selected");
+        row.classList.remove("manager-response-flash", "rep-new-row-flash");
+      }
+    });
 }
 function markRepRowUpdateSeen(id) {
   const now = new Date().toISOString();
 
   const rec = state.records.find(r => String(r.id || "") === String(id || ""));
-  if (!rec) return;
+  if (!rec) return false;
+
+  const needsSeenUpdate =
+    rec.install_base_release_seen !== true ||
+    rec.install_base_release_new === true ||
+    rec.install_base_fixed_seen_by_rep !== true ||
+    rec.manager_response_seen_by_rep !== true ||
+    rec.rep_unseen_update === true ||
+    Boolean(rec.rep_flash_at) ||
+    Boolean(rec.rep_flash_type) ||
+    rec.rep_status === "new" ||
+    rec.rep_status === "install_base_data_fixed" ||
+    rec.rep_status === "needed" ||
+    rec.rep_action === "install_base_data_fixed" ||
+    rec.rep_action_label === "Fixed Data" ||
+    rec.rep_action_label === "Updated" ||
+    rec.rep_action_label === "New";
+
+  if (!needsSeenUpdate) return false;
 
   state.records = state.records.map(r => {
     const sameId = String(r.id || "") === String(id || "");
@@ -6627,6 +6652,7 @@ function markRepRowUpdateSeen(id) {
 
   localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+  return true;
 }
 function handleRepRowClick(id) {
   const rec = state.records.find(r =>
@@ -6657,36 +6683,100 @@ function handleRepRowClick(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
+  const selectionChanged =
+    String(state.selectedId || "") !== selectedId ||
+    state.installBaseCommunicationOpen === true;
+
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
 
-  markRepRowUpdateSeen(selectedId);
+  const seenStateChanged = markRepRowUpdateSeen(selectedId);
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
 
-  refreshSelectedRowUI();
-
+  let recordChanged = false;
   if (rec) {
-    let changed = false;
-
     if (rec.tradein_seen_by_rep !== true) {
       rec.tradein_seen_by_rep = true;
-      changed = true;
+      recordChanged = true;
     }
 
     if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
       rec.manager_response_seen_by_rep = true;
       rec.manager_response_seen_at = new Date().toISOString();
-      changed = true;
+      recordChanged = true;
     }
 
-    if (changed) {
+    if (recordChanged) {
       saveRecords();
     }
   }
 
+  if (!selectionChanged && !seenStateChanged && !recordChanged) return;
+
+  refreshSelectedRowUI();
+  if (selectionChanged) renderDetail();
+}
+const ROW_INTERACTIVE_SELECTOR =
+  "button, input, select, textarea, label, a, [contenteditable='true'], [role='button']";
+
+function bindRepRowDelegation(tbody, rowHandler) {
+  if (!tbody || tbody.dataset.rowDelegationBound === "true") return;
+
+  tbody.dataset.rowDelegationBound = "true";
+  tbody.addEventListener("click", event => {
+    const directSelect = event.target.closest("[data-select-record-id]");
+
+    if (directSelect && tbody.contains(directSelect)) {
+      event.preventDefault();
+      event.stopPropagation();
+      selectRow(directSelect.dataset.selectRecordId);
+      return;
+    }
+
+    if (event.target.closest(ROW_INTERACTIVE_SELECTOR)) return;
+
+    const row = event.target.closest("tr[data-record-id]");
+    if (!row || !tbody.contains(row)) return;
+
+    rowHandler(row.dataset.recordId);
+  });
+}
+
+let repSyncRenderQueued = false;
+
+function refreshRepFromSync() {
+  loadRecords(true);
+  importRepQueueRecords();
+  importTradeInSyncRecords();
+  importQuoteApprovalDecisions();
+  updateAxisShareStatus();
+
+  renderStats();
+  renderRepMenu();
+  renderFollowUpAlertCenter();
+  renderUnmatchedTradeInLeads();
+  renderNewProjectsTable();
   renderTable();
-  renderDetail();
+  refreshSelectedRowUI();
+
+  const active = document.activeElement;
+  const editingDetail =
+    active &&
+    active !== document.body &&
+    active.matches("input, select, textarea, [contenteditable='true']");
+
+  if (!editingDetail) renderDetail();
+}
+
+function scheduleRepSyncRender() {
+  if (repSyncRenderQueued) return;
+  repSyncRenderQueued = true;
+
+  requestAnimationFrame(() => {
+    repSyncRenderQueued = false;
+    refreshRepFromSync();
+  });
 }
   function init() {
   loadRecords(true);
@@ -6699,6 +6789,9 @@ function handleRepRowClick(id) {
       window.lastInstallBaseFixReason = e.target.value;
     }
   });
+
+  bindRepRowDelegation($("tableBody"), handleRepRowClick);
+  bindRepRowDelegation($("newProjectsTableBody"), selectRow);
 
   window.addEventListener("storage", (e) => {
     if (
@@ -6713,37 +6806,12 @@ function handleRepRowClick(id) {
       e.key === QUOTE_APPROVAL_KEY ||
       e.key === QUOTE_APPROVAL_PING_KEY
     ) {
-      loadRecords(true);
-      importRepQueueRecords();
-      importTradeInSyncRecords();
-      importQuoteApprovalDecisions();
-      updateAxisShareStatus();
-
-      renderStats();
-      renderRepMenu();
-      renderFollowUpAlertCenter();
-      renderUnmatchedTradeInLeads();
-      renderNewProjectsTable();
-      renderTable();
-      refreshSelectedRowUI();
-
-      if (!document.activeElement || document.activeElement.tagName === "BODY") {
-        renderDetail();
-      }
+      scheduleRepSyncRender();
     }
   });
 
   window.addEventListener("rep_feed_update", () => {
-    renderStats();
-    renderRepMenu();
-    renderFollowUpAlertCenter();
-    renderUnmatchedTradeInLeads();
-    renderNewProjectsTable();
-    renderTable();
-
-    if (!document.activeElement || document.activeElement.tagName === "BODY") {
-      renderDetail();
-    }
+    scheduleRepSyncRender();
   });
 
   $("axisShareToggle").addEventListener("change", () => {
