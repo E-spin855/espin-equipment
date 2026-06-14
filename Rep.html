@@ -1753,16 +1753,10 @@ function renderReviewSignalCell(rec) {
       rec.install_base_fix_status === "rep_reviewed" ||
       rec.install_base_response_status === "rep_correction_sent";
 
-    const label =
-      isManualClarification && !fixed
-        ? "New Record"
-        : (
-            rec.oem_review_label ||
-            rec.review_label ||
-            rec.oem_review_type ||
-            rec.review_type ||
-            "Planning"
-          );
+   const label =
+  isManualClarification && !fixed
+    ? "New Record"
+    : normalizeOemReviewLabelForRep(rec);
 
     const normalized = String(label).toLowerCase();
 
@@ -1961,6 +1955,45 @@ function renderReviewSignalCell(rec) {
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
+function normalizeOemReviewLabelForRep(rec) {
+
+  const raw = String(
+
+    rec.oem_review_type ||
+
+    rec.review_type ||
+
+    rec.oem_review_label ||
+
+    rec.review_label ||
+
+    rec.alert_override ||
+
+    rec.proactive_type ||
+
+    rec.proactive_signal ||
+
+    ""
+
+  ).toLowerCase();
+
+  if (raw.includes("service")) return "Service";
+
+  if (raw.includes("planning")) return "Planning";
+
+  if (raw.includes("age")) return "Age";
+
+  if (raw.includes("lifecycle")) return "Age";
+
+  if (raw.includes("replacement")) return "Age";
+
+  if (raw.includes("project")) return "Project";
+
+  if (raw.includes("quote")) return "Quote";
+
+  return "Planning";
+
+}
 function getInstallBaseFixLabel(rec) {
   const text = String(
     rec.install_base_issue_field ||
@@ -2019,16 +2052,7 @@ function mergeInstallBaseQueueIntoRepRecords() {
       incoming.install_base_manual_route === true ||
       incoming.install_base_release_status === "released_to_rep";
 
-    const reviewLabel =
-      incoming.oem_review_label ||
-      incoming.review_condition ||
-      incoming.review_type ||
-      incoming.oem_review_type ||
-      incoming.rep_action_label ||
-      incoming.rep_selected_manual_action_label ||
-      incoming.install_base_action_label ||
-      incoming.install_base_issue_type ||
-      "Planning";
+   const reviewLabel = normalizeOemReviewLabelForRep(incoming);
 
     const reviewReason =
       incoming.oem_review_reason ||
