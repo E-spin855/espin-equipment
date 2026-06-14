@@ -771,14 +771,59 @@ function clearAllQuoteRecords(){
   queue = [];
   selectedQuote = null;
 
+  // Clear Pricing Desk queue
   localStorage.removeItem(QUOTE_APPROVAL_KEY);
   localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-  localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
+  localStorage.setItem(QUOTE_APPROVAL_KEY, "[]");
+  localStorage.setItem(QUOTE_APPROVAL_SYNC_KEY, "[]");
 
-  localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify([]));
-  localStorage.setItem(QUOTE_APPROVAL_SYNC_KEY, JSON.stringify([]));
+  // Also clear quote approval fields from Rep workspace records so old approved quotes do not repopulate
+  const REP_RECORDS_KEY = "espin_lifecycle_demo_records_v1";
+
+  try {
+    const repRecords = JSON.parse(localStorage.getItem(REP_RECORDS_KEY) || "[]");
+
+    if(Array.isArray(repRecords)){
+      const cleanedRepRecords = repRecords.map(rec => ({
+        ...rec,
+
+        quote_approval_id: "",
+        quote_approval_status: "",
+        quote_approval_notes: "",
+        quote_approval_decision_at: "",
+        quote_approval_decision_by: "",
+
+        quote_customer_release_allowed: false,
+
+        pricing_discount_percent: "",
+        pricing_approved_price: "",
+        pricing_notes: "",
+        pricing_decision_at: "",
+        pricing_accepted_at: "",
+        pricing_returned_at: "",
+
+        quote_status:
+          rec.quote_status === "approved_for_customer_release" ||
+          rec.quote_status === "submitted_for_approval" ||
+          rec.quote_status === "revision_needed"
+            ? "draft"
+            : rec.quote_status
+      }));
+
+      localStorage.setItem(REP_RECORDS_KEY, JSON.stringify(cleanedRepRecords));
+    }
+  } catch {
+    // Ignore cleanup failure and still clear Pricing Desk queue
+  }
+
   localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+  localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+
+  $("quoteList").innerHTML = `<div class="small">No submitted rep quotes found. Submit a quote from the rep page first.</div>`;
+  $("incomingQuoteBox").textContent = "No real rep quote submitted yet.";
+  $("pricingStatusBadge").className = "badge pending";
+  $("pricingStatusBadge").textContent = "WAITING FOR QUOTE";
 
   $("discountPercent").value = "";
   $("approvedPrice").value = "";
@@ -788,23 +833,6 @@ function clearAllQuoteRecords(){
 
   alert("Quote demo records cleared.");
 }
-
-window.addEventListener("storage", e => {
-  if(
-    e.key === QUOTE_APPROVAL_KEY ||
-    e.key === QUOTE_APPROVAL_SYNC_KEY ||
-    e.key === QUOTE_APPROVAL_PING_KEY ||
-    e.key === MANAGER_SYNC_KEY
-  ){
-    render();
-  }
-});
-
-$("discountPercent").addEventListener("input", render);
-$("approvedPrice").addEventListener("input", render);
-$("pricingNotes").addEventListener("input", render);
-
-render();
 </script>
 
 </body>
