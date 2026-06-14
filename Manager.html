@@ -1505,6 +1505,7 @@ function formatReviewText(value) {
     .replace(/\bfield\b/gi, "note")
     .replace(/\b\w/g, c => c.toUpperCase());
 }
+
 function normalizeOemReviewLabelForManager(rec) {
   const raw = String(
     rec.oem_review_type ||
@@ -1529,14 +1530,16 @@ function normalizeOemReviewLabelForManager(rec) {
 
   return "Planning";
 }
+
 function renderReviewCondition(rec) {
-  if (
+  const isInstallBaseRecord =
     rec.hub_source === "AXIS Install Base Workspace" ||
     rec.install_base_sync_type ||
     rec.install_base_received_by_rep ||
     rec.install_base_release_status === "auto_synced" ||
-    rec.install_base_release_status === "released_to_manager"
-  ) {
+    rec.install_base_release_status === "released_to_manager";
+
+  if (isInstallBaseRecord) {
     const label = normalizeOemReviewLabelForManager(rec);
     const normalized = String(label).toLowerCase();
 
@@ -1552,6 +1555,81 @@ function renderReviewCondition(rec) {
   }
 
   if (rec.lifecycle_completed || rec.rep_status === "completed") {
+    return `<span class="alert-badge alert-completed">Done</span>`;
+  }
+
+  if (isManagerRepFixUnseen(rec) || hasUnseenManagerRelease(rec)) {
+    return `<span class="alert-badge manager-flash-pill">New</span>`;
+  }
+
+  if (hasFollowUpOverdueBy7Days(rec)) {
+    return `<span class="alert-badge alert-disposal">Overdue</span>`;
+  }
+
+  const alerts = getAlerts(rec);
+  const first = alerts[0];
+  const type = lower(first?.type || rec.oem_review_type || rec.review_type || rec.alert_override || "");
+
+  if (type === "tradein" || type === "trade_in") {
+    return `<span class="alert-badge alert-proactive">Review</span>`;
+  }
+
+  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
+    return `<span class="alert-badge alert-proactive">Review</span>`;
+  }
+
+  if (rec.quote_amount) {
+    const status = String(rec.quote_status || "draft").toLowerCase();
+
+    if (status === "sent") return `<span class="pill pending">Sent</span>`;
+    if (status === "won") return `<span class="pill submitted">Won</span>`;
+    if (status === "lost") return `<span class="pill postponed">Lost</span>`;
+    if (status === "submitted_for_approval") return `<span class="pill pending">Review</span>`;
+    if (status === "approved_for_customer_release") return `<span class="pill submitted">Approved</span>`;
+    if (status === "revision_needed") return `<span class="pill pending">Revise</span>`;
+    if (status === "rejected") return `<span class="pill postponed">Rejected</span>`;
+
+    return `<span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">Draft</span>`;
+  }
+
+  if (!alerts.length) {
+    return `<span class="alert-badge alert-none">Normal</span>`;
+  }
+
+  let cls = "alert-badge alert-planning";
+  let shortText = first.displayType || "Review";
+
+  if (type === "service") {
+    cls = "alert-badge alert-service";
+    shortText = "Service";
+  } else if (type === "upgrade") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Upgrade";
+  } else if (type === "utilization") {
+    cls = "alert-badge alert-upgrade";
+    shortText = "Use";
+  } else if (type === "replacement") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Replace";
+  } else if (type === "lifecycle") {
+    cls = "alert-badge alert-replacement";
+    shortText = "Age";
+  } else if (type === "disposal" || type === "disposition") {
+    cls = "alert-badge alert-disposal";
+    shortText = "Dispose";
+  } else if (type === "postponed") {
+    cls = "alert-badge alert-postponed";
+    shortText = "Follow-Up";
+  } else if (type === "planning") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Planning";
+  } else if (type === "proactive" || type === "review") {
+    cls = "alert-badge alert-proactive";
+    shortText = "Review";
+  }
+
+  return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
+}
 function getRepActionLabel(action) {
   const map = {
     quote_review: "Quote Review",
