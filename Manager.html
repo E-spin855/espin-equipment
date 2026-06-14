@@ -2399,9 +2399,30 @@ function sendManagerInstallBaseCorrection(id) {
     upsertRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY))
   );
 
+  const repSyncRecord = {
+    ...updated,
+    manager_visible: false,
+    rep_visible: true,
+    release_destination: "",
+    install_base_released_to: ""
+  };
+
+  const upsertRepRecord = (records) => {
+    let found = false;
+
+    const next = (Array.isArray(records) ? records : []).map(item => {
+      if (!sameRecord(item, rec) && !sameRecord(item, repSyncRecord)) return item;
+      found = true;
+      return { ...item, ...repSyncRecord, key };
+    });
+
+    if (!found) next.unshift(repSyncRecord);
+    return next;
+  };
+
   writeArrayKey(
     STORAGE_KEY,
-    upsertRecord(readArrayKey(STORAGE_KEY))
+    upsertRepRecord(readArrayKey(STORAGE_KEY))
   );
 
   let managerQueue = {};
@@ -2438,7 +2459,11 @@ function sendManagerInstallBaseCorrection(id) {
   state.selectedId = updated.id;
 
   alert("Correction sent back to Install Base.");
-  render();
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+  managerStorageSignature = getManagerStorageSignature();
 }
 
 function sendManagerUnableToVerify(id) {
