@@ -955,14 +955,23 @@ function isCompletedByRep(rec) {
   );
 }
 function isUnseenWonProject(rec) {
-  return (
-    (
-      rec.install_base_sync_type === "won_project_lifecycle_entry" ||
-      rec.install_base_lifecycle_entry === true ||
-      rec.lifecycle_created_from_quote_won === true
-    ) &&
-    rec.install_base_won_seen_by_install_base !== true
-  );
+  const wonSignal =
+    String(rec.install_base_sync_type || "") === "won_project_lifecycle_entry" ||
+    rec.install_base_lifecycle_entry === true ||
+    String(rec.install_base_lifecycle_entry || "").toLowerCase() === "true" ||
+    rec.lifecycle_created_from_quote_won === true ||
+    String(rec.lifecycle_created_from_quote_won || "").toLowerCase() === "true" ||
+    String(rec.install_base_final_outcome || "").toLowerCase() === "won" ||
+    String(rec.quote_status || "").toLowerCase() === "won" ||
+    String(rec.rep_status || "").toLowerCase() === "won" ||
+    String(rec.source || "").toLowerCase().includes("rep won project") ||
+    String(rec.install_base_source || "").toLowerCase().includes("rep won project");
+
+  const alreadySeen =
+    rec.install_base_won_seen_by_install_base === true ||
+    String(rec.install_base_won_seen_by_install_base || "").toLowerCase() === "true";
+
+  return wonSignal && !alreadySeen;
 }
 function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
