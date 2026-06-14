@@ -1718,62 +1718,51 @@ function getSafeReviewLabel(rec, fallback = "OEM-Provided Review Note") {
       return getDaysUntil(rec.quote_follow_up_alert_date) === 0;
     }
 
-    function getQuoteFollowUpAlertBadge(rec) {
-      if (!rec.quote_amount || !rec.quote_follow_up_alert_date) return "";
+function renderReviewSignalCell(rec) {
+  if (
+    rec.hub_source === "AXIS Install Base Workspace" ||
+    rec.install_base_sync_type ||
+    rec.install_base_received_by_rep
+  ) {
+    const isManualClarification =
+      rec.rep_status === "clarification_needed" ||
+      rec.install_base_sync_type === "manual_clarification";
 
-      const days = getDaysUntil(rec.quote_follow_up_alert_date);
+    const fixed =
+      rec.install_base_correction_status === "corrected_by_rep" ||
+      rec.install_base_fix_status === "rep_reviewed" ||
+      rec.install_base_response_status === "rep_correction_sent";
 
-      if (days === null) return "";
-      if (days < 0) return `<span class="quote-sub-badge overdue">Follow-up overdue</span>`;
-      if (days === 0) return `<span class="quote-sub-badge today">Follow-up today</span>`;
-      if (days <= 7) return `<span class="quote-sub-badge">Follow-up ${days}d</span>`;
+    const label =
+      isManualClarification && !fixed
+        ? "New Record"
+        : (
+            rec.oem_review_label ||
+            rec.review_label ||
+            rec.oem_review_type ||
+            rec.review_type ||
+            "Planning"
+          );
 
-      return `<span class="quote-sub-badge">Follow-up set</span>`;
-    }
+    const normalized = String(label).toLowerCase();
 
- if (
-  rec.hub_source === "AXIS Install Base Workspace" ||
-  rec.install_base_sync_type ||
-  rec.install_base_received_by_rep
-) {
-  const isManualClarification =
-    rec.rep_status === "clarification_needed" ||
-    rec.install_base_sync_type === "manual_clarification";
+    let cls = "alert-planning";
 
-  const fixed =
-    rec.install_base_correction_status === "corrected_by_rep" ||
-    rec.install_base_fix_status === "rep_reviewed" ||
-    rec.install_base_response_status === "rep_correction_sent";
+    if (normalized.includes("service")) cls = "alert-service";
+    if (normalized.includes("planning")) cls = "alert-planning";
+    if (normalized.includes("age")) cls = "alert-age";
+    if (normalized.includes("project")) cls = "alert-proactive";
+    if (normalized.includes("quote")) cls = "alert-planning";
+    if (normalized.includes("new")) cls = "alert-proactive";
 
-  const label =
-    isManualClarification && !fixed
-      ? "New Record"
-      : (
-          rec.oem_review_label ||
-          rec.review_label ||
-          rec.oem_review_type ||
-          rec.review_type ||
-          "Planning"
-        );
+    return `
+      <span class="alert-badge ${cls}">
+        ${escapeHtml(label)}
+      </span>
+    `;
+  }
 
-  const normalized = String(label).toLowerCase();
-
-  let cls = "alert-planning";
-
-  if (normalized.includes("service")) cls = "alert-service";
-  if (normalized.includes("planning")) cls = "alert-planning";
-  if (normalized.includes("age")) cls = "alert-age";
-  if (normalized.includes("project")) cls = "alert-proactive";
-  if (normalized.includes("quote")) cls = "alert-planning";
-  if (normalized.includes("new")) cls = "alert-proactive";
-
-  return `
-    <span class="alert-badge ${cls}">
-      ${escapeHtml(label)}
-    </span>
-  `;
-}
-if (rec.lifecycle_completed) {
+  if (rec.lifecycle_completed) {
     return `<span class="alert-badge alert-completed">Reviewed</span>`;
   }
 
@@ -1951,45 +1940,6 @@ if (rec.lifecycle_completed) {
   }
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
-}
-function getInstallBaseFixLabel(rec) {
-  const text = String(
-    rec.install_base_issue_field ||
-    rec.axis_clarification_reason ||
-    rec.install_base_clarification_reason ||
-    rec.install_base_issue_reason ||
-    rec.install_base_issue_note ||
-    rec.install_base_action_reason ||
-    rec.conflict_notes ||
-    rec.rep_fix_required ||
-    ""
-  ).toLowerCase();
-
-  if (text.includes("site") || text.includes("facility") || text.includes("location")) {
-    return "Fix Site";
-  }
-
-  if (text.includes("serial")) {
-    return "Fix Serial";
-  }
-
-  if (text.includes("dom") || text.includes("year") || text.includes("age")) {
-    return "Fix DOM";
-  }
-
-  if (text.includes("owner") || text.includes("rep") || text.includes("assignment")) {
-    return "Fix Owner";
-  }
-
-  if (text.includes("source") || text.includes("conflict") || text.includes("mismatch")) {
-    return "Source Conflict";
-  }
-
-  if (text.includes("duplicate")) {
-    return "Duplicate Review";
-  }
-
-  return "Fix Data";
 }
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
