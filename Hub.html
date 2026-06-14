@@ -539,6 +539,18 @@ tr.install-base-corrected-row-frame{
 tr.install-base-corrected-row-frame td{
   background:rgba(8,18,35,.72)!important;
 }
+tr.install-base-won-project-frame{
+  outline:3px solid rgba(65,255,156,.95)!important;
+  outline-offset:-2px;
+  box-shadow:
+    inset 10px 0 0 rgba(65,255,156,.95),
+    0 0 0 1px rgba(65,255,156,.36),
+    0 0 30px rgba(65,255,156,.38)!important;
+}
+
+tr.install-base-won-project-frame td{
+  background:rgba(8,18,35,.72)!important;
+}
 </style>
 </head>
 
@@ -940,6 +952,16 @@ function isCompletedByRep(rec) {
     rec.rep_action === "completed" ||
     rec.install_base_completion_status === "completed_by_rep" ||
     rec.install_base_response_status === "project_completed_by_rep"
+  );
+}
+function isUnseenWonProject(rec) {
+  return (
+    (
+      rec.install_base_sync_type === "won_project_lifecycle_entry" ||
+      rec.install_base_lifecycle_entry === true ||
+      rec.lifecycle_created_from_quote_won === true
+    ) &&
+    rec.install_base_won_seen_by_install_base !== true
   );
 }
 function wasInstallBaseFieldCorrected(rec, fieldName) {
@@ -1443,7 +1465,24 @@ function markRepResponseSeen(rec) {
   writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
   saveRecords();
 }
+function markWonProjectSeen(rec) {
+  if (!rec || !isUnseenWonProject(rec)) return;
 
+  const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+
+  state.records = state.records.map(r =>
+    getRecordKey(r) === key
+      ? {
+          ...r,
+          install_base_won_seen_by_install_base: true,
+          install_base_won_seen_by_install_base_at: now
+        }
+      : r
+  );
+
+  saveRecords();
+}
 function releaseSelected(destination) {
   const rec = findSelectedRecord();
   if (!rec) return;
@@ -2294,13 +2333,16 @@ const completionUnseen =
   completedByRep &&
   rec.install_base_response_seen !== true;
 
+const wonProjectUnseen = isUnseenWonProject(rec);
+
 const rowClass = [
   String(state.selectedId) === String(rec.id) ? "selected" : "",
-rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
-  ? "install-base-response-flash"
-  : "",
-correctedUnseen ? "install-base-corrected-row-frame" : "",
-completionUnseen ? "install-base-response-flash" : ""
+  rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
+    ? "install-base-response-flash"
+    : "",
+  correctedUnseen ? "install-base-corrected-row-frame" : "",
+  completionUnseen ? "install-base-response-flash" : "",
+  wonProjectUnseen ? "install-base-won-project-frame" : ""
 ].filter(Boolean).join(" ");
 
     return `
@@ -2433,11 +2475,11 @@ function selectRecord(id) {
   if (rec) {
     markInstallBaseCorrectedFieldsSeen(rec);
     markRepResponseSeen(rec);
+    markWonProjectSeen(rec);
   }
 
   render();
 }
-
 function findSelectedRecord() {
   if (!state.selectedId) return null;
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
