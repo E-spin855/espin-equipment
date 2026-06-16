@@ -1078,37 +1078,43 @@ function writeManagerQueueRecord(rec) {
 function getRecordKey(rec) {
   if (!rec) return "";
 
-  if (rec.key) return String(rec.key);
+  const stable = clean(rec.manager_sync_key || rec.axis_sync_key || rec.original_key || rec.key || rec.id);
+  if (stable) return stable;
 
   if (rec.project_type === "new_sales_project" || rec.project_type === "new_project_record") {
-    return `new_project_${rec.id || rec.oem_project_id || ""}`;
+    return `new_project_${clean(rec.id || rec.oem_project_id || rec.project_id || rec.asset_id || "")}`;
   }
 
-  const project = clean(rec.oem_project_id || rec.project_id || "");
-  const serial = clean(rec.serial_number || rec.serial || "");
+  const project = clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "");
+  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const site = clean(rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location || "");
 
-  if (project || serial) return `${project}_${serial}`;
+  if (project && serial) return `${project}_${serial}`;
+  if (project && site) return `${project}_${site}`;
+  if (serial && site) return `${serial}_${site}`;
+  if (project || serial || site) return `${project || "no_project"}_${serial || "no_serial"}_${site || "no_site"}`;
 
-  return String(rec.id || "");
+  return "";
 }
 
 function sameRecord(a, b) {
   if (!a || !b) return false;
 
-  const aId = clean(a.id);
-  const bId = clean(b.id);
-  if (aId && bId && aId === bId) return true;
+  const aStable = clean(a.manager_sync_key || a.axis_sync_key || a.original_key || a.key || a.id);
+  const bStable = clean(b.manager_sync_key || b.axis_sync_key || b.original_key || b.key || b.id);
+  if (aStable && bStable && aStable === bStable) return true;
 
-  const aKey = clean(a.key || getRecordKey(a));
-  const bKey = clean(b.key || getRecordKey(b));
-  if (aKey && bKey && aKey === bKey) return true;
+  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id || a.equipment_id || "");
+  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id || b.equipment_id || "");
+  const aSerial = clean(a.serial_number || a.serial || a.system_serial || "");
+  const bSerial = clean(b.serial_number || b.serial || b.system_serial || "");
 
-  const aProject = clean(a.oem_project_id || a.project_id);
-  const bProject = clean(b.oem_project_id || b.project_id);
-  const aSerial = clean(a.serial_number || a.serial);
-  const bSerial = clean(b.serial_number || b.serial);
+  if (aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial) return true;
 
-  return Boolean(aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial);
+  const aSite = clean(a.site || a.facility || a.hospital || a.hospital_name || a.customer || a.customer_name || a.location || "");
+  const bSite = clean(b.site || b.facility || b.hospital || b.hospital_name || b.customer || b.customer_name || b.location || "");
+
+  return Boolean(aProject && bProject && aSite && bSite && aProject === bProject && aSite === bSite);
 }
 
 function mergeRecordsByKey(...groups) {
@@ -1142,14 +1148,7 @@ function mergeRecordsByKey(...groups) {
       (incomingIsRepFix && rec.manager_alert_seen === true)
     );
 
-    const incomingUnseenManagerUpdate =
-      rec.manager_unseen_update === true &&
-      rec.manager_alert_seen === false &&
-      rec.manager_flash_type !== "manager_response";
-
-    const normalSeen = incomingUnseenManagerUpdate
-      ? false
-      : existing.manager_alert_seen === true || rec.manager_alert_seen === true;
+    const normalSeen = existing.manager_alert_seen === true || rec.manager_alert_seen === true;
 
     const baseFlashType = repFixSeen ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
     const baseFlashText = repFixSeen ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
@@ -1239,7 +1238,7 @@ function getRepPhone(rec) {
 }
 
 function getFacility(rec) {
-  return rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || "Unknown Facility";
+  return rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location || "Unknown Facility";
 }
 
 function getFollowUpDate(rec) {
@@ -1565,7 +1564,7 @@ function renderReviewCondition(rec) {
     return `<span class="alert-badge alert-completed">Done</span>`;
   }
 
-  if (isManagerRepFixUnseen(rec) || hasUnseenManagerRelease(rec)) {
+  if (rec.manager_unseen_update === true || rec.manager_flash_at || isManagerRepFixUnseen(rec) || hasUnseenManagerRelease(rec)) {
     return `<span class="alert-badge manager-flash-pill">New</span>`;
   }
 
@@ -1869,6 +1868,9 @@ function shouldManagerRowFlash(rec) {
   if (String(rec.id) === String(state.selectedId)) return false;
 
   return Boolean(
+    rec.manager_unseen_update === true ||
+    rec.manager_alert_seen === false ||
+    rec.manager_flash_at ||
     isManagerRepFixUnseen(rec) ||
     hasUnseenManagerRelease(rec) ||
     hasFollowUpOverdueBy7Days(rec) ||
@@ -2323,46 +2325,161 @@ function sendManagerInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
 
-  const updated = { ...rec };
   const issues = getManagerInstallBaseFieldsForEdit(rec);
   const correctedFields = {};
+  const correctedValues = {};
 
   issues.forEach(issue => {
     const input = $("mgr_fix_" + issue.key);
-    if (input && input.value.trim()) {
-      updated[issue.key] = input.value.trim();
-      correctedFields[issue.key] = input.value.trim();
+    if (!input) return;
+
+    const value = input.value.trim();
+    const previousValue = String(rec[issue.key] || "").trim();
+
+    if (value && value !== previousValue) {
+      correctedValues[issue.key] = value;
+      correctedFields[issue.key] = value;
     }
   });
 
   const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+  const updated = {
+    ...rec,
+    ...correctedValues,
+    key,
 
-  updated.install_base_response_status = "manager_correction_sent";
-  updated.install_base_response_note = $("managerInstallBaseCorrectionNote")?.value || "";
-  updated.install_base_response_by = "Manager";
-  updated.install_base_response_at = now;
-  updated.install_base_response_seen = false;
-  updated.corrected_fields = correctedFields;
-updated.install_base_corrected_fields = Object.keys(correctedFields).join(",");
-updated.install_base_correction_status = "corrected_by_manager";
+    // Preserve assignment and ownership from the released record.
+    assigned_rep_name: rec.assigned_rep_name || "",
+    assigned_rep_email: rec.assigned_rep_email || "",
+    sales_rep_first: rec.sales_rep_first || "",
+    sales_rep_last: rec.sales_rep_last || "",
+    sales_rep_email: rec.sales_rep_email || "",
+    sales_rep_phone: rec.sales_rep_phone || "",
+    manager_name: rec.manager_name || "",
+    owner_group_name: rec.owner_group_name || "",
+    owner_group_id: rec.owner_group_id || "",
 
-if (correctedFields.manager_name) {
-  updated.owner_group_name = correctedFields.manager_name;
-}
+    // Preserve source identifiers used to match the original release.
+    id: rec.id || id,
+    oem_project_id: rec.oem_project_id || "",
+    project_id: rec.project_id || "",
+    serial_number: correctedValues.serial_number ?? rec.serial_number ?? "",
+    serial: correctedValues.serial ?? rec.serial ?? "",
+    manager_release_id: rec.manager_release_id || "",
+    install_base_release_id: rec.install_base_release_id || "",
+    release_id: rec.release_id || "",
 
-if (correctedFields.assigned_rep_name) {
-  updated.assigned_rep_name = correctedFields.assigned_rep_name;
-}
+    install_base_correction_status: "corrected_by_manager",
+    install_base_response_status: "manager_correction_sent",
+    install_base_fix_status: "manager_reviewed",
+    install_base_response_from: "manager",
+    install_base_response_to: "install_base",
+    install_base_response_at: now,
+    install_base_corrected_by: MANAGER_NAME,
+    install_base_response_by: MANAGER_NAME,
+    install_base_response_note: $("managerInstallBaseCorrectionNote")?.value || "",
+    install_base_response_seen: false,
 
-  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).filter(r => !sameRecord(r, updated));
-  queue.unshift(updated);
+    manager_visible: true,
+    rep_visible: true,
+    manager_unseen_update: false,
+    manager_alert_seen: true,
 
-  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+    corrected_fields: correctedFields,
+    install_base_corrected_fields: Object.keys(correctedFields).join(",")
+  };
+
+  const upsertRecord = (records) => {
+    let found = false;
+
+    const next = (Array.isArray(records) ? records : []).map(item => {
+      if (!sameRecord(item, rec) && !sameRecord(item, updated)) return item;
+      found = true;
+      return { ...item, ...updated, key };
+    });
+
+    if (!found) next.unshift(updated);
+    return next;
+  };
+
+  writeArrayKey(
+    INSTALL_BASE_RESPONSE_KEY,
+    upsertRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY))
+  );
+
+  const repSyncRecord = {
+    ...updated,
+    manager_visible: false,
+    rep_visible: true,
+    release_destination: "rep",
+    install_base_released_to: "rep",
+    install_base_response_from: "manager",
+    install_base_response_to: "rep",
+    manager_response_action: "install_base_data_corrected",
+    manager_response_action_label: "Install Base Data Corrected",
+    manager_response_seen_by_rep: false,
+    manager_response_at: now,
+    manager_response_by: MANAGER_NAME
+  };
+
+  const upsertRepRecord = (records) => {
+    let found = false;
+
+    const next = (Array.isArray(records) ? records : []).map(item => {
+      if (!sameRecord(item, rec) && !sameRecord(item, repSyncRecord)) return item;
+      found = true;
+      return { ...item, ...repSyncRecord, key };
+    });
+
+    if (!found) next.unshift(repSyncRecord);
+    return next;
+  };
+
+  writeArrayKey(
+    STORAGE_KEY,
+    upsertRepRecord(readArrayKey(STORAGE_KEY))
+  );
+
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+  } catch {
+    managerQueue = {};
+  }
+
+  if (Array.isArray(managerQueue)) {
+    managerQueue = managerQueue.map(item =>
+      sameRecord(item, rec) || sameRecord(item, updated)
+        ? { ...item, ...updated, key }
+        : item
+    );
+  } else if (managerQueue && typeof managerQueue === "object") {
+    Object.keys(managerQueue).forEach(bucket => {
+      if (!Array.isArray(managerQueue[bucket])) return;
+
+      managerQueue[bucket] = managerQueue[bucket].map(item =>
+        sameRecord(item, rec) || sameRecord(item, updated)
+          ? { ...item, ...updated, key }
+          : item
+      );
+    });
+  }
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
-  syncRecordEverywhere(updated);
+  state.records = upsertRecord(state.records);
+  state.selectedId = updated.id;
+
   alert("Correction sent back to Install Base.");
-  render();
+  renderStats();
+  renderRepMenu();
+  renderTable();
+  renderDetail();
+  managerStorageSignature = getManagerStorageSignature();
 }
 
 function sendManagerUnableToVerify(id) {
@@ -3312,13 +3429,6 @@ function render() {
   const installBaseResponses = readInstallBaseResponseRecordsForManager();
 
   state.records = mergeRecordsByKey(main, managerQueue, installBaseResponses);
-
-  const mainJson = JSON.stringify(main);
-  const mergedJson = JSON.stringify(state.records);
-
-  if (mainJson !== mergedJson) {
-    writeArrayKey(STORAGE_KEY, state.records);
-  }
 
   if (
     state.selectedId &&

@@ -1316,6 +1316,8 @@ const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 
+const INSTALL_BASE_KEY = "axis_install_base_records_v1";
+
 const AXIS_SHARE_KEY = "axis_tradein_share_enabled_v1";
 const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
 
@@ -2300,63 +2302,209 @@ function writeArrayKey(key, arr) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
     }
 
-    function syncToManagerQueue(rec) {
-      if (!rec) return;
+    function getStableSyncKey(rec) {
+      if (!rec) return "";
 
-      let managerQueue = {};
-      try {
-        managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-        if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
-      } catch {
-        managerQueue = {};
+      // Prefer durable identifiers. Do not build the primary sync key from editable fields
+      // like site or DOM, because those are exactly the fields reps may correct.
+      return String(
+        rec.manager_sync_key ||
+        rec.axis_sync_key ||
+        rec.original_key ||
+        rec.key ||
+        rec.id ||
+        [
+          rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "",
+          rec.serial_number || rec.serial || rec.system_serial || ""
+        ].filter(Boolean).join("_") ||
+        ""
+      ).trim();
+    }
+
+    function normalizeRepPacketAliases(rec) {
+      const site = String(
+        rec.site ||
+        rec.facility ||
+        rec.hospital ||
+        rec.hospital_name ||
+        rec.customer ||
+        rec.customer_name ||
+        rec.location ||
+        ""
+      ).trim();
+
+      const address = String(
+        rec.site_address ||
+        rec.street_address ||
+        rec.address ||
+        rec.street ||
+        ""
+      ).trim();
+
+      const serial = String(rec.serial_number || rec.serial || rec.system_serial || "").trim();
+      const project = String(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || rec.id || "").trim();
+
+      return {
+        ...rec,
+
+        oem_project_id: rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || project,
+        project_id: rec.project_id || rec.oem_project_id || rec.asset_id || rec.equipment_id || project,
+        asset_id: rec.asset_id || rec.equipment_id || rec.oem_project_id || rec.project_id || project,
+
+        serial_number: rec.serial_number || rec.serial || rec.system_serial || serial,
+        serial: rec.serial || rec.serial_number || rec.system_serial || serial,
+        system_serial: rec.system_serial || rec.serial_number || rec.serial || serial,
+
+        site: site || rec.site || "",
+        facility: site || rec.facility || "",
+        hospital: site || rec.hospital || "",
+        hospital_name: site || rec.hospital_name || "",
+        customer: site || rec.customer || "",
+        customer_name: site || rec.customer_name || "",
+        location: site || rec.location || "",
+
+        site_address: address || rec.site_address || "",
+        street_address: address || rec.street_address || "",
+        address: address || rec.address || ""
+      };
+    }
+
+    function makeRecordSyncKey(rec) {
+      if (!rec) return "";
+
+      const stable = getStableSyncKey(rec);
+      if (stable) return stable;
+
+      const normalized = normalizeRepPacketAliases(rec);
+      const project = String(normalized.oem_project_id || normalized.project_id || normalized.asset_id || "").trim();
+      const serial = String(normalized.serial_number || normalized.serial || normalized.system_serial || "").trim();
+      const site = String(normalized.site || normalized.facility || normalized.hospital || "").trim();
+
+      return [project, serial, site].filter(Boolean).join("_");
+    }
+
+    function sameSyncRecord(a, b) {
+      if (!a || !b) return false;
+
+      const aStable = getStableSyncKey(a);
+      const bStable = getStableSyncKey(b);
+      if (aStable && bStable && aStable === bStable) return true;
+
+      const aNorm = normalizeRepPacketAliases(a);
+      const bNorm = normalizeRepPacketAliases(b);
+
+      const aProject = String(aNorm.oem_project_id || aNorm.project_id || aNorm.asset_id || "").trim();
+      const bProject = String(bNorm.oem_project_id || bNorm.project_id || bNorm.asset_id || "").trim();
+      const aSerial = String(aNorm.serial_number || aNorm.serial || aNorm.system_serial || "").trim();
+      const bSerial = String(bNorm.serial_number || bNorm.serial || bNorm.system_serial || "").trim();
+
+      if (aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial) {
+        return true;
       }
 
+      const aSite = String(aNorm.site || aNorm.facility || aNorm.hospital || "").trim();
+      const bSite = String(bNorm.site || bNorm.facility || bNorm.hospital || "").trim();
+
+      return Boolean(aProject && bProject && aSite && bSite && aProject === bProject && aSite === bSite);
+    }
+
+    function buildManagerSyncPacket(rec) {
       const now = new Date().toISOString();
-      const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
-      const managerName = rec.manager_name || rec.owner_group_name || MANAGER_NAME || "Default Manager";
-      const managerPacket = {
-        ...rec,
+      const normalized = normalizeRepPacketAliases(rec || {});
+      const key = makeRecordSyncKey(normalized) || getRecordKey(normalized);
+
+      const repName =
+        normalized.assigned_rep_name ||
+        `${normalized.sales_rep_first || ""} ${normalized.sales_rep_last || ""}`.trim() ||
+        normalized.rep_name ||
+        normalized.rep_owner ||
+        normalized.assigned_rep ||
+        "Unassigned";
+
+      const actionLabel =
+        normalized.rep_action_label ||
+        normalized.rep_selected_action_label ||
+        normalized.manager_flash_text ||
+        "Rep updated record";
+
+      return {
+        ...normalized,
         key,
-        manager_name: managerName,
+        original_key: normalized.original_key || normalized.key || key,
+        manager_sync_key: normalized.manager_sync_key || key,
+        axis_sync_key: normalized.axis_sync_key || key,
+        id: normalized.id || key || `REP-${Date.now()}`,
+
+        assigned_rep_name: repName,
+        assigned_rep: normalized.assigned_rep || normalized.rep_owner || repName,
+        rep_owner: normalized.rep_owner || normalized.assigned_rep || repName,
+        sales_rep_first: normalized.sales_rep_first || repName.split(" ")[0] || "",
+        sales_rep_last: normalized.sales_rep_last || repName.split(" ").slice(1).join(" ") || "",
+
         manager_visible: true,
         manager_unseen_update: true,
         manager_alert_seen: false,
         manager_update_seen_at: "",
-        manager_flash_at: rec.manager_flash_at || now,
-        manager_flash_type: rec.manager_flash_type || "rep_update",
-        manager_flash_text: rec.manager_flash_text || "Rep updated this record",
-        source: rec.source || "Rep Update",
-        hub_source: rec.hub_source || "Rep",
+        manager_flash_at: normalized.manager_flash_at || now,
+        manager_flash_type: normalized.manager_flash_type || "rep_update",
+        manager_flash_text: actionLabel,
+
+        source: normalized.source || "Rep Review Page",
+        hub_source: normalized.hub_source || "Rep Review Page",
+        rep_last_action_at: normalized.rep_last_action_at || normalized.rep_selected_action_at || now
       };
+    }
 
-      let managerRecords = Array.isArray(managerQueue[managerName]) ? managerQueue[managerName] : [];
-      let found = false;
+    function pingManagerSync() {
+      const now = String(Date.now());
+      localStorage.setItem(MANAGER_SYNC_KEY, now);
+      localStorage.setItem("axis_manager_sync_ping_v1", now);
 
-      managerRecords = managerRecords.map(item => {
-        const same =
-          item.id === managerPacket.id ||
-          item.key === key ||
-          (
-            String(item.oem_project_id || "") === String(managerPacket.oem_project_id || "") &&
-            String(item.serial_number || "") === String(managerPacket.serial_number || "")
-          );
+      try {
+        window.dispatchEvent(new Event("rep_feed_update"));
+      } catch {}
+    }
 
-        if (!same) return item;
-        found = true;
-        return { ...item, ...managerPacket };
+    function upsertRecordList(records, packet) {
+      const list = Array.isArray(records) ? records : [];
+      const cleaned = list.filter(item => !sameSyncRecord(item, packet));
+      cleaned.unshift(packet);
+      return cleaned;
+    }
+
+    function syncToManagerQueue(rec) {
+      if (!rec) return;
+
+      const packet = buildManagerSyncPacket(rec);
+      let managerQueue = {};
+
+      try {
+        managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+        if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) managerQueue = {};
+      } catch {
+        managerQueue = {};
+      }
+
+      const buckets = Array.from(new Set([
+        MANAGER_NAME || "Default Manager",
+        packet.manager_name || "",
+        packet.owner_group_name || "",
+        packet.manager_owner || "",
+        "Default Manager"
+      ].filter(Boolean)));
+
+      buckets.forEach(bucketName => {
+        managerQueue[bucketName] = upsertRecordList(managerQueue[bucketName], packet);
       });
 
-      if (!found) managerRecords.unshift(managerPacket);
-
-      managerQueue[managerName] = managerRecords;
       localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-      localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+      pingManagerSync();
     }
 
     function syncFeedStatus(rec) {
       if (!rec) return;
 
-      const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
+      const packet = buildManagerSyncPacket(rec);
 
       let main = [];
       try {
@@ -2366,34 +2514,33 @@ function writeArrayKey(key, arr) {
         main = [];
       }
 
-      let found = false;
-
-      main = main.map(item => {
-        const same =
-          item.id === rec.id ||
-          (
-            String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
-            String(item.serial_number || "") === String(rec.serial_number || "")
-          );
-
-        if (!same) return item;
-        found = true;
-        return { ...item, ...rec, key };
-      });
-
-      if (!found) main.unshift({ ...rec, key });
-
-      state.records = main;
+      state.records = upsertRecordList(main, packet);
       saveRecords();
-      syncToManagerQueue(rec);
-
-      localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-      window.dispatchEvent(new Event("rep_feed_update"));
+      syncToManagerQueue(packet);
+      pingManagerSync();
     }
 function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   if (!rec || !outcome) return;
 
   const now = new Date().toISOString();
+  const installBaseRecordsKey = "axis_install_base_records_v1";
+  const normalizedOutcome = String(outcome || "").toLowerCase();
+  const isWon = normalizedOutcome === "won";
+
+  const projectId = clean(rec.oem_project_id || rec.project_id || rec.id || "");
+  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const site = clean(rec.site || rec.facility || rec.hospital || rec.customer || "");
+  const facility = clean(rec.facility || rec.site || rec.hospital || rec.customer || "");
+
+  const key =
+    rec.key ||
+    getRecordKey(rec) ||
+    [
+      isWon ? "won_project" : "project_outcome",
+      projectId || "no_project",
+      serial || "no_serial",
+      site || "no_site"
+    ].join("|").toLowerCase();
 
   let finalSync = [];
   try {
@@ -2404,45 +2551,195 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   }
 
   const packet = {
-    id: rec.id || "",
-    key: `${rec.oem_project_id || ""}_${rec.serial_number || ""}`,
-    oem_project_id: rec.oem_project_id || "",
-    serial_number: rec.serial_number || "",
-    make: rec.make || "",
-    model: rec.model || "",
-    modality: rec.modality || "",
-    dom: rec.dom || "",
-    site: rec.site || rec.facility || rec.hospital || "",
-    install_base_final_outcome: outcome,
+    ...rec,
+
+    id: rec.id || key,
+    key,
+
+    oem_project_id: projectId,
+    project_id: projectId,
+    asset_id: rec.asset_id || projectId,
+
+    serial_number: serial,
+    serial,
+
+    make: rec.make || rec.tradein_equipment_make || "",
+    model: rec.model || rec.tradein_equipment_model || rec.new_project_name || "",
+    modality: rec.modality || rec.tradein_equipment_modality || "PROJECT",
+    dom: rec.dom || rec.tradein_equipment_dom || "",
+    age: rec.age || "",
+
+    site,
+    facility,
+    hospital: rec.hospital || facility,
+
+    customer: rec.customer || facility,
+    customer_name: rec.customer_name || facility,
+
+    assigned_rep:
+      rec.assigned_rep ||
+      rec.rep_owner ||
+      rec.rep_name ||
+      `${rec.rep_first_name || ""} ${rec.rep_last_name || ""}`.trim(),
+
+    rep_owner:
+      rec.rep_owner ||
+      rec.assigned_rep ||
+      rec.rep_name ||
+      `${rec.rep_first_name || ""} ${rec.rep_last_name || ""}`.trim(),
+
+    install_base_final_outcome: normalizedOutcome,
     install_base_final_outcome_date: now,
     install_base_final_outcome_source: "Equipment Review Workspace",
     install_base_final_outcome_notes: notes,
-    quote_status: rec.quote_status || "",
-    rep_status: rec.rep_status || "",
-    completed_at: rec.completed_at || "",
-    completed_by: rec.completed_by || "",
+
+    quote_status: normalizedOutcome,
+    rep_status: normalizedOutcome,
+
+    completed_at: rec.completed_at || now,
+    completed_by: rec.completed_by || "Rep",
+
     tradein_project_id: rec.tradein_project_id || "",
     tradein_modality_id: rec.tradein_modality_id || "",
     quote_amount: rec.quote_amount || "",
-    quote_net_amount: rec.quote_net_amount || ""
+    quote_net_amount: rec.quote_net_amount || "",
+
+    install_base_sync_type: isWon
+      ? "won_project_lifecycle_entry"
+      : "project_final_outcome",
+
+    install_base_lifecycle_entry: isWon,
+    install_base_lifecycle_status: isWon ? "active" : "",
+    install_base_review_status: isWon
+      ? "lifecycle_active"
+      : "final_outcome_received",
+
+    install_base_received_from_rep: true,
+    install_base_received_from_rep_at: now,
+    install_base_received_at: now,
+
+    install_base_source: isWon ? "Rep Won Project" : "Rep Final Outcome",
+    source: isWon ? "Rep Won Project" : "Equipment Review Workspace",
+    hub_source: "Equipment Review Workspace",
+
+    oem_review_type: isWon ? "project" : (rec.oem_review_type || rec.review_type || ""),
+    review_type: isWon ? "project" : (rec.review_type || rec.oem_review_type || ""),
+
+    oem_review_label: isWon
+      ? "Project Won - Enter Lifecycle Review"
+      : (rec.oem_review_label || rec.review_label || ""),
+
+    review_label: isWon
+      ? "Project Won - Enter Lifecycle Review"
+      : (rec.review_label || rec.oem_review_label || ""),
+
+    oem_review_reason: isWon
+      ? "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility."
+      : (notes || rec.oem_review_reason || rec.review_reason || ""),
+
+    review_reason: isWon
+      ? "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility."
+      : (notes || rec.review_reason || rec.oem_review_reason || ""),
+
+    lifecycle_source_project_id: projectId,
+    lifecycle_created_from_quote_won: isWon,
+    lifecycle_created_at: isWon ? now : (rec.lifecycle_created_at || ""),
+    lifecycle_completed: false,
+
+    rep_action_label: rec.rep_action_label || (isWon ? "Won" : normalizedOutcome),
+
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: isWon
+      ? "won_project_lifecycle_entry"
+      : "project_final_outcome",
+
+    manager_flash_text: isWon
+      ? "Won project synced to Install Base lifecycle"
+      : "Project final outcome synced to Install Base"
   };
 
-  const existingIndex = finalSync.findIndex(item =>
+  const samePacket = item =>
     String(item.id || "") === String(packet.id || "") ||
+    String(item.key || "") === String(packet.key || "") ||
     (
-      String(item.oem_project_id || "") === String(packet.oem_project_id || "") &&
-      String(item.serial_number || "") === String(packet.serial_number || "")
-    )
-  );
+      String(item.oem_project_id || item.project_id || "") === String(packet.oem_project_id || packet.project_id || "") &&
+      String(item.serial_number || item.serial || "") === String(packet.serial_number || packet.serial || "") &&
+      String(item.site || item.facility || item.hospital || "") === String(packet.site || packet.facility || packet.hospital || "")
+    );
 
-  if (existingIndex >= 0) {
-    finalSync[existingIndex] = { ...finalSync[existingIndex], ...packet };
+  const existingFinalIndex = finalSync.findIndex(samePacket);
+
+  if (existingFinalIndex >= 0) {
+    finalSync[existingFinalIndex] = {
+      ...finalSync[existingFinalIndex],
+      ...packet
+    };
   } else {
     finalSync.unshift(packet);
   }
 
   localStorage.setItem(INSTALL_BASE_FINAL_SYNC_KEY, JSON.stringify(finalSync));
   localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
+
+  /*
+    Won projects must also go directly into the Install Base visible table source:
+    axis_install_base_records_v1
+  */
+  if (isWon) {
+    let installBaseRecords = [];
+
+    try {
+      installBaseRecords = JSON.parse(localStorage.getItem(installBaseRecordsKey) || "[]");
+      if (!Array.isArray(installBaseRecords)) installBaseRecords = [];
+    } catch {
+      installBaseRecords = [];
+    }
+
+    const installBasePacket = {
+      ...packet,
+
+      source: "Rep Won Project",
+      install_base_source: "Rep Won Project",
+
+      review_status: "lifecycle_active",
+      status: "Lifecycle Active",
+
+      released_to_install_base: true,
+      staged_for_lifecycle: true,
+
+      install_base_lifecycle_entry: true,
+      install_base_lifecycle_status: "active",
+      install_base_review_status: "lifecycle_active",
+      install_base_sync_type: "won_project_lifecycle_entry"
+    };
+
+    const existingInstallBaseIndex = installBaseRecords.findIndex(samePacket);
+
+    if (existingInstallBaseIndex >= 0) {
+      installBaseRecords[existingInstallBaseIndex] = {
+        ...installBaseRecords[existingInstallBaseIndex],
+        ...installBasePacket
+      };
+    } else {
+      installBaseRecords.unshift(installBasePacket);
+    }
+
+    localStorage.setItem(installBaseRecordsKey, JSON.stringify(installBaseRecords));
+
+    localStorage.setItem("axis_install_base_records_ping_v1", String(Date.now()));
+    localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: installBaseRecordsKey,
+      newValue: JSON.stringify(installBaseRecords)
+    }));
+  }
+
+  window.dispatchEvent(new StorageEvent("storage", {
+    key: INSTALL_BASE_FINAL_SYNC_KEY,
+    newValue: JSON.stringify(finalSync)
+  }));
 }
     function updateAxisShareStatus() {
       const enabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
@@ -3372,6 +3669,64 @@ function syncInstallBaseFixToManager(updated) {
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 }
+function applyCorrectedFieldAliases(target, rawKey, value) {
+  const v = String(value || "").trim();
+  if (!target || !v) return;
+
+  const k = String(rawKey || "")
+    .toLowerCase()
+    .replace(/^fix_/, "")
+    .trim();
+
+  if (["site", "facility", "hospital", "hospital_name", "customer", "customer_name", "location"].includes(k)) {
+    target.site = v;
+    target.facility = v;
+    target.hospital = v;
+    target.hospital_name = v;
+    target.customer = v;
+    target.customer_name = v;
+    target.location = v;
+    return;
+  }
+
+  if (["site_address", "street_address", "address", "street", "siteaddress"].includes(k)) {
+    target.site_address = v;
+    target.street_address = v;
+    target.address = v;
+    target.street = v;
+    return;
+  }
+
+  if (["serial", "serial_number", "system_serial"].includes(k)) {
+    target.serial_number = v;
+    target.serial = v;
+    target.system_serial = v;
+    return;
+  }
+
+  if (["project", "project_id", "oem_project_id", "asset_id", "equipment_id"].includes(k)) {
+    target.oem_project_id = v;
+    target.project_id = v;
+    target.asset_id = v;
+    target.equipment_id = v;
+    return;
+  }
+
+  if (["make", "manufacturer"].includes(k)) {
+    target.make = v;
+    target.manufacturer = v;
+    return;
+  }
+
+  if (["dom", "year", "manufacture_year"].includes(k)) {
+    target.dom = v;
+    target.year = v;
+    target.manufacture_year = v;
+    return;
+  }
+
+  target[rawKey] = v;
+}
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -3469,7 +3824,7 @@ function sendInstallBaseCorrection(id) {
     const value = input.value.trim();
     if (!value) return;
 
-    updated[rawKey] = value;
+    applyCorrectedFieldAliases(updated, rawKey, value);
 
     const correctedField = normalizeCorrectedFieldName(rawKey);
     if (correctedField && !correctedFields.includes(correctedField)) {
@@ -3480,7 +3835,7 @@ function sendInstallBaseCorrection(id) {
   issues.forEach(issue => {
     const input = $("fix_" + issue.key);
     if (input && input.value.trim()) {
-      updated[issue.key] = input.value.trim();
+      applyCorrectedFieldAliases(updated, issue.key, input.value.trim());
 
       const correctedField = normalizeCorrectedFieldName(issue.key);
       if (correctedField && !correctedFields.includes(correctedField)) {
@@ -4752,7 +5107,7 @@ if (
 
             showBanner(
   status === "won"
-    ? "✅ Quote marked won — project details available for PM review"
+    ? "✅ Quote marked won — synced to Install Base lifecycle"
           : status === "lost"
           ? "✅ Quote marked lost"
           : "✅ Quote saved with follow-up alert"
@@ -5182,49 +5537,57 @@ queue.unshift(updated);
     }
 
     function markNewProjectWon(id) {
-      const rec = state.records.find(r => r.id === id);
-      if (!rec) return;
+  const rec = state.records.find(r => r.id === id);
+  if (!rec) return;
 
-      if (!confirm("Mark this project as won and move it into Equipment Review Records?")) return;
+  if (!confirm("Mark this project as won and move it into Equipment Review Records?")) return;
 
-      const now = new Date().toISOString();
+  const now = new Date().toISOString();
 
-      rec.quote_status = "won";
-      rec.rep_status = "won";
-      rec.rep_action = "won";
-      rec.rep_action_label = "Won";
-      rec.rep_last_action_at = now;
+  rec.quote_status = "won";
+  rec.rep_status = "won";
+  rec.rep_action = "won";
+  rec.rep_action_label = "Won";
+  rec.rep_last_action_at = now;
 
-      rec.project_type = "equipment_review_record";
-      rec.source = "Won Project Moved to Equipment Review";
-      rec.equipment_review_added_at = now;
+  rec.project_type = "equipment_review_record";
+  rec.source = "Won Project Moved to Equipment Review";
+  rec.equipment_review_added_at = now;
 
-      rec.lifecycle_completed = false;
-      rec.completed_at = "";
-      rec.completed_by = "";
+  rec.lifecycle_completed = false;
+  rec.completed_at = "";
+  rec.completed_by = "";
 
-      rec.make = rec.tradein_equipment_make || rec.make || "Converted Project";
-      rec.model = rec.tradein_equipment_model || rec.model || "";
-      rec.modality = rec.tradein_equipment_modality || rec.modality || "OTHER";
-      rec.serial_number = rec.tradein_equipment_serial_number || rec.serial_number || "";
-      rec.dom = rec.tradein_equipment_dom || rec.dom || "";
+  rec.make = rec.tradein_equipment_make || rec.make || "Converted Project";
+  rec.model = rec.tradein_equipment_model || rec.model || "";
+  rec.modality = rec.tradein_equipment_modality || rec.modality || "OTHER";
+  rec.serial_number =
+    rec.tradein_equipment_serial_number || rec.serial_number || "";
+  rec.dom = rec.tradein_equipment_dom || rec.dom || "";
 
-      rec.project_management_ready = true;
-      rec.project_management_status = "Pending PM Review";
-      rec.project_management_created_at = now;
+  rec.project_management_ready = true;
+  rec.project_management_status = "Pending PM Review";
+  rec.project_management_created_at = now;
 
-      rec.manager_unseen_update = true;
-      rec.manager_flash_at = now;
-      rec.manager_flash_type = "won_project_converted";
-      rec.manager_flash_text = "Won project moved into equipment review pipeline";
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "won_project_converted";
+  rec.manager_flash_text =
+    "Won project moved into equipment review pipeline";
 
-      rec.next_action_date = "";
-      rec.rep_hidden = false;
-      rec.rep_deleted = false;
+  rec.next_action_date = "";
+  rec.rep_hidden = false;
+  rec.rep_deleted = false;
 
-      syncFeedStatus(rec);
-      render();
-    }
+  syncFinalOutcomeToInstallBase(
+    rec,
+    "won",
+    "New project marked won and moved into equipment review."
+  );
+
+  syncFeedStatus(rec);
+  render();
+}
 
     function markNewProjectLost(id) {
       const rec = state.records.find(r => r.id === id);
