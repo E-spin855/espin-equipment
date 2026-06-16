@@ -2302,223 +2302,131 @@ function writeArrayKey(key, arr) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
     }
 
-    function getStableSyncKey(rec) {
-      if (!rec) return "";
+   function sameSyncRecord(a, b) {
+  if (!a || !b) return false;
 
-      // Prefer durable identifiers. Do not build the primary sync key from editable fields
-      // like site or DOM, because those are exactly the fields reps may correct.
-      return String(
-        rec.manager_sync_key ||
-        rec.axis_sync_key ||
-        rec.original_key ||
-        rec.key ||
-        rec.id ||
-        [
-          rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "",
-          rec.serial_number || rec.serial || rec.system_serial || ""
-        ].filter(Boolean).join("_") ||
-        ""
-      ).trim();
+  const aId = String(a.id || "");
+  const bId = String(b.id || "");
+  if (aId && bId && aId === bId) return true;
+
+  const aKey = String(a.key || getRecordKey(a) || "");
+  const bKey = String(b.key || getRecordKey(b) || "");
+  if (aKey && bKey && aKey === bKey) return true;
+
+  const aProject = String(a.oem_project_id || a.project_id || a.asset_id || "");
+  const bProject = String(b.oem_project_id || b.project_id || b.asset_id || "");
+  const aSerial = String(a.serial_number || a.serial || "");
+  const bSerial = String(b.serial_number || b.serial || "");
+
+  return Boolean(
+    aProject &&
+    bProject &&
+    aSerial &&
+    bSerial &&
+    aProject === bProject &&
+    aSerial === bSerial
+  );
+}
+
+function buildManagerSyncPacket(rec) {
+  const now = new Date().toISOString();
+  const key = rec.key || getRecordKey(rec);
+
+  return {
+    ...rec,
+    key,
+    id: rec.id || key,
+
+    manager_visible: true,
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+
+    manager_flash_at: rec.manager_flash_at || now,
+    manager_flash_type: rec.manager_flash_type || "rep_update",
+    manager_flash_text:
+      rec.manager_flash_text ||
+      rec.rep_action_label ||
+      rec.rep_selected_action_label ||
+      "Rep updated record",
+
+    source: rec.source || "Rep Review Page",
+    hub_source: rec.hub_source || "Rep Review Page"
+  };
+}
+
+function syncToManagerQueue(rec) {
+  if (!rec) return;
+
+  const packet = buildManagerSyncPacket(rec);
+
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+
+    if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) {
+      managerQueue = {};
     }
+  } catch {
+    managerQueue = {};
+  }
 
-    function normalizeRepPacketAliases(rec) {
-      const site = String(
-        rec.site ||
-        rec.facility ||
-        rec.hospital ||
-        rec.hospital_name ||
-        rec.customer ||
-        rec.customer_name ||
-        rec.location ||
-        ""
-      ).trim();
+  const bucketName =
+    packet.manager_name ||
+    packet.owner_group_name ||
+    MANAGER_NAME ||
+    "Default Manager";
 
-      const address = String(
-        rec.site_address ||
-        rec.street_address ||
-        rec.address ||
-        rec.street ||
-        ""
-      ).trim();
+  const list = Array.isArray(managerQueue[bucketName])
+    ? managerQueue[bucketName]
+    : [];
 
-      const serial = String(rec.serial_number || rec.serial || rec.system_serial || "").trim();
-      const project = String(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || rec.id || "").trim();
+  const cleaned = list.filter(item => !sameSyncRecord(item, packet));
+  cleaned.unshift(packet);
 
-      return {
-        ...rec,
+  managerQueue[bucketName] = cleaned;
 
-        oem_project_id: rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || project,
-        project_id: rec.project_id || rec.oem_project_id || rec.asset_id || rec.equipment_id || project,
-        asset_id: rec.asset_id || rec.equipment_id || rec.oem_project_id || rec.project_id || project,
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
-        serial_number: rec.serial_number || rec.serial || rec.system_serial || serial,
-        serial: rec.serial || rec.serial_number || rec.system_serial || serial,
-        system_serial: rec.system_serial || rec.serial_number || rec.serial || serial,
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
+}
 
-        site: site || rec.site || "",
-        facility: site || rec.facility || "",
-        hospital: site || rec.hospital || "",
-        hospital_name: site || rec.hospital_name || "",
-        customer: site || rec.customer || "",
-        customer_name: site || rec.customer_name || "",
-        location: site || rec.location || "",
+function syncFeedStatus(rec) {
+  if (!rec) return;
 
-        site_address: address || rec.site_address || "",
-        street_address: address || rec.street_address || "",
-        address: address || rec.address || ""
-      };
-    }
+  const packet = buildManagerSyncPacket(rec);
 
-    function makeRecordSyncKey(rec) {
-      if (!rec) return "";
+  let main = [];
 
-      const stable = getStableSyncKey(rec);
-      if (stable) return stable;
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
+  }
 
-      const normalized = normalizeRepPacketAliases(rec);
-      const project = String(normalized.oem_project_id || normalized.project_id || normalized.asset_id || "").trim();
-      const serial = String(normalized.serial_number || normalized.serial || normalized.system_serial || "").trim();
-      const site = String(normalized.site || normalized.facility || normalized.hospital || "").trim();
+  const cleanedMain = main.filter(item => !sameSyncRecord(item, packet));
+  cleanedMain.unshift(packet);
 
-      return [project, serial, site].filter(Boolean).join("_");
-    }
+  state.records = cleanedMain;
+  saveRecords();
 
-    function sameSyncRecord(a, b) {
-      if (!a || !b) return false;
+  syncToManagerQueue(packet);
 
-      const aStable = getStableSyncKey(a);
-      const bStable = getStableSyncKey(b);
-      if (aStable && bStable && aStable === bStable) return true;
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
-      const aNorm = normalizeRepPacketAliases(a);
-      const bNorm = normalizeRepPacketAliases(b);
-
-      const aProject = String(aNorm.oem_project_id || aNorm.project_id || aNorm.asset_id || "").trim();
-      const bProject = String(bNorm.oem_project_id || bNorm.project_id || bNorm.asset_id || "").trim();
-      const aSerial = String(aNorm.serial_number || aNorm.serial || aNorm.system_serial || "").trim();
-      const bSerial = String(bNorm.serial_number || bNorm.serial || bNorm.system_serial || "").trim();
-
-      if (aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial) {
-        return true;
-      }
-
-      const aSite = String(aNorm.site || aNorm.facility || aNorm.hospital || "").trim();
-      const bSite = String(bNorm.site || bNorm.facility || bNorm.hospital || "").trim();
-
-      return Boolean(aProject && bProject && aSite && bSite && aProject === bProject && aSite === bSite);
-    }
-
-    function buildManagerSyncPacket(rec) {
-      const now = new Date().toISOString();
-      const normalized = normalizeRepPacketAliases(rec || {});
-      const key = makeRecordSyncKey(normalized) || getRecordKey(normalized);
-
-      const repName =
-        normalized.assigned_rep_name ||
-        `${normalized.sales_rep_first || ""} ${normalized.sales_rep_last || ""}`.trim() ||
-        normalized.rep_name ||
-        normalized.rep_owner ||
-        normalized.assigned_rep ||
-        "Unassigned";
-
-      const actionLabel =
-        normalized.rep_action_label ||
-        normalized.rep_selected_action_label ||
-        normalized.manager_flash_text ||
-        "Rep updated record";
-
-      return {
-        ...normalized,
-        key,
-        original_key: normalized.original_key || normalized.key || key,
-        manager_sync_key: normalized.manager_sync_key || key,
-        axis_sync_key: normalized.axis_sync_key || key,
-        id: normalized.id || key || `REP-${Date.now()}`,
-
-        assigned_rep_name: repName,
-        assigned_rep: normalized.assigned_rep || normalized.rep_owner || repName,
-        rep_owner: normalized.rep_owner || normalized.assigned_rep || repName,
-        sales_rep_first: normalized.sales_rep_first || repName.split(" ")[0] || "",
-        sales_rep_last: normalized.sales_rep_last || repName.split(" ").slice(1).join(" ") || "",
-
-        manager_visible: true,
-        manager_unseen_update: true,
-        manager_alert_seen: false,
-        manager_update_seen_at: "",
-        manager_flash_at: normalized.manager_flash_at || now,
-        manager_flash_type: normalized.manager_flash_type || "rep_update",
-        manager_flash_text: actionLabel,
-
-        source: normalized.source || "Rep Review Page",
-        hub_source: normalized.hub_source || "Rep Review Page",
-        rep_last_action_at: normalized.rep_last_action_at || normalized.rep_selected_action_at || now
-      };
-    }
-
-    function pingManagerSync() {
-      const now = String(Date.now());
-      localStorage.setItem(MANAGER_SYNC_KEY, now);
-      localStorage.setItem("axis_manager_sync_ping_v1", now);
-
-      try {
-        window.dispatchEvent(new Event("rep_feed_update"));
-      } catch {}
-    }
-
-    function upsertRecordList(records, packet) {
-      const list = Array.isArray(records) ? records : [];
-      const cleaned = list.filter(item => !sameSyncRecord(item, packet));
-      cleaned.unshift(packet);
-      return cleaned;
-    }
-
-    function syncToManagerQueue(rec) {
-      if (!rec) return;
-
-      const packet = buildManagerSyncPacket(rec);
-      let managerQueue = {};
-
-      try {
-        managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-        if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) managerQueue = {};
-      } catch {
-        managerQueue = {};
-      }
-
-      const buckets = Array.from(new Set([
-        MANAGER_NAME || "Default Manager",
-        packet.manager_name || "",
-        packet.owner_group_name || "",
-        packet.manager_owner || "",
-        "Default Manager"
-      ].filter(Boolean)));
-
-      buckets.forEach(bucketName => {
-        managerQueue[bucketName] = upsertRecordList(managerQueue[bucketName], packet);
-      });
-
-      localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-      pingManagerSync();
-    }
-
-    function syncFeedStatus(rec) {
-      if (!rec) return;
-
-      const packet = buildManagerSyncPacket(rec);
-
-      let main = [];
-      try {
-        main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        if (!Array.isArray(main)) main = [];
-      } catch {
-        main = [];
-      }
-
-      state.records = upsertRecordList(main, packet);
-      saveRecords();
-      syncToManagerQueue(packet);
-      pingManagerSync();
-    }
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
+}
 function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   if (!rec || !outcome) return;
 
@@ -3669,64 +3577,6 @@ function syncInstallBaseFixToManager(updated) {
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 }
-function applyCorrectedFieldAliases(target, rawKey, value) {
-  const v = String(value || "").trim();
-  if (!target || !v) return;
-
-  const k = String(rawKey || "")
-    .toLowerCase()
-    .replace(/^fix_/, "")
-    .trim();
-
-  if (["site", "facility", "hospital", "hospital_name", "customer", "customer_name", "location"].includes(k)) {
-    target.site = v;
-    target.facility = v;
-    target.hospital = v;
-    target.hospital_name = v;
-    target.customer = v;
-    target.customer_name = v;
-    target.location = v;
-    return;
-  }
-
-  if (["site_address", "street_address", "address", "street", "siteaddress"].includes(k)) {
-    target.site_address = v;
-    target.street_address = v;
-    target.address = v;
-    target.street = v;
-    return;
-  }
-
-  if (["serial", "serial_number", "system_serial"].includes(k)) {
-    target.serial_number = v;
-    target.serial = v;
-    target.system_serial = v;
-    return;
-  }
-
-  if (["project", "project_id", "oem_project_id", "asset_id", "equipment_id"].includes(k)) {
-    target.oem_project_id = v;
-    target.project_id = v;
-    target.asset_id = v;
-    target.equipment_id = v;
-    return;
-  }
-
-  if (["make", "manufacturer"].includes(k)) {
-    target.make = v;
-    target.manufacturer = v;
-    return;
-  }
-
-  if (["dom", "year", "manufacture_year"].includes(k)) {
-    target.dom = v;
-    target.year = v;
-    target.manufacture_year = v;
-    return;
-  }
-
-  target[rawKey] = v;
-}
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -3824,7 +3674,7 @@ function sendInstallBaseCorrection(id) {
     const value = input.value.trim();
     if (!value) return;
 
-    applyCorrectedFieldAliases(updated, rawKey, value);
+    updated[rawKey] = value;
 
     const correctedField = normalizeCorrectedFieldName(rawKey);
     if (correctedField && !correctedFields.includes(correctedField)) {
@@ -3835,7 +3685,7 @@ function sendInstallBaseCorrection(id) {
   issues.forEach(issue => {
     const input = $("fix_" + issue.key);
     if (input && input.value.trim()) {
-      applyCorrectedFieldAliases(updated, issue.key, input.value.trim());
+      updated[issue.key] = input.value.trim();
 
       const correctedField = normalizeCorrectedFieldName(issue.key);
       if (correctedField && !correctedFields.includes(correctedField)) {
