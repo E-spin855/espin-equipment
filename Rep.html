@@ -2302,77 +2302,131 @@ function writeArrayKey(key, arr) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
     }
 
-    function syncToManagerQueue(rec) {
-      let managerQueue = {};
-      try {
-        managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-        if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
-      } catch {
-        managerQueue = {};
-      }
+   function sameSyncRecord(a, b) {
+  if (!a || !b) return false;
 
-      const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
-      let managerRecords = Array.isArray(managerQueue[MANAGER_NAME]) ? managerQueue[MANAGER_NAME] : [];
-      let found = false;
+  const aId = String(a.id || "");
+  const bId = String(b.id || "");
+  if (aId && bId && aId === bId) return true;
 
-      managerRecords = managerRecords.map(item => {
-        const same =
-          item.id === rec.id ||
-          item.key === key ||
-          (
-            String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
-            String(item.serial_number || "") === String(rec.serial_number || "")
-          );
+  const aKey = String(a.key || getRecordKey(a) || "");
+  const bKey = String(b.key || getRecordKey(b) || "");
+  if (aKey && bKey && aKey === bKey) return true;
 
-        if (!same) return item;
-        found = true;
-        return { ...item, ...rec, key };
-      });
+  const aProject = String(a.oem_project_id || a.project_id || a.asset_id || "");
+  const bProject = String(b.oem_project_id || b.project_id || b.asset_id || "");
+  const aSerial = String(a.serial_number || a.serial || "");
+  const bSerial = String(b.serial_number || b.serial || "");
 
-      if (!found) managerRecords.unshift({ ...rec, key });
+  return Boolean(
+    aProject &&
+    bProject &&
+    aSerial &&
+    bSerial &&
+    aProject === bProject &&
+    aSerial === bSerial
+  );
+}
 
-      managerQueue[MANAGER_NAME] = managerRecords;
-      localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-      localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+function buildManagerSyncPacket(rec) {
+  const now = new Date().toISOString();
+  const key = rec.key || getRecordKey(rec);
+
+  return {
+    ...rec,
+    key,
+    id: rec.id || key,
+
+    manager_visible: true,
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+
+    manager_flash_at: rec.manager_flash_at || now,
+    manager_flash_type: rec.manager_flash_type || "rep_update",
+    manager_flash_text:
+      rec.manager_flash_text ||
+      rec.rep_action_label ||
+      rec.rep_selected_action_label ||
+      "Rep updated record",
+
+    source: rec.source || "Rep Review Page",
+    hub_source: rec.hub_source || "Rep Review Page"
+  };
+}
+
+function syncToManagerQueue(rec) {
+  if (!rec) return;
+
+  const packet = buildManagerSyncPacket(rec);
+
+  let managerQueue = {};
+
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+
+    if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) {
+      managerQueue = {};
     }
+  } catch {
+    managerQueue = {};
+  }
 
-    function syncFeedStatus(rec) {
-      if (!rec) return;
+  const bucketName =
+    packet.manager_name ||
+    packet.owner_group_name ||
+    MANAGER_NAME ||
+    "Default Manager";
 
-      const key = `${rec.oem_project_id || ""}_${rec.serial_number || ""}`;
+  const list = Array.isArray(managerQueue[bucketName])
+    ? managerQueue[bucketName]
+    : [];
 
-      let main = [];
-      try {
-        main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        if (!Array.isArray(main)) main = [];
-      } catch {
-        main = [];
-      }
+  const cleaned = list.filter(item => !sameSyncRecord(item, packet));
+  cleaned.unshift(packet);
 
-      let found = false;
+  managerQueue[bucketName] = cleaned;
 
-      main = main.map(item => {
-        const same =
-          item.id === rec.id ||
-          (
-            String(item.oem_project_id || "") === String(rec.oem_project_id || "") &&
-            String(item.serial_number || "") === String(rec.serial_number || "")
-          );
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
-        if (!same) return item;
-        found = true;
-        return { ...item, ...rec, key };
-      });
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
+}
 
-      if (!found) main.unshift({ ...rec, key });
+function syncFeedStatus(rec) {
+  if (!rec) return;
 
-      state.records = main;
-      saveRecords();
-      syncToManagerQueue(rec);
+  const packet = buildManagerSyncPacket(rec);
 
-      localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-      window.dispatchEvent(new Event("rep_feed_update"));
-    }
+  let main = [];
+
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
+  }
+
+  const cleanedMain = main.filter(item => !sameSyncRecord(item, packet));
+  cleanedMain.unshift(packet);
+
+  state.records = cleanedMain;
+  saveRecords();
+
+  syncToManagerQueue(packet);
+
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
+}
 function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   if (!rec || !outcome) return;
 
