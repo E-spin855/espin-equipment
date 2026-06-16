@@ -2397,10 +2397,49 @@ function syncToManagerQueue(rec) {
   }
 }
 
+function buildRepLocalPacket(rec) {
+  if (!rec) return rec;
+
+  const key = rec.key || getRecordKey(rec);
+  const local = {
+    ...rec,
+    key,
+    id: rec.id || key,
+
+    // Keep the record visible on the rep page after manager sync.
+    rep_visible: rec.rep_visible !== false,
+    rep_hidden: false
+  };
+
+  /*
+    Important:
+    manager_visible / release_destination: "manager" are manager-routing flags.
+    If those flags are saved into the rep's own STORAGE_KEY record, loadRecords()
+    filters the record out of the rep page. That is why new projects disappeared
+    after "Send to Trade-In App".
+  */
+  delete local.manager_visible;
+
+  if (local.release_destination === "manager") {
+    delete local.release_destination;
+  }
+
+  if (local.install_base_released_to === "manager") {
+    delete local.install_base_released_to;
+  }
+
+  return local;
+}
+
 function syncFeedStatus(rec) {
   if (!rec) return;
 
-  const packet = buildManagerSyncPacket(rec);
+  const managerPacket = buildManagerSyncPacket(rec);
+  const localPacket = buildRepLocalPacket({
+    ...rec,
+    key: managerPacket.key,
+    id: rec.id || managerPacket.id
+  });
 
   let main = [];
 
@@ -2411,13 +2450,13 @@ function syncFeedStatus(rec) {
     main = [];
   }
 
-  const cleanedMain = main.filter(item => !sameSyncRecord(item, packet));
-  cleanedMain.unshift(packet);
+  const cleanedMain = main.filter(item => !sameSyncRecord(item, localPacket));
+  cleanedMain.unshift(localPacket);
 
   state.records = cleanedMain;
   saveRecords();
 
-  syncToManagerQueue(packet);
+  syncToManagerQueue(managerPacket);
 
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
@@ -6053,6 +6092,22 @@ async function sendToEspin(type, rec) {
     banner.textContent = "Sending...";
   }
 
+  // Desktop browsers can block a new tab if window.open runs after async API calls.
+  // Reserve the tab immediately from the user's click, then navigate it after the
+  // Trade-In project and equipment records are created.
+  let reservedTradeWindow = null;
+  if (type === "tradein_app") {
+    reservedTradeWindow = window.open("about:blank", "_blank");
+    if (reservedTradeWindow) {
+      try {
+        reservedTradeWindow.document.title = "Opening Trade-In App";
+        reservedTradeWindow.document.body.style.fontFamily = "Arial, sans-serif";
+        reservedTradeWindow.document.body.style.padding = "24px";
+        reservedTradeWindow.document.body.innerHTML = "<h2>Opening Trade-In App...</h2><p>Please wait while AXIS prepares the project handoff.</p>";
+      } catch {}
+    }
+  }
+
   try {
     const email = "info@espinmedical.com";
 
@@ -6259,7 +6314,15 @@ showBanner(
     : "✅ Equipment sent to Trade-In App. Opening Trade-In App in a new tab..."
 );
 
-window.open(tradeUrl.toString(), "_blank", "noopener,noreferrer");
+if (reservedTradeWindow && !reservedTradeWindow.closed) {
+  reservedTradeWindow.location.href = tradeUrl.toString();
+} else {
+  const fallbackWindow = window.open(tradeUrl.toString(), "_blank", "noopener,noreferrer");
+
+  if (!fallbackWindow && banner) {
+    banner.innerHTML = `✅ Sent to Trade-In App. <a href="${tradeUrl.toString()}" target="_blank" rel="noopener noreferrer" style="color:#c8ffdf;text-decoration:underline;font-weight:900;">Open Trade-In App</a>`;
+  }
+}
 
 return true;
     }
@@ -6286,6 +6349,13 @@ return true;
 
   } catch (err) {
     console.error(err);
+
+    if (reservedTradeWindow && !reservedTradeWindow.closed) {
+      try {
+        reservedTradeWindow.document.body.innerHTML = "<h2>Trade-In App did not open</h2><p>AXIS could not complete the handoff. Please return to the Rep page and try again.</p>";
+      } catch {}
+    }
+
     showBanner("❌ Failed to send");
     return false;
   }
