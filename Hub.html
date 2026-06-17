@@ -287,7 +287,7 @@ button.danger{
 table{
   width:100%;
   border-collapse:collapse;
-  min-width:1150px;
+  min-width:1320px;
 }
 
 th,td{
@@ -499,6 +499,31 @@ tbody tr.selected{
   background:linear-gradient(90deg,#ffd84d,#fff2a6);
   border-color:rgba(255,242,166,.95);
 }
+.row-actions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.open-row-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:72px;
+  min-height:32px;
+  padding:6px 10px;
+  border-radius:11px;
+  font-size:13px;
+  font-weight:950;
+  line-height:1.05;
+  text-align:center;
+  white-space:nowrap;
+  color:#d8f1ff;
+  background:rgba(67,176,255,.18);
+  border:2px solid rgba(67,176,255,.58);
+  box-shadow:0 0 14px rgba(67,176,255,.20);
+}
 tr.install-base-response-flash{
   outline:3px solid rgba(65,255,156,.95)!important;
   box-shadow:
@@ -539,19 +564,6 @@ tr.install-base-corrected-row-frame{
 tr.install-base-corrected-row-frame td{
   background:rgba(8,18,35,.72)!important;
 }
-tr.install-base-won-project-frame{
-  outline:3px solid rgba(65,255,156,.95)!important;
-  outline-offset:-2px;
-  box-shadow:
-    inset 10px 0 0 rgba(65,255,156,.95),
-    0 0 0 1px rgba(65,255,156,.36),
-    0 0 30px rgba(65,255,156,.38)!important;
-}
-
-tr.install-base-won-project-frame td{
-  background:rgba(8,18,35,.72)!important;
-}
-
 </style>
 </head>
 
@@ -647,20 +659,21 @@ tr.install-base-won-project-frame td{
           <div class="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>Project / Asset ID</th>
-                  <th>Owner Group</th>
-                  <th>Territory</th>
-                  <th>Rep Owner</th>
-                  <th>Site</th>
-                  <th>Modality</th>
-                  <th>Make</th>
-                  <th>Model</th>
-                  <th>Serial</th>
-                  <th>DOM</th>
-                  <th>Age</th>
-                  <th>Review Status</th>
-                </tr>
+	                <tr>
+	                  <th>Project / Asset ID</th>
+	                  <th>Brand</th>
+	                  <th>Owner Group</th>
+	                  <th>Territory</th>
+	                  <th>Rep Owner</th>
+	                  <th>Site</th>
+	                  <th>Modality</th>
+	                  <th>Model</th>
+	                  <th>Serial</th>
+	                  <th>DOM</th>
+	                  <th>Age</th>
+	                  <th>Review Status</th>
+	                  <th>Action</th>
+	                </tr>
               </thead>
               <tbody id="tableBody"></tbody>
             </table>
@@ -942,8 +955,18 @@ function getDataExceptions(rec) {
 function isFixedByRep(rec) {
   return (
     rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed"
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.install_base_fix_status === "manager_reviewed"
+  );
+}
+function isFixedByManager(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_manager" ||
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_fix_status === "manager_reviewed"
   );
 }
 function isCompletedByRep(rec) {
@@ -954,25 +977,6 @@ function isCompletedByRep(rec) {
     rec.install_base_completion_status === "completed_by_rep" ||
     rec.install_base_response_status === "project_completed_by_rep"
   );
-}
-function isUnseenWonProject(rec) {
-  const wonSignal =
-    String(rec.install_base_sync_type || "") === "won_project_lifecycle_entry" ||
-    rec.install_base_lifecycle_entry === true ||
-    String(rec.install_base_lifecycle_entry || "").toLowerCase() === "true" ||
-    rec.lifecycle_created_from_quote_won === true ||
-    String(rec.lifecycle_created_from_quote_won || "").toLowerCase() === "true" ||
-    String(rec.install_base_final_outcome || "").toLowerCase() === "won" ||
-    String(rec.quote_status || "").toLowerCase() === "won" ||
-    String(rec.rep_status || "").toLowerCase() === "won" ||
-    String(rec.source || "").toLowerCase().includes("rep won project") ||
-    String(rec.install_base_source || "").toLowerCase().includes("rep won project");
-
-  const alreadySeen =
-    rec.install_base_won_seen_by_install_base === true ||
-    String(rec.install_base_won_seen_by_install_base || "").toLowerCase() === "true";
-
-  return wonSignal && !alreadySeen;
 }
 function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
@@ -1015,6 +1019,37 @@ function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
     </div>
   `;
 }
+function isBlankHubField(value) {
+  const text = clean(value);
+  return !text || text === "-" || text === "Unknown Site" || text === "Unassigned" || text === "Unassigned Owner Group";
+}
+
+function getMissingFieldFixHtml(rec, fieldName) {
+  const fixSent =
+    rec.install_base_release_status === "released_to_rep" ||
+    rec.install_base_release_status === "released_to_manager";
+
+  const label = fixSent ? "Fix Sent" : "Fix";
+
+  return `
+    <button
+      type="button"
+      class="fix-data-badge ${fixSent ? "active" : ""}"
+      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}')"
+    >${escapeHtml(label)}</button>
+  `;
+}
+
+function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
+  const normalHtml = escapeHtml(isBlankHubField(rawValue) ? fallbackHtml : rawValue);
+  const correctedHtml = renderInstallBaseCorrectedValue(rec, fieldName, normalHtml);
+
+  if (correctedHtml !== normalHtml) return correctedHtml;
+  if (isFixedByRep(rec)) return normalHtml;
+  if (!isBlankHubField(rawValue)) return normalHtml;
+
+  return getMissingFieldFixHtml(rec, fieldName);
+}
 function getReviewStatus(rec) {
 if (
   rec.install_base_sync_type === "won_project_lifecycle_entry" ||
@@ -1040,7 +1075,7 @@ if (
   }
 
   if (isFixedByRep(rec)) {
-    return { type: "fixed", label: "Fixed by Rep" };
+    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
   }
 
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
@@ -1081,7 +1116,7 @@ function getReviewStatus(rec) {
   }
 
   if (isFixedByRep(rec)) {
-    return { type: "fixed", label: "Fixed by Rep" };
+    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
   }
 
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
@@ -1145,7 +1180,8 @@ function getStatusHtml(rec) {
   const status = getReviewStatus(rec);
 
   if (status.type === "response") {
-    return `<span class="badge badge-response">Rep Response</span>`;
+    const label = rec.install_base_response_from === "manager" ? "Manager Response" : "Rep Response";
+    return `<span class="badge badge-response">${escapeHtml(label)}</span>`;
   }
 
   const cls = {
@@ -1159,6 +1195,17 @@ function getStatusHtml(rec) {
 }[status.type] || "badge-staged";
 
   return `<span class="badge ${cls}">${escapeHtml(status.label)}</span>`;
+}
+function getRowActionHtml(rec) {
+  return `
+    <div class="row-actions">
+      <button
+        type="button"
+        class="open-row-btn"
+        onclick="event.stopPropagation(); selectRecord('${escapeJs(rec.id || "")}');"
+      >Open</button>
+    </div>
+  `;
 }
 
 function readArrayKey(key) {
@@ -1207,13 +1254,8 @@ function loadRecords() {
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
   const finalSyncRecords = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
-  const sharedRepRecords = readArrayKey(STORAGE_KEY);
 
-  const incoming = [
-    ...directRecords,
-    ...finalSyncRecords,
-    ...sharedRepRecords
-  ];
+  const incoming = [...directRecords, ...finalSyncRecords];
 
   const wonProjects = incoming.filter(rec =>
     rec.install_base_sync_type === "won_project_lifecycle_entry" ||
@@ -1223,6 +1265,7 @@ function mergeWonProjectsFromRepIntoInstallBase() {
     rec.quote_status === "won" ||
     rec.rep_status === "won"
   );
+
   if (!wonProjects.length) return false;
 
   let changed = false;
@@ -1475,24 +1518,7 @@ function markRepResponseSeen(rec) {
   writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
   saveRecords();
 }
-function markWonProjectSeen(rec) {
-  if (!rec || !isUnseenWonProject(rec)) return;
 
-  const now = new Date().toISOString();
-  const key = getRecordKey(rec);
-
-  state.records = state.records.map(r =>
-    getRecordKey(r) === key
-      ? {
-          ...r,
-          install_base_won_seen_by_install_base: true,
-          install_base_won_seen_by_install_base_at: now
-        }
-      : r
-  );
-
-  saveRecords();
-}
 function releaseSelected(destination) {
   const rec = findSelectedRecord();
   if (!rec) return;
@@ -1656,6 +1682,29 @@ if (destination === "rep") {
       ? "Selected record released to Manager Review only."
       : "Selected record released to Rep Review only."
   );
+}
+function requestFixForRecord(id, event, fieldName = "") {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+  if (!rec) return;
+
+  if (isFixedByRep(rec)) {
+    selectRecord(rec.id);
+    return;
+  }
+
+  state.selectedId = rec.id;
+
+  const exceptions = getDataExceptions(rec);
+  const fieldNeedsManager = ["owner", "manager", "manager_name", "owner_group", "rep", "assigned_rep", "assigned_rep_name"].includes(String(fieldName || "").toLowerCase());
+  const hasOwnershipIssue = exceptions.some(issue => issue.type === "owner");
+  const destination = fieldNeedsManager || hasOwnershipIssue ? "manager" : "rep";
+
+  releaseSelected(destination);
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
@@ -2312,7 +2361,7 @@ function renderTable() {
   if (!records.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="12" style="color:#9db6d2;">
+	        <td colspan="13" style="color:#9db6d2;">
           No records match the current view.
         </td>
       </tr>
@@ -2343,16 +2392,13 @@ const completionUnseen =
   completedByRep &&
   rec.install_base_response_seen !== true;
 
-const wonProjectUnseen = isUnseenWonProject(rec);
-
 const rowClass = [
   String(state.selectedId) === String(rec.id) ? "selected" : "",
-  rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
-    ? "install-base-response-flash"
-    : "",
-  correctedUnseen ? "install-base-corrected-row-frame" : "",
-  completionUnseen ? "install-base-response-flash" : "",
-  wonProjectUnseen ? "install-base-won-project-frame" : ""
+rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
+  ? "install-base-response-flash"
+  : "",
+correctedUnseen ? "install-base-corrected-row-frame" : "",
+completionUnseen ? "install-base-response-flash" : ""
 ].filter(Boolean).join(" ");
 
     return `
@@ -2361,78 +2407,25 @@ const rowClass = [
         class="${rowClass}"
         style="cursor:pointer;"
       >
-       <td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "make",
-    escapeHtml(rec.make || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "project", rec.oem_project_id || rec.asset_id)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "model",
-    escapeHtml(rec.model || "-")
-  )}
-</td>
-<td>${escapeHtml(getOwnerTerritory(rec))}</td>
+	      <td>${renderHubFieldValue(rec, "make", rec.make)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "rep",
-    escapeHtml(rec.assigned_rep_name || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "owner", rec.manager_name || rec.owner_group_name)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "site",
-    escapeHtml(rec.site || "-")
-  )}
-</td>
+	      <td>${escapeHtml(getOwnerTerritory(rec))}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "modality",
-    escapeHtml(rec.modality || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "rep", rec.assigned_rep_name)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "equipment",
-    escapeHtml(rec.make || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "site", rec.site)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "equipment",
-    escapeHtml(rec.model || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "modality", rec.modality)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "serial",
-    escapeHtml(rec.serial_number || rec.serial || "-")
-  )}
-</td>
+	      <td>${renderHubFieldValue(rec, "model", rec.model)}</td>
 
-<td>
-  ${renderInstallBaseCorrectedValue(
-    rec,
-    "dom",
-    escapeHtml(rec.dom || "-")
-  )}
-</td>
+<td>${renderHubFieldValue(rec, "serial", rec.serial_number || rec.serial)}</td>
+	
+<td>${renderHubFieldValue(rec, "dom", rec.dom)}</td>
 
 <td>
   ${renderInstallBaseCorrectedValue(
@@ -2442,8 +2435,9 @@ const rowClass = [
   )}
 </td>
 
-<td>${getStatusHtml(rec)}</td>
-      </tr>
+	      <td>${getStatusHtml(rec)}</td>
+	      <td>${getRowActionHtml(rec)}</td>
+	      </tr>
     `;
   }).join("");
 }
@@ -2485,11 +2479,11 @@ function selectRecord(id) {
   if (rec) {
     markInstallBaseCorrectedFieldsSeen(rec);
     markRepResponseSeen(rec);
-    markWonProjectSeen(rec);
   }
 
   render();
 }
+
 function findSelectedRecord() {
   if (!state.selectedId) return null;
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
@@ -2498,13 +2492,14 @@ function renderFixedDataCard(rec) {
   if (!isFixedByRep(rec)) return "";
 
   const seen = rec.install_base_fixed_seen_by_install_base === true;
+  const fixedByLabel = isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep";
 
   const msg =
     rec.install_base_correction_note ||
     rec.install_base_response_note ||
     rec.install_base_response_message ||
     rec.rep_notes ||
-    "Rep marked install-base data as fixed.";
+    `${fixedByLabel} marked install-base data as fixed.`;
 
   const clickHandler = seen
     ? ""
@@ -2516,7 +2511,7 @@ function renderFixedDataCard(rec) {
       ${clickHandler}
     >
       <div class="k">Install Base Data Fixed</div>
-      <div class="v">Fixed by Rep</div>
+      <div class="v">${escapeHtml(fixedByLabel)}</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
         Fixed by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
         Fixed at: <strong>${escapeHtml(rec.install_base_correction_at || rec.install_base_response_at || "-")}</strong><br>
@@ -2841,6 +2836,7 @@ setInterval(() => {
   render();
 }, 1800);
 }
+
 document.addEventListener("DOMContentLoaded", init);
 </script>
 
