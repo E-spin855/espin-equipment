@@ -2289,6 +2289,13 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
+  const assignmentIssues = [
+    { key: "manager_name", label: "Owner Group / Manager" },
+    { key: "assigned_rep_name", label: "Rep Owner" }
+  ];
+  const detailIssues = issues.filter(issue =>
+    !assignmentIssues.some(assignmentIssue => assignmentIssue.key === issue.key)
+  );
 
   const requestedItem =
     rec.install_base_action_label ||
@@ -2313,21 +2320,34 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
       <div class="k">Manager Response to Install Base</div>
       <div class="v">Correct fields or send explanation back to Install Base</div>
 
-      <div class="mini" style="margin-top:8px;line-height:1.5;">
-        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
-        Reason: ${escapeHtml(reason)}
-      </div>
+	      <div class="mini" style="margin-top:8px;line-height:1.5;">
+	        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
+	        Reason: ${escapeHtml(reason)}
+	      </div>
+	
+	      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Assignment / Ownership</div>
+	      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;">
+	        ${assignmentIssues.map(issue => `
+	          <div>
+	            <label>${escapeHtml(issue.label)}</label>
+	            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
+	          </div>
+	        `).join("")}
+	      </div>
 
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
-        ${issues.map(issue => `
-          <div>
-            <label>${escapeHtml(issue.label)}</label>
-            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
-          </div>
-        `).join("")}
-      </div>
-
-      <label style="margin-top:14px;">Manager Note to Install Base</label>
+	      ${detailIssues.length ? `
+	      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Requested Fix Fields</div>
+	      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
+	        ${detailIssues.map(issue => `
+	          <div>
+	            <label>${escapeHtml(issue.label)}</label>
+	            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
+	          </div>
+	        `).join("")}
+	      </div>
+	      ` : ""}
+	
+	      <label style="margin-top:14px;">Manager Note to Install Base</label>
       <textarea id="managerInstallBaseCorrectionNote" placeholder="Explain correction, confirmation, or why it could not be verified."></textarea>
 
       <div class="btns" style="margin-top:12px;">
