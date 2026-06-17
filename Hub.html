@@ -551,55 +551,7 @@ tr.install-base-won-project-frame{
 tr.install-base-won-project-frame td{
   background:rgba(8,18,35,.72)!important;
 }
-.ib-cell{
-  display:flex;
-  flex-direction:column;
-  align-items:flex-start;
-  gap:6px;
-}
 
-.ib-value{
-  font-weight:850;
-  color:#eef6ff;
-  line-height:1.25;
-}
-
-.ib-was{
-  font-size:11px;
-  color:#9db6d2;
-  line-height:1.25;
-}
-
-.ib-fix-badge{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:5px 8px;
-  border-radius:999px;
-  font-size:10px;
-  font-weight:950;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  white-space:nowrap;
-  color:#1c1204;
-  background:linear-gradient(90deg,#a46f13,#ffd84d);
-  border:1px solid rgba(255,216,77,.95);
-  box-shadow:0 0 14px rgba(255,216,77,.28);
-}
-
-.ib-fix-badge.red{
-  color:#fff;
-  background:linear-gradient(90deg,#9b2635,#ff6b6b);
-  border-color:rgba(255,107,107,.9);
-  box-shadow:0 0 14px rgba(255,107,107,.28);
-}
-
-.ib-fix-badge.green{
-  color:#03150b;
-  background:linear-gradient(90deg,#1fd17a,#41ff9c);
-  border-color:rgba(65,255,156,.9);
-  box-shadow:0 0 14px rgba(65,255,156,.24);
-}
 </style>
 </head>
 
@@ -2344,205 +2296,7 @@ function selectOwner(name) {
   state.selectedId = null;
   render();
 }
-function ibClean(v){
-  return String(v ?? "").trim();
-}
 
-function ibLower(v){
-  return ibClean(v).toLowerCase();
-}
-
-function ibIsMissing(v){
-  const x = ibLower(v);
-  return (
-    !x ||
-    x === "-" ||
-    x === "n/a" ||
-    x === "na" ||
-    x === "unknown" ||
-    x === "missing" ||
-    x === "null" ||
-    x === "undefined"
-  );
-}
-
-function ibFieldLabel(field){
-  const labels = {
-    project: "Project",
-    owner: "Owner",
-    rep: "Rep",
-    site: "Site",
-    modality: "Modality",
-    make: "Make",
-    model: "Model",
-    serial: "Serial",
-    dom: "DOM",
-    age: "Age"
-  };
-
-  return labels[field] || field;
-}
-
-function ibFieldAliases(field){
-  const aliases = {
-    project: ["project", "project_id", "oem_project_id", "asset_id", "equipment_id"],
-    owner: ["owner", "owner_group", "manager", "manager_name", "manager_region"],
-    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep"],
-    site: ["site", "facility", "hospital", "customer", "location"],
-    modality: ["modality"],
-    make: ["make", "manufacturer"],
-    model: ["model"],
-    serial: ["serial", "serial_number", "system_serial"],
-    dom: ["dom", "year", "manufacture_year", "date_of_manufacture"],
-    age: ["age", "dom", "year"]
-  };
-
-  return aliases[field] || [field];
-}
-
-function ibGetFieldValue(rec, field){
-  if (!rec) return "";
-
-  if (field === "project") {
-    return rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || rec.id || "";
-  }
-
-  if (field === "owner") {
-    return getOwnerName(rec);
-  }
-
-  if (field === "rep") {
-    return rec.assigned_rep_name || rec.rep_owner || rec.sales_rep || "";
-  }
-
-  if (field === "site") {
-    return rec.site || rec.site_name || rec.hospital_name || rec.facility || rec.customer || "";
-  }
-
-  if (field === "serial") {
-    return rec.serial_number || rec.serial || rec.system_serial || "";
-  }
-
-  if (field === "dom") {
-    return rec.dom || rec.DOM || rec.year || rec.manufacture_year || rec.date_of_manufacture || "";
-  }
-
-  if (field === "age") {
-    return ageFromDom(ibGetFieldValue(rec, "dom")) || "";
-  }
-
-  return rec[field] || "";
-}
-
-function ibGetCorrectedFieldValue(rec, field){
-  if (!rec) return "";
-
-  const aliases = ibFieldAliases(field);
-
-  if (rec.corrected_fields && typeof rec.corrected_fields === "object") {
-    for (const alias of aliases) {
-      if (!ibIsMissing(rec.corrected_fields[alias])) {
-        return ibClean(rec.corrected_fields[alias]);
-      }
-    }
-  }
-
-  const possibleKeys = [];
-
-  aliases.forEach(alias => {
-    possibleKeys.push(`corrected_${alias}`);
-    possibleKeys.push(`${alias}_corrected`);
-    possibleKeys.push(`rep_corrected_${alias}`);
-    possibleKeys.push(`manager_corrected_${alias}`);
-    possibleKeys.push(`fixed_${alias}`);
-    possibleKeys.push(`${alias}_fixed`);
-  });
-
-  for (const key of possibleKeys) {
-    if (!ibIsMissing(rec[key])) return ibClean(rec[key]);
-  }
-
-  return "";
-}
-
-function ibFieldNeedsFix(rec, field){
-  if (!rec) return false;
-
-  const value = ibGetFieldValue(rec, field);
-  const corrected = ibGetCorrectedFieldValue(rec, field);
-
-  if (!ibIsMissing(corrected)) return false;
-  if (ibIsMissing(value)) return true;
-
-  const issueText = [
-    rec.install_base_issue_field,
-    rec.install_base_issue_type,
-    rec.install_base_issue_reason,
-    rec.install_base_action_label,
-    rec.install_base_action_reason,
-    rec.install_base_issue_note,
-    rec.rep_fix_required,
-    rec.conflict_notes,
-    rec.source_conflict,
-    rec.review_reason,
-    rec.oem_review_reason
-  ].join(" ").toLowerCase();
-
-  const aliases = ibFieldAliases(field);
-
-  if (aliases.some(alias => issueText.includes(alias))) return true;
-
-  if (
-    field === "serial" &&
-    (
-      ibLower(value).includes("conflict") ||
-      issueText.includes("serial mismatch") ||
-      issueText.includes("source conflict")
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    field === "dom" &&
-    (
-      issueText.includes("year") ||
-      issueText.includes("manufacture")
-    )
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function renderInstallBaseTableCell(rec, field){
-  const originalValue = ibGetFieldValue(rec, field);
-  const correctedValue = ibGetCorrectedFieldValue(rec, field);
-  const displayValue = !ibIsMissing(correctedValue) ? correctedValue : originalValue;
-
-  const correctedByRep = wasInstallBaseFieldCorrected(rec, field) || !ibIsMissing(correctedValue);
-  const needsFix = ibFieldNeedsFix(rec, field);
-
-  const wasLine =
-    correctedByRep && !ibIsMissing(originalValue) && ibClean(originalValue) !== ibClean(displayValue)
-      ? `<div class="ib-was">Was: ${escapeHtml(originalValue)}</div>`
-      : "";
-
-  const badge = correctedByRep
-    ? `<span class="ib-fix-badge green">Corrected</span>`
-    : needsFix
-      ? `<span class="ib-fix-badge red">Fix ${escapeHtml(ibFieldLabel(field))}</span>`
-      : "";
-
-  return `
-    <div class="ib-cell">
-      <div class="ib-value">${escapeHtml(displayValue || "-")}</div>
-      ${wasLine}
-      ${badge}
-    </div>
-  `;
-}
 function renderTable() {
   const tbody = $("tableBody");
   const records = getFilteredRecords();
@@ -2569,40 +2323,37 @@ function renderTable() {
   const sorted = [...records].sort((a, b) => {
     const responseA = a.install_base_response_at && !a.install_base_response_seen ? 1 : 0;
     const responseB = b.install_base_response_at && !b.install_base_response_seen ? 1 : 0;
-
     if (responseB !== responseA) return responseB - responseA;
 
-    const aa = isFixedByRep(a) ? 0 : getDataExceptions(a).length;
-    const bb = isFixedByRep(b) ? 0 : getDataExceptions(b).length;
-
-    if (bb !== aa) return bb - aa;
-
+   const aa = isFixedByRep(a) ? 0 : getDataExceptions(a).length;
+const bb = isFixedByRep(b) ? 0 : getDataExceptions(b).length;
+if (bb !== aa) return bb - aa;
     return String(a.site || "").localeCompare(String(b.site || ""));
   });
 
   tbody.innerHTML = sorted.map(rec => {
-    const fixedByRep = isFixedByRep(rec);
-    const completedByRep = isCompletedByRep(rec);
+   const fixedByRep = isFixedByRep(rec);
+const completedByRep = isCompletedByRep(rec);
 
-    const correctedUnseen =
-      fixedByRep &&
-      rec.install_base_fixed_seen_by_install_base !== true;
+const correctedUnseen =
+  fixedByRep &&
+  rec.install_base_fixed_seen_by_install_base !== true;
 
-    const completionUnseen =
-      completedByRep &&
-      rec.install_base_response_seen !== true;
+const completionUnseen =
+  completedByRep &&
+  rec.install_base_response_seen !== true;
 
-    const wonProjectUnseen = isUnseenWonProject(rec);
+const wonProjectUnseen = isUnseenWonProject(rec);
 
-    const rowClass = [
-      String(state.selectedId) === String(rec.id) ? "selected" : "",
-      rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
-        ? "install-base-response-flash"
-        : "",
-      correctedUnseen ? "install-base-corrected-row-frame" : "",
-      completionUnseen ? "install-base-response-flash" : "",
-      wonProjectUnseen ? "install-base-won-project-frame" : ""
-    ].filter(Boolean).join(" ");
+const rowClass = [
+  String(state.selectedId) === String(rec.id) ? "selected" : "",
+  rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
+    ? "install-base-response-flash"
+    : "",
+  correctedUnseen ? "install-base-corrected-row-frame" : "",
+  completionUnseen ? "install-base-response-flash" : "",
+  wonProjectUnseen ? "install-base-won-project-frame" : ""
+].filter(Boolean).join(" ");
 
     return `
       <tr
@@ -2610,18 +2361,88 @@ function renderTable() {
         class="${rowClass}"
         style="cursor:pointer;"
       >
-        <td>${renderInstallBaseTableCell(rec, "project")}</td>
-        <td>${renderInstallBaseTableCell(rec, "owner")}</td>
-        <td>${escapeHtml(getOwnerTerritory(rec) || "-")}</td>
-        <td>${renderInstallBaseTableCell(rec, "rep")}</td>
-        <td>${renderInstallBaseTableCell(rec, "site")}</td>
-        <td>${renderInstallBaseTableCell(rec, "modality")}</td>
-        <td>${renderInstallBaseTableCell(rec, "make")}</td>
-        <td>${renderInstallBaseTableCell(rec, "model")}</td>
-        <td>${renderInstallBaseTableCell(rec, "serial")}</td>
-        <td>${renderInstallBaseTableCell(rec, "dom")}</td>
-        <td>${renderInstallBaseTableCell(rec, "age")}</td>
-        <td>${getStatusHtml(rec)}</td>
+       <td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "make",
+    escapeHtml(rec.make || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "model",
+    escapeHtml(rec.model || "-")
+  )}
+</td>
+<td>${escapeHtml(getOwnerTerritory(rec))}</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "rep",
+    escapeHtml(rec.assigned_rep_name || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "site",
+    escapeHtml(rec.site || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "modality",
+    escapeHtml(rec.modality || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "equipment",
+    escapeHtml(rec.make || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "equipment",
+    escapeHtml(rec.model || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "serial",
+    escapeHtml(rec.serial_number || rec.serial || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "dom",
+    escapeHtml(rec.dom || "-")
+  )}
+</td>
+
+<td>
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "dom",
+    escapeHtml(ageFromDom(rec.dom) || "-")
+  )}
+</td>
+
+<td>${getStatusHtml(rec)}</td>
       </tr>
     `;
   }).join("");
