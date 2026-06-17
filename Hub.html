@@ -499,23 +499,6 @@ tbody tr.selected{
   background:linear-gradient(90deg,#ffd84d,#fff2a6);
   border-color:rgba(255,242,166,.95);
 }
-.fix-route-menu{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-}
-
-.fix-route-menu select{
-  min-width:132px;
-  min-height:32px;
-  padding:6px 9px;
-  border-radius:11px;
-  border:2px solid rgba(255,216,77,.85);
-  background:#081223;
-  color:#fff4c8;
-  font-size:12px;
-  font-weight:850;
-}
 .row-actions{
   display:flex;
   gap:8px;
@@ -741,9 +724,7 @@ const state = {
   selectedOwner: "",
   selectedId: null,
   search: "",
-  filter: "",
-  activeFixRecordId: "",
-  activeFixField: ""
+  filter: ""
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1048,29 +1029,13 @@ function getMissingFieldFixHtml(rec, fieldName) {
     rec.install_base_release_status === "released_to_rep" ||
     rec.install_base_release_status === "released_to_manager";
 
-  const pickerOpen =
-    String(state.activeFixRecordId || "") === String(rec.id || "") &&
-    String(state.activeFixField || "") === String(fieldName || "");
-
-  if (pickerOpen && !fixSent) {
-    return `
-      <span class="fix-route-menu" onclick="event.stopPropagation();">
-        <select onchange="sendFixForRecord('${escapeJs(rec.id || "")}', event, this.value)">
-          <option value="">Send fix to...</option>
-          <option value="rep">Send to Rep</option>
-          <option value="manager">Send to Manager</option>
-        </select>
-      </span>
-    `;
-  }
-
   const label = fixSent ? "Fix Sent" : "Fix";
 
   return `
     <button
       type="button"
       class="fix-data-badge ${fixSent ? "active" : ""}"
-      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}')"
+      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event)"
     >${escapeHtml(label)}</button>
   `;
 }
@@ -1084,6 +1049,55 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   if (!isBlankHubField(rawValue)) return normalHtml;
 
   return getMissingFieldFixHtml(rec, fieldName);
+}
+function getInstallBaseFixFields(rec) {
+  const fields = [];
+
+  const add = (field, value) => {
+    if (isBlankHubField(value)) fields.push(field);
+  };
+
+  add("project", rec.oem_project_id || rec.asset_id);
+  add("make", rec.make);
+  add("owner", rec.manager_name || rec.owner_group_name);
+  add("rep", rec.assigned_rep_name);
+  add("site", rec.site);
+  add("modality", rec.modality);
+  add("model", rec.model);
+  add("serial", rec.serial_number || rec.serial);
+  add("dom", rec.dom);
+
+  return Array.from(new Set(fields));
+}
+
+function getInstallBaseFixFieldLabels(rec) {
+  const labelMap = {
+    project: "Project / Asset ID",
+    make: "Brand",
+    owner: "Owner Group",
+    rep: "Rep Owner",
+    site: "Site",
+    modality: "Modality",
+    model: "Model",
+    serial: "Serial Number",
+    dom: "DOM / Year"
+  };
+
+  return getInstallBaseFixFields(rec).map(field => labelMap[field] || field);
+}
+
+function getInstallBaseFixSummary(rec) {
+  const labels = getInstallBaseFixFieldLabels(rec);
+  if (labels.length) return `Missing fields: ${labels.join(", ")}`;
+
+  return (
+    getClarificationReason(rec) ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    ""
+  );
 }
 function getReviewStatus(rec) {
 if (
@@ -1560,6 +1574,9 @@ function releaseSelected(destination) {
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+  const fixFields = getInstallBaseFixFields(rec);
+  const fixFieldText = fixFields.join(", ");
+  const fixSummary = getInstallBaseFixSummary(rec);
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1587,6 +1604,7 @@ install_base_sync_type: isAutoSyncEligible(rec)
 install_base_manual_route: true,
 
 install_base_clarification_reason:
+  fixSummary ||
   getClarificationReason(rec) ||
   rec.install_base_issue_reason ||
   rec.conflict_notes ||
@@ -1610,13 +1628,14 @@ install_base_clarification_reason:
     conflict_notes: rec.conflict_notes || "",
 
     utilization_percent: rec.utilization_percent || "",
-    install_base_issue_field: rec.install_base_issue_field || "",
-    install_base_issue_type: rec.install_base_issue_type || "",
-    install_base_action_label: rec.install_base_action_label || "",
-    install_base_action_reason: rec.install_base_action_reason || "",
-    rep_fix_required: rec.rep_fix_required || "",
-    install_base_issue_note: rec.install_base_issue_note || "",
-install_base_issue_reason:
+    install_base_issue_field: fixFieldText || rec.install_base_issue_field || "",
+    install_base_issue_type: fixFieldText ? "missing_data" : rec.install_base_issue_type || "",
+    install_base_action_label: fixSummary || rec.install_base_action_label || "",
+    install_base_action_reason: fixSummary || rec.install_base_action_reason || "",
+    rep_fix_required: fixSummary || rec.rep_fix_required || "",
+    install_base_issue_note: fixSummary || rec.install_base_issue_note || "",
+  install_base_issue_reason:
+  fixSummary ||
   rec.install_base_issue_reason ||
   rec.install_base_action_reason ||
   rec.install_base_issue_note ||
@@ -1718,7 +1737,7 @@ if (destination === "rep") {
       : "Selected record released to Rep Review only."
   );
 }
-function requestFixForRecord(id, event, fieldName = "") {
+function requestFixForRecord(id, event) {
   if (event) {
     event.preventDefault();
     event.stopPropagation();
@@ -1732,31 +1751,8 @@ function requestFixForRecord(id, event, fieldName = "") {
     return;
   }
 
-  const samePicker =
-    String(state.activeFixRecordId || "") === String(rec.id || "") &&
-    String(state.activeFixField || "") === String(fieldName || "");
-
-  state.activeFixRecordId = samePicker ? "" : rec.id;
-  state.activeFixField = samePicker ? "" : fieldName;
-
-  render();
-}
-
-function sendFixForRecord(id, event, destination) {
-  if (event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  if (destination !== "rep" && destination !== "manager") return;
-
-  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
-  if (!rec) return;
-
   state.selectedId = rec.id;
-  state.activeFixRecordId = "";
-  state.activeFixField = "";
-  releaseSelected(destination);
+  render();
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
@@ -2865,15 +2861,6 @@ function init() {
   if (markStagedBtn) {
     markStagedBtn.addEventListener("click", markSelectedStaged);
   }
-
-  document.addEventListener("click", e => {
-    if (!state.activeFixRecordId) return;
-    if (e.target.closest(".fix-route-menu, .fix-data-badge")) return;
-
-    state.activeFixRecordId = "";
-    state.activeFixField = "";
-    render();
-  });
 
   window.addEventListener("storage", e => {
   if (
