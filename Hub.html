@@ -499,6 +499,23 @@ tbody tr.selected{
   background:linear-gradient(90deg,#ffd84d,#fff2a6);
   border-color:rgba(255,242,166,.95);
 }
+.fix-route-menu{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.fix-route-menu select{
+  min-width:132px;
+  min-height:32px;
+  padding:6px 9px;
+  border-radius:11px;
+  border:2px solid rgba(255,216,77,.85);
+  background:#081223;
+  color:#fff4c8;
+  font-size:12px;
+  font-weight:850;
+}
 .row-actions{
   display:flex;
   gap:8px;
@@ -724,7 +741,9 @@ const state = {
   selectedOwner: "",
   selectedId: null,
   search: "",
-  filter: ""
+  filter: "",
+  activeFixRecordId: "",
+  activeFixField: ""
 };
 
 const $ = (id) => document.getElementById(id);
@@ -1028,6 +1047,22 @@ function getMissingFieldFixHtml(rec, fieldName) {
   const fixSent =
     rec.install_base_release_status === "released_to_rep" ||
     rec.install_base_release_status === "released_to_manager";
+
+  const pickerOpen =
+    String(state.activeFixRecordId || "") === String(rec.id || "") &&
+    String(state.activeFixField || "") === String(fieldName || "");
+
+  if (pickerOpen && !fixSent) {
+    return `
+      <span class="fix-route-menu" onclick="event.stopPropagation();">
+        <select onchange="sendFixForRecord('${escapeJs(rec.id || "")}', event, this.value)">
+          <option value="">Send fix to...</option>
+          <option value="rep">Send to Rep</option>
+          <option value="manager">Send to Manager</option>
+        </select>
+      </span>
+    `;
+  }
 
   const label = fixSent ? "Fix Sent" : "Fix";
 
@@ -1697,13 +1732,30 @@ function requestFixForRecord(id, event, fieldName = "") {
     return;
   }
 
+  const samePicker =
+    String(state.activeFixRecordId || "") === String(rec.id || "") &&
+    String(state.activeFixField || "") === String(fieldName || "");
+
+  state.activeFixRecordId = samePicker ? "" : rec.id;
+  state.activeFixField = samePicker ? "" : fieldName;
+
+  render();
+}
+
+function sendFixForRecord(id, event, destination) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  if (destination !== "rep" && destination !== "manager") return;
+
+  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+  if (!rec) return;
+
   state.selectedId = rec.id;
-
-  const exceptions = getDataExceptions(rec);
-  const fieldNeedsManager = ["owner", "manager", "manager_name", "owner_group", "rep", "assigned_rep", "assigned_rep_name"].includes(String(fieldName || "").toLowerCase());
-  const hasOwnershipIssue = exceptions.some(issue => issue.type === "owner");
-  const destination = fieldNeedsManager || hasOwnershipIssue ? "manager" : "rep";
-
+  state.activeFixRecordId = "";
+  state.activeFixField = "";
   releaseSelected(destination);
 }
 function markSelectedStaged() {
@@ -2813,6 +2865,15 @@ function init() {
   if (markStagedBtn) {
     markStagedBtn.addEventListener("click", markSelectedStaged);
   }
+
+  document.addEventListener("click", e => {
+    if (!state.activeFixRecordId) return;
+    if (e.target.closest(".fix-route-menu, .fix-data-badge")) return;
+
+    state.activeFixRecordId = "";
+    state.activeFixField = "";
+    render();
+  });
 
   window.addEventListener("storage", e => {
   if (
