@@ -1800,6 +1800,26 @@ function autoSyncEligibleRecordsToRepAndManager() {
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
+    const fixFields = getInstallBaseFixFields(rec);
+
+    if (fixFields.length) {
+      return {
+        ...rec,
+        key,
+        rep_visible: false,
+        manager_visible: false,
+        install_base_release_status: "fix_needed",
+        install_base_sync_type: "manual_fix_routing_hold",
+        install_base_manual_route: false,
+        install_base_clarification_reason: getInstallBaseFixSummary(rec),
+        install_base_issue_field: fixFields.join(", "),
+        install_base_issue_type: "missing_data",
+        install_base_action_label: getInstallBaseFixSummary(rec),
+        install_base_action_reason: getInstallBaseFixSummary(rec),
+        rep_fix_required: getInstallBaseFixSummary(rec),
+        install_base_issue_note: getInstallBaseFixSummary(rec)
+      };
+    }
 
     if (!isAutoSyncEligible(rec)) {
       return {
@@ -1842,7 +1862,7 @@ manager_flash_text: ""
   });
 
   state.records
-    .filter(rec => isAutoSyncEligible(rec))
+    .filter(rec => isAutoSyncEligible(rec) && !getInstallBaseFixFields(rec).length)
     .forEach(rec => {
       const repRecord = {
         ...rec,
