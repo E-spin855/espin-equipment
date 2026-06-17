@@ -2201,7 +2201,6 @@ function getManagerInstallBaseIssueFields(rec) {
   if (requestText.includes("zip") || requestText.includes("postal")) add("zip_code", "Zip Code");
   if (
   requestText.includes("owner group") ||
-  requestText.includes("owner") ||
   requestText.includes("manager assignment") ||
   requestText.includes("manager owner") ||
   requestText.includes("manager")
@@ -2212,8 +2211,7 @@ function getManagerInstallBaseIssueFields(rec) {
 if (
   requestText.includes("rep owner") ||
   requestText.includes("sales owner") ||
-  requestText.includes("assigned rep") ||
-  requestText.includes("rep")
+  requestText.includes("assigned rep")
 ) {
   add("assigned_rep_name", "Rep Owner");
 }
@@ -2226,36 +2224,16 @@ if (
 function getManagerInstallBaseFieldsForEdit(rec) {
   const issues = getManagerInstallBaseIssueFields(rec);
 
-  const addRequiredAssignmentFields = (fields) => {
-    const next = Array.isArray(fields) ? [...fields] : [];
-    const add = (key, label) => {
-      if (!next.some(f => f.key === key)) next.push({ key, label });
-    };
+  if (issues.length) return issues;
 
-    add("manager_name", "Owner Group / Manager");
-    add("assigned_rep_name", "Rep Owner");
-
-    return next;
-  };
-
-  if (issues.length) return addRequiredAssignmentFields(issues);
-
-  return addRequiredAssignmentFields([
-    { key: "manager_name", label: "Owner Group / Manager" },
-    { key: "assigned_rep_name", label: "Rep Owner" },
+  return [
     { key: "serial_number", label: "Serial Number" },
     { key: "dom", label: "DOM / Year" },
     { key: "make", label: "Make" },
     { key: "model", label: "Model" },
     { key: "modality", label: "Modality" },
     { key: "site", label: "Facility / Site" }
-  ]);
-}
-
-function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
-  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
-  return rec[key] || "";
+  ];
 }
 
 function isManagerInstallBaseRequest(rec) {
@@ -2289,13 +2267,6 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
-  const assignmentIssues = [
-    { key: "manager_name", label: "Owner Group / Manager" },
-    { key: "assigned_rep_name", label: "Rep Owner" }
-  ];
-  const detailIssues = issues.filter(issue =>
-    !assignmentIssues.some(assignmentIssue => assignmentIssue.key === issue.key)
-  );
 
   const requestedItem =
     rec.install_base_action_label ||
@@ -2320,34 +2291,21 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
       <div class="k">Manager Response to Install Base</div>
       <div class="v">Correct fields or send explanation back to Install Base</div>
 
-	      <div class="mini" style="margin-top:8px;line-height:1.5;">
-	        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
-	        Reason: ${escapeHtml(reason)}
-	      </div>
-	
-	      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Assignment / Ownership</div>
-	      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;">
-	        ${assignmentIssues.map(issue => `
-	          <div>
-	            <label>${escapeHtml(issue.label)}</label>
-	            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
-	          </div>
-	        `).join("")}
-	      </div>
+      <div class="mini" style="margin-top:8px;line-height:1.5;">
+        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
+        Reason: ${escapeHtml(reason)}
+      </div>
 
-	      ${detailIssues.length ? `
-	      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Requested Fix Fields</div>
-	      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
-	        ${detailIssues.map(issue => `
-	          <div>
-	            <label>${escapeHtml(issue.label)}</label>
-	            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
-	          </div>
-	        `).join("")}
-	      </div>
-	      ` : ""}
-	
-	      <label style="margin-top:14px;">Manager Note to Install Base</label>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
+        ${issues.map(issue => `
+          <div>
+            <label>${escapeHtml(issue.label)}</label>
+            <input id="mgr_fix_${issue.key}" value="${escapeHtml(rec[issue.key] || "")}" />
+          </div>
+        `).join("")}
+      </div>
+
+      <label style="margin-top:14px;">Manager Note to Install Base</label>
       <textarea id="managerInstallBaseCorrectionNote" placeholder="Explain correction, confirmation, or why it could not be verified."></textarea>
 
       <div class="btns" style="margin-top:12px;">
@@ -2392,14 +2350,14 @@ function sendManagerInstallBaseCorrection(id) {
     key,
 
     // Preserve assignment and ownership from the released record.
-    assigned_rep_name: correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "",
+    assigned_rep_name: rec.assigned_rep_name || "",
     assigned_rep_email: rec.assigned_rep_email || "",
     sales_rep_first: rec.sales_rep_first || "",
     sales_rep_last: rec.sales_rep_last || "",
     sales_rep_email: rec.sales_rep_email || "",
     sales_rep_phone: rec.sales_rep_phone || "",
-    manager_name: correctedValues.manager_name ?? rec.manager_name ?? "",
-    owner_group_name: correctedValues.manager_name ?? rec.owner_group_name ?? "",
+    manager_name: rec.manager_name || "",
+    owner_group_name: rec.owner_group_name || "",
     owner_group_id: rec.owner_group_id || "",
 
     // Preserve source identifiers used to match the original release.

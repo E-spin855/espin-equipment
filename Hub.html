@@ -1035,7 +1035,7 @@ function getMissingFieldFixHtml(rec, fieldName) {
     <button
       type="button"
       class="fix-data-badge ${fixSent ? "active" : ""}"
-      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event)"
+      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}')"
     >${escapeHtml(label)}</button>
   `;
 }
@@ -1049,55 +1049,6 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   if (!isBlankHubField(rawValue)) return normalHtml;
 
   return getMissingFieldFixHtml(rec, fieldName);
-}
-function getInstallBaseFixFields(rec) {
-  const fields = [];
-
-  const add = (field, value) => {
-    if (isBlankHubField(value)) fields.push(field);
-  };
-
-  add("project", rec.oem_project_id || rec.asset_id);
-  add("make", rec.make);
-  add("owner", rec.manager_name || rec.owner_group_name);
-  add("rep", rec.assigned_rep_name);
-  add("site", rec.site);
-  add("modality", rec.modality);
-  add("model", rec.model);
-  add("serial", rec.serial_number || rec.serial);
-  add("dom", rec.dom);
-
-  return Array.from(new Set(fields));
-}
-
-function getInstallBaseFixFieldLabels(rec) {
-  const labelMap = {
-    project: "Project / Asset ID",
-    make: "Brand",
-    owner: "Owner Group",
-    rep: "Rep Owner",
-    site: "Site",
-    modality: "Modality",
-    model: "Model",
-    serial: "Serial Number",
-    dom: "DOM / Year"
-  };
-
-  return getInstallBaseFixFields(rec).map(field => labelMap[field] || field);
-}
-
-function getInstallBaseFixSummary(rec) {
-  const labels = getInstallBaseFixFieldLabels(rec);
-  if (labels.length) return `Missing fields: ${labels.join(", ")}`;
-
-  return (
-    getClarificationReason(rec) ||
-    rec.install_base_issue_reason ||
-    rec.install_base_action_reason ||
-    rec.install_base_issue_note ||
-    rec.conflict_notes ||
-    ""
-  );
 }
 function getReviewStatus(rec) {
 if (
@@ -1574,9 +1525,6 @@ function releaseSelected(destination) {
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
-  const fixFields = getInstallBaseFixFields(rec);
-  const fixFieldText = fixFields.join(", ");
-  const fixSummary = getInstallBaseFixSummary(rec);
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1604,7 +1552,6 @@ install_base_sync_type: isAutoSyncEligible(rec)
 install_base_manual_route: true,
 
 install_base_clarification_reason:
-  fixSummary ||
   getClarificationReason(rec) ||
   rec.install_base_issue_reason ||
   rec.conflict_notes ||
@@ -1628,14 +1575,13 @@ install_base_clarification_reason:
     conflict_notes: rec.conflict_notes || "",
 
     utilization_percent: rec.utilization_percent || "",
-    install_base_issue_field: fixFieldText || rec.install_base_issue_field || "",
-    install_base_issue_type: fixFieldText ? "missing_data" : rec.install_base_issue_type || "",
-    install_base_action_label: fixSummary || rec.install_base_action_label || "",
-    install_base_action_reason: fixSummary || rec.install_base_action_reason || "",
-    rep_fix_required: fixSummary || rec.rep_fix_required || "",
-    install_base_issue_note: fixSummary || rec.install_base_issue_note || "",
-  install_base_issue_reason:
-  fixSummary ||
+    install_base_issue_field: rec.install_base_issue_field || "",
+    install_base_issue_type: rec.install_base_issue_type || "",
+    install_base_action_label: rec.install_base_action_label || "",
+    install_base_action_reason: rec.install_base_action_reason || "",
+    rep_fix_required: rec.rep_fix_required || "",
+    install_base_issue_note: rec.install_base_issue_note || "",
+install_base_issue_reason:
   rec.install_base_issue_reason ||
   rec.install_base_action_reason ||
   rec.install_base_issue_note ||
@@ -1737,7 +1683,7 @@ if (destination === "rep") {
       : "Selected record released to Rep Review only."
   );
 }
-function requestFixForRecord(id, event) {
+function requestFixForRecord(id, event, fieldName = "") {
   if (event) {
     event.preventDefault();
     event.stopPropagation();
@@ -1752,7 +1698,13 @@ function requestFixForRecord(id, event) {
   }
 
   state.selectedId = rec.id;
-  render();
+
+  const exceptions = getDataExceptions(rec);
+  const fieldNeedsManager = ["owner", "manager", "manager_name", "owner_group", "rep", "assigned_rep", "assigned_rep_name"].includes(String(fieldName || "").toLowerCase());
+  const hasOwnershipIssue = exceptions.some(issue => issue.type === "owner");
+  const destination = fieldNeedsManager || hasOwnershipIssue ? "manager" : "rep";
+
+  releaseSelected(destination);
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
@@ -1800,26 +1752,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
-    const fixFields = getInstallBaseFixFields(rec);
-
-    if (fixFields.length) {
-      return {
-        ...rec,
-        key,
-        rep_visible: false,
-        manager_visible: false,
-        install_base_release_status: "fix_needed",
-        install_base_sync_type: "manual_fix_routing_hold",
-        install_base_manual_route: false,
-        install_base_clarification_reason: getInstallBaseFixSummary(rec),
-        install_base_issue_field: fixFields.join(", "),
-        install_base_issue_type: "missing_data",
-        install_base_action_label: getInstallBaseFixSummary(rec),
-        install_base_action_reason: getInstallBaseFixSummary(rec),
-        rep_fix_required: getInstallBaseFixSummary(rec),
-        install_base_issue_note: getInstallBaseFixSummary(rec)
-      };
-    }
 
     if (!isAutoSyncEligible(rec)) {
       return {
@@ -1862,7 +1794,7 @@ manager_flash_text: ""
   });
 
   state.records
-    .filter(rec => isAutoSyncEligible(rec) && !getInstallBaseFixFields(rec).length)
+    .filter(rec => isAutoSyncEligible(rec))
     .forEach(rec => {
       const repRecord = {
         ...rec,
