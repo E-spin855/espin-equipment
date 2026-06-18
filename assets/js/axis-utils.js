@@ -28,7 +28,6 @@
   }
 
   function isBlankInstallBaseValue(value, canonicalField = "") {
-    const canonical = canonicalFieldName(canonicalField);
     const normalized = lower(value);
 
     if (!normalized) return true;
@@ -51,10 +50,9 @@
       return true;
     }
 
-    // Blank modality can become OTHER after normalization.
-    // Treat OTHER as missing until rep/Install Base fixes it.
-    if (canonical === "modality" && normalized === "other") return true;
-
+    // IMPORTANT:
+    // Do not treat OTHER as blank.
+    // OTHER is a visible normalized value and should not trigger FIX everywhere.
     return false;
   }
 
@@ -66,7 +64,10 @@
 
     for (const alias of aliases) {
       const value = record[alias];
-      if (!isBlankInstallBaseValue(value, canonical)) return value;
+
+      if (!isBlankInstallBaseValue(value, canonical)) {
+        return value;
+      }
     }
 
     return "";
@@ -94,36 +95,67 @@
 
     // Keep common aliases aligned so Hub, Rep, and Manager all see the same correction.
     if (canonical === "project") {
-      if (!record.project_id) record.project_id = value;
-      if (!record.asset_id) record.asset_id = value;
+      record.project = value;
+      record.project_id = value;
+      record.asset_id = value;
+      record.equipment_id = value;
+    }
+
+    if (canonical === "make") {
+      record.manufacturer = value;
+      record.brand = value;
+    }
+
+    if (canonical === "model") {
+      record.model = value;
+    }
+
+    if (canonical === "modality") {
+      record.modality = value;
     }
 
     if (canonical === "serial") {
       record.serial = value;
-      record.system_serial = record.system_serial || value;
+      record.serial_number = value;
+      record.system_serial = value;
+    }
+
+    if (canonical === "dom") {
+      record.dom = value;
+      record.year = value;
+      record.manufacture_year = value;
     }
 
     if (canonical === "site") {
-      record.facility = record.facility || value;
-      record.hospital = record.hospital || value;
-      record.hospital_name = record.hospital_name || value;
-      record.customer = record.customer || value;
+      record.site = value;
+      record.facility = value;
+      record.hospital = value;
+      record.hospital_name = value;
+      record.customer = value;
+      record.location = value;
     }
 
     if (canonical === "rep") {
       record.rep = value;
-      record.rep_owner = record.rep_owner || value;
+      record.assigned_rep_name = value;
+      record.assigned_rep = value;
+      record.rep_owner = value;
+      record.sales_rep = value;
+      record.sales_rep_name = value;
     }
 
     if (canonical === "manager") {
+      record.manager = value;
+      record.manager_name = value;
       record.owner_group_name = value;
-      record.owner_group = record.owner_group || value;
+      record.owner_group = value;
     }
 
     if (canonical === "territory") {
+      record.territory = value;
+      record.manager_region = value;
       record.manager_territory = value;
-      record.territory = record.territory || value;
-      record.region = record.region || value;
+      record.region = value;
     }
 
     return record;
@@ -153,7 +185,7 @@
   function getMissingInstallBaseFields(record) {
     if (!record || typeof record !== "object") return [];
 
-    return CANONICAL_FIELDS.filter(field =>
+    return CANONICAL_FIELDS.filter((field) =>
       isBlankInstallBaseValue(getInstallBaseFieldValue(record, field), field)
     );
   }
@@ -161,9 +193,13 @@
   function getPresentInstallBaseFields(record) {
     if (!record || typeof record !== "object") return [];
 
-    return CANONICAL_FIELDS.filter(field =>
+    return CANONICAL_FIELDS.filter((field) =>
       !isBlankInstallBaseValue(getInstallBaseFieldValue(record, field), field)
     );
+  }
+
+  function hasMissingInstallBaseFields(record) {
+    return getMissingInstallBaseFields(record).length > 0;
   }
 
   const existing = window.AxisUtils || {};
@@ -178,6 +214,7 @@
     getPresentInstallBaseFields,
     getInstallBaseFieldValue,
     setInstallBaseFieldValue,
-    isBlankInstallBaseValue
+    isBlankInstallBaseValue,
+    hasMissingInstallBaseFields
   };
 })();
