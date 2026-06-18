@@ -1105,6 +1105,9 @@ function writeManagerQueueRecord(rec) {
 function getRecordKey(rec) {
   if (!rec) return "";
 
+  const sharedKey = window.AxisUtils?.getCanonicalRecordKey?.(rec);
+  if (sharedKey) return sharedKey;
+
   const stable = clean(rec.manager_sync_key || rec.axis_sync_key || rec.original_key || rec.key || rec.id);
   if (stable) return stable;
 
@@ -2197,6 +2200,23 @@ function getUpdateLabel(rec) {
 }
 
 function getManagerInstallBaseIssueFields(rec) {
+  const fieldMap = {
+    project: { key: "oem_project_id", label: "Project / Asset ID" },
+    make: { key: "make", label: "Make" },
+    model: { key: "model", label: "Model" },
+    modality: { key: "modality", label: "Modality" },
+    serial: { key: "serial_number", label: "Serial Number" },
+    dom: { key: "dom", label: "DOM / Year" },
+    site: { key: "site", label: "Facility / Site" },
+    rep: { key: "assigned_rep_name", label: "Rep Owner" },
+    manager: { key: "manager_name", label: "Owner Group / Manager" }
+  };
+
+  const requestedFields = String(rec.install_base_issue_field || "")
+    .split(",")
+    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
+    .filter(Boolean);
+
   const requestText = [
     rec.install_base_issue_field,
     rec.install_base_issue_type,
@@ -2215,6 +2235,11 @@ function getManagerInstallBaseIssueFields(rec) {
   const add = (key, label) => {
     if (!fields.some(f => f.key === key)) fields.push({ key, label });
   };
+
+  requestedFields.forEach(field => {
+    const mapped = fieldMap[field];
+    if (mapped) add(mapped.key, mapped.label);
+  });
 
   if (requestText.includes("serial")) add("serial_number", "Serial Number");
   if (requestText.includes("dom") || requestText.includes("year")) add("dom", "DOM / Year");
@@ -2251,16 +2276,34 @@ if (
 function getManagerInstallBaseFieldsForEdit(rec) {
   const issues = getManagerInstallBaseIssueFields(rec);
 
-  if (issues.length) return issues;
+  const addRequiredAssignmentFields = (fields) => {
+    const next = Array.isArray(fields) ? [...fields] : [];
+    const add = (key, label) => {
+      if (!next.some(f => f.key === key)) next.push({ key, label });
+    };
 
-  return [
+    add("manager_name", "Owner Group / Manager");
+    add("assigned_rep_name", "Rep Owner");
+
+    return next;
+  };
+
+  if (issues.length) return addRequiredAssignmentFields(issues);
+
+  return addRequiredAssignmentFields([
     { key: "serial_number", label: "Serial Number" },
     { key: "dom", label: "DOM / Year" },
     { key: "make", label: "Make" },
     { key: "model", label: "Model" },
     { key: "modality", label: "Modality" },
     { key: "site", label: "Facility / Site" }
-  ];
+  ]);
+}
+
+function getManagerInstallBaseInputValue(rec, key) {
+  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
+  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
+  return rec[key] || "";
 }
 
 function isManagerInstallBaseRequest(rec) {
@@ -2294,6 +2337,13 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
+  const assignmentIssues = [
+    { key: "manager_name", label: "Owner Group / Manager" },
+    { key: "assigned_rep_name", label: "Rep Owner" }
+  ];
+  const detailIssues = issues.filter(issue =>
+    !assignmentIssues.some(assignmentIssue => assignmentIssue.key === issue.key)
+  );
 
   const requestedItem =
     rec.install_base_action_label ||
@@ -2325,14 +2375,27 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
       ${renderInstallBaseManagerMessage(rec)}
 
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
-        ${issues.map(issue => `
+      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Assignment / Ownership</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;">
+        ${assignmentIssues.map(issue => `
           <div>
             <label>${escapeHtml(issue.label)}</label>
-            <input id="mgr_fix_${issue.key}" value="${escapeHtml(rec[issue.key] || "")}" />
+            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
           </div>
         `).join("")}
       </div>
+
+      ${detailIssues.length ? `
+      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Requested Fix Fields</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
+        ${detailIssues.map(issue => `
+          <div>
+            <label>${escapeHtml(issue.label)}</label>
+            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
+          </div>
+        `).join("")}
+      </div>
+      ` : ""}
 
       <label style="margin-top:14px;">Manager Note to Install Base</label>
       <textarea id="managerInstallBaseCorrectionNote" placeholder="Explain correction, confirmation, or why it could not be verified."></textarea>
@@ -2366,8 +2429,9 @@ function sendManagerInstallBaseCorrection(id) {
     const previousValue = String(rec[issue.key] || "").trim();
 
     if (value && value !== previousValue) {
+      const canonicalKey = window.AxisUtils?.canonicalFieldName?.(issue.key) || issue.key;
       correctedValues[issue.key] = value;
-      correctedFields[issue.key] = value;
+      correctedFields[canonicalKey] = value;
     }
   });
 
@@ -2379,14 +2443,14 @@ function sendManagerInstallBaseCorrection(id) {
     key,
 
     // Preserve assignment and ownership from the released record.
-    assigned_rep_name: rec.assigned_rep_name || "",
+    assigned_rep_name: correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "",
     assigned_rep_email: rec.assigned_rep_email || "",
     sales_rep_first: rec.sales_rep_first || "",
     sales_rep_last: rec.sales_rep_last || "",
     sales_rep_email: rec.sales_rep_email || "",
     sales_rep_phone: rec.sales_rep_phone || "",
-    manager_name: rec.manager_name || "",
-    owner_group_name: rec.owner_group_name || "",
+    manager_name: correctedValues.manager_name ?? rec.manager_name ?? "",
+    owner_group_name: correctedValues.manager_name ?? rec.owner_group_name ?? "",
     owner_group_id: rec.owner_group_id || "",
 
     // Preserve source identifiers used to match the original release.
@@ -3012,8 +3076,7 @@ function selectRow(id) {
 
     state.records = mergeRecordsByKey(
       readArrayKey(STORAGE_KEY),
-      readManagerQueueRecords(),
-      readInstallBaseResponseRecordsForManager()
+      readManagerQueueRecords()
     );
   }
 
@@ -3417,44 +3480,12 @@ function isManagerRepFixUnseen(rec) {
     !hasManagerSeenFix(rec)
   );
 }
-function readInstallBaseResponseRecordsForManager() {
-  return readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(rec => {
-    if (!isRepInstallBaseFix(rec)) return rec;
-
-    const seenByManager =
-      rec.manager_alert_seen === true ||
-      hasManagerSeenFix(rec);
-
-    return {
-      ...rec,
-      key: getRecordKey(rec),
-
-      manager_alert_seen: seenByManager,
-      manager_unseen_update: !seenByManager,
-
-      manager_update_seen_at:
-        seenByManager
-          ? rec.manager_update_seen_at || new Date().toISOString()
-          : rec.manager_update_seen_at || "",
-
-      manager_flash_at: seenByManager ? "" : (rec.manager_flash_at || rec.install_base_response_at || rec.rep_last_action_at || new Date().toISOString()),
-      manager_flash_type: seenByManager ? "" : "rep_update",
-      manager_flash_text: seenByManager ? "" : "Rep corrected install-base data",
-
-      manager_visible: true,
-      source: rec.source || "Rep Review Page",
-      hub_source: rec.hub_source || "Rep Review Page"
-    };
-  });
-}
 const MANAGER_SYNC_KEYS = [
   STORAGE_KEY,
   MANAGER_QUEUE_KEY,
   MANAGER_SYNC_KEY,
   QUOTE_APPROVAL_KEY,
-  QUOTE_APPROVAL_SYNC_KEY,
-  INSTALL_BASE_RESPONSE_KEY,
-  INSTALL_BASE_RESPONSE_PING_KEY
+  QUOTE_APPROVAL_SYNC_KEY
 ];
 
 let managerStorageSignature = "";
@@ -3488,9 +3519,8 @@ function scheduleManagerRender() {
 function render() {
   const main = readArrayKey(STORAGE_KEY);
   const managerQueue = readManagerQueueRecords();
-  const installBaseResponses = readInstallBaseResponseRecordsForManager();
 
-  state.records = mergeRecordsByKey(main, managerQueue, installBaseResponses);
+  state.records = mergeRecordsByKey(main, managerQueue);
 
   if (
     state.selectedId &&

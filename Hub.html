@@ -918,6 +918,9 @@ function getClarificationReason(rec) {
 function getRecordKey(rec) {
   if (!rec) return "";
 
+  const sharedKey = window.AxisUtils?.getCanonicalRecordKey?.(rec);
+  if (sharedKey) return sharedKey;
+
   if (rec.key) return String(rec.key);
 
   const project = clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "");
@@ -945,6 +948,14 @@ function sameRecord(a, b) {
   const bSerial = clean(b.serial_number || b.serial || b.system_serial);
 
   return Boolean(aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial);
+}
+
+function canonicalInstallBaseFieldName(field) {
+  return window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim();
+}
+
+function getSharedInstallBaseFieldValue(rec, field) {
+  return window.AxisUtils?.getInstallBaseFieldValue?.(rec, field) || "";
 }
 
 function getDemoOwner(seed, stateValue) {
@@ -1101,9 +1112,9 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
     rep: ["rep", "assigned_rep", "assigned_rep_name"]
   };
 
-  const aliases = fieldAliases[fieldName] || [fieldName];
+  const aliases = (fieldAliases[fieldName] || [fieldName]).map(canonicalInstallBaseFieldName);
 
-  return fixedFields.some(f => aliases.includes(f));
+  return fixedFields.map(canonicalInstallBaseFieldName).some(f => aliases.includes(f));
 }
 
 function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
@@ -1168,65 +1179,12 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   return getMissingFieldFixHtml(rec, fieldName);
 }
 function getMissingHubFields(rec) {
-  const fields = [];
-
-  if (isBlankHubField(rec.serial_number || rec.serial)) fields.push("serial");
-  if (isBlankHubField(rec.dom)) fields.push("dom");
-  if (isBlankHubField(rec.site)) fields.push("site");
-  if (isBlankHubField(rec.modality)) fields.push("modality");
-  if (isBlankHubField(rec.model)) fields.push("model");
-  if (isBlankHubField(rec.make)) fields.push("make");
-  if (isBlankHubField(rec.assigned_rep_name)) fields.push("rep");
-
-  return fields;
-}
-function getReviewStatus(rec) {
-if (
-  rec.install_base_sync_type === "won_project_lifecycle_entry" ||
-  rec.install_base_lifecycle_entry === true ||
-  rec.lifecycle_created_from_quote_won === true
-) {
-  return { type: "released", label: "Lifecycle Active" };
-}
-  if (isCompletedByRep(rec)) {
-    return { type: "fixed", label: "Project Completed" };
+  if (window.AxisUtils?.getMissingInstallBaseFields) {
+    return window.AxisUtils.getMissingInstallBaseFields(rec);
   }
 
-  if (
-    !isAutoSyncEligible(rec) &&
-    rec.install_base_release_status !== "released_to_rep" &&
-    rec.install_base_release_status !== "released_to_manager"
-  ) {
-    return { type: "source", label: "Sync Hold" };
-  }
-
-  if (rec.install_base_release_status === "auto_synced") {
-    return { type: "released", label: "Auto-Synced" };
-  }
-
-  if (isFixedByRep(rec)) {
-    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
-  }
-
-  if (rec.install_base_response_at && !rec.install_base_response_seen) {
-    return { type: "response", label: "Rep Response" };
-  }
-
-  const exceptions = getDataExceptions(rec);
-
-  if (rec.install_base_release_status === "released_to_manager") {
-    return { type: "released", label: "Released to Manager" };
-  }
-
-  if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Sent to Rep" };
-  }
-
-  if (exceptions.length) {
-    return exceptions[0];
-  }
-
-  return { type: "ok", label: "Ready for Review" };
+  return ["project", "make", "model", "modality", "serial", "dom", "site", "rep", "manager"]
+    .filter(field => isBlankHubField(getSharedInstallBaseFieldValue(rec, field), field));
 }
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
@@ -1551,10 +1509,29 @@ function mergeRepResponsesIntoRecords() {
         rec.install_base_response_at &&
         rec.install_base_response_at === resp.install_base_response_at;
 
-     return {
-  ...rec,
-  ...resp,
-  key: getRecordKey(rec),
+      const canonicalMerged = {
+        ...rec,
+        ...resp,
+        key: getRecordKey(rec)
+      };
+
+      String(resp.install_base_corrected_fields || "")
+        .split(",")
+        .map(canonicalInstallBaseFieldName)
+        .filter(Boolean)
+        .forEach(field => {
+          const value =
+            window.AxisUtils?.getInstallBaseFieldValue?.(resp, field) ||
+            resp[field] ||
+            resp[field === "serial" ? "serial_number" : field === "project" ? "oem_project_id" : field === "rep" ? "assigned_rep_name" : field === "manager" ? "manager_name" : field];
+
+          if (value) {
+            window.AxisUtils?.setInstallBaseFieldValue?.(canonicalMerged, field, value);
+          }
+        });
+
+	     return {
+	  ...canonicalMerged,
 
  install_base_correction_status:
   resp.install_base_correction_status ||
@@ -1655,7 +1632,7 @@ function releaseSelected(destination, fixFieldName = "") {
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
-  const normalizedFixField = String(fixFieldName || "").toLowerCase().trim();
+  const normalizedFixField = canonicalInstallBaseFieldName(fixFieldName);
   const prettyFixField = normalizedFixField
     ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
@@ -1853,7 +1830,7 @@ function requestFixForRecord(id, event, fieldName = "") {
   }
 
   const missingFields = getMissingHubFields(rec);
-  const requestedField = clean(fieldName);
+  const requestedField = canonicalInstallBaseFieldName(fieldName);
 
   const issueFields = missingFields.length
     ? missingFields
@@ -1933,6 +1910,25 @@ function autoSyncEligibleRecordsToRepAndManager() {
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
+    const missingFixFields = getMissingHubFields(rec);
+
+    if (missingFixFields.length) {
+      return {
+        ...rec,
+        key,
+        rep_visible: false,
+        manager_visible: false,
+        install_base_release_status: "fix_needed",
+        install_base_sync_type: "manual_fix_routing_hold",
+        install_base_manual_route: false,
+        install_base_issue_field: missingFixFields.join(", "),
+        install_base_issue_type: "missing_data",
+        install_base_action_label: "Install Base FIX",
+        install_base_action_reason: `Install Base needs correction for: ${missingFixFields.join(", ")}.`,
+        install_base_issue_note: `Missing field(s): ${missingFixFields.join(", ")}.`,
+        rep_fix_required: "Install Base FIX"
+      };
+    }
 
     if (!isAutoSyncEligible(rec)) {
       return {
@@ -1975,7 +1971,7 @@ manager_flash_text: ""
   });
 
   state.records
-    .filter(rec => isAutoSyncEligible(rec))
+    .filter(rec => isAutoSyncEligible(rec) && !getMissingHubFields(rec).length)
     .forEach(rec => {
       const repRecord = {
         ...rec,

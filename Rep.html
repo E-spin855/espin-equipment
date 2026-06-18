@@ -1410,6 +1410,9 @@ function escapeJs(v) {
 function getRecordKey(rec) {
   if (!rec) return "";
 
+  const sharedKey = window.AxisUtils?.getCanonicalRecordKey?.(rec);
+  if (sharedKey) return sharedKey;
+
   if (rec.key) return String(rec.key);
 
   const project = clean(rec.oem_project_id || rec.project_id || "");
@@ -1997,8 +2000,13 @@ function normalizeOemReviewLabelForRep(rec) {
 
 }
 function getInstallBaseFixLabel(rec) {
-  const text = String(
-    rec.install_base_issue_field ||
+  const fields = String(rec.install_base_issue_field || "")
+    .split(",")
+    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
+    .filter(Boolean);
+
+  const text = [
+    fields.join(" "),
     rec.axis_clarification_reason ||
     rec.install_base_clarification_reason ||
     rec.install_base_issue_reason ||
@@ -2007,19 +2015,23 @@ function getInstallBaseFixLabel(rec) {
     rec.conflict_notes ||
     rec.rep_fix_required ||
     ""
-  ).toLowerCase();
+  ].join(" ").toLowerCase();
 
-  if (text.includes("site") || text.includes("facility") || text.includes("location")) {
+  if (fields.includes("site") || text.includes("site") || text.includes("facility") || text.includes("location")) {
     return "Fix Site";
   }
 
-  if (text.includes("serial")) {
+  if (fields.includes("serial") || text.includes("serial")) {
     return "Fix Serial";
   }
 
-  if (text.includes("dom") || text.includes("year") || text.includes("age")) {
+  if (fields.includes("dom") || text.includes("dom") || text.includes("year") || text.includes("age")) {
     return "Fix DOM";
   }
+
+  if (fields.includes("model") || text.includes("model")) return "Fix Model";
+  if (fields.includes("modality") || text.includes("modality")) return "Fix Modality";
+  if (fields.includes("make") || text.includes("make") || text.includes("manufacturer")) return "Fix Make";
 
   if (text.includes("owner") || text.includes("rep") || text.includes("assignment")) {
     return "Fix Owner";
@@ -2152,42 +2164,6 @@ function mergeInstallBaseQueueIntoRepRecords() {
   } catch {
     state.records = [];
   }
-function getInstallBaseFixLabel(rec) {
-  const field = String(
-    rec.install_base_issue_field ||
-    rec.axis_clarification_reason ||
-    rec.install_base_issue_reason ||
-    rec.install_base_issue_note ||
-    rec.conflict_notes ||
-    ""
-  ).toLowerCase();
-
-  if (field.includes("site") || field.includes("facility") || field.includes("location")) {
-    return "Fix Site";
-  }
-
-  if (field.includes("serial")) {
-    return "Fix Serial";
-  }
-
-  if (field.includes("dom") || field.includes("year") || field.includes("age")) {
-    return "Fix DOM";
-  }
-
-  if (field.includes("owner") || field.includes("rep")) {
-    return "Fix Owner";
-  }
-
-  if (field.includes("source") || field.includes("conflict") || field.includes("mismatch")) {
-    return "Source Conflict";
-  }
-
-  if (field.includes("duplicate")) {
-    return "Duplicate Review";
-  }
-
-  return "Fix Data";
-}
   mergeInstallBaseQueueIntoRepRecords();
 
   if (
@@ -3545,77 +3521,6 @@ if (!rec.utilization_percent) issues.push({ key:"utilization_percent", label:"Ut
 
   return issues;
 }
-function syncInstallBaseFixToManager(updated) {
-  if (!updated) return;
-
-  const now = new Date().toISOString();
-
-  const packet = {
-    ...updated,
-
-    key:
-      updated.key ||
-      getRecordKey(updated),
-
-    manager_visible: true,
-    release_destination: "manager",
-
-    manager_unseen_update: true,
-    manager_alert_seen: false,
-    manager_update_seen_at: "",
-
-    manager_flash_at: now,
-    manager_flash_type: "rep_update",
-    manager_flash_text: "Rep corrected install-base data",
-
-    install_base_manager_request: false,
-
-    source: updated.source || "Rep Review Page",
-    hub_source: updated.hub_source || "Rep Review Page",
-
-    rep_action: "install_base_data_fixed",
-    rep_action_label: "Updated",
-    rep_status: "install_base_data_fixed"
-  };
-
-  let managerQueue = {};
-
-  try {
-    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-    if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) {
-      managerQueue = {};
-    }
-  } catch {
-    managerQueue = {};
-  }
-
-  const bucketName =
-    packet.manager_name ||
-    packet.owner_group_name ||
-    MANAGER_NAME ||
-    "Default Manager";
-
-  const list = Array.isArray(managerQueue[bucketName])
-    ? managerQueue[bucketName]
-    : [];
-
-  const cleaned = list.filter(item => {
-    const sameId = String(item.id || "") === String(packet.id || "");
-    const sameKey = packet.key && String(item.key || "") === String(packet.key);
-    const sameProjectSerial =
-      String(item.oem_project_id || item.project_id || "") === String(packet.oem_project_id || packet.project_id || "") &&
-      String(item.serial_number || item.serial || "") === String(packet.serial_number || packet.serial || "");
-
-    return !(sameId || sameKey || sameProjectSerial);
-  });
-
-  cleaned.unshift(packet);
-
-  managerQueue[bucketName] = cleaned;
-
-  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
-}
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -3652,6 +3557,9 @@ function sendInstallBaseCorrection(id) {
       .toLowerCase()
       .replace(/^fix_/, "")
       .trim();
+
+    const shared = window.AxisUtils?.canonicalFieldName?.(k);
+    if (shared) return shared;
 
     if (["serial", "serial_number", "system_serial"].includes(k)) return "serial";
     if (["dom", "year", "manufacture_year"].includes(k)) return "dom";
@@ -3713,9 +3621,13 @@ function sendInstallBaseCorrection(id) {
     const value = input.value.trim();
     if (!value) return;
 
-    updated[rawKey] = value;
-
     const correctedField = normalizeCorrectedFieldName(rawKey);
+    if (window.AxisUtils?.setInstallBaseFieldValue) {
+      window.AxisUtils.setInstallBaseFieldValue(updated, correctedField, value);
+    } else {
+      updated[rawKey] = value;
+    }
+
     if (correctedField && !correctedFields.includes(correctedField)) {
       correctedFields.push(correctedField);
     }
@@ -3724,9 +3636,13 @@ function sendInstallBaseCorrection(id) {
   issues.forEach(issue => {
     const input = $("fix_" + issue.key);
     if (input && input.value.trim()) {
-      updated[issue.key] = input.value.trim();
-
       const correctedField = normalizeCorrectedFieldName(issue.key);
+      if (window.AxisUtils?.setInstallBaseFieldValue) {
+        window.AxisUtils.setInstallBaseFieldValue(updated, correctedField, input.value.trim());
+      } else {
+        updated[issue.key] = input.value.trim();
+      }
+
       if (correctedField && !correctedFields.includes(correctedField)) {
         correctedFields.push(correctedField);
       }
@@ -3734,54 +3650,16 @@ function sendInstallBaseCorrection(id) {
   });
 
   updated.install_base_corrected_fields = correctedFields.join(",");
+  updated.corrected_fields = correctedFields.reduce((acc, field) => {
+    acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
+    return acc;
+  }, {});
 
   state.records = state.records.map(r => {
     const sameId = String(r.id || "") === String(updated.id || "");
     const sameKey = updated.key && String(r.key || "") === String(updated.key);
     return sameId || sameKey ? updated : r;
   });
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-
-  let repQueue = [];
-
-  try {
-    repQueue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
-    if (!Array.isArray(repQueue)) repQueue = [];
-  } catch {
-    repQueue = [];
-  }
-
-  let foundRepQueueItem = false;
-
-  repQueue = repQueue.map(r => {
-    const sameId = String(r.id || "") === String(updated.id || "");
-    const sameKey = updated.key && String(r.key || "") === String(updated.key);
-
-    if (!sameId && !sameKey) return r;
-
-    foundRepQueueItem = true;
-
-    return {
-      ...r,
-      ...updated,
-      rep_visible: true,
-      install_base_visible: true,
-      install_base_show_communication: false,
-      install_base_has_open_issue: false,
-      rep_status: "install_base_data_fixed",
-      rep_action: "install_base_data_fixed",
-      rep_action_label: "Updated"
-    };
-  });
-
-  if (!foundRepQueueItem) {
-    repQueue.unshift(updated);
-  }
-
-  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
-  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
-syncInstallBaseFixToManager(updated);
 
   let responseQueue = [];
 
@@ -3998,6 +3876,30 @@ $("repOutcomeNotes").disabled = completed;
 $("repFollowUpDate").disabled = completed;
 }
 function getInstallBaseIssues(rec) {
+  const requestedFields = String(rec.install_base_issue_field || "")
+    .split(",")
+    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
+    .filter(Boolean);
+
+  const requestedMap = {
+    project: ["oem_project_id", "Project / Asset ID"],
+    make: ["make", "Make"],
+    model: ["model", "Model"],
+    modality: ["modality", "Modality"],
+    serial: ["serial_number", "Serial Number"],
+    dom: ["dom", "DOM / Year"],
+    site: ["site", "Facility"],
+    rep: ["assigned_rep_name", "Rep Owner"],
+    manager: ["manager_name", "Owner Group / Manager"]
+  };
+
+  if (requestedFields.length) {
+    return requestedFields
+      .map(field => requestedMap[field])
+      .filter(Boolean)
+      .filter(([field], index, list) => list.findIndex(([existing]) => existing === field) === index);
+  }
+
   const issues = [];
 
   if (!rec.serial_number) issues.push(["serial_number", "Serial Number"]);
@@ -4198,6 +4100,8 @@ function getRepFixPanelIssues(rec) {
   if (activeField === "model") addIssue("model", "Model");
   if (activeField === "modality") addIssue("modality", "Modality");
   if (activeField === "project") addIssue("oem_project_id", "Project / Asset ID");
+
+  if (activeField && issues.length) return issues;
 
   getInstallBaseIssues(rec).forEach(([field, label]) => {
     addIssue(field, label);
