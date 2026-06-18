@@ -1144,10 +1144,8 @@ function isBlankHubField(value, fieldName = "") {
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
-  const fixSent =
-    rec.install_base_release_status === "released_to_rep";
-
-  const label = fixSent ? "Fix Sent" : "Fix";
+  const fixSent = rec.install_base_release_status === "released_to_rep";
+  const label = fixSent ? "Fix Sent" : "FIX";
 
   return `
     <button
@@ -1168,6 +1166,19 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   if (!fieldIsBlank) return normalHtml;
 
   return getMissingFieldFixHtml(rec, fieldName);
+}
+function getMissingHubFields(rec) {
+  const fields = [];
+
+  if (isBlankHubField(rec.serial_number || rec.serial)) fields.push("serial");
+  if (isBlankHubField(rec.dom)) fields.push("dom");
+  if (isBlankHubField(rec.site)) fields.push("site");
+  if (isBlankHubField(rec.modality)) fields.push("modality");
+  if (isBlankHubField(rec.model)) fields.push("model");
+  if (isBlankHubField(rec.make)) fields.push("make");
+  if (isBlankHubField(rec.assigned_rep_name)) fields.push("rep");
+
+  return fields;
 }
 function getReviewStatus(rec) {
 if (
@@ -1841,11 +1852,40 @@ function requestFixForRecord(id, event, fieldName = "") {
     return;
   }
 
+  const missingFields = getMissingHubFields(rec);
+  const requestedField = clean(fieldName);
+
+  const issueFields = missingFields.length
+    ? missingFields
+    : requestedField
+      ? [requestedField]
+      : [];
+
   state.selectedId = rec.id;
 
-  // All field-level Fix requests go to Rep.
-  // Manager review stays manual through the selected-record Manager button.
-  releaseSelected("rep", fieldName);
+  state.records = state.records.map(r => {
+    if (String(r.id || "") !== String(id || "")) return r;
+
+    return {
+      ...r,
+      install_base_issue_field: issueFields.join(", "),
+      install_base_issue_type: "missing_field",
+      install_base_action_label: "Install Base FIX",
+      install_base_action_reason: issueFields.length
+        ? `Install Base requested rep correction for missing field(s): ${issueFields.join(", ")}.`
+        : "Install Base requested rep correction for missing install-base data.",
+      install_base_issue_note: issueFields.length
+        ? `Missing field(s): ${issueFields.join(", ")}.`
+        : "Missing install-base data.",
+      install_base_manual_route: true,
+      install_base_released_to: "rep",
+      rep_fix_required: "Install Base FIX"
+    };
+  });
+
+  saveRecords();
+
+  releaseSelected("rep");
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
