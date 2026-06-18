@@ -424,6 +424,22 @@ tbody tr.selected{
   font-weight:800;
 }
 
+.manager-message-box{
+  margin:12px 0 10px;
+  padding:12px;
+  border-radius:14px;
+  background:rgba(8,18,35,.72);
+  border:1px solid rgba(88,184,255,.16);
+}
+
+.manager-message-box label{
+  margin-bottom:7px;
+}
+
+.manager-message-box .mini{
+  margin-top:7px;
+}
+
 .hidden{
   display:none!important;
 }
@@ -693,6 +709,19 @@ tr.install-base-corrected-row-frame td{
           <div id="detailArea" class="hidden">
             <div class="detail-grid" id="detailGrid"></div>
 
+            <div class="manager-message-box">
+              <label for="managerMessageSelect">Optional Manager Message</label>
+              <select id="managerMessageSelect" class="small-select">
+                <option value="">No manager message</option>
+                <option value="Please review ownership before this record is released further.">Please review ownership before release</option>
+                <option value="Please confirm the correct owner group and territory for this record.">Confirm owner group / territory</option>
+                <option value="Please review source conflict notes before rep follow-up.">Review source conflict notes</option>
+                <option value="Please confirm whether this should stay staged or move forward.">Confirm staged vs move forward</option>
+                <option value="Install Base needs manager review before any rep action.">Manager review needed before rep action</option>
+              </select>
+              <div class="mini">Used only when manually sending this selected record to Manager Review.</div>
+            </div>
+
             <div class="btns">
               <button type="button" class="green" id="releaseManagerBtn">Release Selected to Manager Review</button>
               <button type="button" class="secondary" id="markStagedBtn">Mark as Staged Only</button>
@@ -830,6 +859,16 @@ function clean(v) {
 
 function lower(v) {
   return clean(v).toLowerCase();
+}
+
+function getSelectedManagerMessage() {
+  const el = $("managerMessageSelect");
+  return el ? clean(el.value) : "";
+}
+
+function clearSelectedManagerMessage() {
+  const el = $("managerMessageSelect");
+  if (el) el.value = "";
 }
 function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
@@ -1579,6 +1618,7 @@ function releaseSelected(destination, fixFieldName = "") {
     ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
   const isFixRequest = destination === "rep" && Boolean(normalizedFixField);
+  const managerSelectedMessage = destination === "manager" ? getSelectedManagerMessage() : "";
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1670,6 +1710,9 @@ if (destination === "manager") {
   updated.install_base_released_to = "manager";
   updated.install_base_release_status = "released_to_manager";
   updated.install_base_manager_request = true;
+  updated.install_base_manager_message = managerSelectedMessage;
+  updated.manager_message_from_install_base = managerSelectedMessage;
+  updated.manager_message_from_install_base_at = managerSelectedMessage ? now : "";
 
   updated.hub_source = "AXIS Install Base Workspace";
   updated.source = "AXIS Install Base Workspace";
@@ -1684,7 +1727,9 @@ if (destination === "manager") {
 
   updated.manager_flash_at = now;
   updated.manager_flash_type = "install_base_release";
-  updated.manager_flash_text = "New install-base record released to manager review";
+  updated.manager_flash_text = managerSelectedMessage
+    ? `New install-base record released to manager review: ${managerSelectedMessage}`
+    : "New install-base record released to manager review";
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
@@ -1747,9 +1792,13 @@ if (destination === "rep") {
 
   showBanner(
     destination === "manager"
-      ? "Selected record released to Manager Review only."
+      ? (managerSelectedMessage
+        ? "Selected record released to Manager Review with message."
+        : "Selected record released to Manager Review only.")
       : (isFixRequest ? "Fix request sent to Rep Review." : "Selected record sent to Rep Review.")
   );
+
+  if (destination === "manager") clearSelectedManagerMessage();
 }
 function requestFixForRecord(id, event, fieldName = "") {
   if (event) {
@@ -2703,12 +2752,20 @@ function renderDetail() {
 
     ${!isAutoSyncEligible(rec) ? `
       <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.75);background:rgba(255,216,77,.10);">
-        <div class="k">${rec.install_base_release_status === "released_to_rep" ? "Sent to Rep" : "Sync Hold"}</div>
-        <div class="v">${rec.install_base_release_status === "released_to_rep" ? "Fix request sent to Rep Review" : "Held for Install Base clarification"}</div>
+        <div class="k">Sync Hold</div>
+        <div class="v">Held for Install Base clarification</div>
         <div class="mini" style="margin-top:8px;line-height:1.55;">
-          Manual route target: <strong>${escapeHtml(rec.install_base_released_to === "rep" ? "Rep Review" : (getManualRouteTarget(rec) || "Not specified"))}</strong><br>
-          Reason: ${escapeHtml(rec.install_base_release_status === "released_to_rep" ? (rec.install_base_issue_reason || "Install Base sent this missing field to Rep Review.") : (getClarificationReason(rec) || "No clarification reason provided."))}
+          Manual route target: <strong>${escapeHtml(getManualRouteTarget(rec) || "Not specified")}</strong><br>
+          Reason: ${escapeHtml(getClarificationReason(rec) || "No clarification reason provided.")}
         </div>
+      </div>
+    ` : ""}
+
+    ${clean(rec.manager_message_from_install_base || rec.install_base_manager_message) ? `
+      <div class="detail-card" style="grid-column:1 / -1;border:1px solid rgba(67,176,255,.55);background:rgba(67,176,255,.08);">
+        <div class="k">Manager Message</div>
+        <div class="v">${escapeHtml(rec.manager_message_from_install_base || rec.install_base_manager_message)}</div>
+        <div class="mini" style="margin-top:8px;">Sent from Install Base${rec.manager_message_from_install_base_at ? ` • ${escapeHtml(rec.manager_message_from_install_base_at)}` : ""}</div>
       </div>
     ` : ""}
 
