@@ -4105,7 +4105,7 @@ function getFixDataBadge(rec, fieldName) {
     <button
       type="button"
       class="fix-data-badge ${active ? "active" : ""}"
-      onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}')"
+      onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}', '${escapeJs(fieldName || "")}')"
     >
       ${escapeHtml(label)}
     </button>
@@ -4160,18 +4160,13 @@ function renderCorrectedValue(rec, fieldName, normalHtml) {
     </div>
   `;
 }
-function openInstallBaseCommunication(id) {
+function openInstallBaseCommunication(id, fieldName = "") {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
-  const selectionChanged =
-    String(state.selectedId || "") !== selectedId ||
-    state.installBaseCommunicationOpen !== true;
-
-  if (!selectionChanged) return;
-
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = true;
+  state.installBaseActiveFixField = fieldName || "";
 
   refreshSelectedRowUI();
   renderDetail();
@@ -4181,13 +4176,56 @@ function openInstallBaseCommunication(id) {
     if (panel) panel.scrollIntoView({ behavior: "smooth", block: "center" });
   }, 50);
 }
-
 function closeInstallBaseCommunication() {
   if (!state.installBaseCommunicationOpen) return;
   state.installBaseCommunicationOpen = false;
   renderDetail();
 }
+function getRepFixPanelIssues(rec) {
+  const issues = [];
+  const activeField = String(state.installBaseActiveFixField || "").trim();
 
+  const addIssue = (field, label) => {
+    if (!issues.some(([existing]) => existing === field)) {
+      issues.push([field, label]);
+    }
+  };
+
+  if (activeField === "site") addIssue("site", "Site / Facility");
+  if (activeField === "serial") addIssue("serial_number", "Serial Number");
+  if (activeField === "dom") addIssue("dom", "DOM / Year");
+  if (activeField === "make") addIssue("make", "Make");
+  if (activeField === "model") addIssue("model", "Model");
+  if (activeField === "modality") addIssue("modality", "Modality");
+  if (activeField === "project") addIssue("oem_project_id", "Project / Asset ID");
+
+  getInstallBaseIssues(rec).forEach(([field, label]) => {
+    addIssue(field, label);
+  });
+
+  if (!issues.length) {
+    const issueText = String(
+      rec.install_base_issue_field ||
+      rec.install_base_issue_reason ||
+      rec.install_base_issue_note ||
+      rec.install_base_action_reason ||
+      rec.rep_fix_required ||
+      ""
+    ).toLowerCase();
+
+    if (issueText.includes("site") || issueText.includes("facility") || issueText.includes("location")) {
+      addIssue("site", "Site / Facility");
+    }
+
+    if (issueText.includes("serial")) addIssue("serial_number", "Serial Number");
+    if (issueText.includes("dom") || issueText.includes("year")) addIssue("dom", "DOM / Year");
+    if (issueText.includes("model")) addIssue("model", "Model");
+    if (issueText.includes("make")) addIssue("make", "Make");
+    if (issueText.includes("modality")) addIssue("modality", "Modality");
+  }
+
+  return issues;
+}
 function renderInstallBaseCorrectionPanel(rec) {
   if (!state.installBaseCommunicationOpen) return "";
 
@@ -4195,9 +4233,11 @@ function renderInstallBaseCorrectionPanel(rec) {
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_response_status === "rep_correction_sent";
 
-  if (correctionAlreadySent || !needsInstallBaseCommunication(rec)) return "";
+  const issues = getRepFixPanelIssues(rec);
 
-  const issues = getInstallBaseIssues(rec);
+if (correctionAlreadySent || !issues.length) return "";
+
+  const issues = getRepFixPanelIssues(rec);
 
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
