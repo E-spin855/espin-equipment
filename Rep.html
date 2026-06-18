@@ -2181,9 +2181,19 @@ function mergeInstallBaseQueueIntoRepRecords() {
     });
 
     if (existingIndex >= 0) {
+      const existingRecord = state.records[existingIndex] || {};
+      const existingAlreadyFixed =
+        existingRecord.install_base_correction_status === "corrected_by_rep" ||
+        existingRecord.install_base_fix_status === "rep_reviewed" ||
+        existingRecord.install_base_response_status === "rep_correction_sent";
+
       state.records[existingIndex] = {
-        ...state.records[existingIndex],
-        ...repRecord
+        ...(existingAlreadyFixed ? repRecord : existingRecord),
+        ...(existingAlreadyFixed ? existingRecord : repRecord),
+        key: existingRecord.key || repRecord.key,
+        id: existingRecord.id || repRecord.id,
+        rep_visible: true,
+        manager_visible: false
       };
     } else {
       state.records.unshift(repRecord);
@@ -2284,9 +2294,14 @@ queue.forEach(item => {
     };
 
     if (existing) {
+      const existingAlreadyFixed =
+        existing.install_base_correction_status === "corrected_by_rep" ||
+        existing.install_base_fix_status === "rep_reviewed" ||
+        existing.install_base_response_status === "rep_correction_sent";
+
       const merged = {
-        ...existing,
-        ...releasedRecord,
+        ...(existingAlreadyFixed ? releasedRecord : existing),
+        ...(existingAlreadyFixed ? existing : releasedRecord),
         id: existing.id || releasedRecord.id
       };
 
@@ -3740,6 +3755,15 @@ function sendInstallBaseCorrection(id) {
   localStorage.setItem(INSTALL_BASE_RESPONSE_KEY, JSON.stringify(cleanedQueue));
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
 
+  const repQueue = readArrayKey(REP_QUEUE_KEY).filter(r => {
+    const sameId = String(r.id || "") === String(updated.id || "");
+    const sameKey = updated.key && String(r.key || "") === String(updated.key);
+    return !(sameId || sameKey || sameSyncRecord(r, updated));
+  });
+  repQueue.unshift(updated);
+  writeArrayKey(REP_QUEUE_KEY, repQueue);
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+
   state.installBaseCommunicationOpen = false;
 
   render();
@@ -4088,7 +4112,6 @@ function wasRepFieldCorrected(rec, fieldName) {
     rec.install_base_fix_status === "rep_reviewed";
 
   if (!fixed) return false;
-  if (rec.install_base_fixed_seen_by_rep === true) return false;
 
   const correctedFields = String(
     rec.install_base_corrected_fields ||
@@ -4102,7 +4125,7 @@ function wasRepFieldCorrected(rec, fieldName) {
 
   const aliases = {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
-    equipment: ["equipment"],
+    equipment: ["equipment", "make", "manufacturer", "model"],
     make: ["make", "manufacturer"],
     model: ["model"],
     modality: ["modality"],
