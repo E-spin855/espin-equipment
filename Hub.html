@@ -904,8 +904,20 @@ function clearSelectedManagerMessage() {
 function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
 
-  // Default is yes. Only explicit "no" holds the record for manual clarification.
-  return value !== "no";
+  if (value !== "no") return true;
+
+  const hasManualHoldReason = Boolean(clean(
+    rec.axis_manual_route_target ||
+    rec.axis_clarification_reason ||
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    ""
+  ));
+
+  return getMissingHubFields(rec).length === 0 && !hasManualHoldReason;
 }
 
 function getManualRouteTarget(rec) {
