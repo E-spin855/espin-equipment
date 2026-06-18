@@ -766,6 +766,33 @@ tr.manager-row-flash td{
 
     .detail-card.update-detail-card .k{color:#d8ffe9!important}
     .detail-card.update-detail-card .v{color:#ffffff!important}
+
+    .install-base-manager-message{
+      margin-top:12px;
+      padding:12px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,216,77,.62);
+      background:rgba(255,216,77,.10);
+      color:#fff4cc;
+      box-shadow:0 0 18px rgba(255,216,77,.14);
+    }
+
+    .install-base-manager-message .label{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.11em;
+      color:#fff2a6;
+      font-weight:900;
+      margin-bottom:6px;
+    }
+
+    .install-base-manager-message .message{
+      font-size:14px;
+      line-height:1.45;
+      color:#ffffff;
+      font-weight:800;
+    }
+
   </style>
 </head>
 
@@ -2296,6 +2323,8 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
         Reason: ${escapeHtml(reason)}
       </div>
 
+      ${renderInstallBaseManagerMessage(rec)}
+
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
         ${issues.map(issue => `
           <div>
@@ -2506,6 +2535,38 @@ function sendManagerUnableToVerify(id) {
   render();
 }
 
+function getInstallBaseManagerMessage(rec) {
+  return clean(
+    rec.install_base_manager_message ||
+    rec.manager_message_from_install_base ||
+    rec.manager_message ||
+    rec.install_base_message_to_manager ||
+    rec.manager_flash_text ||
+    ""
+  );
+}
+
+function renderInstallBaseManagerMessage(rec) {
+  const message = getInstallBaseManagerMessage(rec);
+  if (!message) return "";
+
+  const sentAt = clean(rec.manager_message_from_install_base_at || rec.install_base_manager_message_at || rec.install_base_released_at || "");
+  let sentLabel = "";
+
+  if (sentAt) {
+    const d = new Date(sentAt);
+    sentLabel = isNaN(d.getTime()) ? sentAt : d.toLocaleString();
+  }
+
+  return `
+    <div class="install-base-manager-message">
+      <div class="label">Install Base Message to Manager</div>
+      <div class="message">${escapeHtml(message)}</div>
+      ${sentLabel ? `<div class="mini" style="margin-top:7px;color:#fff2a6;">Sent from Install Base: ${escapeHtml(sentLabel)}</div>` : ""}
+    </div>
+  `;
+}
+
 function getInstallBaseRequestText(rec) {
   return (
     rec.install_base_action_label ||
@@ -2653,6 +2714,7 @@ function renderDetail() {
               Source Conflict: ${escapeHtml(rec.source_conflict || "-")}<br>
               Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
             </div>
+            ${renderInstallBaseManagerMessage(rec)}
           </div>
           ${renderManagerInstallBaseCorrectionPanel(rec)}
         `
