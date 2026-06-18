@@ -718,7 +718,15 @@ tr.install-base-corrected-row-frame td{
                 <option value="Please review source conflict notes before rep follow-up.">Review source conflict notes</option>
                 <option value="Please confirm whether this should stay staged or move forward.">Confirm staged vs move forward</option>
                 <option value="Install Base needs manager review before any rep action.">Manager review needed before rep action</option>
+                <option value="__other__">Other / custom message</option>
               </select>
+              <input
+                id="managerCustomMessageInput"
+                type="text"
+                class="hidden"
+                placeholder="Type custom message to Manager..."
+                style="margin-top:10px;"
+              />
               <div class="mini">Used only when manually sending this selected record to Manager Review.</div>
             </div>
 
@@ -863,12 +871,35 @@ function lower(v) {
 
 function getSelectedManagerMessage() {
   const el = $("managerMessageSelect");
-  return el ? clean(el.value) : "";
+  if (!el) return "";
+
+  if (el.value === "__other__") {
+    const custom = $("managerCustomMessageInput");
+    return custom ? clean(custom.value) : "";
+  }
+
+  return clean(el.value);
+}
+
+function syncManagerCustomMessageVisibility() {
+  const select = $("managerMessageSelect");
+  const custom = $("managerCustomMessageInput");
+  if (!select || !custom) return;
+
+  const isOther = select.value === "__other__";
+  custom.classList.toggle("hidden", !isOther);
+
+  if (!isOther) custom.value = "";
 }
 
 function clearSelectedManagerMessage() {
   const el = $("managerMessageSelect");
+  const custom = $("managerCustomMessageInput");
   if (el) el.value = "";
+  if (custom) {
+    custom.value = "";
+    custom.classList.add("hidden");
+  }
 }
 function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
@@ -1792,13 +1823,9 @@ if (destination === "rep") {
 
   showBanner(
     destination === "manager"
-      ? (managerSelectedMessage
-        ? "Selected record released to Manager Review with message."
-        : "Selected record released to Manager Review only.")
+      ? "Selected record released to Manager Review only."
       : (isFixRequest ? "Fix request sent to Rep Review." : "Selected record sent to Rep Review.")
   );
-
-  if (destination === "manager") clearSelectedManagerMessage();
 }
 function requestFixForRecord(id, event, fieldName = "") {
   if (event) {
@@ -2919,6 +2946,11 @@ function init() {
       state.filter = e.target.value || "";
       render();
     });
+  }
+
+  const managerMessageSelect = $("managerMessageSelect");
+  if (managerMessageSelect) {
+    managerMessageSelect.addEventListener("change", syncManagerCustomMessageVisibility);
   }
 
   const releaseManagerBtn = $("releaseManagerBtn");
