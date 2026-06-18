@@ -695,7 +695,6 @@ tr.install-base-corrected-row-frame td{
 
             <div class="btns">
               <button type="button" class="green" id="releaseManagerBtn">Release Selected to Manager Review</button>
-              <button type="button" class="yellow" id="releaseRepBtn">Release Selected to Rep Review</button>
               <button type="button" class="secondary" id="markStagedBtn">Mark as Staged Only</button>
             </div>
 
@@ -1076,8 +1075,7 @@ function isBlankHubField(value, fieldName = "") {
 
 function getMissingFieldFixHtml(rec, fieldName) {
   const fixSent =
-    rec.install_base_release_status === "released_to_rep" ||
-    rec.install_base_release_status === "released_to_manager";
+    rec.install_base_release_status === "released_to_rep";
 
   const label = fixSent ? "Fix Sent" : "Fix";
 
@@ -1118,7 +1116,7 @@ if (
     rec.install_base_release_status !== "released_to_rep" &&
     rec.install_base_release_status !== "released_to_manager"
   ) {
-    return { type: "source", label: "Manual Send Needed" };
+    return { type: "source", label: "Sync Hold" };
   }
 
   if (rec.install_base_release_status === "auto_synced") {
@@ -1140,7 +1138,7 @@ if (
   }
 
   if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Released to Rep" };
+    return { type: "released", label: "Sent to Rep" };
   }
 
   if (exceptions.length) {
@@ -1159,7 +1157,7 @@ function getReviewStatus(rec) {
     rec.install_base_release_status !== "released_to_rep" &&
     rec.install_base_release_status !== "released_to_manager"
   ) {
-    return { type: "source", label: "Manual Send Needed" };
+    return { type: "source", label: "Sync Hold" };
   }
 
   if (rec.install_base_release_status === "auto_synced") {
@@ -1181,7 +1179,7 @@ function getReviewStatus(rec) {
   }
 
   if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Released to Rep" };
+    return { type: "released", label: "Sent to Rep" };
   }
 
   if (exceptions.length) {
@@ -1570,12 +1568,17 @@ function markRepResponseSeen(rec) {
   saveRecords();
 }
 
-function releaseSelected(destination) {
+function releaseSelected(destination, fixFieldName = "") {
   const rec = findSelectedRecord();
   if (!rec) return;
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+  const normalizedFixField = String(fixFieldName || "").toLowerCase().trim();
+  const prettyFixField = normalizedFixField
+    ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+    : "";
+  const isFixRequest = destination === "rep" && Boolean(normalizedFixField);
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1626,20 +1629,28 @@ install_base_clarification_reason:
     conflict_notes: rec.conflict_notes || "",
 
     utilization_percent: rec.utilization_percent || "",
-    install_base_issue_field: rec.install_base_issue_field || "",
-    install_base_issue_type: rec.install_base_issue_type || "",
-    install_base_action_label: rec.install_base_action_label || "",
-    install_base_action_reason: rec.install_base_action_reason || "",
-    rep_fix_required: rec.rep_fix_required || "",
-    install_base_issue_note: rec.install_base_issue_note || "",
+    install_base_issue_field: normalizedFixField || rec.install_base_issue_field || "",
+    install_base_issue_type: isFixRequest ? "missing_field" : (rec.install_base_issue_type || ""),
+    install_base_action_label: isFixRequest ? "Fix requested by Install Base" : (rec.install_base_action_label || ""),
+    install_base_action_reason: isFixRequest
+      ? `Install Base requested rep review for missing ${prettyFixField || "data"}.`
+      : (rec.install_base_action_reason || ""),
+    rep_fix_required: isFixRequest
+      ? `Fix missing ${prettyFixField || "data"}`
+      : (rec.rep_fix_required || ""),
+    install_base_issue_note: isFixRequest
+      ? `Missing ${prettyFixField || "data"} field needs rep correction.`
+      : (rec.install_base_issue_note || ""),
 install_base_issue_reason:
-  rec.install_base_issue_reason ||
-  rec.install_base_action_reason ||
-  rec.install_base_issue_note ||
-  rec.conflict_notes ||
-  rec.oem_review_reason ||
-  rec.review_reason ||
-  "",
+  isFixRequest
+    ? `Missing ${prettyFixField || "data"} field sent to rep for correction.`
+    : (rec.install_base_issue_reason ||
+      rec.install_base_action_reason ||
+      rec.install_base_issue_note ||
+      rec.conflict_notes ||
+      rec.oem_review_reason ||
+      rec.review_reason ||
+      ""),
     oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
     oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
     oem_review_reason: rec.oem_review_reason || rec.review_reason || rec.install_base_issue_note || "",
@@ -1692,6 +1703,12 @@ if (destination === "rep") {
   updated.manager_visible = false;
   updated.release_destination = "rep";
 
+  updated.install_base_released_to = "rep";
+  updated.install_base_release_status = "released_to_rep";
+  updated.install_base_fix_request = isFixRequest;
+  updated.install_base_fix_request_field = normalizedFixField;
+  updated.install_base_sync_type = isFixRequest ? "fix_request_to_rep" : updated.install_base_sync_type;
+
   updated.manager_release_id = "";
   updated.manager_seen_release_id = "";
 
@@ -1731,7 +1748,7 @@ if (destination === "rep") {
   showBanner(
     destination === "manager"
       ? "Selected record released to Manager Review only."
-      : "Selected record released to Rep Review only."
+      : (isFixRequest ? "Fix request sent to Rep Review." : "Selected record sent to Rep Review.")
   );
 }
 function requestFixForRecord(id, event, fieldName = "") {
@@ -1750,25 +1767,9 @@ function requestFixForRecord(id, event, fieldName = "") {
 
   state.selectedId = rec.id;
 
-  const fieldNeedsManager = [
-    "owner",
-    "manager",
-    "manager_name",
-    "owner_group",
-    "territory",
-    "manager_region",
-    "manager_territory",
-    "rep",
-    "assigned_rep",
-    "assigned_rep_name"
-  ].includes(String(fieldName || "").toLowerCase());
-
-  // Route the clicked missing field.
-  // Missing owner/rep/territory goes to Manager.
-  // Missing asset data such as modality/model/serial/DOM/site goes to Rep.
-  const destination = fieldNeedsManager ? "manager" : "rep";
-
-  releaseSelected(destination);
+  // All field-level Fix requests go to Rep.
+  // Manager review stays manual through the selected-record Manager button.
+  releaseSelected("rep", fieldName);
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
@@ -2702,11 +2703,11 @@ function renderDetail() {
 
     ${!isAutoSyncEligible(rec) ? `
       <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.75);background:rgba(255,216,77,.10);">
-        <div class="k">Sync Hold</div>
-        <div class="v">Held for Install Base clarification</div>
+        <div class="k">${rec.install_base_release_status === "released_to_rep" ? "Sent to Rep" : "Sync Hold"}</div>
+        <div class="v">${rec.install_base_release_status === "released_to_rep" ? "Fix request sent to Rep Review" : "Held for Install Base clarification"}</div>
         <div class="mini" style="margin-top:8px;line-height:1.55;">
-          Manual route target: <strong>${escapeHtml(getManualRouteTarget(rec) || "Not specified")}</strong><br>
-          Reason: ${escapeHtml(getClarificationReason(rec) || "No clarification reason provided.")}
+          Manual route target: <strong>${escapeHtml(rec.install_base_released_to === "rep" ? "Rep Review" : (getManualRouteTarget(rec) || "Not specified"))}</strong><br>
+          Reason: ${escapeHtml(rec.install_base_release_status === "released_to_rep" ? (rec.install_base_issue_reason || "Install Base sent this missing field to Rep Review.") : (getClarificationReason(rec) || "No clarification reason provided."))}
         </div>
       </div>
     ` : ""}
@@ -2868,10 +2869,6 @@ function init() {
     releaseManagerBtn.addEventListener("click", () => releaseSelected("manager"));
   }
 
-  const releaseRepBtn = $("releaseRepBtn");
-  if (releaseRepBtn) {
-    releaseRepBtn.addEventListener("click", () => releaseSelected("rep"));
-  }
 
   const markStagedBtn = $("markStagedBtn");
   if (markStagedBtn) {
