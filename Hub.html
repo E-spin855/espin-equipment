@@ -737,6 +737,12 @@ const normalizeModality =
   window.AxisUtils?.normalizeModality ||
   ((v) => String(v || "").toUpperCase().trim());
 
+function normalizeHubModality(value) {
+  const raw = clean(value);
+  if (!raw) return "";
+  return normalizeModality(raw);
+}
+
 const ageFromDom =
   window.AxisUtils?.ageFromDomEmpty ||
   window.AxisUtils?.ageFromDom ||
@@ -918,6 +924,22 @@ function isDuplicateAsset(rec) {
 function getDataExceptions(rec) {
   const issues = [];
 
+  if (!clean(rec.oem_project_id || rec.asset_id)) {
+    issues.push({ type: "missing", label: "Missing Project / Asset ID" });
+  }
+
+  if (!clean(rec.make)) {
+    issues.push({ type: "missing", label: "Missing Brand" });
+  }
+
+  if (!clean(rec.modality) || lower(rec.modality) === "other") {
+    issues.push({ type: "missing", label: "Missing Modality" });
+  }
+
+  if (!clean(rec.model)) {
+    issues.push({ type: "missing", label: "Missing Model" });
+  }
+
   if (!clean(rec.serial_number || rec.serial)) {
     issues.push({ type: "missing", label: "Missing Serial" });
   }
@@ -936,6 +958,10 @@ function getDataExceptions(rec) {
 
   if (!clean(rec.manager_name) || rec.manager_name === "Unassigned Owner Group") {
     issues.push({ type: "owner", label: "Missing Owner Group" });
+  }
+
+  if (!clean(rec.manager_region || rec.manager_territory || rec.territory) || getOwnerTerritory(rec) === "Unassigned Territory") {
+    issues.push({ type: "owner", label: "Missing Territory" });
   }
 
   if (
@@ -994,14 +1020,15 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
 
   const fieldAliases = {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
-   make: ["make", "manufacturer"],
-model: ["model"],
-equipment: ["equipment"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    equipment: ["equipment"],
     modality: ["modality"],
     serial: ["serial", "serial_number", "system_serial"],
     dom: ["dom", "year", "manufacture_year"],
     site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
     owner: ["owner", "manager", "manager_name", "owner_group"],
+    territory: ["territory", "manager_region", "manager_territory", "region"],
     rep: ["rep", "assigned_rep", "assigned_rep_name"]
   };
 
@@ -1019,9 +1046,32 @@ function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
     </div>
   `;
 }
-function isBlankHubField(value) {
+function isBlankHubField(value, fieldName = "") {
   const text = clean(value);
-  return !text || text === "-" || text === "Unknown Site" || text === "Unassigned" || text === "Unassigned Owner Group";
+  const normalized = lower(text);
+
+  if (!text) return true;
+
+  const genericMissingValues = [
+    "-",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "unknown",
+    "unknown site",
+    "unassigned",
+    "unassigned owner group",
+    "unassigned territory"
+  ];
+
+  if (genericMissingValues.includes(normalized)) return true;
+
+  // Blank modality was being normalized into OTHER by the shared utility.
+  // On the Hub, OTHER should stay actionable as a missing modality until rep fixes it.
+  if (String(fieldName || "").toLowerCase() === "modality" && normalized === "other") return true;
+
+  return false;
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
@@ -1041,12 +1091,13 @@ function getMissingFieldFixHtml(rec, fieldName) {
 }
 
 function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
-  const normalHtml = escapeHtml(isBlankHubField(rawValue) ? fallbackHtml : rawValue);
+  const fieldIsBlank = isBlankHubField(rawValue, fieldName);
+  const normalHtml = escapeHtml(fieldIsBlank ? fallbackHtml : rawValue);
   const correctedHtml = renderInstallBaseCorrectedValue(rec, fieldName, normalHtml);
 
   if (correctedHtml !== normalHtml) return correctedHtml;
   if (isFixedByRep(rec)) return normalHtml;
-  if (!isBlankHubField(rawValue)) return normalHtml;
+  if (!fieldIsBlank) return normalHtml;
 
   return getMissingFieldFixHtml(rec, fieldName);
 }
@@ -1699,10 +1750,23 @@ function requestFixForRecord(id, event, fieldName = "") {
 
   state.selectedId = rec.id;
 
-  const exceptions = getDataExceptions(rec);
-  const fieldNeedsManager = ["owner", "manager", "manager_name", "owner_group", "rep", "assigned_rep", "assigned_rep_name"].includes(String(fieldName || "").toLowerCase());
-  const hasOwnershipIssue = exceptions.some(issue => issue.type === "owner");
-  const destination = fieldNeedsManager || hasOwnershipIssue ? "manager" : "rep";
+  const fieldNeedsManager = [
+    "owner",
+    "manager",
+    "manager_name",
+    "owner_group",
+    "territory",
+    "manager_region",
+    "manager_territory",
+    "rep",
+    "assigned_rep",
+    "assigned_rep_name"
+  ].includes(String(fieldName || "").toLowerCase());
+
+  // Route the clicked missing field.
+  // Missing owner/rep/territory goes to Manager.
+  // Missing asset data such as modality/model/serial/DOM/site goes to Rep.
+  const destination = fieldNeedsManager ? "manager" : "rep";
 
   releaseSelected(destination);
 }
@@ -2004,7 +2068,7 @@ utilization_percent:
 
         make: obj.make || obj.manufacturer || "",
         model: obj.model || "",
-        modality: normalizeModality(obj.modality),
+        modality: normalizeHubModality(obj.modality),
         serial_number: serial,
         dom: obj.dom || obj.year || obj.manufacture_year || "",
 
@@ -2413,7 +2477,7 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubFieldValue(rec, "owner", rec.manager_name || rec.owner_group_name)}</td>
 
-	      <td>${escapeHtml(getOwnerTerritory(rec))}</td>
+	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
 
 	      <td>${renderHubFieldValue(rec, "rep", rec.assigned_rep_name)}</td>
 
