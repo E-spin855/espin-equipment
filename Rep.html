@@ -839,13 +839,15 @@ tr.rep-new-row-flash td{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width:92px;
+  flex-direction:column;
+  min-width:76px;
   min-height:34px;
-  padding:7px 11px;
+  padding:6px 9px;
   border-radius:12px;
-  font-size:14px;
+  font-size:12px;
   font-weight:950;
   line-height:1.05;
+  text-align:center;
   color:#1c1204;
   background:linear-gradient(90deg,#a46f13,#ffd84d);
   border:2px solid rgba(255,216,77,.95);
@@ -869,6 +871,52 @@ tr.rep-new-row-flash td{
   box-shadow:
     0 0 0 2px rgba(255,216,77,.22),
     0 0 22px rgba(255,216,77,.50);
+}
+
+.fix-data-badge .fix-main{
+  display:block;
+  font-size:13px;
+  line-height:1;
+}
+
+.fix-data-badge .fix-sub{
+  display:block;
+  margin-top:2px;
+  font-size:10px;
+  line-height:1;
+  letter-spacing:.03em;
+  opacity:.9;
+}
+
+.fix-data-cell{
+  display:flex;
+  justify-content:flex-start;
+  align-items:center;
+  width:100%;
+}
+
+.fix-data-cell .fix-data-badge{
+  transform:translateX(-28px);
+}
+
+.fix-data-cell .fix-data-badge:hover{
+  transform:translate(-28px,-1px);
+}
+
+.source-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:92px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.35);
+  background:rgba(67,176,255,.12);
+  color:#d8f1ff;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.1;
+  text-align:center;
 }
 .install-base-comm-open{
   border:1px solid rgba(255,216,77,.45)!important;
@@ -3040,15 +3088,22 @@ const equipmentBadge = getFixDataBadge(rec, "equipment");
       <div class="mini">${age !== null && age !== undefined ? age : ""}${age !== null && age !== undefined ? " yrs" : ""}</div>
     `;
 
-    const facilityHtml = escapeHtml(
-      rec.site ||
-      rec.facility ||
+	    const facilityHtml = escapeHtml(
+	      rec.site ||
+	      rec.facility ||
       rec.hospital ||
       rec.hospital_name ||
-      ""
-    );
+	      ""
+	    );
 
-    return `
+	    const sourceText =
+	      rec.hub_source === "AXIS Install Base Workspace" ||
+	      rec.source === "AXIS Install Base Workspace" ||
+	      rec.source_system === "AXIS Install Base Workspace"
+	        ? "Install Base"
+	        : rec.hub_source || rec.source_system || rec.source || "CSV";
+
+	    return `
       <tr
   class="${selectedClass}"
   data-record-id="${escapeHtml(rec.id)}"
@@ -3089,9 +3144,9 @@ const equipmentBadge = getFixDataBadge(rec, "equipment");
           ${fieldOrFix("site", facilityHtml)}
         </td>
 
-        <td>
-          ${escapeHtml(rec.hub_source || rec.source_system || rec.source || "CSV")}
-        </td>
+	        <td>
+	          <span class="source-pill">${escapeHtml(sourceText)}</span>
+	        </td>
 
        <td>
   ${renderRepStatusCell(rec)}
@@ -3986,18 +4041,18 @@ function getFixDataBadge(rec, fieldName) {
 
   if (!show) return "";
 
-  const labelMap = {
-    project: "Fix Project ID",
-    equipment: "Fix Equipment",
-    make: "Fix Make",
-    model: "Fix Model",
-    modality: "Fix Modality",
-    serial: "Fix Serial",
-    dom: "Fix DOM",
-    site: "Fix Site"
-  };
+	  const labelMap = {
+	    project: "Project ID",
+	    equipment: "Equipment",
+	    make: "Make",
+	    model: "Model",
+	    modality: "Modality",
+	    serial: "Serial",
+	    dom: "DOM",
+	    site: "Site"
+	  };
 
-  const label = labelMap[fieldName] || "Fix Data";
+	  const label = labelMap[fieldName] || "Data";
 
   const active =
     state.installBaseCommunicationOpen === true &&
@@ -4008,11 +4063,12 @@ function getFixDataBadge(rec, fieldName) {
       type="button"
       class="fix-data-badge ${active ? "active" : ""}"
       onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}', '${escapeJs(fieldName || "")}')"
-    >
-      ${escapeHtml(label)}
-    </button>
-  `;
-}
+	    >
+	      <span class="fix-main">Fix</span>
+	      <span class="fix-sub">${escapeHtml(label)}</span>
+	    </button>
+	  `;
+	}
 function isInstallBaseFixedByRep(rec) {
   return (
     rec.install_base_correction_status === "corrected_by_rep" ||
