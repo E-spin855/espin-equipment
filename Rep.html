@@ -3607,7 +3607,7 @@ function sendInstallBaseCorrection(id) {
     window.lastInstallBaseFixReason ||
     "";
 
-  const fixedInputs = [...document.querySelectorAll("input[id^='fix_'], textarea[id^='fix_']")]
+  const fixedInputs = [...document.querySelectorAll("input[id^='fix_'], textarea[id^='fix_'], select[id^='fix_']")]
     .filter(el => el.value && el.value.trim());
 
   const fixedValues = fixedInputs
@@ -3640,6 +3640,75 @@ function sendInstallBaseCorrection(id) {
     if (["project", "project_id", "oem_project_id", "asset_id"].includes(k)) return "project";
 
     return k;
+  };
+
+  const applyCorrectedFieldValue = (target, correctedField, rawKey, value) => {
+    const cleanValue = String(value || "").trim();
+    if (!cleanValue) return;
+
+    if (window.AxisUtils?.setInstallBaseFieldValue) {
+      window.AxisUtils.setInstallBaseFieldValue(target, correctedField, cleanValue);
+    }
+
+    if (correctedField === "project") {
+      target.oem_project_id = cleanValue;
+      target.project_id = target.project_id || cleanValue;
+      target.asset_id = target.asset_id || cleanValue;
+      return;
+    }
+
+    if (correctedField === "serial") {
+      target.serial_number = cleanValue;
+      target.serial = cleanValue;
+      target.system_serial = target.system_serial || cleanValue;
+      return;
+    }
+
+    if (correctedField === "site") {
+      target.site = cleanValue;
+      target.facility = cleanValue;
+      return;
+    }
+
+    if (correctedField === "dom") {
+      target.dom = cleanValue;
+      target.year = target.year || cleanValue;
+      target.manufacture_year = target.manufacture_year || cleanValue;
+      return;
+    }
+
+    if (correctedField === "make") {
+      target.make = cleanValue;
+      target.manufacturer = target.manufacturer || cleanValue;
+      return;
+    }
+
+    if (correctedField === "model") {
+      target.model = cleanValue;
+      return;
+    }
+
+    if (correctedField === "modality") {
+      target.modality = cleanValue;
+      return;
+    }
+
+    if (correctedField === "rep") {
+      target.assigned_rep_name = cleanValue;
+      target.rep = target.rep || cleanValue;
+      target.rep_owner = target.rep_owner || cleanValue;
+      target.sales_rep = target.sales_rep || cleanValue;
+      return;
+    }
+
+    if (correctedField === "manager") {
+      target.manager_name = cleanValue;
+      target.owner_group_name = target.owner_group_name || cleanValue;
+      target.owner_group = target.owner_group || cleanValue;
+      return;
+    }
+
+    target[rawKey] = cleanValue;
   };
 
   const correctedFields = [];
@@ -3692,11 +3761,7 @@ function sendInstallBaseCorrection(id) {
     if (!value) return;
 
     const correctedField = normalizeCorrectedFieldName(rawKey);
-    if (window.AxisUtils?.setInstallBaseFieldValue) {
-      window.AxisUtils.setInstallBaseFieldValue(updated, correctedField, value);
-    } else {
-      updated[rawKey] = value;
-    }
+    applyCorrectedFieldValue(updated, correctedField, rawKey, value);
 
     if (correctedField && !correctedFields.includes(correctedField)) {
       correctedFields.push(correctedField);
@@ -3707,11 +3772,7 @@ function sendInstallBaseCorrection(id) {
     const input = $("fix_" + issue.key);
     if (input && input.value.trim()) {
       const correctedField = normalizeCorrectedFieldName(issue.key);
-      if (window.AxisUtils?.setInstallBaseFieldValue) {
-        window.AxisUtils.setInstallBaseFieldValue(updated, correctedField, input.value.trim());
-      } else {
-        updated[issue.key] = input.value.trim();
-      }
+      applyCorrectedFieldValue(updated, correctedField, issue.key, input.value.trim());
 
       if (correctedField && !correctedFields.includes(correctedField)) {
         correctedFields.push(correctedField);
@@ -3720,6 +3781,18 @@ function sendInstallBaseCorrection(id) {
   });
 
   updated.install_base_corrected_fields = correctedFields.join(",");
+  updated.install_base_issue_field = String(rec.install_base_issue_field || "")
+    .split(",")
+    .map(field => normalizeCorrectedFieldName(field))
+    .filter(field => field && !correctedFields.includes(field))
+    .join(",");
+
+  if (!updated.install_base_issue_field) {
+    updated.install_base_action_label = "";
+    updated.install_base_issue_type = "";
+    updated.rep_fix_required = "";
+  }
+
   updated.corrected_fields = correctedFields.reduce((acc, field) => {
     acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
     return acc;
