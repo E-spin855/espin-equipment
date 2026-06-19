@@ -2538,15 +2538,28 @@ function buildRepLocalPacket(rec) {
   if (!rec) return rec;
 
   const key = rec.key || getRecordKey(rec);
-  const local = {
-    ...rec,
-    key,
-    id: rec.id || key,
+ const local = {
+  ...rec,
+  key,
+  id: rec.id || key,
 
-    // Keep the record visible on the rep page after manager sync.
-    rep_visible: rec.rep_visible !== false,
-    rep_hidden: false
-  };
+  // Keep the record visible on the rep page after manager sync.
+  rep_visible: rec.rep_visible !== false,
+  rep_hidden: false
+};
+
+if (
+  local.project_type === "new_project_record" &&
+  (
+    local.quote_status === "won" ||
+    local.rep_status === "won" ||
+    local.lifecycle_created_from_quote_won === true
+  )
+) {
+  local.project_type = "equipment_review_record";
+  local.source = local.source || "Rep Won Project";
+  local.hub_source = local.hub_source || "Equipment Review Workspace";
+}
 
   /*
     Important:
@@ -5307,13 +5320,38 @@ if (
       rec.manager_unseen_update = true;
       rec.manager_flash_at = now;
 
-      if (status === "won") {
+    if (status === "won") {
   rec.rep_status = "won";
   rec.rep_action = "won";
   rec.rep_action_label = "Won";
+
+  /*
+    Important:
+    New project records are normally shown only in the New Project Review Items table.
+    Once marked WON, promote the record into the regular Equipment Review Records table.
+  */
+  if (rec.project_type === "new_project_record") {
+    rec.project_type = "equipment_review_record";
+    rec.lifecycle_created_from_quote_won = true;
+    rec.install_base_lifecycle_entry = true;
+    rec.install_base_lifecycle_status = "active";
+    rec.install_base_review_status = "lifecycle_active";
+    rec.install_base_sync_type = "won_project_lifecycle_entry";
+    rec.source = "Rep Won Project";
+    rec.hub_source = "Equipment Review Workspace";
+
+    rec.oem_review_type = "project";
+    rec.review_type = "project";
+    rec.oem_review_label = "Project Won - Enter Lifecycle Review";
+    rec.review_label = "Project Won - Enter Lifecycle Review";
+    rec.oem_review_reason = "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility.";
+    rec.review_reason = "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility.";
+  }
+
   rec.project_management_visible = true;
   rec.project_management_status = "Available for PM Review";
   rec.project_management_created_at = now;
+
   rec.manager_flash_type = "quote_won";
   rec.manager_flash_text = "Quote marked won";
   rec.next_action_date = "";
