@@ -1163,9 +1163,15 @@ tr.rep-new-row-flash td{
     <option value="open_email_draft">Open Approved Email Draft</option>
     <option value="send_tradein_app">Send to Trade-In App</option>
     <option value="send_disposal_review">Send to Disposal Review</option>
-    <option value="contact_customer">Contact Customer</option>
-    <option value="schedule_follow_up">Schedule Follow-Up</option>
-    <option value="add_note">Add Note</option>
+	    <option value="contact_customer">Contact Customer</option>
+	    <option value="schedule_follow_up">Schedule Follow-Up</option>
+	    <option value="message_manager_reviewed">Message Manager: Reviewed</option>
+	    <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
+	    <option value="message_manager_more_info">Message Manager: Need More Information</option>
+	    <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
+	    <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
+	    <option value="message_manager_custom">Message Manager: Custom Message</option>
+	    <option value="add_note">Add Note</option>
     <option value="mark_reviewed">Mark Reviewed</option>
     <option value="complete">Complete Project</option>
     <option value="remove">Remove From My View</option>
@@ -4029,34 +4035,11 @@ ${renderInstallBaseCorrectionPanel(rec)}
                 `
                 : ""
             }
-            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;">
-              <div>
-                <label for="repManagerMessageAction">Message to Manager</label>
-                <select id="repManagerMessageAction">
-                  <option value="">Select message</option>
-                  <option value="reviewed">Reviewed</option>
-                  <option value="will_follow_up">Will Follow Up</option>
-                  <option value="need_more_information">Need More Information</option>
-                  <option value="quote_updated">Quote Updated</option>
-                  <option value="customer_contacted">Customer Contacted</option>
-                  <option value="custom_message">Custom Message</option>
-                </select>
-              </div>
-              <div>
-                <label for="repManagerMessageNotes">Text to Manager</label>
-                <textarea id="repManagerMessageNotes" placeholder="Type message to Manager..."></textarea>
-              </div>
-            </div>
-            <button type="button" class="green" style="margin-top:10px;" onclick="sendRepManagerMessage()">Send Message to Manager</button>
           </div>
         </div>
       `;
 
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
-      const repManagerAction = $("repManagerMessageAction");
-      const repManagerNotes = $("repManagerMessageNotes");
-      if (repManagerAction) repManagerAction.value = rec.rep_manager_message_action || "";
-      if (repManagerNotes) repManagerNotes.value = rec.rep_manager_message_notes || "";
 
       document.querySelector('button[onclick="confirmManualAction()"]').disabled = completed;
 $("manualActionSelect").disabled = completed;
@@ -5271,27 +5254,40 @@ if (!action) {
   return;
 }
 
-if (action === "complete") {
-  completeLifecycleProject();
-  return;
-}
-const notes = $("repOutcomeNotes").value;
-const followUpDate = $("repFollowUpDate").value;
+	if (action === "complete") {
+	  completeLifecycleProject();
+	  return;
+	}
+	const notes = $("repOutcomeNotes").value;
+	const followUpDate = $("repFollowUpDate").value;
+	const messageActionMap = {
+	  message_manager_reviewed: "reviewed",
+	  message_manager_follow_up: "will_follow_up",
+	  message_manager_more_info: "need_more_information",
+	  message_manager_quote_updated: "quote_updated",
+	  message_manager_customer_contacted: "customer_contacted",
+	  message_manager_custom: "custom_message"
+	};
 
 if (!action) {
   alert("Select action first.");
   return;
 }
 
-if (action === "schedule_follow_up" && !followUpDate) {
-  alert("Select follow-up date first.");
-  return;
-}
+	if (action === "schedule_follow_up" && !followUpDate) {
+	  alert("Select follow-up date first.");
+	  return;
+	}
+	
+	const label = $("manualActionSelect").selectedOptions[0]?.textContent || action;
+	if (messageActionMap[action]) {
+	  sendRepManagerMessage(messageActionMap[action], label.replace(/^Message Manager:\s*/i, ""), notes);
+	  return;
+	}
 
-const label = $("manualActionSelect").selectedOptions[0]?.textContent || action;
-      if (!confirm(`Confirm action:\n\n${label}\n\nAXIS will document this rep-selected action.`)) {
-        return;
-      }
+	      if (!confirm(`Confirm action:\n\n${label}\n\nAXIS will document this rep-selected action.`)) {
+	        return;
+	      }
 rec.rep_selected_action = action;
 rec.rep_selected_action_label = label;
 rec.rep_selected_action_at = new Date().toISOString();
@@ -5353,26 +5349,24 @@ rec.manager_flash_text = `Rep selected: ${label}`;
 	      showBanner(`✅ Action recorded: ${label}`);
 	    }
 
-	    function sendRepManagerMessage() {
-	      const rec = state.records.find(r => String(r.id || "") === String(state.selectedId || ""));
+		    function sendRepManagerMessage(actionOverride = "", labelOverride = "", notesOverride = "") {
+		      const rec = state.records.find(r => String(r.id || "") === String(state.selectedId || ""));
 
 	      if (!rec) {
 	        alert("Open a record first");
 	        return;
 	      }
 
-	      const action = $("repManagerMessageAction")?.value || "";
-	      const notes = $("repManagerMessageNotes")?.value?.trim() || "";
+		      const action = actionOverride || "";
+		      const notes = String(notesOverride || "").trim();
 
-	      if (!action && !notes) {
-	        alert("Select a message or type a note to Manager");
-	        return;
-	      }
+		      if (!action && !notes) {
+		        alert("Select a message or type a note to Manager");
+		        return;
+		      }
 
-	      const now = new Date().toISOString();
-	      const label = action
-	        ? ($("repManagerMessageAction")?.selectedOptions?.[0]?.textContent || formatReviewText(action))
-	        : "Custom Message";
+		      const now = new Date().toISOString();
+		      const label = labelOverride || (action ? formatReviewText(action) : "Custom Message");
 
 	      const updated = {
 	        ...rec,
