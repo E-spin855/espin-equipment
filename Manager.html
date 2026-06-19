@@ -928,6 +928,8 @@ tr.manager-row-flash td{
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const MANAGER_SYNC_KEY = "axis_manager_sync_ping_v1";
+const REP_QUEUE_KEY = "espin_rep_queue";
+const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
 const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
@@ -2936,6 +2938,55 @@ function syncRecordEverywhere(updatedRec) {
   pingLifecycleSync();
 }
 
+function syncManagerResponseToRep(updatedRec) {
+  if (!updatedRec || !updatedRec.manager_response_action) return;
+
+  const key = getRecordKey(updatedRec);
+  const now = updatedRec.manager_response_at || new Date().toISOString();
+
+  const repRecord = {
+    ...updatedRec,
+    key,
+    id: updatedRec.id || key,
+
+    rep_visible: true,
+    manager_visible: false,
+    release_destination: "rep",
+    install_base_released_to: "rep",
+    install_base_release_status: updatedRec.install_base_release_status || "released_to_rep",
+
+    manager_response_seen_by_rep: false,
+    manager_response_seen_at: "",
+    manager_response_at: now,
+    manager_response_by: MANAGER_NAME,
+
+    rep_unseen_update: true,
+    rep_flash_at: now,
+    rep_flash_type: "manager_response",
+    rep_flash_text: "Manager response saved",
+
+    source: "Manager Review Page",
+    hub_source: updatedRec.hub_source || "Manager Review Page"
+  };
+
+  const upsert = (records) => {
+    let found = false;
+
+    const next = (Array.isArray(records) ? records : []).map(item => {
+      if (!sameRecord(item, updatedRec) && !sameRecord(item, repRecord)) return item;
+      found = true;
+      return { ...item, ...repRecord, key };
+    });
+
+    if (!found) next.unshift(repRecord);
+    return next;
+  };
+
+  writeArrayKey(STORAGE_KEY, upsert(readArrayKey(STORAGE_KEY)));
+  writeArrayKey(REP_QUEUE_KEY, upsert(readArrayKey(REP_QUEUE_KEY)));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+}
+
 function saveManagerResponse() {
   const rec = findSelectedRecord();
 
@@ -2986,6 +3037,7 @@ function saveManagerResponse() {
   }
 
   syncRecordEverywhere(updated);
+  syncManagerResponseToRep(updated);
 
   state.selectedId = updated.id;
 
