@@ -3906,189 +3906,292 @@ function syncInstallBaseCorrection(updated) {
 
   alert("Install Base update sent.");
 }
-    function renderDetail() {
-      const rec = state.records.find(r => r.id === state.selectedId);
-      const empty = $("emptyState");
-      const detail = $("detailArea");
-      const lifecycleDetailPanel = $("lifecycleDetailPanel");
+function sendQuickRepManagerMessage() {
+  const quickMessageEl = $("repManagerQuickMessage");
+  const notesEl = $("repOutcomeNotes");
 
-      if (!rec) {
-        lifecycleDetailPanel.classList.add("hidden");
-        $("newProjectDetailArea")?.classList.add("hidden");
-        return;
-      }
+  const selectedValue = quickMessageEl?.value || "";
+  const notes = notesEl?.value?.trim() || "";
 
-      if (rec.project_type === "new_project_record") {
-        lifecycleDetailPanel.classList.add("hidden");
-        renderNewProjectDetail(rec);
-        return;
-      }
-
-      $("newProjectDetailArea")?.classList.add("hidden");
-      lifecycleDetailPanel.classList.remove("hidden");
-
-      const completed = rec.lifecycle_completed === true;
-
-      empty.classList.add("hidden");
-      detail.classList.remove("hidden");
-
-     const manualActionSelect = $("manualActionSelect");
-     const savedManualAction = rec.rep_selected_manual_action || rec.rep_action || "";
-     const hasSavedManualAction = [...manualActionSelect.options].some(option => option.value === savedManualAction);
-     manualActionSelect.value = hasSavedManualAction ? savedManualAction : "";
-     manualActionSelect.classList.toggle("placeholder", !manualActionSelect.value);
-$("repOutcomeNotes").value = rec.rep_notes || "";
-$("repFollowUpDate").value = rec.rep_follow_up_date || rec.next_action_date || "";
-
-      const quoteAmount = Number(rec.quote_amount || 0);
-      const estimatedCost = Number(rec.quote_estimated_cost || 0);
-      const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
-      const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
-      const profit = netQuote - estimatedCost;
-      const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
-
-      $("detailGrid").innerHTML = `
-        <div class="detail-card"><div class="k">Hospital</div><div class="v">${escapeHtml(rec.site || "")}</div></div>
-        <div class="detail-card"><div class="k">Street Address</div><div class="v">${escapeHtml(rec.site_address || "")}</div></div>
-        <div class="detail-card"><div class="k">Location</div><div class="v">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`)}</div></div>
-        <div class="detail-card"><div class="k">Hospital Contact</div><div class="v">${escapeHtml(rec.contact_name || "-")}</div></div>
-        <div class="detail-card"><div class="k">Title</div><div class="v">${escapeHtml(rec.contact_title || "-")}</div></div>
-        <div class="detail-card"><div class="k">Phone</div><div class="v">${rec.contact_phone ? `<a href="tel:${escapeHtml(rec.contact_phone.replace(/\D/g, ""))}" style="color:#43b0ff;">${escapeHtml(rec.contact_phone)}</a>` : "-"}</div></div>
-        <div class="detail-card"><div class="k">OEM Age Review Field</div><div class="v">${escapeHtml(rec.threshold_years || "Default")}</div></div>
-        <div class="detail-card"><div class="k">Override</div><div class="v">${escapeHtml(rec.alert_override || "None")}</div></div>
-
-        ${renderRawSignalDataCard(rec)}
-${renderInstallBaseCorrectionPanel(rec)}
-        ${
-          rec.tradein_sync_received
-            ? `
-              <div class="detail-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
-                <div class="k">Associated Trade-In Equipment</div>
-                <div class="v">${escapeHtml(rec.tradein_equipment_make || rec.make || "-")} ${escapeHtml(rec.tradein_equipment_model || rec.model || "")}</div>
-                <div class="mini" style="margin-top:8px;line-height:1.45;">
-                  Modality: <strong>${escapeHtml(rec.tradein_equipment_modality || rec.modality || "-")}</strong><br>
-                  Serial: <strong>${escapeHtml(rec.tradein_equipment_serial_number || rec.serial_number || "-")}</strong><br>
-                  DOM: <strong>${escapeHtml(rec.tradein_equipment_dom || rec.dom || "-")}</strong><br>
-                  External Trade-In Reference: <strong>${money(rec.external_tradein_value || 0)}</strong><br>
-                  Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
-                </div>
-                <label style="display:block;margin-top:12px;">Trade-In Reference</label>
-                <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
-                <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${rec.id}')">Save Trade-In Value</button>
-                <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${rec.id}')">Apply Trade-In Reference to Quote</button>
-              </div>
-            `
-            : ""
-        }
-
-                <div class="detail-card">
-          <div class="k">Financial Review</div>
-          <div class="v">
-            ${
-              quoteAmount
-                ? `
-                  <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
-                  <div class="mini" style="margin-top:6px;line-height:1.5;">
-                    Applied Trade-In Credit: -${money(tradeInCredit)}<br>
-                    Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
-                    Net Quote Amount: ${money(netQuote)}<br>
-                    Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
-                    Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
-                    Estimated Margin: ${margin}%
-                  </div>
-                  <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.</div>
-                `
-                : `
-                  <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
-                  <div class="mini" style="margin-top:6px;line-height:1.45;">This equipment review record is visible, but the rep has not entered quote details yet.</div>
-                `
-            }
-          </div>
-        </div>
-
-        ${renderQuoteApprovalActionPanel(rec)}
-        <div class="detail-card" style="border:1px solid rgba(0,229,255,.32);background:rgba(0,229,255,.07);">
-          <div class="k">Activity Timeline</div>
-          <div class="v" style="font-size:14px;line-height:1.45;">
-            <div class="timeline">${buildActivityTimeline(rec)}</div>
-            ${buildManagerEscalation(rec)}
-          </div>
-        </div>
-
-        <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
-          <div class="k">Rep / Manager Communication</div>
-          <div class="v" style="font-size:14px;line-height:1.5;">
-            ${
-              rec.manager_response_action
-                ? `
-                  <div style="color:#ffd84d;font-weight:900;font-size:16px;">Manager: ${escapeHtml(formatReviewText(rec.manager_response_action))}</div>
-                  ${rec.manager_response_date ? `<div class="mini" style="margin-top:8px;">Manager follow-up date: <strong>${escapeHtml(new Date(rec.manager_response_date).toLocaleDateString())}</strong></div>` : ""}
-                  ${rec.manager_response_notes ? `<div style="margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(255,216,77,.28);background:rgba(255,216,77,.08);color:#fff4cc;font-size:13px;line-height:1.45;"><strong>Manager Notes:</strong><br>${escapeHtml(rec.manager_response_notes)}</div>` : ""}
-                `
-                : `<span style="color:#9db6d2;">No manager response yet.</span>`
-            }
-            ${
-              rec.rep_manager_message_at
-                ? `
-                  <div style="margin-top:12px;padding:10px;border-radius:12px;border:1px solid rgba(65,255,156,.28);background:rgba(65,255,156,.08);color:#d8ffe9;font-size:13px;line-height:1.45;">
-                    <strong>Rep Reply:</strong> ${escapeHtml(formatReviewText(rec.rep_manager_message_action || "Message Sent"))}<br>
-                    ${rec.rep_manager_message_notes ? `${escapeHtml(rec.rep_manager_message_notes)}<br>` : ""}
-                    <span class="mini">Sent at: ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}</span>
-                  </div>
-                `
-                : ""
-            }
-            <div style="margin-top:14px;">
-              <label for="repOutcomeNotes">Notes / Message to Manager</label>
-              <textarea id="repOutcomeNotes" placeholder="Optional notes or message to Manager..."></textarea>
-            </div>
-          </div>
-        </div>
-      `;
-
-      $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
-
-      document.querySelector('button[onclick="confirmManualAction()"]').disabled = completed;
-$("manualActionSelect").disabled = completed;
-$("repOutcomeNotes").disabled = completed;
-$("repFollowUpDate").disabled = completed;
-}
-function getInstallBaseIssues(rec) {
-  const requestedFields = String(rec.install_base_issue_field || "")
-    .split(",")
-    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
-    .filter(Boolean);
-
-  const requestedMap = {
-    project: ["oem_project_id", "Project / Asset ID"],
-    make: ["make", "Make"],
-    model: ["model", "Model"],
-    modality: ["modality", "Modality"],
-    serial: ["serial_number", "Serial Number"],
-    dom: ["dom", "DOM / Year"],
-    site: ["site", "Facility"],
-    rep: ["assigned_rep_name", "Rep Owner"],
-    manager: ["manager_name", "Owner Group / Manager"]
-  };
-
-  if (requestedFields.length) {
-    return requestedFields
-      .map(field => requestedMap[field])
-      .filter(Boolean)
-      .filter(([field], index, list) => list.findIndex(([existing]) => existing === field) === index);
+  if (!selectedValue && !notes) {
+    alert("Select a quick message or type a note to Manager.");
+    return;
   }
 
-  const issues = [];
+  if (selectedValue === "custom_message" && !notes) {
+    alert("Type a custom message before sending.");
+    return;
+  }
 
-  if (!rec.serial_number) issues.push(["serial_number", "Serial Number"]);
-  if (!rec.dom) issues.push(["dom", "DOM / Year"]);
-  if (!rec.site) issues.push(["site", "Facility"]);
-  if (!rec.site_address) issues.push(["site_address", "Street Address"]);
-  if (!rec.modality) issues.push(["modality", "Modality"]);
-  if (!rec.make) issues.push(["make", "Make"]);
-  if (!rec.model) issues.push(["model", "Model"]);
+  const action = selectedValue || "custom_message";
 
-  return issues;
+  const selectedText =
+    selectedValue
+      ? quickMessageEl?.selectedOptions?.[0]?.textContent || "Custom Message"
+      : "Custom Message";
+
+  sendRepManagerMessage(action, selectedText, notes);
+}
+    function renderDetail() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+  const empty = $("emptyState");
+  const detail = $("detailArea");
+  const lifecycleDetailPanel = $("lifecycleDetailPanel");
+
+  if (!rec) {
+    lifecycleDetailPanel?.classList.add("hidden");
+    $("newProjectDetailArea")?.classList.add("hidden");
+    return;
+  }
+
+  if (rec.project_type === "new_project_record") {
+    lifecycleDetailPanel?.classList.add("hidden");
+    renderNewProjectDetail(rec);
+    return;
+  }
+
+  $("newProjectDetailArea")?.classList.add("hidden");
+  lifecycleDetailPanel?.classList.remove("hidden");
+
+  const completed = rec.lifecycle_completed === true;
+
+  empty?.classList.add("hidden");
+  detail?.classList.remove("hidden");
+
+  const manualActionSelect = $("manualActionSelect");
+  const savedManualAction = rec.rep_selected_manual_action || rec.rep_action || "";
+
+  if (manualActionSelect) {
+    const hasSavedManualAction = [...manualActionSelect.options].some(
+      option => option.value === savedManualAction
+    );
+
+    manualActionSelect.value = hasSavedManualAction ? savedManualAction : "";
+    manualActionSelect.classList.toggle("placeholder", !manualActionSelect.value);
+  }
+
+  const repFollowUpDateEl = $("repFollowUpDate");
+  if (repFollowUpDateEl) {
+    repFollowUpDateEl.value = rec.rep_follow_up_date || rec.next_action_date || "";
+  }
+
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const estimatedCost = Number(rec.quote_estimated_cost || 0);
+  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
+  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  const profit = netQuote - estimatedCost;
+  const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
+
+  $("detailGrid").innerHTML = `
+    <div class="detail-card">
+      <div class="k">Hospital</div>
+      <div class="v">${escapeHtml(rec.site || "")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Street Address</div>
+      <div class="v">${escapeHtml(rec.site_address || "")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Location</div>
+      <div class="v">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`)}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Hospital Contact</div>
+      <div class="v">${escapeHtml(rec.contact_name || "-")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Title</div>
+      <div class="v">${escapeHtml(rec.contact_title || "-")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Phone</div>
+      <div class="v">
+        ${
+          rec.contact_phone
+            ? `<a href="tel:${escapeHtml(rec.contact_phone.replace(/\D/g, ""))}" style="color:#43b0ff;">${escapeHtml(rec.contact_phone)}</a>`
+            : "-"
+        }
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">OEM Age Review Field</div>
+      <div class="v">${escapeHtml(rec.threshold_years || "Default")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Override</div>
+      <div class="v">${escapeHtml(rec.alert_override || "None")}</div>
+    </div>
+
+    <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);">
+      <div class="k">Communication with Manager</div>
+      <div class="v" style="font-size:14px;font-weight:600;color:#d8ebff;margin-bottom:10px;">
+        Send a quick note to Manager without leaving this record.
+      </div>
+
+      ${
+        rec.manager_response_action || rec.manager_response_notes || rec.manager_response_at
+          ? `
+            <div style="margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(255,216,77,.32);background:rgba(255,216,77,.08);color:#fff4cc;font-size:13px;line-height:1.45;">
+              <strong>Latest Manager Response:</strong><br>
+              ${
+                rec.manager_response_action
+                  ? `Action: ${escapeHtml(formatReviewText(rec.manager_response_action))}<br>`
+                  : ""
+              }
+              ${
+                rec.manager_response_notes
+                  ? `${escapeHtml(rec.manager_response_notes)}<br>`
+                  : ""
+              }
+              ${
+                rec.manager_response_date
+                  ? `Follow-up date: <strong>${escapeHtml(new Date(rec.manager_response_date).toLocaleDateString())}</strong><br>`
+                  : ""
+              }
+              ${
+                rec.manager_response_at
+                  ? `<span class="mini">${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}</span>`
+                  : ""
+              }
+            </div>
+          `
+          : `
+            <div style="margin-bottom:12px;color:#9db6d2;font-size:13px;">
+              No manager response yet.
+            </div>
+          `
+      }
+
+      ${
+        rec.rep_manager_message_at
+          ? `
+            <div style="margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(65,255,156,.32);background:rgba(65,255,156,.08);color:#d8ffe9;font-size:13px;line-height:1.45;">
+              <strong>Last Rep Message:</strong> ${escapeHtml(formatReviewText(rec.rep_manager_message_action || rec.rep_manager_message_label || "Message Sent"))}<br>
+              ${
+                rec.rep_manager_message_notes
+                  ? `${escapeHtml(rec.rep_manager_message_notes)}<br>`
+                  : ""
+              }
+              <span class="mini">Sent at: ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}</span>
+            </div>
+          `
+          : ""
+      }
+
+      <div class="row" style="margin-bottom:10px;">
+        <label for="repManagerQuickMessage">Quick Manager Message</label>
+        <select id="repManagerQuickMessage">
+          <option value="">Select quick message</option>
+          <option value="reviewed">Reviewed</option>
+          <option value="will_follow_up">Will follow up</option>
+          <option value="need_more_information">Need more information</option>
+          <option value="quote_updated">Quote updated</option>
+          <option value="customer_contacted">Customer contacted</option>
+          <option value="custom_message">Custom message</option>
+        </select>
+      </div>
+
+      <div class="row" style="margin-bottom:10px;">
+        <label for="repOutcomeNotes">Note to Manager</label>
+        <textarea id="repOutcomeNotes" placeholder="Type message to Manager..."></textarea>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="green" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
+      </div>
+    </div>
+
+    ${renderRawSignalDataCard(rec)}
+    ${renderInstallBaseCorrectionPanel(rec)}
+
+    ${
+      rec.tradein_sync_received
+        ? `
+          <div class="detail-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
+            <div class="k">Associated Trade-In Equipment</div>
+            <div class="v">${escapeHtml(rec.tradein_equipment_make || rec.make || "-")} ${escapeHtml(rec.tradein_equipment_model || rec.model || "")}</div>
+            <div class="mini" style="margin-top:8px;line-height:1.45;">
+              Modality: <strong>${escapeHtml(rec.tradein_equipment_modality || rec.modality || "-")}</strong><br>
+              Serial: <strong>${escapeHtml(rec.tradein_equipment_serial_number || rec.serial_number || "-")}</strong><br>
+              DOM: <strong>${escapeHtml(rec.tradein_equipment_dom || rec.dom || "-")}</strong><br>
+              External Trade-In Reference: <strong>${money(rec.external_tradein_value || 0)}</strong><br>
+              Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
+            </div>
+
+            <label style="display:block;margin-top:12px;">Trade-In Reference</label>
+            <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
+
+            <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${escapeJs(rec.id)}')">Save Trade-In Value</button>
+            <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${escapeJs(rec.id)}')">Apply Trade-In Reference to Quote</button>
+          </div>
+        `
+        : ""
+    }
+
+    <div class="detail-card">
+      <div class="k">Financial Review</div>
+      <div class="v">
+        ${
+          quoteAmount
+            ? `
+              <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
+              <div class="mini" style="margin-top:6px;line-height:1.5;">
+                Applied Trade-In Credit: -${money(tradeInCredit)}<br>
+                Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
+                Net Quote Amount: ${money(netQuote)}<br>
+                Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
+                Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
+                Estimated Margin: ${margin}%
+              </div>
+              <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+                Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.
+              </div>
+            `
+            : `
+              <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
+              <div class="mini" style="margin-top:6px;line-height:1.45;">
+                This equipment review record is visible, but the rep has not entered quote details yet.
+              </div>
+            `
+        }
+      </div>
+    </div>
+
+    ${renderQuoteApprovalActionPanel(rec)}
+
+    <div class="detail-card" style="border:1px solid rgba(0,229,255,.32);background:rgba(0,229,255,.07);">
+      <div class="k">Activity Timeline</div>
+      <div class="v" style="font-size:14px;line-height:1.45;">
+        <div class="timeline">${buildActivityTimeline(rec)}</div>
+        ${buildManagerEscalation(rec)}
+      </div>
+    </div>
+  `;
+
+  const repOutcomeNotesEl = $("repOutcomeNotes");
+  if (repOutcomeNotesEl) {
+    repOutcomeNotesEl.value = rec.rep_notes || rec.rep_manager_message_notes || "";
+  }
+
+  const payloadPreviewEl = $("payloadPreview");
+  if (payloadPreviewEl) {
+    payloadPreviewEl.textContent = JSON.stringify(payloadFor(rec), null, 2);
+  }
+
+  const continueBtn = document.querySelector('button[onclick="confirmManualAction()"]');
+  if (continueBtn) continueBtn.disabled = completed;
+
+  if ($("manualActionSelect")) $("manualActionSelect").disabled = completed;
+  if ($("repOutcomeNotes")) $("repOutcomeNotes").disabled = completed;
+  if ($("repManagerQuickMessage")) $("repManagerQuickMessage").disabled = completed;
+  if ($("repFollowUpDate")) $("repFollowUpDate").disabled = completed;
 }
 function needsInstallBaseCommunication(rec) {
   return Boolean(
