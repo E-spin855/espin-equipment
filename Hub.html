@@ -1595,12 +1595,16 @@ install_base_response_seen_at:
     });
 
     if (!found) {
+      const responseFrom = String(resp.install_base_response_from || "").toLowerCase();
+      const responseSource = responseFrom === "manager" ? "Manager Response" : "Rep Response";
+      const responseSourceSystem = responseFrom === "manager" ? "Manager Review Page" : "Rep Review Page";
+
       state.records.unshift({
         ...resp,
         id: resp.id || uuid(),
         key: respKey,
-        source: resp.source || "Rep Response",
-        source_system: resp.source_system || "Rep Review Page",
+        source: resp.source || responseSource,
+        source_system: resp.source_system || responseSourceSystem,
         install_base_response_seen: resp.install_base_response_seen === true,
         install_base_response_seen_at: resp.install_base_response_seen_at || ""
       });
@@ -2524,7 +2528,7 @@ function renderOwnerGroups() {
       <div class="owner-meta">${escapeHtml(g.email || "No owner email")}</div>
       <div class="owner-meta">Reps: ${escapeHtml(g.reps.join(", "))}</div>
       <div class="packet-pill">
-        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released${g.responses ? ` • ${g.responses} Rep Response` : ""}
+        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released${g.responses ? ` • ${g.responses} Review Response` : ""}
       </div>
     </div>
   `).join("") + `
@@ -2745,6 +2749,11 @@ function formatInstallBaseResponseStatus(value) {
 function renderRepResponseCard(rec) {
   if (!rec.install_base_response_at) return "";
 
+  const responseFrom = String(rec.install_base_response_from || "").toLowerCase();
+  const responseTitle = responseFrom === "manager"
+    ? "Manager Response from Review Page"
+    : "Rep Response from Review Page";
+
   const seen =
     rec.install_base_response_seen === true ||
     rec.install_base_fixed_seen_by_install_base === true;
@@ -2798,7 +2807,7 @@ const correctedFieldsHtml = Object.keys(correctedFieldsObj).length
       class="detail-card ${seen ? "" : "install-base-update-frame"}"
       ${clickHandler}
     >
-      <div class="k">Rep Response from Review Page</div>
+      <div class="k">${escapeHtml(responseTitle)}</div>
       <div class="v">${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
         Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
