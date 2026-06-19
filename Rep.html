@@ -4007,22 +4007,56 @@ ${renderInstallBaseCorrectionPanel(rec)}
         </div>
 
         <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
-          <div class="k">Manager Response</div>
+          <div class="k">Rep / Manager Communication</div>
           <div class="v" style="font-size:14px;line-height:1.5;">
             ${
               rec.manager_response_action
                 ? `
-                  <div style="color:#ffd84d;font-weight:900;font-size:16px;">${escapeHtml(rec.manager_response_action.replace(/_/g, " ").toUpperCase())}</div>
+                  <div style="color:#ffd84d;font-weight:900;font-size:16px;">Manager: ${escapeHtml(formatReviewText(rec.manager_response_action))}</div>
                   ${rec.manager_response_date ? `<div class="mini" style="margin-top:8px;">Manager follow-up date: <strong>${escapeHtml(new Date(rec.manager_response_date).toLocaleDateString())}</strong></div>` : ""}
                   ${rec.manager_response_notes ? `<div style="margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(255,216,77,.28);background:rgba(255,216,77,.08);color:#fff4cc;font-size:13px;line-height:1.45;"><strong>Manager Notes:</strong><br>${escapeHtml(rec.manager_response_notes)}</div>` : ""}
                 `
                 : `<span style="color:#9db6d2;">No manager response yet.</span>`
             }
+            ${
+              rec.rep_manager_message_at
+                ? `
+                  <div style="margin-top:12px;padding:10px;border-radius:12px;border:1px solid rgba(65,255,156,.28);background:rgba(65,255,156,.08);color:#d8ffe9;font-size:13px;line-height:1.45;">
+                    <strong>Rep Reply:</strong> ${escapeHtml(formatReviewText(rec.rep_manager_message_action || "Message Sent"))}<br>
+                    ${rec.rep_manager_message_notes ? `${escapeHtml(rec.rep_manager_message_notes)}<br>` : ""}
+                    <span class="mini">Sent at: ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}</span>
+                  </div>
+                `
+                : ""
+            }
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;">
+              <div>
+                <label for="repManagerMessageAction">Message to Manager</label>
+                <select id="repManagerMessageAction">
+                  <option value="">Select message</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="will_follow_up">Will Follow Up</option>
+                  <option value="need_more_information">Need More Information</option>
+                  <option value="quote_updated">Quote Updated</option>
+                  <option value="customer_contacted">Customer Contacted</option>
+                  <option value="custom_message">Custom Message</option>
+                </select>
+              </div>
+              <div>
+                <label for="repManagerMessageNotes">Text to Manager</label>
+                <textarea id="repManagerMessageNotes" placeholder="Type message to Manager..."></textarea>
+              </div>
+            </div>
+            <button type="button" class="green" style="margin-top:10px;" onclick="sendRepManagerMessage()">Send Message to Manager</button>
           </div>
         </div>
       `;
 
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
+      const repManagerAction = $("repManagerMessageAction");
+      const repManagerNotes = $("repManagerMessageNotes");
+      if (repManagerAction) repManagerAction.value = rec.rep_manager_message_action || "";
+      if (repManagerNotes) repManagerNotes.value = rec.rep_manager_message_notes || "";
 
       document.querySelector('button[onclick="confirmManualAction()"]').disabled = completed;
 $("manualActionSelect").disabled = completed;
@@ -5316,10 +5350,66 @@ rec.manager_flash_text = `Rep selected: ${label}`;
         return;
       }
 
-      showBanner(`✅ Action recorded: ${label}`);
-    }
+	      showBanner(`✅ Action recorded: ${label}`);
+	    }
 
-    function completeLifecycleProject() {
+	    function sendRepManagerMessage() {
+	      const rec = state.records.find(r => String(r.id || "") === String(state.selectedId || ""));
+
+	      if (!rec) {
+	        alert("Open a record first");
+	        return;
+	      }
+
+	      const action = $("repManagerMessageAction")?.value || "";
+	      const notes = $("repManagerMessageNotes")?.value?.trim() || "";
+
+	      if (!action && !notes) {
+	        alert("Select a message or type a note to Manager");
+	        return;
+	      }
+
+	      const now = new Date().toISOString();
+	      const label = action
+	        ? ($("repManagerMessageAction")?.selectedOptions?.[0]?.textContent || formatReviewText(action))
+	        : "Custom Message";
+
+	      const updated = {
+	        ...rec,
+	        rep_manager_message_action: action || "custom_message",
+	        rep_manager_message_label: label,
+	        rep_manager_message_notes: notes,
+	        rep_manager_message_at: now,
+	        rep_manager_message_by:
+	          `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+	          rec.assigned_rep_name ||
+	          "Rep",
+
+	        rep_last_action_at: now,
+
+	        manager_unseen_update: true,
+	        manager_alert_seen: false,
+	        manager_update_seen_at: "",
+	        manager_flash_at: now,
+	        manager_flash_type: "rep_message",
+	        manager_flash_text: notes || label,
+
+	        rep_visible: true
+	      };
+
+	      state.records = state.records.map(item =>
+	        String(item.id || "") === String(updated.id || "") ||
+	        (updated.key && String(item.key || "") === String(updated.key || ""))
+	          ? updated
+	          : item
+	      );
+
+	      syncFeedStatus(updated);
+	      render();
+	      showBanner("✅ Message sent to Manager");
+	    }
+
+	    function completeLifecycleProject() {
   const rec = state.records.find(r => String(r.id) === String(state.selectedId));
 
   if (!rec) {

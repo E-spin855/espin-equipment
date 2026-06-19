@@ -2822,6 +2822,67 @@ function renderDetail() {
       <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}</div>
     </div>
 
+    <div class="section-title yellow">Rep / Manager Communication</div>
+
+    <div class="manager-response-panel">
+      ${
+        rec.rep_manager_message_at
+          ? `
+            <div class="manager-response-saved" style="margin-bottom:12px;">
+              <strong>Latest Rep Message:</strong> ${escapeHtml(formatReviewText(rec.rep_manager_message_action || "Message Sent"))}<br>
+              ${rec.rep_manager_message_notes ? `<strong>Rep Note:</strong> ${escapeHtml(rec.rep_manager_message_notes)}<br>` : ""}
+              ${rec.rep_manager_message_at ? `<strong>Sent At:</strong> ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}` : ""}
+            </div>
+          `
+          : `
+            <div class="mini" style="margin-bottom:12px;">No rep message on this row yet.</div>
+          `
+      }
+
+      <div class="manager-response-grid">
+        <div>
+          <label for="managerResponseAction">Message to Rep</label>
+          <select id="managerResponseAction">
+            <option value="">Select message</option>
+            <option value="manager_reviewed">Reviewed</option>
+            <option value="needs_follow_up">Needs Follow-Up</option>
+            <option value="needs_rep_update">Needs Rep Update</option>
+            <option value="quote_review_needed">Quote Review Needed</option>
+            <option value="tradein_review_needed">Trade-In Review Needed</option>
+            <option value="project_review_needed">Project Review Needed</option>
+            <option value="close_out">Close Out</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="managerResponseDate">Follow-Up Date</label>
+          <input id="managerResponseDate" type="date" />
+        </div>
+
+        <div>
+          <label for="managerResponseNotes">Text to Rep</label>
+          <textarea id="managerResponseNotes" placeholder="Type message to Rep..."></textarea>
+        </div>
+
+        <div>
+          <button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button>
+        </div>
+      </div>
+
+      ${
+        rec.manager_response_action
+          ? `
+            <div class="manager-response-saved">
+              <strong>Latest Manager Message:</strong> ${escapeHtml(formatReviewText(rec.manager_response_action))}<br>
+              ${rec.manager_response_date ? `<strong>Follow-Up Date:</strong> ${escapeHtml(rec.manager_response_date)}<br>` : ""}
+              ${rec.manager_response_notes ? `<strong>Manager Text:</strong> ${escapeHtml(rec.manager_response_notes)}<br>` : ""}
+              ${rec.manager_response_at ? `<strong>Sent At:</strong> ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}` : ""}
+            </div>
+          `
+          : ""
+      }
+    </div>
+
     <div class="section-title yellow">Quote / Trade-In Visibility</div>
 
     <div class="detail-card">
@@ -2859,52 +2920,6 @@ function renderDetail() {
       <div class="v">${renderActivityTimeline(rec)}</div>
     </div>
 
-    <div class="section-title yellow">Manager Manual Response</div>
-
-    <div class="manager-response-panel">
-      <div class="manager-response-grid">
-        <div>
-          <label for="managerResponseAction">Manager Response</label>
-          <select id="managerResponseAction">
-            <option value="">Select response</option>
-            <option value="manager_reviewed">Reviewed</option>
-            <option value="needs_follow_up">Needs Follow-Up</option>
-            <option value="needs_rep_update">Needs Rep Update</option>
-            <option value="quote_review_needed">Quote Review Needed</option>
-            <option value="tradein_review_needed">Trade-In Review Needed</option>
-            <option value="project_review_needed">Project Review Needed</option>
-            <option value="close_out">Close Out</option>
-          </select>
-        </div>
-
-        <div>
-          <label for="managerResponseDate">Follow-Up Date</label>
-          <input id="managerResponseDate" type="date" />
-        </div>
-
-        <div>
-          <label for="managerResponseNotes">Manager Notes</label>
-          <textarea id="managerResponseNotes" placeholder="Optional manager notes..."></textarea>
-        </div>
-
-        <div>
-          <button type="button" class="green" onclick="saveManagerResponse()">Save Response</button>
-        </div>
-      </div>
-
-      ${
-        rec.manager_response_action
-          ? `
-            <div class="manager-response-saved">
-              <strong>Saved Manager Response:</strong> ${escapeHtml(formatReviewText(rec.manager_response_action))}<br>
-              ${rec.manager_response_date ? `<strong>Follow-Up Date:</strong> ${escapeHtml(rec.manager_response_date)}<br>` : ""}
-              ${rec.manager_response_notes ? `<strong>Notes:</strong> ${escapeHtml(rec.manager_response_notes)}<br>` : ""}
-              ${rec.manager_response_at ? `<strong>Saved At:</strong> ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}` : ""}
-            </div>
-          `
-          : ""
-      }
-    </div>
   `;
 
   const action = $("managerResponseAction");
@@ -2999,14 +3014,14 @@ function saveManagerResponse() {
   const responseDate = $("managerResponseDate")?.value || "";
   const responseNotes = $("managerResponseNotes")?.value || "";
 
-  if (!responseAction) {
-    alert("Select manager response");
+  if (!responseAction && !responseNotes.trim()) {
+    alert("Select a message or type a note to Rep");
     return;
   }
 
   const updated = {
     ...rec,
-    manager_response_action: responseAction,
+    manager_response_action: responseAction || "custom_message",
     manager_response_date: responseDate,
     manager_response_notes: responseNotes,
     manager_response_at: new Date().toISOString(),
