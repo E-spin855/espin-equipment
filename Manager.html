@@ -661,7 +661,7 @@ tr.manager-row-flash td{
       border-radius:16px;
       border:1px solid rgba(255,216,77,.42);
       background:rgba(255,216,77,.08);
-      margin-bottom:260px;
+      margin-bottom:0;
     }
 
     .manager-response-grid{
@@ -684,6 +684,16 @@ tr.manager-row-flash td{
       color:#b8ffd7;
       font-size:13px;
       line-height:1.45;
+    }
+
+    .timeline-update-highlight{
+      border:2px solid rgba(65,255,156,.88)!important;
+      background:
+        radial-gradient(circle at top left, rgba(65,255,156,.22), transparent 34%),
+        rgba(8,18,35,.72)!important;
+      box-shadow:
+        0 0 0 1px rgba(65,255,156,.20),
+        0 0 24px rgba(65,255,156,.22)!important;
     }
 
     .banner{
@@ -943,7 +953,8 @@ const MANAGER_NAME =
 const state = {
   records: [],
   selectedId: null,
-  selectedRep: null
+  selectedRep: null,
+  timelineHighlight: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -2159,20 +2170,43 @@ function findSelectedRecord() {
 
 function renderActivityTimeline(rec) {
   const items = [];
+  const highlight =
+    state.timelineHighlight &&
+    (
+      String(state.timelineHighlight.recordId || "") === String(rec.id || "") ||
+      String(state.timelineHighlight.recordId || "") === String(rec.key || "") ||
+      String(state.timelineHighlight.recordId || "") === String(getRecordKey(rec) || "")
+    );
 
-  if (rec.assigned_at) items.push({ date: rec.assigned_at, label: "Record loaded into manager workspace" });
+  if (rec.assigned_at) items.push({ key: "assigned", date: rec.assigned_at, label: "Record loaded into manager workspace" });
 
   const alert = getAlerts(rec)[0];
 
-  if (alert) items.push({ date: rec.oem_review_date || rec.review_date || "Current", label: `OEM review note visible: ${formatReviewText(alert.displayType || alert.label)}` });
+  if (alert) items.push({ key: "oem_review", date: rec.oem_review_date || rec.review_date || "Current", label: `OEM review note visible: ${formatReviewText(alert.displayType || alert.label)}` });
 
-  if (rec.tradein_sync_received) items.push({ date: rec.tradein_synced_to_axis_at || rec.external_tradein_received_at || "Current", label: "Trade-In details synced back to AXIS" });
-  if (rec.quote_created_at) items.push({ date: rec.quote_created_at, label: "Rep created quote review record" });
-  if (rec.quote_updated_at) items.push({ date: rec.quote_updated_at, label: "Rep updated quote review record" });
-  if (getFollowUpDate(rec)) items.push({ date: getFollowUpDate(rec), label: "Rep follow-up date set" });
-  if (rec.rep_last_action_at) items.push({ date: rec.rep_last_action_at, label: `Rep action: ${getRepActionLabel(rec.rep_action)}` });
-  if (rec.manager_response_at) items.push({ date: rec.manager_response_at, label: `Manager response: ${formatReviewText(rec.manager_response_action)}` });
-  if (rec.lifecycle_completed) items.push({ date: rec.completed_at || "Completed", label: "Project completed" });
+  if (rec.tradein_sync_received) items.push({ key: "tradein", date: rec.tradein_synced_to_axis_at || rec.external_tradein_received_at || "Current", label: "Trade-In details synced back to AXIS" });
+  if (rec.quote_created_at) items.push({ key: "quote_created", date: rec.quote_created_at, label: "Rep created quote review record" });
+  if (rec.quote_updated_at) items.push({ key: "quote_updated", date: rec.quote_updated_at, label: "Rep updated quote review record" });
+  if (getFollowUpDate(rec)) items.push({ key: "follow_up", date: getFollowUpDate(rec), label: "Rep follow-up date set" });
+  if (rec.rep_last_action_at) items.push({ key: "rep_action", date: rec.rep_last_action_at, label: `Rep action: ${getRepActionLabel(rec.rep_action)}` });
+  if (rec.rep_manager_message_at) items.push({ key: "rep_message", date: rec.rep_manager_message_at, label: `Rep message: ${formatReviewText(rec.rep_manager_message_action || "Message Sent")}` });
+  if (rec.manager_response_at) items.push({ key: "manager_response", date: rec.manager_response_at, label: `Manager response: ${formatReviewText(rec.manager_response_action)}` });
+  if (rec.lifecycle_completed) items.push({ key: "completed", date: rec.completed_at || "Completed", label: "Project completed" });
+
+  if (highlight && state.timelineHighlight.label) {
+    const exists = items.some(item =>
+      String(item.date || "") === String(state.timelineHighlight.date || "") &&
+      String(item.label || "") === String(state.timelineHighlight.label || "")
+    );
+
+    if (!exists) {
+      items.unshift({
+        key: "new_update",
+        date: state.timelineHighlight.date || "Current",
+        label: state.timelineHighlight.label
+      });
+    }
+  }
 
   if (!items.length) {
     return `<div class="mini">No activity logged yet.</div>`;
@@ -2186,8 +2220,18 @@ function renderActivityTimeline(rec) {
       displayDate = isNaN(d.getTime()) ? item.date : d.toLocaleString();
     }
 
+    const highlighted =
+      highlight &&
+      (
+        item.key === state.timelineHighlight.key ||
+        (
+          String(item.date || "") === String(state.timelineHighlight.date || "") &&
+          String(item.label || "") === String(state.timelineHighlight.label || "")
+        )
+      );
+
     return `
-      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(88,184,255,.22);background:rgba(8,18,35,.62);margin-bottom:8px;">
+      <div class="${highlighted ? "timeline-update-highlight" : ""}" style="padding:10px 12px;border-radius:12px;border:1px solid rgba(88,184,255,.22);background:rgba(8,18,35,.62);margin-bottom:8px;">
         <div style="color:#a2f5ff;font-size:12px;font-weight:900;margin-bottom:4px;">${escapeHtml(displayDate)}</div>
         <div>${escapeHtml(item.label)}</div>
       </div>
@@ -2817,14 +2861,14 @@ function renderDetail() {
       }
     </div>
 
-    <div class="detail-card full">
-      <div class="k">Rep Notes</div>
-      <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}</div>
-    </div>
-
     <div class="section-title yellow">Rep / Manager Communication</div>
 
     <div class="manager-response-panel">
+      <div class="manager-response-saved" style="margin-top:0;margin-bottom:12px;">
+        <strong>Rep Notes:</strong><br>
+        ${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}
+      </div>
+
       ${
         rec.rep_manager_message_at
           ? `
@@ -2883,6 +2927,13 @@ function renderDetail() {
       }
     </div>
 
+    <div class="section-title blue">Activity Timeline</div>
+
+    <div class="detail-card full">
+      <div class="k">Timeline</div>
+      <div class="v">${renderActivityTimeline(rec)}</div>
+    </div>
+
     <div class="section-title yellow">Quote / Trade-In Visibility</div>
 
     <div class="detail-card">
@@ -2911,13 +2962,6 @@ function renderDetail() {
       <div class="mini" style="margin-top:8px;line-height:1.45;color:#d9c98a;">
         Quote figures are shown from rep-entered fields. AXIS does not determine pricing, value, profitability, margin, discount, approval, or customer release.
       </div>
-    </div>
-
-    <div class="section-title blue">Activity Timeline</div>
-
-    <div class="detail-card full">
-      <div class="k">Timeline</div>
-      <div class="v">${renderActivityTimeline(rec)}</div>
     </div>
 
   `;
@@ -3099,6 +3143,39 @@ function managerSelectionNeedsSync(rec) {
   );
 }
 
+function getTimelineHighlightForRecord(rec) {
+  if (!rec) return null;
+
+  if (rec.manager_unseen_update !== true && !rec.manager_flash_at && !isManagerRepFixUnseen(rec)) {
+    return null;
+  }
+
+  if (rec.rep_manager_message_at) {
+    return {
+      recordId: rec.id || rec.key || getRecordKey(rec),
+      key: "rep_message",
+      date: rec.rep_manager_message_at,
+      label: `Rep message: ${formatReviewText(rec.rep_manager_message_action || "Message Sent")}`
+    };
+  }
+
+  if (rec.rep_last_action_at) {
+    return {
+      recordId: rec.id || rec.key || getRecordKey(rec),
+      key: "rep_action",
+      date: rec.rep_last_action_at,
+      label: `Rep action: ${getRepActionLabel(rec.rep_action)}`
+    };
+  }
+
+  return {
+    recordId: rec.id || rec.key || getRecordKey(rec),
+    key: "new_update",
+    date: rec.manager_flash_at || rec.manager_update_seen_at || "Current",
+    label: rec.manager_flash_text || getUpdateLabel(rec) || "New rep update"
+  };
+}
+
 function selectRow(id) {
   const selectedId = clean(id);
   if (!selectedId) return;
@@ -3115,6 +3192,7 @@ function selectRow(id) {
 
   const now = new Date().toISOString();
   const selectionChanged = String(state.selectedId || "") !== String(rec.id || selectedId);
+  state.timelineHighlight = getTimelineHighlightForRecord(rec);
 
   const updated = {
     ...rec,
@@ -3626,9 +3704,19 @@ if (tableBody) {
     if (!row || !tableBody.contains(row)) return;
 
     selectRow(row.dataset.recordId);
+	  });
+	}
+
+  document.addEventListener("click", function(e) {
+    if (!state.timelineHighlight) return;
+    if (e.target.closest("#tableBody")) return;
+    if (e.target.closest(".timeline-update-highlight")) return;
+
+    state.timelineHighlight = null;
+    renderDetail();
   });
-}
-  const csvInput = $("csvInput");
+
+	  const csvInput = $("csvInput");
   if (csvInput) {
     csvInput.addEventListener("change", (e) => {
       const file = e.target.files?.[0];
