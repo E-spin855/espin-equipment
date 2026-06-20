@@ -1205,6 +1205,72 @@ tr.rep-new-row-flash td{
 .detail-card{
   min-height:0!important;
 }
+.rep-action-split{
+  display:grid;
+  grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);
+  gap:16px;
+  align-items:start;
+}
+
+.rep-action-left,
+.rep-action-history{
+  min-width:0;
+}
+
+.rep-action-history{
+  padding:14px;
+  border-radius:14px;
+  border:1px solid rgba(88,184,255,.18);
+  background:rgba(8,18,35,.56);
+}
+
+.rep-action-history-title{
+  margin-bottom:10px;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:#8fb1cf;
+  font-weight:900;
+}
+
+.rep-mini-timeline{
+  display:grid;
+  gap:9px;
+}
+
+.rep-mini-timeline-item{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.16);
+  background:rgba(7,17,31,.72);
+}
+
+.rep-mini-timeline-date{
+  color:#a2f5ff;
+  font-size:12px;
+  font-weight:900;
+  margin-bottom:4px;
+}
+
+.rep-mini-timeline-text{
+  color:#eef6ff;
+  font-size:13px;
+  font-weight:800;
+  line-height:1.35;
+}
+
+.rep-mini-timeline-note{
+  margin-top:4px;
+  color:#9db6d2;
+  font-size:12px;
+  line-height:1.35;
+}
+
+@media(max-width:900px){
+  .rep-action-split{
+    grid-template-columns:1fr;
+  }
+}
   </style>
 </head>
 
@@ -3635,24 +3701,83 @@ return `
   </div>
 `;
 }
-    function buildActivityTimeline(rec) {
+   function buildActivityTimeline(rec) {
   return "";
 }
-    function buildManagerEscalation(rec) {
-      if (!isQuoteFollowUpOverdue(rec)) return "";
 
-      const daysLate = Math.abs(getDaysUntil(rec.quote_follow_up_alert_date));
+function formatTimelineDate(value) {
+  if (!value) return "Current";
 
-      return `
-        <div class="escalation-box">
-          <strong style="color:#ff6b6b;">Manager Visibility Alert</strong>
-          <br>
-          Quote follow-up missed by <strong>${daysLate}</strong> day(s).
-          <br>
-          Manager visibility is shown because the rep-entered quote follow-up date has passed.
+  const d = new Date(value);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString();
+  }
+
+  return String(value);
+}
+
+function buildRepMiniTimeline(rec) {
+  const items = [];
+
+  if (rec.manager_response_at || rec.manager_response_notes || rec.manager_response_action) {
+    items.push({
+      date: rec.manager_response_at || rec.manager_response_date || "Manager",
+      title: "Manager response",
+      note: rec.manager_response_notes || formatReviewText(rec.manager_response_action || "")
+    });
+  }
+
+  if (rec.rep_manager_message_at || rec.rep_manager_message_notes || rec.rep_manager_message_label) {
+    items.push({
+      date: rec.rep_manager_message_at || "Rep",
+      title: "Rep message to Manager",
+      note: rec.rep_manager_message_notes || formatReviewText(rec.rep_manager_message_label || rec.rep_manager_message_action || "")
+    });
+  }
+
+  if (rec.rep_follow_up_date) {
+    items.push({
+      date: rec.rep_follow_up_date,
+      title: "Rep follow-up scheduled",
+      note: rec.rep_notes || ""
+    });
+  }
+
+  if (rec.rep_last_action_at || rec.rep_action_label || rec.rep_selected_manual_action_label) {
+    items.push({
+      date: rec.rep_last_action_at || rec.rep_selected_action_at || "Current",
+      title: rec.rep_action_label || rec.rep_selected_manual_action_label || rec.rep_selected_action_label || "Rep action recorded",
+      note: rec.rep_notes || ""
+    });
+  }
+
+  if (!items.length) {
+    return `
+      <div class="rep-mini-timeline">
+        <div class="rep-mini-timeline-item">
+          <div class="rep-mini-timeline-date">Current</div>
+          <div class="rep-mini-timeline-text">No rep / manager activity yet.</div>
         </div>
-      `;
-    }
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rep-mini-timeline">
+      ${items.slice(0, 4).map(item => `
+        <div class="rep-mini-timeline-item">
+          <div class="rep-mini-timeline-date">${escapeHtml(formatTimelineDate(item.date))}</div>
+          <div class="rep-mini-timeline-text">${escapeHtml(item.title || "")}</div>
+          ${
+            item.note
+              ? `<div class="rep-mini-timeline-note">${escapeHtml(item.note)}</div>`
+              : ""
+          }
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
 function renderQuoteApprovalActionPanel(rec) {
   if (!rec || !rec.quote_amount) {
     return `
@@ -4207,102 +4332,61 @@ function sendQuickRepManagerMessage() {
       <div class="v">${escapeHtml(rec.alert_override || "None")}</div>
     </div>
 
-   <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);">
+  <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);">
   <div class="k">Rep Action / Manager Communication</div>
-  <div class="v" style="font-size:14px;font-weight:600;color:#d8ebff;margin-bottom:12px;">
-    Select the rep action, add notes, and message Manager from one place.
-  </div>
 
-  <div class="row" style="margin-bottom:10px;">
-    <label for="manualActionSelect">Rep Action</label>
-    <select id="manualActionSelect" class="placeholder">
-      <option value="">Select Action</option>
-      <option value="quote_review">Prepare Quote Review</option>
-      <option value="submit_quote_approval">Submit Quote for Approval</option>
-      <option value="open_email_draft">Open Approved Email Draft</option>
-      <option value="send_tradein_app">Send to Trade-In App</option>
-      <option value="send_disposal_review">Send to Disposal Review</option>
-      <option value="contact_customer">Contact Customer</option>
-      <option value="schedule_follow_up">Schedule Follow-Up</option>
-      <option value="message_manager_reviewed">Message Manager: Reviewed</option>
-      <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
-      <option value="message_manager_more_info">Message Manager: Need More Information</option>
-      <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
-      <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
-      <option value="message_manager_custom">Message Manager: Custom Message</option>
-      <option value="add_note">Add Note</option>
-      <option value="mark_reviewed">Mark Reviewed</option>
-      <option value="complete">Complete Project</option>
-      <option value="remove">Remove From My View</option>
-    </select>
-  </div>
+  <div class="rep-action-split">
+    <div class="rep-action-left">
+      <div class="v" style="font-size:14px;font-weight:600;color:#d8ebff;margin-bottom:12px;">
+        Select the rep action, add notes, and message Manager from one place.
+      </div>
 
-  <div class="row" style="max-width:320px;margin-bottom:10px;">
-    <label for="repFollowUpDate">Follow-Up Date</label>
-    <input id="repFollowUpDate" type="date" />
-  </div>
+      <div class="row" style="margin-bottom:10px;">
+        <label for="manualActionSelect">Rep Action</label>
+        <select id="manualActionSelect" class="placeholder">
+          <option value="">Select Action</option>
+          <option value="quote_review">Prepare Quote Review</option>
+          <option value="submit_quote_approval">Submit Quote for Approval</option>
+          <option value="open_email_draft">Open Approved Email Draft</option>
+          <option value="send_tradein_app">Send to Trade-In App</option>
+          <option value="send_disposal_review">Send to Disposal Review</option>
+          <option value="contact_customer">Contact Customer</option>
+          <option value="schedule_follow_up">Schedule Follow-Up</option>
+          <option value="message_manager_reviewed">Message Manager: Reviewed</option>
+          <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
+          <option value="message_manager_more_info">Message Manager: Need More Information</option>
+          <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
+          <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
+          <option value="message_manager_custom">Message Manager: Custom Message</option>
+          <option value="add_note">Add Note</option>
+          <option value="mark_reviewed">Mark Reviewed</option>
+          <option value="complete">Complete Project</option>
+          <option value="remove">Remove From My View</option>
+        </select>
+      </div>
 
-  ${
-    rec.manager_response_action || rec.manager_response_notes || rec.manager_response_at
-      ? `
-        <div class="manager-response-card">
-          <div class="manager-response-title">Latest Manager Response</div>
-          <div class="manager-response-body">
-          ${
-            rec.manager_response_action
-              ? `<div class="manager-response-action">${escapeHtml(formatReviewText(rec.manager_response_action))}</div>`
-              : ""
-          }
-          ${
-            rec.manager_response_notes
-              ? `<div class="manager-response-notes">${escapeHtml(rec.manager_response_notes)}</div>`
-              : ""
-          }
-          ${
-            rec.manager_response_date
-              ? `<div class="manager-response-date">Follow-up date: ${escapeHtml(new Date(rec.manager_response_date).toLocaleDateString())}</div>`
-              : ""
-          }
-          ${
-            rec.manager_response_at
-              ? `<span class="mini">${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}</span>`
-              : ""
-          }
-          </div>
-        </div>
-      `
-      : `
-        <div style="margin-bottom:12px;color:#9db6d2;font-size:13px;">
-          No manager response yet.
-        </div>
-      `
-  }
+      <div class="row" style="max-width:320px;margin-bottom:10px;">
+        <label for="repFollowUpDate">Follow-Up Date</label>
+        <input id="repFollowUpDate" type="date" value="${escapeHtml(rec.rep_follow_up_date || "")}" />
+      </div>
 
-  ${
-    rec.rep_manager_message_at
-      ? `
-        <div style="margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(65,255,156,.32);background:rgba(65,255,156,.08);color:#d8ffe9;font-size:13px;line-height:1.45;">
-          <strong>Last Rep Message:</strong> ${escapeHtml(formatReviewText(rec.rep_manager_message_action || rec.rep_manager_message_label || "Message Sent"))}<br>
-          ${
-            rec.rep_manager_message_notes
-              ? `${escapeHtml(rec.rep_manager_message_notes)}<br>`
-              : ""
-          }
-          <span class="mini">Sent at: ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}</span>
-        </div>
-      `
-      : ""
-  }
-  <div class="row" style="margin-bottom:10px;">
-    <label for="repOutcomeNotes">Notes / Message to Manager</label>
-    <textarea id="repOutcomeNotes" placeholder="Type rep notes or message to Manager..."></textarea>
-  </div>
+      <div class="row" style="margin-bottom:10px;">
+        <label for="repOutcomeNotes">Notes / Message to Manager</label>
+        <textarea id="repOutcomeNotes" placeholder="Type rep notes or message to Manager...">${escapeHtml(rec.rep_notes || "")}</textarea>
+      </div>
 
-  <div class="btns">
-    <button type="button" class="green" onclick="confirmManualAction()">Continue Rep Action</button>
-    <button type="button" class="secondary" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
-  </div>
+      <div class="btns">
+        <button type="button" class="green" onclick="confirmManualAction()">Continue Rep Action</button>
+        <button type="button" class="secondary" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
+      </div>
     </div>
+
+    <div class="rep-action-history">
+      <div class="rep-action-history-title">Activity / Manager History</div>
+      ${buildRepMiniTimeline(rec)}
+    </div>
+  </div>
+</div>
 
     ${renderRawSignalDataCard(rec)}
     ${renderInstallBaseCorrectionPanel(rec)}
