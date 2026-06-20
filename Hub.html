@@ -939,6 +939,10 @@ function isAutoSyncEligible(rec) {
     rec.install_base_action_reason ||
     rec.install_base_issue_note ||
     rec.conflict_notes ||
+    rec.source_notes ||
+    rec.source_conflict_notes ||
+    rec.source_conflict ||
+    rec.conflict ||
     ""
   ));
 
@@ -967,6 +971,11 @@ function formatManualRouteTarget(value) {
 }
 
 function formatInstallBaseClarificationReason(rec) {
+  if (hasSourceConflict(rec)) {
+    const conflictReason = getSourceConflictReason(rec);
+    if (conflictReason) return conflictReason;
+  }
+
   const reason = clean(
     rec.axis_clarification_reason ||
     rec.install_base_clarification_reason ||
@@ -1000,11 +1009,46 @@ function isSourceConflictReviewLabel(value) {
   );
 }
 
+function hasSourceConflict(rec) {
+  return (
+    isSourceConflictReviewLabel(formatInstallBaseReviewLabel(rec)) ||
+    lower(rec.source_conflict) === "yes" ||
+    lower(rec.conflict) === "yes" ||
+    lower(rec.install_base_issue_type || "").includes("mismatch") ||
+    lower(rec.install_base_issue_type || "").includes("conflict") ||
+    Boolean(clean(rec.conflict_notes || rec.source_notes || rec.source_conflict_notes || ""))
+  );
+}
+
+function getSourceConflictReason(rec) {
+  const directReason = clean(
+    rec.conflict_notes ||
+    rec.source_conflict_notes ||
+    rec.source_notes ||
+    ""
+  );
+
+  if (directReason) return directReason;
+
+  const sourceConflictText = clean(rec.source_conflict);
+  if (sourceConflictText && !["yes", "true", "1"].includes(lower(sourceConflictText))) {
+    return sourceConflictText;
+  }
+
+  return clean(
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    "Source conflict requires review before normal sync."
+  );
+}
+
 function formatMergedInstallBaseClarificationReason(rec) {
-  const label = formatInstallBaseReviewLabel(rec);
   const reason = formatInstallBaseClarificationReason(rec);
 
-  if (isSourceConflictReviewLabel(label)) {
+  if (hasSourceConflict(rec)) {
     if (lower(reason).includes("conflict noted")) return reason;
     return `Conflict noted: ${reason}`;
   }
@@ -1013,7 +1057,7 @@ function formatMergedInstallBaseClarificationReason(rec) {
 }
 
 function shouldShowInstallBaseReviewLabel(rec) {
-  return !isSourceConflictReviewLabel(formatInstallBaseReviewLabel(rec));
+  return !hasSourceConflict(rec);
 }
 
 function formatInstallBaseReviewLabel(rec) {
