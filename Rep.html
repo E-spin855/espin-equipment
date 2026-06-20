@@ -1878,6 +1878,14 @@ trade_in_signal: "Review",
     source: "OEM-imported review field"
   }];
 }
+function formatStatusText(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 function formatReviewText(value) {
   const raw = String(value || "").trim();
   const v = raw.toLowerCase();
@@ -3628,42 +3636,8 @@ return `
 `;
 }
     function buildActivityTimeline(rec) {
-      const items = [];
-
-      if (rec.project_type === "new_project_record") {
-        items.push({ date: rec.new_project_created_at || "Current", label: "New AXIS project created" });
-      } else {
-        const initialLabel = getAlerts(rec)[0]?.label || "Normal";
-       items.push({
-  date: rec.assigned_at || rec.quote_created_at || rec.rep_last_action_at || "Current",
-  label: `OEM review note visible: ${formatReviewText(initialLabel)}`
-});
-      }
-
-      if (rec.tradein_sync_received) items.push({ date: rec.tradein_synced_to_axis_at || rec.tradein_last_update_at || "Current", label: "Trade-In details synced back to AXIS" });
-      if (rec.image_sync_received) items.push({ date: rec.last_image_update_at || "Current", label: `${Number(rec.image_count || rec.images?.length || 0)} trade-in image(s) synced back to AXIS` });
-      if (rec.quote_created_at) items.push({ date: rec.quote_created_at, label: "Quote Follow-Up Review" });
-      if (rec.quote_follow_up_alert_date) items.push({ date: rec.quote_follow_up_alert_date, label: "Quote follow-up alert scheduled" });
-      if (rec.rep_follow_up_date || rec.next_action_date) items.push({ date: rec.rep_follow_up_date || rec.next_action_date, label: "Rep follow-up scheduled" });
-      if (rec.rep_last_action_at) items.push({ date: rec.rep_last_action_at, label: "Rep action updated" });
-      if (rec.lifecycle_completed) items.push({ date: rec.completed_at || "Completed", label: "Project completed" });
-
-      return items.map(item => {
-        let displayDate = item.date;
-        if (item.date && item.date !== "Current" && item.date !== "Completed") {
-          const d = new Date(item.date);
-          displayDate = isNaN(d.getTime()) ? item.date : d.toLocaleDateString();
-        }
-
-        return `
-          <div class="timeline-item">
-            <div class="timeline-date">${escapeHtml(displayDate)}</div>
-            <div>${escapeHtml(item.label)}</div>
-          </div>
-        `;
-      }).join("");
-    }
-
+  return "";
+}
     function buildManagerEscalation(rec) {
       if (!isQuoteFollowUpOverdue(rec)) return "";
 
@@ -4818,7 +4792,7 @@ ${renderQuoteApprovalActionPanel(rec)}
 
         <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
           <div class="k">Project Outcome</div>
-          <div class="v" style="margin-bottom:12px;">${escapeHtml((rec.quote_status || "open").toUpperCase())}</div>
+         <div class="v" style="margin-bottom:12px;">${escapeHtml(formatStatusText(rec.quote_status || "open"))}</div>
           <div class="btns">
             <button type="button" class="green" onclick="openQuoteModal()">Create / Update Quote</button>
             ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">Send to Trade-In App</button>`}
