@@ -4408,7 +4408,6 @@ function sendQuickRepManagerMessage() {
   </div>
 </div>
 
-    ${renderRawSignalDataCard(rec)}
     ${renderInstallBaseCorrectionPanel(rec)}
 
     ${
@@ -4730,16 +4729,91 @@ function renderInstallBaseCorrectionPanel(rec) {
 
   if (correctionAlreadySent || !issues.length) return "";
 
+  const reviewLabel = clean(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.proactive_reason ||
+    "Review Request"
+  );
+
+  const reviewType = clean(
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    ""
+  );
+
+  const reviewLevel = clean(
+    rec.oem_review_level ||
+    rec.review_level ||
+    rec.visibility_level ||
+    ""
+  );
+
+  const reviewDate = clean(
+    rec.oem_review_date ||
+    rec.review_date ||
+    rec.proactive_date ||
+    ""
+  );
+
+  const reviewReason = clean(
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    ""
+  );
+
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
-      <div class="k">Install Base Data Review</div>
-      <div class="v">Install Base requested rep review for missing install-base data.</div>
+      <div class="k">Review Request</div>
 
-      <div class="mini" style="margin-top:10px;line-height:1.5;">
-        Rep may correct the requested field, or send a reason back if the information cannot be confirmed.
+      <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
+        ${escapeHtml(formatReviewText(reviewLabel))}
       </div>
 
-      <div style="display:grid;gap:10px;margin-top:14px;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        ${
+          reviewType
+            ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>`
+            : ""
+        }
+
+        ${
+          reviewLevel
+            ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>`
+            : ""
+        }
+
+        ${
+          reviewDate
+            ? `<span class="quote-sub-badge">${escapeHtml(reviewDate)}</span>`
+            : ""
+        }
+      </div>
+
+      <div style="margin-bottom:12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.48);background:rgba(255,216,77,.10);">
+        <div style="font-size:12px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
+          Install Base Needs Rep Review
+        </div>
+
+        <div style="font-size:15px;font-weight:850;line-height:1.4;color:#fff4cc;">
+          ${
+            reviewReason
+              ? escapeHtml(formatReviewText(reviewReason))
+              : "Install Base requested rep review for missing install-base data."
+          }
+        </div>
+
+        <div class="mini" style="margin-top:8px;line-height:1.45;">
+          Rep may correct the requested field, or send a reason back if the information cannot be confirmed.
+        </div>
+      </div>
+
+      <div style="display:grid;gap:10px;">
         ${issues.map(([field,label]) => `
           <label>${escapeHtml(label)}</label>
           <input
