@@ -4719,15 +4719,11 @@ function getRepFixPanelIssues(rec) {
   return issues;
 }
 function renderInstallBaseCorrectionPanel(rec) {
-  if (!state.installBaseCommunicationOpen) return "";
-
   const correctionAlreadySent =
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_response_status === "rep_correction_sent";
 
   const issues = getRepFixPanelIssues(rec);
-
-  if (correctionAlreadySent || !issues.length) return "";
 
   const reviewLabel = clean(
     rec.oem_review_label ||
@@ -4766,6 +4762,78 @@ function renderInstallBaseCorrectionPanel(rec) {
     rec.install_base_issue_note ||
     ""
   );
+
+  const hasReviewContext =
+    reviewLabel ||
+    reviewType ||
+    reviewLevel ||
+    reviewDate ||
+    reviewReason ||
+    issues.length;
+
+  if (!hasReviewContext) return "";
+
+  if (!state.installBaseCommunicationOpen || correctionAlreadySent || !issues.length) {
+    return `
+      <div class="detail-card full oem-review-note-card needs-rep-input">
+        <div class="k">Review Request</div>
+
+        <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
+          ${escapeHtml(formatReviewText(reviewLabel))}
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          ${
+            reviewType
+              ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>`
+              : ""
+          }
+
+          ${
+            reviewLevel
+              ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>`
+              : ""
+          }
+
+          ${
+            reviewDate
+              ? `<span class="quote-sub-badge">${escapeHtml(reviewDate)}</span>`
+              : ""
+          }
+        </div>
+
+        <div class="mini" style="line-height:1.45;">
+          ${
+            reviewReason
+              ? escapeHtml(formatReviewText(reviewReason))
+              : "Install Base requested rep review for missing install-base data."
+          }
+        </div>
+
+        ${
+          correctionAlreadySent
+            ? `
+              <div class="mini" style="margin-top:10px;color:#b9ffd8;font-weight:850;">
+                Response already sent back to Install Base.
+              </div>
+            `
+            : issues.length
+              ? `
+                <div class="btns" style="margin-top:12px;">
+                  <button
+                    type="button"
+                    class="green install-base-send-btn"
+                    onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
+                  >
+                    Open Install Base Review
+                  </button>
+                </div>
+              `
+              : ""
+        }
+      </div>
+    `;
+  }
 
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
