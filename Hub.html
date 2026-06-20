@@ -946,9 +946,14 @@ function isAutoSyncEligible(rec) {
 }
 
 function getManualRouteTarget(rec) {
-  return lower(rec.axis_manual_route_target);
+  return lower(
+    rec.axis_manual_route_target ||
+    rec.manual_route_target ||
+    rec.install_base_released_to ||
+    rec.release_destination ||
+    ""
+  );
 }
-
 function getClarificationReason(rec) {
   return clean(rec.axis_clarification_reason);
 }
@@ -983,6 +988,32 @@ function formatInstallBaseClarificationReason(rec) {
   }
 
   return "Install Base row requires manual clarification before normal sync.";
+}
+
+function isSourceConflictReviewLabel(value) {
+  const label = lower(value);
+  return (
+    label === "conflict noted" ||
+    label.includes("source review") ||
+    label.includes("source conflict") ||
+    label.includes("conflict noted")
+  );
+}
+
+function formatMergedInstallBaseClarificationReason(rec) {
+  const label = formatInstallBaseReviewLabel(rec);
+  const reason = formatInstallBaseClarificationReason(rec);
+
+  if (isSourceConflictReviewLabel(label)) {
+    if (lower(reason).includes("conflict noted")) return reason;
+    return `Conflict noted: ${reason}`;
+  }
+
+  return reason;
+}
+
+function shouldShowInstallBaseReviewLabel(rec) {
+  return !isSourceConflictReviewLabel(formatInstallBaseReviewLabel(rec));
 }
 
 function formatInstallBaseReviewLabel(rec) {
@@ -1976,26 +2007,29 @@ function markSelectedStaged() {
 
   saveRecords();
   render();
-  showBanner("Selected record marked as staged only.");
+  showBanner("Selected record held in Install Base.");
 }
-function markSelectedStaged() {
-  const rec = findSelectedRecord();
-  if (!rec) return;
 
-  state.records = state.records.map(r => {
-    if (!sameRecord(r, rec)) return r;
+function updateReleaseButtonVisibility(rec) {
+  const repBtn = $("releaseRepBtn");
+  const managerBtn = $("releaseManagerBtn");
 
-    return {
-      ...r,
-      install_base_release_status: "staged",
-      install_base_released_at: "",
-      install_base_released_to: ""
-    };
-  });
+  if (!repBtn || !managerBtn) return;
 
-  saveRecords();
-  render();
-  showBanner("Selected record marked as staged only.");
+  const target = getManualRouteTarget(rec);
+
+  repBtn.classList.remove("hidden");
+  managerBtn.classList.remove("hidden");
+
+  if (target === "rep") {
+    managerBtn.classList.add("hidden");
+    return;
+  }
+
+  if (target === "manager") {
+    repBtn.classList.add("hidden");
+    return;
+  }
 }
 function autoSyncEligibleRecordsToRepAndManager() {
   const now = new Date().toISOString();
@@ -2928,43 +2962,45 @@ function renderDetail() {
   empty.classList.add("hidden");
   detail.classList.remove("hidden");
 
- grid.innerHTML = `
+  grid.innerHTML = `
     ${renderRepResponseCard(rec)}
     ${renderFixedDataCard(rec)}
 
-   ${!isAutoSyncEligible(rec) ? `
-  <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.82);background:rgba(255,216,77,.10);box-shadow:0 0 24px rgba(255,216,77,.18);">
-    <div class="k">Install Base Review Hold</div>
+    ${!isAutoSyncEligible(rec) ? `
+      <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.82);background:rgba(255,216,77,.10);box-shadow:0 0 24px rgba(255,216,77,.18);">
+        <div class="k">Install Base Review Hold</div>
 
-    <div class="v" style="font-size:22px;font-weight:950;margin-bottom:12px;">
-      ${escapeHtml(formatInstallBaseReviewLabel(rec))}
-    </div>
+        ${shouldShowInstallBaseReviewLabel(rec) ? `
+          <div class="v" style="font-size:22px;font-weight:950;margin-bottom:12px;">
+            ${escapeHtml(formatInstallBaseReviewLabel(rec))}
+          </div>
+        ` : ""}
 
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;">
-      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
-        <div class="k" style="margin-bottom:4px;">Hold Type</div>
-        <div class="v" style="font-size:14px;">Manual Clarification</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;">
+          <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+            <div class="k" style="margin-bottom:4px;">Hold Type</div>
+            <div class="v" style="font-size:14px;">Manual Clarification</div>
+          </div>
+
+          <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+            <div class="k" style="margin-bottom:4px;">Route Target</div>
+            <div class="v" style="font-size:14px;">${escapeHtml(formatManualRouteTarget(getManualRouteTarget(rec)))}</div>
+          </div>
+
+          <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+            <div class="k" style="margin-bottom:4px;">Source</div>
+            <div class="v" style="font-size:14px;">Install Base row</div>
+          </div>
+        </div>
+
+        <div style="padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.42);background:rgba(8,18,35,.72);">
+          <div class="k" style="margin-bottom:6px;">Reason</div>
+          <div class="v" style="font-size:16px;line-height:1.45;">
+            ${escapeHtml(formatMergedInstallBaseClarificationReason(rec))}
+          </div>
+        </div>
       </div>
-
-      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
-        <div class="k" style="margin-bottom:4px;">Route Target</div>
-        <div class="v" style="font-size:14px;">${escapeHtml(formatManualRouteTarget(getManualRouteTarget(rec)))}</div>
-      </div>
-
-      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
-        <div class="k" style="margin-bottom:4px;">Source</div>
-        <div class="v" style="font-size:14px;">Install Base row</div>
-      </div>
-    </div>
-
-    <div style="padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.42);background:rgba(8,18,35,.72);">
-      <div class="k" style="margin-bottom:6px;">Reason</div>
-      <div class="v" style="font-size:16px;line-height:1.45;">
-        ${escapeHtml(formatInstallBaseClarificationReason(rec))}
-      </div>
-    </div>
-  </div>
-` : ""}
+    ` : ""}
 
     ${clean(rec.manager_message_from_install_base || rec.install_base_manager_message) ? `
       <div class="detail-card" style="grid-column:1 / -1;border:1px solid rgba(67,176,255,.55);background:rgba(67,176,255,.08);">
@@ -2974,7 +3010,7 @@ function renderDetail() {
       </div>
     ` : ""}
 
-       <div class="detail-card">
+    <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
       <div class="mini">${escapeHtml(rec.manager_email || "")}</div>
@@ -3004,43 +3040,40 @@ function renderDetail() {
       <div class="v">${escapeHtml(rec.oem_project_id || rec.asset_id || "-")}</div>
     </div>
 
-   <div class="detail-card">
-  <div class="k">Equipment</div>
-  <div class="v">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
-  <div class="mini">${escapeHtml(rec.modality || "")} • Serial: ${escapeHtml(rec.serial_number || rec.serial || "-")}</div>
-</div>
-
-<div class="detail-card">
-  <div class="k">DOM / Year</div>
-  <div class="v">
-    ${renderInstallBaseCorrectedValue(
-      rec,
-      "dom",
-      escapeHtml(rec.dom || "-")
-    )}
-  </div>
-  <div class="mini">
-    Age: ${
-      renderInstallBaseCorrectedValue(
-        rec,
-        "dom",
-        escapeHtml(ageFromDom(rec.dom) || "-")
-      )
-    }
-  </div>
-</div>
-
-<div class="detail-card">
-  <div class="k">Site</div>
-  <div class="v">${escapeHtml(rec.site || "-")}</div>
-  <div class="mini">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`.trim())}</div>
-</div>
     <div class="detail-card">
-      <div class="k">Source Review Inputs</div>
-      <div class="v">${escapeHtml(rec.source_conflict ? "Conflict noted" : "No conflict noted")}</div>
-      <div class="mini">${escapeHtml(rec.conflict_notes || "No source notes.")}</div>
+      <div class="k">Equipment</div>
+      <div class="v">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
+      <div class="mini">${escapeHtml(rec.modality || "")} • Serial: ${escapeHtml(rec.serial_number || rec.serial || "-")}</div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">DOM / Year</div>
+      <div class="v">
+        ${renderInstallBaseCorrectedValue(
+          rec,
+          "dom",
+          escapeHtml(rec.dom || "-")
+        )}
+      </div>
+      <div class="mini">
+        Age: ${
+          renderInstallBaseCorrectedValue(
+            rec,
+            "dom",
+            escapeHtml(ageFromDom(rec.dom) || "-")
+          )
+        }
+      </div>
+    </div>
+
+    <div class="detail-card">
+      <div class="k">Site</div>
+      <div class="v">${escapeHtml(rec.site || "-")}</div>
+      <div class="mini">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`.trim())}</div>
     </div>
   `;
+
+  updateReleaseButtonVisibility(rec);
 }
 function showBanner(msg) {
   const banner = $("resultBanner");
