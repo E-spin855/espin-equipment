@@ -1084,6 +1084,28 @@ tr.rep-new-row-flash td{
   word-break:break-word!important;
   text-align:center!important;
 }
+const local = {
+  ...rec,
+  key,
+  id: rec.id || key,
+
+  // Keep the record visible on the rep page after manager sync.
+  rep_visible: rec.rep_visible !== false,
+  rep_hidden: false
+};
+
+if (
+  local.project_type === "new_project_record" &&
+  (
+    local.quote_status === "won" ||
+    local.rep_status === "won" ||
+    local.lifecycle_created_from_quote_won === true
+  )
+) {
+  local.project_type = "equipment_review_record";
+  local.source = local.source || "Rep Won Project";
+  local.hub_source = local.hub_source || "Equipment Review Workspace";
+}
   </style>
 </head>
 
@@ -3434,93 +3456,68 @@ const importedLabel = rawImportedLabel
     Boolean(importedDate) ||
     Boolean(importedLevel);
 
-  if (!hasImportedReview) {
-    return `
-      <div class="detail-card" style="border:1px solid rgba(120,144,170,.35);background:rgba(120,144,170,.08);">
-        <div class="k">OEM Review Note</div>
-
-        <div class="v">
-          <span class="alert-badge alert-none">Normal</span>
-        </div>
-
-        <div class="mini" style="margin-top:10px;line-height:1.45;">
-          No OEM-provided review note is currently attached to this record.
-        </div>
-      </div>
-    `;
-  }
-
+ if (!hasImportedReview) {
   return `
-    <div class="detail-card" style="border:2px solid rgba(0,229,255,.35);background:linear-gradient(180deg,rgba(0,229,255,.08),rgba(8,18,35,.82));box-shadow:0 0 20px rgba(0,229,255,.12);">
-      <div class="k">OEM Review Note</div>
-
-      <div class="mini" style="margin-bottom:12px;line-height:1.45;color:#d9c98a;">
-        This section displays OEM-provided review context only. AXIS does not create the review reason, recommend an action, score the customer, rank the record, or decide the required next step.
+    <div class="oem-review-compact-card muted">
+      <div class="oem-review-compact-head">
+        <div class="oem-review-compact-title">OEM Review</div>
+        <div class="oem-review-compact-pill neutral">Normal</div>
       </div>
 
-      <div style="display:grid;gap:10px;">
-        ${
-          importedLabel
-            ? `
-              <div style="${getReviewNoteStyle(primary?.type || importedType)}">
-                ${escapeHtml(importedLabel)}
-              </div>
-            `
-            : ""
-        }
-
-        ${
-          importedType
-            ? `
-              <div class="mini">
-                OEM Review Category:
-                <strong>${escapeHtml(formatReviewText(importedType))}</strong>
-              </div>
-            `
-            : ""
-        }
-
-        ${
-          importedLevel
-            ? `
-              <div class="mini">
-                OEM Display Tag:
-                <strong>${escapeHtml(formatReviewText(importedLevel))}</strong>
-              </div>
-            `
-            : ""
-        }
-
-        ${
-          importedDate
-            ? `
-              <div class="mini">
-                OEM Review Timing:
-                <strong>${escapeHtml(importedDate)}</strong>
-              </div>
-            `
-            : ""
-        }
- ${
-  importedReason &&
-  rec.install_base_released_to === "rep" &&
-  rec.hub_source === "AXIS Install Base Workspace" &&
-  rec.install_base_release_status === "released_to_rep" &&
-  rec.install_base_correction_status !== "corrected_by_rep" &&
-  rec.install_base_response_status !== "rep_correction_sent"
-    ? `
-      <div class="issue-callout">
-        <div class="issue-callout-title">Rep Action Needed</div>
-        <div class="issue-callout-text">
-          ${escapeHtml(formatReviewText(importedReason))}
-        </div>
-      </div>
-    `
-    : ""
-}
+      <div class="oem-review-compact-main">
+        No OEM review note attached.
       </div>
     </div>
   `;
+}
+
+return `
+  <div class="oem-review-compact-card">
+    <div class="oem-review-compact-head">
+      <div class="oem-review-compact-title">OEM Review</div>
+
+      ${
+        importedDate
+          ? `<div class="oem-review-compact-pill">${escapeHtml(importedDate)}</div>`
+          : ""
+      }
+    </div>
+
+    <div class="oem-review-compact-main">
+      ${escapeHtml(importedLabel || "Review context attached to this record")}
+    </div>
+
+    <div class="oem-review-compact-meta">
+      ${
+        importedType
+          ? `<span>${escapeHtml(formatReviewText(importedType))}</span>`
+          : ""
+      }
+
+      ${
+        importedLevel
+          ? `<span>${escapeHtml(formatReviewText(importedLevel))}</span>`
+          : ""
+      }
+    </div>
+
+    ${
+      importedReason &&
+      rec.install_base_released_to === "rep" &&
+      rec.hub_source === "AXIS Install Base Workspace" &&
+      rec.install_base_release_status === "released_to_rep" &&
+      rec.install_base_correction_status !== "corrected_by_rep" &&
+      rec.install_base_response_status !== "rep_correction_sent"
+        ? `
+          <div class="oem-review-compact-action">
+            <span class="label">Rep action needed</span>
+            ${escapeHtml(formatReviewText(importedReason))}
+          </div>
+        `
+        : ""
+    }
+  </div>
+`;
 }
     function buildActivityTimeline(rec) {
       const items = [];
