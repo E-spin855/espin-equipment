@@ -1740,31 +1740,32 @@ function formatReviewText(value) {
 }
 
 function normalizeOemReviewLabelForManager(rec) {
-  const raw = String(
-    rec.oem_review_label ||
-    rec.review_label ||
+  const directLabel = clean(rec.oem_review_label || rec.review_label || "");
+
+  if (directLabel) return directLabel;
+
+  const raw = lower(
     rec.oem_review_type ||
     rec.review_type ||
     rec.alert_override ||
     rec.proactive_type ||
     rec.proactive_signal ||
     ""
-  ).toLowerCase();
+  );
 
-  if (raw.includes("service")) return "Service Review";
-  if (raw.includes("planning")) return "Planning Review";
-  if (raw.includes("age")) return "Age Review";
-  if (raw.includes("lifecycle")) return "Age Review";
-  if (raw.includes("replacement")) return "Age Review";
-  if (raw.includes("project")) return "Project Review";
-  if (raw.includes("quote")) return "Quote Review";
-  if (raw.includes("upgrade")) return "Planning Review";
-  if (raw.includes("utilization")) return "Utilization Review";
-  if (raw.includes("contract")) return "Contract Review";
+  if (raw.includes("service")) return "Service Coverage";
+  if (raw.includes("utilization")) return "Utilization";
+  if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
+  if (raw.includes("age") || raw.includes("lifecycle") || raw.includes("replacement")) return "Equipment Age";
+  if (raw.includes("ownership")) return "Ownership";
+  if (raw.includes("conflict")) return "Source Mismatch";
+  if (raw.includes("data")) return "Data Check";
+  if (raw.includes("project")) return "Project / Asset";
+  if (raw.includes("site")) return "Site / Account";
+  if (raw.includes("status")) return "Asset Status";
 
-  return "Install Base Review";
+  return "Record Note";
 }
-
 function renderReviewCondition(rec) {
   const isInstallBaseRecord =
     rec.hub_source === "AXIS Install Base Workspace" ||

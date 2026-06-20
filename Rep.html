@@ -2325,43 +2325,31 @@ function renderReviewSignalCell(rec) {
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
 function normalizeOemReviewLabelForRep(rec) {
+  const directLabel = clean(rec.oem_review_label || rec.review_label || "");
 
-  const raw = String(
+  if (directLabel) return directLabel;
 
+  const raw = lower(
     rec.oem_review_type ||
-
     rec.review_type ||
-
-    rec.oem_review_label ||
-
-    rec.review_label ||
-
     rec.alert_override ||
-
     rec.proactive_type ||
-
     rec.proactive_signal ||
-
     ""
+  );
 
-  ).toLowerCase();
+  if (raw.includes("service")) return "Service Coverage";
+  if (raw.includes("utilization")) return "Utilization";
+  if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
+  if (raw.includes("age") || raw.includes("lifecycle") || raw.includes("replacement")) return "Equipment Age";
+  if (raw.includes("ownership")) return "Ownership";
+  if (raw.includes("conflict")) return "Source Mismatch";
+  if (raw.includes("data")) return "Data Check";
+  if (raw.includes("project")) return "Project / Asset";
+  if (raw.includes("site")) return "Site / Account";
+  if (raw.includes("status")) return "Asset Status";
 
-  if (raw.includes("service")) return "Service";
-
-  if (raw.includes("planning")) return "Planning";
-
-  if (raw.includes("age")) return "Age";
-
-  if (raw.includes("lifecycle")) return "Age";
-
-  if (raw.includes("replacement")) return "Age";
-
-  if (raw.includes("project")) return "Project";
-
-  if (raw.includes("quote")) return "Quote";
-
-  return "Planning";
-
+  return "Record Note";
 }
 function getInstallBaseFixLabel(rec) {
   const fields = String(rec.install_base_issue_field || "")
