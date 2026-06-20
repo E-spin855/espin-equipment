@@ -951,6 +951,53 @@ function getManualRouteTarget(rec) {
 function getClarificationReason(rec) {
   return clean(rec.axis_clarification_reason);
 }
+function formatManualRouteTarget(value) {
+  const target = lower(value);
+
+  if (target === "rep") return "Rep Review";
+  if (target === "manager") return "Manager Review";
+
+  return "Manual Review";
+}
+
+function formatInstallBaseClarificationReason(rec) {
+  const reason = clean(
+    rec.axis_clarification_reason ||
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
+
+  if (reason) return reason;
+
+  const missing = getDataExceptions(rec).map(issue => issue.label).filter(Boolean);
+
+  if (missing.length) {
+    return `Install Base row requires clarification: ${missing.join(", ")}.`;
+  }
+
+  return "Install Base row requires manual clarification before normal sync.";
+}
+
+function formatInstallBaseReviewLabel(rec) {
+  const label = clean(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.proactive_reason ||
+    rec.install_base_action_label ||
+    rec.install_base_issue_type ||
+    "Manual Clarification"
+  );
+
+  return label
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 function getRecordKey(rec) {
   if (!rec) return "";
 
@@ -2865,16 +2912,39 @@ function renderDetail() {
     ${renderRepResponseCard(rec)}
     ${renderFixedDataCard(rec)}
 
-    ${!isAutoSyncEligible(rec) ? `
-      <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.75);background:rgba(255,216,77,.10);">
-        <div class="k">Sync Hold</div>
-        <div class="v">Held for Install Base clarification</div>
-        <div class="mini" style="margin-top:8px;line-height:1.55;">
-          Manual route target: <strong>${escapeHtml(getManualRouteTarget(rec) || "Not specified")}</strong><br>
-          Reason: ${escapeHtml(getClarificationReason(rec) || "No clarification reason provided.")}
-        </div>
+   ${!isAutoSyncEligible(rec) ? `
+  <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(255,216,77,.82);background:rgba(255,216,77,.10);box-shadow:0 0 24px rgba(255,216,77,.18);">
+    <div class="k">Install Base Review Hold</div>
+
+    <div class="v" style="font-size:22px;font-weight:950;margin-bottom:12px;">
+      ${escapeHtml(formatInstallBaseReviewLabel(rec))}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px;">
+      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+        <div class="k" style="margin-bottom:4px;">Hold Type</div>
+        <div class="v" style="font-size:14px;">Manual Clarification</div>
       </div>
-    ` : ""}
+
+      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+        <div class="k" style="margin-bottom:4px;">Route Target</div>
+        <div class="v" style="font-size:14px;">${escapeHtml(formatManualRouteTarget(getManualRouteTarget(rec)))}</div>
+      </div>
+
+      <div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(0,229,255,.24);background:rgba(0,229,255,.08);">
+        <div class="k" style="margin-bottom:4px;">Source</div>
+        <div class="v" style="font-size:14px;">Install Base row</div>
+      </div>
+    </div>
+
+    <div style="padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.42);background:rgba(8,18,35,.72);">
+      <div class="k" style="margin-bottom:6px;">Reason</div>
+      <div class="v" style="font-size:16px;line-height:1.45;">
+        ${escapeHtml(formatInstallBaseClarificationReason(rec))}
+      </div>
+    </div>
+  </div>
+` : ""}
 
     ${clean(rec.manager_message_from_install_base || rec.install_base_manager_message) ? `
       <div class="detail-card" style="grid-column:1 / -1;border:1px solid rgba(67,176,255,.55);background:rgba(67,176,255,.08);">
