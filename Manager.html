@@ -1083,9 +1083,9 @@ tr.manager-row-flash td{
                   <th>Age</th>
                   <th>Trade-In Ref</th>
                   <th>Facility</th>
-                  <th>Review Condition</th>
-                  <th>Rep Action / Status</th>
-                  <th>Source</th>
+                  <th>Install Base Review</th>
+<th>Record Status</th>
+<th>Source</th>
                   <th>Open</th>
                 </tr>
               </thead>
@@ -1096,7 +1096,7 @@ tr.manager-row-flash td{
 
         <div class="panel">
           <div class="panel-head">
-            <h2>Selected Record</h2>
+            <h2>Manager Review Workspace</h2>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span class="mini">Manager review only</span>
               <button type="button" class="close-selected-btn hidden" id="closeSelectedBtn">
@@ -1741,27 +1741,28 @@ function formatReviewText(value) {
 
 function normalizeOemReviewLabelForManager(rec) {
   const raw = String(
-    rec.oem_review_type ||
-    rec.review_type ||
     rec.oem_review_label ||
     rec.review_label ||
+    rec.oem_review_type ||
+    rec.review_type ||
     rec.alert_override ||
     rec.proactive_type ||
     rec.proactive_signal ||
     ""
   ).toLowerCase();
 
-  if (raw.includes("service")) return "Service";
-  if (raw.includes("planning")) return "Planning";
-  if (raw.includes("age")) return "Age";
-  if (raw.includes("lifecycle")) return "Age";
-  if (raw.includes("replacement")) return "Age";
-  if (raw.includes("project")) return "Project";
-  if (raw.includes("quote")) return "Quote";
-  if (raw.includes("upgrade")) return "Planning";
-  if (raw.includes("utilization")) return "Service";
+  if (raw.includes("service")) return "Service Review";
+  if (raw.includes("planning")) return "Planning Review";
+  if (raw.includes("age")) return "Age Review";
+  if (raw.includes("lifecycle")) return "Age Review";
+  if (raw.includes("replacement")) return "Age Review";
+  if (raw.includes("project")) return "Project Review";
+  if (raw.includes("quote")) return "Quote Review";
+  if (raw.includes("upgrade")) return "Planning Review";
+  if (raw.includes("utilization")) return "Utilization Review";
+  if (raw.includes("contract")) return "Contract Review";
 
-  return "Planning";
+  return "Install Base Review";
 }
 
 function renderReviewCondition(rec) {
@@ -2874,7 +2875,19 @@ function getInstallBaseRequestText(rec) {
     "No install-base action requested"
   );
 }
-
+function getInstallBaseReviewReasonForManager(rec) {
+  return clean(
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.proactive_reason ||
+    "Install Base review context is attached to this record."
+  );
+}
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -2957,163 +2970,176 @@ function renderDetail() {
       </div>
     </div>
 
-    <div class="section-title">OEM Review Context</div>
+      <div class="section-title">Manager Review</div>
 
-    <div class="${hubUpdateCardClass}">
-      <div class="k">Review Condition</div>
-      <div class="v">${renderReviewCondition(rec)}</div>
-    </div>
+    <div class="detail-card full" style="border:2px solid rgba(255,216,77,.72);background:rgba(255,216,77,.08);">
+      <div class="k">Review Request</div>
+      <div class="v" style="font-size:20px;font-weight:950;margin-bottom:12px;">
+        ${escapeHtml(
+          rec.hub_source === "AXIS Install Base Workspace" ||
+          rec.install_base_sync_type ||
+          rec.install_base_release_status === "auto_synced" ||
+          rec.install_base_release_status === "released_to_manager"
+            ? normalizeOemReviewLabelForManager(rec)
+            : (alert ? formatReviewText(alert.label || alert.displayType || "Review") : "Normal")
+        )}
+      </div>
 
-   <div class="detail-card">
-  <div class="k">Review</div>
-  <div class="v">${
-    escapeHtml(
-      rec.hub_source === "AXIS Install Base Workspace" ||
-      rec.install_base_sync_type ||
-      rec.install_base_release_status === "auto_synced" ||
-      rec.install_base_release_status === "released_to_manager"
-        ? normalizeOemReviewLabelForManager(rec)
-        : (alert ? formatReviewText(alert.label || alert.displayType || "Review") : "Normal")
-    )
-  }</div>
-</div>
-    <div class="detail-card">
-  <div class="k">OEM Review Category</div>
-  <div class="v">${
-    escapeHtml(
-      rec.hub_source === "AXIS Install Base Workspace" ||
-      rec.install_base_sync_type ||
-      rec.install_base_release_status === "auto_synced" ||
-      rec.install_base_release_status === "released_to_manager"
-        ? normalizeOemReviewLabelForManager(rec)
-        : formatReviewText(rec.oem_review_type || rec.review_type || rec.alert_override || alert?.displayType || "None")
-    )
-  }</div>
-</div>
-    <div class="detail-card">
-      <div class="k">OEM Display Tag</div>
-      <div class="v">${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "None"))}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <span class="pill local">
+          ${escapeHtml(
+            rec.hub_source === "AXIS Install Base Workspace" ||
+            rec.install_base_sync_type ||
+            rec.install_base_release_status === "auto_synced" ||
+            rec.install_base_release_status === "released_to_manager"
+              ? normalizeOemReviewLabelForManager(rec)
+              : formatReviewText(rec.oem_review_type || rec.review_type || rec.alert_override || alert?.displayType || "Review")
+          )}
+        </span>
+
+        <span class="pill normal">
+          ${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "Monitor"))}
+        </span>
+
+        ${
+          clean(rec.oem_review_date || rec.review_date || rec.proactive_date)
+            ? `<span class="pill pending">${escapeHtml(rec.oem_review_date || rec.review_date || rec.proactive_date)}</span>`
+            : ""
+        }
+      </div>
+
+      <div class="mini" style="font-size:14px;line-height:1.55;">
+        ${escapeHtml(
+          rec.install_base_clarification_reason ||
+          rec.install_base_issue_reason ||
+          rec.install_base_action_reason ||
+          rec.install_base_issue_note ||
+          rec.conflict_notes ||
+          rec.oem_review_reason ||
+          rec.review_reason ||
+          rec.proactive_reason ||
+          "Install Base review context is attached to this record."
+        )}
+      </div>
+
+      ${renderInstallBaseManagerMessage(rec)}
     </div>
 
     ${
       isManagerInstallBaseRequest(rec)
-        ? `
-          <div class="${hasOpenInstallBaseRequest ? "detail-card full install-base-request-alert" : "detail-card full"}">
-            <div class="k">Install Base Action Needed</div>
-            <div class="v">${escapeHtml(getInstallBaseRequestText(rec))}</div>
-            <div class="mini" style="margin-top:8px;line-height:1.45;">
-              Request: ${escapeHtml(getInstallBaseRequestText(rec))}<br>
-              Reason: ${escapeHtml(rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note || rec.conflict_notes || "-")}<br>
-              Source System: ${escapeHtml(rec.source_system || rec.source || rec.hub_source || "-")}<br>
-              Source Conflict: ${escapeHtml(rec.source_conflict || "-")}<br>
-              Conflict Notes: ${escapeHtml(rec.conflict_notes || "-")}
-            </div>
-            ${renderInstallBaseManagerMessage(rec)}
-          </div>
-          ${renderManagerInstallBaseCorrectionPanel(rec)}
-        `
+        ? renderManagerInstallBaseCorrectionPanel(rec)
         : ""
     }
 
+    <div class="section-title blue">Manager Action / Rep Communication</div>
+
+    <div class="detail-card full" style="border:2px solid rgba(0,229,255,.38);background:rgba(0,229,255,.07);">
+      <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:16px;align-items:start;">
+
+        <div>
+          <div class="k">Manager Action</div>
+          <div class="v" style="font-size:14px;margin-bottom:14px;">
+            Select a manager response, add notes, and send the update back to Rep.
+          </div>
+
+          <div class="manager-response-grid" style="grid-template-columns:1fr 180px;">
+            <div>
+              <label for="managerResponseAction">Message to Rep</label>
+              <select id="managerResponseAction">
+                <option value="">Select message</option>
+                <option value="manager_reviewed">Reviewed</option>
+                <option value="needs_follow_up">Needs Follow-Up</option>
+                <option value="needs_rep_update">Needs Rep Update</option>
+                <option value="quote_review_needed">Quote Review Needed</option>
+                <option value="tradein_review_needed">Trade-In Review Needed</option>
+                <option value="project_review_needed">Project Review Needed</option>
+                <option value="close_out">Close Out</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="managerResponseDate">Follow-Up Date</label>
+              <input id="managerResponseDate" type="date" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label for="managerResponseNotes">Notes / Message to Rep</label>
+            <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
+          </div>
+
+          <div class="btns" style="margin-top:12px;">
+            <button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button>
+          </div>
+        </div>
+
+        <div class="detail-card" style="margin:0;background:rgba(8,18,35,.72);">
+          <div class="k">Activity / Manager History</div>
+
+          <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
+            <div class="mini" style="color:#9cffc8;font-weight:900;">Current</div>
+            <div class="v">${renderRepStatus(rec)}</div>
+          </div>
+
+          ${
+            rec.rep_notes || rec.quote_follow_up_alert_note
+              ? `
+                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
+                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Rep Notes</div>
+                  <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note)}</div>
+                </div>
+              `
+              : `
+                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
+                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Rep Notes</div>
+                  <div class="v">No rep notes entered.</div>
+                </div>
+              `
+          }
+
+          ${
+            rec.manager_response_action
+              ? `
+                <div style="padding:12px;border-radius:12px;border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.08);">
+                  <div class="mini" style="color:#9cffc8;font-weight:900;">Latest Manager Message</div>
+                  <div class="v">${escapeHtml(formatReviewText(rec.manager_response_action))}</div>
+                  ${rec.manager_response_notes ? `<div class="mini" style="margin-top:6px;">${escapeHtml(rec.manager_response_notes)}</div>` : ""}
+                  ${rec.manager_response_at ? `<div class="mini" style="margin-top:6px;">Sent at: ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}</div>` : ""}
+                </div>
+              `
+              : `
+                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);">
+                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Manager History</div>
+                  <div class="v">No manager response sent yet.</div>
+                </div>
+              `
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title yellow">Financial Review</div>
+
     <div class="detail-card full">
-      <div class="k">OEM-Provided Context</div>
-      <div class="v">${escapeHtml(rec.oem_review_reason || rec.review_reason || rec.proactive_reason || "No additional OEM context entered.")}</div>
-      <div class="mini" style="margin-top:8px;line-height:1.45;color:#d9c98a;">
-        This displays OEM-provided review information only. AXIS does not create the review reason, recommend an action, score the customer, rank the record, or decide the next step.
-      </div>
-    </div>
-
-    <div class="section-title blue">Rep Activity</div>
-
-    <div class="${repActivityCardClass}">
-      <div class="k">Rep Action / Status</div>
-      <div class="v">${renderRepStatus(rec)}</div>
+      <div class="k">Financial Review</div>
       ${
-        hasOpenManagerUpdate
-          ? `<div class="mini" style="margin-top:8px;color:#fff2a6;font-weight:900;">${escapeHtml(getUpdateLabel(rec))}</div>`
-          : ""
-      }
-    </div>
-
-    <div class="${repFollowUpCardClass}">
-      <div class="k">Rep Follow-Up Date</div>
-      <div class="v">${renderFollowUpDatePill(rec)}</div>
-      ${
-        hasOpenManagerUpdate && getFollowUpDate(rec)
-          ? `<div class="mini" style="margin-top:8px;color:#b8ffd7;font-weight:900;">${escapeHtml(getUpdateLabel(rec))}</div>`
-          : ""
-      }
-    </div>
-
-    <div class="manager-communication-card ${hasOpenManagerUpdate ? "manager-update-open" : ""}">
-      <div class="manager-response-title">Rep / Manager Communication</div>
-      <div class="manager-response-body">
-      <div class="manager-response-saved" style="margin-top:0;margin-bottom:12px;">
-        <div class="manager-response-title">Rep Notes</div>
-        <div class="manager-response-text">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note || "No rep notes entered.")}</div>
-      </div>
-
-      ${
-        rec.rep_manager_message_at
+        quoteAmount > 0
           ? `
-            <div class="manager-response-saved" style="margin-bottom:12px;">
-              <div class="manager-response-title">Latest Rep Message</div>
-              <div class="manager-response-action">${escapeHtml(formatReviewText(rec.rep_manager_message_action || "Message Sent"))}</div>
-              ${rec.rep_manager_message_notes ? `<div class="manager-response-text">${escapeHtml(rec.rep_manager_message_notes)}</div>` : ""}
-              ${rec.rep_manager_message_at ? `<div class="manager-response-meta">Sent at: ${escapeHtml(new Date(rec.rep_manager_message_at).toLocaleString())}</div>` : ""}
+            <div class="v">${escapeHtml(money(quoteAmount))}</div>
+            <div class="mini" style="margin-top:8px;line-height:1.45;">
+              Quote status: ${escapeHtml(formatReviewText(rec.quote_approval_status || rec.quote_status || "Draft"))}
+              ${tradeInCredit ? `<br>Trade-in reference: ${escapeHtml(money(tradeInCredit))}` : ""}
+              ${netQuote ? `<br>Net quote reference: ${escapeHtml(money(netQuote))}` : ""}
             </div>
           `
           : `
-            <div class="manager-response-empty">No rep message on this row yet.</div>
-          `
-      }
-
-      <div class="manager-response-grid">
-        <div>
-          <label for="managerResponseAction">Message to Rep</label>
-          <select id="managerResponseAction">
-            <option value="">Select message</option>
-            <option value="manager_reviewed">Reviewed</option>
-            <option value="needs_follow_up">Needs Follow-Up</option>
-            <option value="needs_rep_update">Needs Rep Update</option>
-            <option value="quote_review_needed">Quote Review Needed</option>
-            <option value="tradein_review_needed">Trade-In Review Needed</option>
-            <option value="project_review_needed">Project Review Needed</option>
-            <option value="close_out">Close Out</option>
-          </select>
-        </div>
-
-        <div>
-          <label for="managerResponseDate">Follow-Up Date</label>
-          <input id="managerResponseDate" type="date" />
-        </div>
-
-        <div>
-          <label for="managerResponseNotes">Notes / Message to Rep</label>
-          <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
-        </div>
-
-        <div>
-          <button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button>
-        </div>
-      </div>
-
-      ${
-        rec.manager_response_action
-          ? `
-            <div class="manager-response-saved">
-              <div class="manager-response-title">Latest Manager Message</div>
-              <div class="manager-response-action">${escapeHtml(formatReviewText(rec.manager_response_action))}</div>
-              ${rec.manager_response_notes ? `<div class="manager-response-text">${escapeHtml(rec.manager_response_notes)}</div>` : ""}
-              ${rec.manager_response_date ? `<div class="manager-response-meta">Follow-up date: ${escapeHtml(rec.manager_response_date)}</div>` : ""}
-              ${rec.manager_response_at ? `<div class="manager-response-meta">Sent at: ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}</div>` : ""}
+            <div class="v" style="color:#ffd84d;">Quote not created yet</div>
+            <div class="mini" style="margin-top:8px;">
+              This equipment review record is visible, but the rep has not entered quote details yet.
             </div>
           `
-          : ""
       }
-      </div>
     </div>
-
     <div class="section-title blue">Activity Timeline</div>
 
     <div class="detail-card full">
