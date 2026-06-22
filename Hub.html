@@ -681,21 +681,8 @@ tr.install-base-corrected-row-frame td{
       <div class="panel" style="margin-bottom:18px;">
        <div class="panel-head">
   <h2 id="tableTitle">Install Base Review</h2>
-
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-    <span class="mini" id="tableSubtitle">All records</span>
-
-    <button
-      type="button"
-      class="secondary"
-      id="toggleCompletedBtn"
-      style="padding:9px 12px;font-size:12px;"
-    >
-      Hide Completed
-    </button>
-  </div>
+  <span class="mini" id="tableSubtitle">All records</span>
 </div>
-
         <div class="panel-body">
           <div class="search-row">
             <input id="searchInput" type="text" placeholder="Search site, serial, model, rep, manager..." />
@@ -767,11 +754,26 @@ tr.install-base-corrected-row-frame td{
             </div>
 
            <div class="btns">
-  <button type="button" class="green" id="releaseRepBtn">Release Selected to Rep Review</button>
-  <button type="button" class="green" id="releaseManagerBtn">Release Selected to Manager Review</button>
-  <button type="button" class="secondary" id="markStagedBtn">Hold in Install Base</button>
-</div>
+  <button type="button" class="green" id="releaseRepBtn">
+    Release Selected to Rep Review
+  </button>
 
+  <button type="button" class="green" id="releaseManagerBtn">
+    Release Selected to Manager Review
+  </button>
+
+  <button type="button" class="secondary" id="markStagedBtn">
+    Hold in Install Base
+  </button>
+
+  <button
+    type="button"
+    class="danger hidden"
+    id="hideCompletedProjectBtn"
+  >
+    Hide Completed Project
+  </button>
+</div>
             <div class="banner" id="resultBanner"></div>
           </div>
         </div>
@@ -2066,17 +2068,48 @@ function markSelectedStaged() {
   render();
   showBanner("Selected record held in Install Base.");
 }
+function hideSelectedCompletedProject() {
+  const rec = findSelectedRecord();
+  if (!rec || !isCompletedRecord(rec)) return;
 
+  state.showCompleted = false;
+  state.selectedId = null;
+
+  const toggleBtn = $("toggleCompletedBtn");
+
+  if (toggleBtn) {
+    toggleBtn.textContent = "Show Completed";
+  }
+
+  render();
+  showBanner("Completed project hidden from the current Install Base view.");
+}
 function updateReleaseButtonVisibility(rec) {
   const repBtn = $("releaseRepBtn");
   const managerBtn = $("releaseManagerBtn");
+  const stagedBtn = $("markStagedBtn");
+  const hideCompletedBtn = $("hideCompletedProjectBtn");
 
   if (!repBtn || !managerBtn) return;
 
   const target = getManualRouteTarget(rec);
+  const completed = isCompletedRecord(rec);
 
   repBtn.classList.remove("hidden");
   managerBtn.classList.remove("hidden");
+
+  if (stagedBtn) stagedBtn.classList.remove("hidden");
+  if (hideCompletedBtn) hideCompletedBtn.classList.add("hidden");
+
+  if (completed) {
+    repBtn.classList.add("hidden");
+    managerBtn.classList.add("hidden");
+
+    if (stagedBtn) stagedBtn.classList.add("hidden");
+    if (hideCompletedBtn) hideCompletedBtn.classList.remove("hidden");
+
+    return;
+  }
 
   if (target === "rep") {
     managerBtn.classList.add("hidden");
@@ -2085,7 +2118,6 @@ function updateReleaseButtonVisibility(rec) {
 
   if (target === "manager") {
     repBtn.classList.add("hidden");
-    return;
   }
 }
 function autoSyncEligibleRecordsToRepAndManager() {
@@ -3209,11 +3241,6 @@ function clearLocalData() {
   state.search = "";
   state.filter = "";
 state.showCompleted = true;
-const toggleCompletedBtn = $("toggleCompletedBtn");
-
-if (toggleCompletedBtn) {
-  toggleCompletedBtn.textContent = "Hide Completed";
-}
   const input = $("csvInput");
   if (input) input.value = "";
 
@@ -3225,29 +3252,6 @@ if (toggleCompletedBtn) {
 
   render();
   showBanner("Local demo data cleared.");
-}
-function toggleCompletedRecords() {
-  state.showCompleted = !state.showCompleted;
-
-  const btn = $("toggleCompletedBtn");
-
-  if (btn) {
-    btn.textContent = state.showCompleted
-      ? "Hide Completed"
-      : "Show Completed";
-  }
-
-  const selected = findSelectedRecord();
-
-  if (
-    !state.showCompleted &&
-    selected &&
-    isCompletedRecord(selected)
-  ) {
-    state.selectedId = null;
-  }
-
-  render();
 }
 function render() {
   mergeRepResponsesIntoRecords();
@@ -3274,14 +3278,6 @@ function init() {
   if (clearBtn) {
     clearBtn.addEventListener("click", clearLocalData);
   }
-const toggleCompletedBtn = $("toggleCompletedBtn");
-
-if (toggleCompletedBtn) {
-  toggleCompletedBtn.addEventListener(
-    "click",
-    toggleCompletedRecords
-  );
-}
   const searchInput = $("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", e => {
@@ -3289,7 +3285,14 @@ if (toggleCompletedBtn) {
       render();
     });
   }
+const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 
+if (hideCompletedProjectBtn) {
+  hideCompletedProjectBtn.addEventListener(
+    "click",
+    hideSelectedCompletedProject
+  );
+}
   const exceptionFilter = $("exceptionFilter");
   if (exceptionFilter) {
     exceptionFilter.addEventListener("change", e => {
