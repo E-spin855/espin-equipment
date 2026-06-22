@@ -604,6 +604,28 @@ tr.install-base-corrected-row-frame{
 tr.install-base-corrected-row-frame td{
   background:rgba(8,18,35,.72)!important;
 }
+.selected-record-panel{
+  width:100%;
+}
+
+.selected-record-panel .detail-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+#hideCompletedProjectBtn{
+  min-width:260px;
+  min-height:54px;
+  padding:14px 22px;
+  font-size:16px;
+  font-weight:950;
+  border-radius:14px;
+}
+
+@media(max-width:720px){
+  .selected-record-panel .detail-grid{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 </head>
 
@@ -639,164 +661,200 @@ tr.install-base-corrected-row-frame td{
     <div class="stat"><div class="k">Data Exceptions</div><div class="v" id="statExceptions">0</div></div>
   </div>
 
-  <div class="grid">
+<div class="grid">
 
-    <div class="panel">
-      <div class="panel-head">
-        <h2>Install Base Import</h2>
-        <span class="mini">OEM source input</span>
-      </div>
-
-      <div class="panel-body">
-        <label for="csvInput">Upload CSV / Excel</label>
-        <input id="csvInput" type="file" accept=".xlsx,.xls,.csv" />
-
-        <div class="btns">
-          <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
-        </div>
-
-        <div class="footer-note">
-          Useful fields: project ID, asset ID, make, model, modality, serial, DOM/year, site, city, state, assigned rep, manager, source system.
-          <br><br>
-          If manager fields are missing, demo owner groups are assigned only for display. Final ownership confirmation should remain manual.
-        </div>
-
-        <div class="panel" style="margin-top:18px;">
-          <div class="panel-head">
-            <h2>Owner Groups</h2>
-            <span class="mini">Click to filter</span>
-          </div>
-
-          <div class="panel-body">
-            <div id="ownerList" class="owner-list">
-              <div class="mini">Upload data to create owner groups.</div>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- LEFT COLUMN -->
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Install Base Import</h2>
+      <span class="mini">OEM source input</span>
     </div>
 
-    <div>
+    <div class="panel-body">
+      <label for="csvInput">Upload CSV / Excel</label>
+      <input id="csvInput" type="file" accept=".xlsx,.xls,.csv" />
 
-      <div class="panel" style="margin-bottom:18px;">
-       <div class="panel-head">
-  <h2 id="tableTitle">Install Base Review</h2>
-  <span class="mini" id="tableSubtitle">All records</span>
-</div>
-        <div class="search-row">
-  <input
-    id="searchInput"
-    type="text"
-    placeholder="Search site, serial, model, rep, manager..."
-  />
-
-  <select id="exceptionFilter" class="small-select">
-    <option value="">All records</option>
-    <option value="exception">Exceptions only</option>
-    <option value="ready">Ready only</option>
-    <option value="released">Released only</option>
-    <option value="staged">Staged only</option>
-  </select>
-
-  <button
-    type="button"
-    class="secondary hidden"
-    id="showCompletedProjectsBtn"
-    style="padding:10px 12px;font-size:12px;"
-  >
-    Show Completed Projects
-  </button>
-</div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-	                <tr>
-	                  <th>Project / Asset ID</th>
-	                  <th>Brand</th>
-	                  <th>Owner Group</th>
-	                  <th>Territory</th>
-	                  <th>Rep Owner</th>
-	                  <th>Site</th>
-	                  <th>Modality</th>
-	                  <th>Model</th>
-	                  <th>Serial</th>
-	                  <th>DOM</th>
-	                  <th>Age</th>
-	                  <th>Review Status</th>
-	                  <th>Action</th>
-	                </tr>
-              </thead>
-              <tbody id="tableBody"></tbody>
-            </table>
-          </div>
-        </div>
+      <div class="btns">
+        <button type="button" class="secondary" id="clearBtn">
+          Clear Local Data
+        </button>
       </div>
 
-      <div class="panel">
+      <div class="footer-note">
+        Useful fields: project ID, asset ID, make, model, modality, serial,
+        DOM/year, site, city, state, assigned rep, manager, source system.
+        <br><br>
+        If manager fields are missing, demo owner groups are assigned only for
+        display. Final ownership confirmation should remain manual.
+      </div>
+
+      <div class="panel" style="margin-top:18px;">
         <div class="panel-head">
-          <h2>Selected Record Detail</h2>
-          <span class="mini">Manual release only</span>
+          <h2>Owner Groups</h2>
+          <span class="mini">Click to filter</span>
         </div>
 
         <div class="panel-body">
-          <div id="emptyState" class="mini">Select a row to inspect install-base data.</div>
-
-          <div id="detailArea" class="hidden">
-            <div class="detail-grid" id="detailGrid"></div>
-
-            <div class="manager-message-box">
-              <label for="managerMessageSelect">Manager Message Required</label>
-              <select id="managerMessageSelect" class="small-select">
-                <option value="">No manager message</option>
-                <option value="Please review ownership before this record is released further.">Please review ownership before release</option>
-                <option value="Please confirm the correct owner group and territory for this record.">Confirm owner group / territory</option>
-                <option value="Please review source conflict notes before rep follow-up.">Review source conflict notes</option>
-                <option value="Please confirm whether this should stay staged or move forward.">Confirm staged vs move forward</option>
-                <option value="Install Base needs manager review before any rep action.">Manager review needed before rep action</option>
-                <option value="__other__">Other / custom message</option>
-              </select>
-              <input
-                id="managerCustomMessageInput"
-                type="text"
-                class="hidden"
-                placeholder="Type custom message to Manager..."
-                style="margin-top:10px;"
-              />
-              <div class="mini">Used only when manually sending this selected record to Manager Review.</div>
-            </div>
-
-           <div class="btns">
-  <button type="button" class="green" id="releaseRepBtn">
-    Release Selected to Rep Review
-  </button>
-
-  <button type="button" class="green" id="releaseManagerBtn">
-    Release Selected to Manager Review
-  </button>
-
-  <button type="button" class="secondary" id="markStagedBtn">
-    Hold in Install Base
-  </button>
-
-  <button
-    type="button"
-    class="danger hidden"
-    id="hideCompletedProjectBtn"
-  >
-    Hide Completed Project
-  </button>
-</div>
-            <div class="banner" id="resultBanner"></div>
+          <div id="ownerList" class="owner-list">
+            <div class="mini">Upload data to create owner groups.</div>
           </div>
         </div>
       </div>
+    </div>
+  </div>
+  <!-- END LEFT COLUMN -->
 
+
+  <!-- RIGHT COLUMN -->
+  <div>
+    <div class="panel">
+      <div class="panel-head">
+        <h2 id="tableTitle">Install Base Review</h2>
+        <span class="mini" id="tableSubtitle">All records</span>
+      </div>
+
+      <div class="panel-body">
+        <div class="search-row">
+          <input
+            id="searchInput"
+            type="text"
+            placeholder="Search site, serial, model, rep, manager..."
+          />
+
+          <select id="exceptionFilter" class="small-select">
+            <option value="">All records</option>
+            <option value="exception">Exceptions only</option>
+            <option value="ready">Ready only</option>
+            <option value="released">Released only</option>
+            <option value="staged">Staged only</option>
+          </select>
+
+          <button
+            type="button"
+            class="secondary hidden"
+            id="showCompletedProjectsBtn"
+            style="padding:10px 12px;font-size:12px;"
+          >
+            Show Completed Projects
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project / Asset ID</th>
+                <th>Brand</th>
+                <th>Owner Group</th>
+                <th>Territory</th>
+                <th>Rep Owner</th>
+                <th>Site</th>
+                <th>Modality</th>
+                <th>Model</th>
+                <th>Serial</th>
+                <th>DOM</th>
+                <th>Age</th>
+                <th>Review Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- END RIGHT COLUMN -->
+
+</div>
+<!-- END TWO-COLUMN GRID -->
+
+
+<!-- FULL-WIDTH SELECTED RECORD DETAIL -->
+<div class="panel selected-record-panel" style="margin-top:18px;">
+  <div class="panel-head">
+    <h2>Selected Record Detail</h2>
+    <span class="mini">Manual release only</span>
+  </div>
+
+  <div class="panel-body">
+    <div id="emptyState" class="mini">
+      Select a row to inspect install-base data.
     </div>
 
+    <div id="detailArea" class="hidden">
+      <div class="detail-grid" id="detailGrid"></div>
+
+      <div class="manager-message-box">
+        <label for="managerMessageSelect">Manager Message Required</label>
+
+        <select id="managerMessageSelect" class="small-select">
+          <option value="">No manager message</option>
+
+          <option value="Please review ownership before this record is released further.">
+            Please review ownership before release
+          </option>
+
+          <option value="Please confirm the correct owner group and territory for this record.">
+            Confirm owner group / territory
+          </option>
+
+          <option value="Please review source conflict notes before rep follow-up.">
+            Review source conflict notes
+          </option>
+
+          <option value="Please confirm whether this should stay staged or move forward.">
+            Confirm staged vs move forward
+          </option>
+
+          <option value="Install Base needs manager review before any rep action.">
+            Manager review needed before rep action
+          </option>
+
+          <option value="__other__">Other / custom message</option>
+        </select>
+
+        <input
+          id="managerCustomMessageInput"
+          type="text"
+          class="hidden"
+          placeholder="Type custom message to Manager..."
+          style="margin-top:10px;"
+        />
+
+        <div class="mini">
+          Used only when manually sending this selected record to Manager Review.
+        </div>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="green" id="releaseRepBtn">
+          Release Selected to Rep Review
+        </button>
+
+        <button type="button" class="green" id="releaseManagerBtn">
+          Release Selected to Manager Review
+        </button>
+
+        <button type="button" class="secondary" id="markStagedBtn">
+          Hold in Install Base
+        </button>
+
+        <button
+          type="button"
+          class="danger hidden"
+          id="hideCompletedProjectBtn"
+        >
+          Hide Completed Project
+        </button>
+      </div>
+
+      <div class="banner" id="resultBanner"></div>
+    </div>
   </div>
 </div>
-
+<!-- END FULL-WIDTH SELECTED RECORD DETAIL -->
 <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
@@ -3336,7 +3394,11 @@ if (showCompletedProjectsBtn) {
   if (managerMessageSelect) {
     managerMessageSelect.addEventListener("change", syncManagerCustomMessageVisibility);
   }
+const releaseRepBtn = $("releaseRepBtn");
 
+if (releaseRepBtn) {
+  releaseRepBtn.addEventListener("click", () => releaseSelected("rep"));
+}
   const releaseManagerBtn = $("releaseManagerBtn");
   if (releaseManagerBtn) {
     releaseManagerBtn.addEventListener("click", () => releaseSelected("manager"));
