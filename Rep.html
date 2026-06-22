@@ -1267,7 +1267,44 @@ tr.rep-new-row-flash td{
 .rep-action-history{
   min-height:100%;
 }
+.rep-workflow-layout{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);
+  gap:18px;
+  align-items:start;
+}
 
+.rep-workflow-left,
+.rep-workflow-right{
+  min-width:0;
+  display:grid;
+  gap:14px;
+  align-content:start;
+}
+
+.rep-workflow-layout .rep-action-main-card,
+.rep-workflow-layout .rep-review-request-card,
+.rep-workflow-layout .rep-financial-review-card,
+.rep-workflow-layout .quote-action-panel{
+  width:100%;
+  grid-column:auto!important;
+  margin:0!important;
+}
+
+.rep-workflow-layout .rep-action-main-card{
+  min-height:100%;
+}
+
+@media(max-width:1000px){
+  .rep-workflow-layout{
+    grid-template-columns:1fr;
+  }
+
+  .rep-workflow-layout .rep-action-main-card{
+    min-height:0;
+  }
+}
 .rep-mini-timeline-item{
   padding:12px 14px;
 }
@@ -1363,15 +1400,35 @@ tr.rep-new-row-flash td{
   border-color:rgba(156,211,255,.9);
 }
 .rep-selected-record-panel{
-  width:calc(100% - 378px);
-  margin-left:378px;
+  width:100%;
+  margin-left:0;
   margin-top:18px;
 }
 
-@media(max-width:1080px){
-  .rep-selected-record-panel{
-    width:100%;
-    margin-left:0;
+.rep-selected-record-panel .detail-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:start;
+  gap:14px;
+}
+
+@media(max-width:900px){
+  .rep-selected-record-panel .detail-grid{
+    grid-template-columns:1fr;
+  }
+}
+.rep-selected-record-panel .rep-action-split{
+  grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);
+}
+
+.rep-selected-record-panel .oem-review-compact-card,
+.rep-selected-record-panel .quote-action-panel,
+.rep-selected-record-panel .detail-card{
+  min-width:0;
+}
+
+@media(max-width:900px){
+  .rep-selected-record-panel .rep-action-split{
+    grid-template-columns:1fr;
   }
 }
 .alert-data-check{
@@ -4571,7 +4628,10 @@ function sendQuickRepManagerMessage() {
       <div class="v">${escapeHtml(rec.alert_override || "None")}</div>
     </div>
 
-  <div class="detail-card" style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);">
+ <div
+  class="detail-card rep-action-main-card"
+  style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);"
+>
   <div class="k">Rep Action / Manager Communication</div>
 
   <div class="rep-action-split">
@@ -4684,6 +4744,54 @@ function sendQuickRepManagerMessage() {
 
     ${renderQuoteApprovalActionPanel(rec)}
   `;
+const detailGridEl = $("detailGrid");
+
+if (detailGridEl) {
+  const actionCard =
+    detailGridEl.querySelector(".rep-action-main-card");
+
+  const reviewCard =
+    detailGridEl.querySelector(".rep-review-request-card");
+
+  const financialCard =
+    detailGridEl.querySelector(".rep-financial-review-card");
+
+  const quotePanel =
+    detailGridEl.querySelector(".quote-action-panel");
+
+  if (
+    actionCard &&
+    (reviewCard || financialCard || quotePanel)
+  ) {
+    const layout = document.createElement("div");
+    layout.className = "rep-workflow-layout";
+
+    const leftColumn = document.createElement("div");
+    leftColumn.className = "rep-workflow-left";
+
+    const rightColumn = document.createElement("div");
+    rightColumn.className = "rep-workflow-right";
+
+    actionCard.parentNode.insertBefore(layout, actionCard);
+
+    layout.appendChild(leftColumn);
+    layout.appendChild(rightColumn);
+
+    leftColumn.appendChild(actionCard);
+
+    if (reviewCard) {
+      rightColumn.appendChild(reviewCard);
+    }
+
+    if (financialCard) {
+      rightColumn.appendChild(financialCard);
+    }
+
+    if (quotePanel) {
+      rightColumn.appendChild(quotePanel);
+    }
+  }
+}
 const manualActionSelect = $("manualActionSelect");
 const savedManualAction = rec.rep_selected_manual_action || rec.rep_action || "";
 
@@ -4997,7 +5105,7 @@ function renderInstallBaseCorrectionPanel(rec) {
 
   if (!state.installBaseCommunicationOpen || correctionAlreadySent || !issues.length) {
     return `
-      <div class="detail-card full oem-review-note-card needs-rep-input">
+      <div class="detail-card full oem-review-note-card needs-rep-input rep-review-request-card">
         <div class="k">Review Request</div>
 
         <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
@@ -5054,7 +5162,7 @@ function renderInstallBaseCorrectionPanel(rec) {
   }
 
   return `
-    <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open">
+    <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open rep-review-request-card">
       <div class="k">Review Request</div>
 
       <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
@@ -5215,8 +5323,8 @@ function saveInstallBaseFix(id) {
             `
         }
 
-        <div class="detail-card">
-          <div class="k">Financial Review</div>
+       <div class="detail-card rep-financial-review-card">
+  <div class="k">Financial Review</div>
           <div class="v">
             ${
               quoteAmount
