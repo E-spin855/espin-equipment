@@ -487,11 +487,11 @@ tbody tr.selected{
 
 .search-row{
   display:grid;
-  grid-template-columns:1fr 170px;
+  grid-template-columns:minmax(260px,1fr) 170px 190px;
   gap:10px;
   margin-bottom:14px;
+  align-items:center;
 }
-
 @media(max-width:720px){
   .search-row{grid-template-columns:1fr}
 }
@@ -683,17 +683,30 @@ tr.install-base-corrected-row-frame td{
   <h2 id="tableTitle">Install Base Review</h2>
   <span class="mini" id="tableSubtitle">All records</span>
 </div>
-        <div class="panel-body">
-          <div class="search-row">
-            <input id="searchInput" type="text" placeholder="Search site, serial, model, rep, manager..." />
-            <select id="exceptionFilter" class="small-select">
-              <option value="">All records</option>
-              <option value="exception">Exceptions only</option>
-              <option value="ready">Ready only</option>
-              <option value="released">Released only</option>
-              <option value="staged">Staged only</option>
-            </select>
-          </div>
+        <div class="search-row">
+  <input
+    id="searchInput"
+    type="text"
+    placeholder="Search site, serial, model, rep, manager..."
+  />
+
+  <select id="exceptionFilter" class="small-select">
+    <option value="">All records</option>
+    <option value="exception">Exceptions only</option>
+    <option value="ready">Ready only</option>
+    <option value="released">Released only</option>
+    <option value="staged">Staged only</option>
+  </select>
+
+  <button
+    type="button"
+    class="secondary hidden"
+    id="showCompletedProjectsBtn"
+    style="padding:10px 12px;font-size:12px;"
+  >
+    Show Completed Projects
+  </button>
+</div>
 
           <div class="table-wrap">
             <table>
@@ -2075,14 +2088,20 @@ function hideSelectedCompletedProject() {
   state.showCompleted = false;
   state.selectedId = null;
 
-  const toggleBtn = $("toggleCompletedBtn");
-
-  if (toggleBtn) {
-    toggleBtn.textContent = "Show Completed";
-  }
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) showBtn.classList.remove("hidden");
 
   render();
-  showBanner("Completed project hidden from the current Install Base view.");
+  showBanner("Completed projects are hidden from the current Install Base view.");
+}
+function showCompletedProjects() {
+  state.showCompleted = true;
+
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) showBtn.classList.add("hidden");
+
+  render();
+  showBanner("Completed projects are visible.");
 }
 function updateReleaseButtonVisibility(rec) {
   const repBtn = $("releaseRepBtn");
@@ -3241,6 +3260,10 @@ function clearLocalData() {
   state.search = "";
   state.filter = "";
 state.showCompleted = true;
+const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+if (showCompletedProjectsBtn) {
+  showCompletedProjectsBtn.classList.add("hidden");
+}
   const input = $("csvInput");
   if (input) input.value = "";
 
@@ -3291,6 +3314,14 @@ if (hideCompletedProjectBtn) {
   hideCompletedProjectBtn.addEventListener(
     "click",
     hideSelectedCompletedProject
+  );
+}
+const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+
+if (showCompletedProjectsBtn) {
+  showCompletedProjectsBtn.addEventListener(
+    "click",
+    showCompletedProjects
   );
 }
   const exceptionFilter = $("exceptionFilter");
