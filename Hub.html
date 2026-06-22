@@ -679,10 +679,22 @@ tr.install-base-corrected-row-frame td{
     <div>
 
       <div class="panel" style="margin-bottom:18px;">
-        <div class="panel-head">
-          <h2 id="tableTitle">Install Base Review</h2>
-          <span class="mini" id="tableSubtitle">All records</span>
-        </div>
+       <div class="panel-head">
+  <h2 id="tableTitle">Install Base Review</h2>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="mini" id="tableSubtitle">All records</span>
+
+    <button
+      type="button"
+      class="secondary"
+      id="toggleCompletedBtn"
+      style="padding:9px 12px;font-size:12px;"
+    >
+      Hide Completed
+    </button>
+  </div>
+</div>
 
         <div class="panel-body">
           <div class="search-row">
@@ -785,7 +797,8 @@ const state = {
   selectedOwner: "",
   selectedId: null,
   search: "",
-  filter: ""
+  filter: "",
+  showCompleted: true
 };
 
 const $ = (id) => document.getElementById(id);
@@ -2653,10 +2666,35 @@ function matchesFilter(rec) {
 
   return true;
 }
+function isCompletedRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.lifecycle_completed === true ||
+    lower(rec.rep_status) === "completed" ||
+    lower(rec.rep_action) === "complete" ||
+    lower(rec.rep_action) === "completed" ||
+    lower(rec.project_status) === "completed" ||
+    lower(rec.install_base_completion_status) === "completed_by_rep" ||
+    lower(rec.install_base_response_status) === "project_completed_by_rep"
+  );
+}
 function getFilteredRecords() {
   return state.records.filter(r => {
-    const ownerMatch = !state.selectedOwner || getOwnerName(r) === state.selectedOwner;
-    return ownerMatch && matchesSearch(r) && matchesFilter(r);
+    const ownerMatch =
+      !state.selectedOwner ||
+      getOwnerName(r) === state.selectedOwner;
+
+    const completedMatch =
+      state.showCompleted ||
+      !isCompletedRecord(r);
+
+    return (
+      ownerMatch &&
+      completedMatch &&
+      matchesSearch(r) &&
+      matchesFilter(r)
+    );
   });
 }
 function renderStats() {
@@ -3170,7 +3208,12 @@ function clearLocalData() {
   state.selectedId = null;
   state.search = "";
   state.filter = "";
+state.showCompleted = true;
+const toggleCompletedBtn = $("toggleCompletedBtn");
 
+if (toggleCompletedBtn) {
+  toggleCompletedBtn.textContent = "Hide Completed";
+}
   const input = $("csvInput");
   if (input) input.value = "";
 
@@ -3182,6 +3225,29 @@ function clearLocalData() {
 
   render();
   showBanner("Local demo data cleared.");
+}
+function toggleCompletedRecords() {
+  state.showCompleted = !state.showCompleted;
+
+  const btn = $("toggleCompletedBtn");
+
+  if (btn) {
+    btn.textContent = state.showCompleted
+      ? "Hide Completed"
+      : "Show Completed";
+  }
+
+  const selected = findSelectedRecord();
+
+  if (
+    !state.showCompleted &&
+    selected &&
+    isCompletedRecord(selected)
+  ) {
+    state.selectedId = null;
+  }
+
+  render();
 }
 function render() {
   mergeRepResponsesIntoRecords();
@@ -3208,7 +3274,14 @@ function init() {
   if (clearBtn) {
     clearBtn.addEventListener("click", clearLocalData);
   }
+const toggleCompletedBtn = $("toggleCompletedBtn");
 
+if (toggleCompletedBtn) {
+  toggleCompletedBtn.addEventListener(
+    "click",
+    toggleCompletedRecords
+  );
+}
   const searchInput = $("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", e => {
