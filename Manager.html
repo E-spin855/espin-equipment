@@ -2155,53 +2155,239 @@ function getRepActionLabel(action) {
 }
 
 function renderRepStatus(rec) {
-  const label =
-    rec.rep_selected_manual_action_label ||
-    rec.rep_action_label ||
-    getRepActionLabel(rec.rep_action) ||
-    "";
-
-  if (rec.lifecycle_completed || rec.rep_status === "completed") {
-    return `<span class="pill submitted">Completed</span>`;
+  if (!rec) {
+    return `<span class="pill normal">Open</span>`;
   }
 
-  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
-    return `<span class="pill ready">Manager Response Sent</span>`;
+  const repStatus = lower(rec.rep_status);
+  const repAction = lower(rec.rep_action);
+  const manualAction = lower(rec.rep_selected_manual_action);
+  const quoteStatus = lower(rec.quote_status);
+  const quoteApprovalStatus = lower(rec.quote_approval_status);
+  const installBaseResponseStatus = lower(rec.install_base_response_status);
+  const correctionStatus = lower(rec.install_base_correction_status);
+  const fixStatus = lower(rec.install_base_fix_status);
+
+  /*
+    1. Final project outcomes
+  */
+
+  if (isCompletedManagerRecord(rec)) {
+    return `<span class="pill submitted">Project Completed</span>`;
   }
 
-  if (isManagerRepFixUnseen(rec)) {
-    return `<span class="pill submitted">Fixed Data</span>`;
+  if (
+    quoteStatus === "won" ||
+    repStatus === "won" ||
+    repAction === "won"
+  ) {
+    return `<span class="pill submitted">Project Won</span>`;
   }
 
-  if (rec.quote_status === "won" || rec.rep_status === "won") {
-    return `<span class="pill submitted">Won</span>`;
+  if (
+    quoteStatus === "lost" ||
+    repStatus === "lost" ||
+    repAction === "lost"
+  ) {
+    return `<span class="pill postponed">Closed – Lost</span>`;
   }
 
-  if (rec.quote_status === "lost" || rec.rep_status === "lost") {
-    return `<span class="pill postponed">Lost</span>`;
+  if (
+    rec.rep_deleted === true ||
+    repStatus === "remove" ||
+    repAction === "remove"
+  ) {
+    return `<span class="pill postponed">Removed</span>`;
   }
+
+  /*
+    2. Install Base correction activity
+  */
+
+  if (
+    correctionStatus === "corrected_by_rep" ||
+    installBaseResponseStatus === "rep_correction_sent" ||
+    fixStatus === "rep_reviewed"
+  ) {
+    return `<span class="pill submitted">Corrected by Rep</span>`;
+  }
+
+  if (
+    correctionStatus === "corrected_by_manager" ||
+    installBaseResponseStatus === "manager_correction_sent" ||
+    fixStatus === "manager_reviewed"
+  ) {
+    return `<span class="pill submitted">Corrected by Manager</span>`;
+  }
+
+  if (installBaseResponseStatus === "manager_unable_to_verify") {
+    return `<span class="pill ready">Unable to Verify</span>`;
+  }
+
+  /*
+    3. Quote workflow
+  */
+
+  if (
+    quoteApprovalStatus === "approved" ||
+    quoteStatus === "approved_for_customer_release" ||
+    rec.quote_customer_release_allowed === true
+  ) {
+    return `<span class="pill submitted">Quote Approved</span>`;
+  }
+
+  if (
+    quoteApprovalStatus === "pending_review" ||
+    quoteStatus === "submitted_for_approval"
+  ) {
+    return `<span class="pill pending">Quote Review</span>`;
+  }
+
+  if (
+    quoteApprovalStatus === "revision_needed" ||
+    quoteStatus === "revision_needed"
+  ) {
+    return `<span class="pill ready">Quote Revision Needed</span>`;
+  }
+
+  if (
+    quoteApprovalStatus === "rejected" ||
+    quoteStatus === "rejected"
+  ) {
+    return `<span class="pill postponed">Quote Rejected</span>`;
+  }
+
+  if (
+    quoteStatus === "sent" ||
+    repAction === "quote_sent"
+  ) {
+    return `<span class="pill pending">Quote Sent</span>`;
+  }
+
+  if (
+    rec.quote_amount ||
+    repAction === "quote_created" ||
+    repAction === "quote_updated" ||
+    repStatus === "quote_follow_up_set"
+  ) {
+    return `<span class="pill local">Quote Draft</span>`;
+  }
+
+  /*
+    4. Trade-In and disposition workflow
+  */
+
+  if (
+    repAction === "send_tradein_app" ||
+    repAction === "trade_review" ||
+    repStatus === "trade_review" ||
+    rec.tradein_sync_received === true
+  ) {
+    return `<span class="pill local">Trade-In Review</span>`;
+  }
+
+  if (
+    repAction === "send_disposal_review" ||
+    repStatus === "disposal_review"
+  ) {
+    return `<span class="pill local">Disposition Review</span>`;
+  }
+
+  /*
+    5. Follow-up activity
+  */
 
   if (hasFollowUpOverdueBy7Days(rec)) {
     return `<span class="pill postponed">Follow-Up Overdue</span>`;
   }
 
   if (
-    rec.rep_action === "follow_up" ||
-    rec.rep_status === "follow_up_scheduled" ||
-    rec.rep_action === "schedule_follow_up"
+    repAction === "follow_up" ||
+    repAction === "schedule_follow_up" ||
+    repStatus === "follow_up_scheduled" ||
+    repStatus === "schedule_follow_up" ||
+    Boolean(rec.rep_follow_up_date || rec.next_action_date)
   ) {
-    return `<span class="pill pending">Follow-Up Set</span>`;
+    return `<span class="pill pending">Follow-Up Scheduled</span>`;
   }
 
-  if (rec.rep_deleted || rec.rep_action === "remove" || rec.rep_status === "remove") {
-    return `<span class="pill postponed">Removed</span>`;
+  /*
+    6. Other visible rep actions
+  */
+
+  if (
+    repAction === "contact_customer" ||
+    repAction === "contacted"
+  ) {
+    return `<span class="pill local">Customer Contacted</span>`;
   }
 
-  if (label && label !== "needed" && label !== "new" && label !== "open") {
-    return `<span class="pill local">${escapeHtml(label)}</span>`;
+  if (repAction === "site_visit") {
+    return `<span class="pill local">Site Visit Scheduled</span>`;
   }
 
-  return `<span class="mini">No rep action yet</span>`;
+  if (
+    repAction === "mark_reviewed" ||
+    repStatus === "reviewed"
+  ) {
+    return `<span class="pill local">Reviewed by Rep</span>`;
+  }
+
+  if (
+    repAction === "add_note" ||
+    repAction === "rep_message" ||
+    Boolean(rec.rep_manager_message_at)
+  ) {
+    return `<span class="pill local">Rep Update Sent</span>`;
+  }
+
+  /*
+    Opening an Install Base item changes rep_status to "open".
+  */
+
+  if (
+    repStatus === "open" ||
+    repStatus === "in_review" ||
+    repStatus === "reviewing"
+  ) {
+    return `<span class="pill local">In Review</span>`;
+  }
+
+  /*
+    Do not display the Install Base review label as Record Status.
+    Freshly released records remain Open until the rep acts.
+  */
+
+  const ignoredLabels = [
+    "data check",
+    "asset status",
+    "capital planning",
+    "ownership",
+    "service coverage",
+    "equipment age",
+    "source mismatch",
+    "site / account",
+    "project / asset",
+    "record note",
+    "needed",
+    "new",
+    "open"
+  ];
+
+  const rawLabel = clean(
+    rec.rep_selected_manual_action_label ||
+    rec.rep_action_label ||
+    ""
+  );
+
+  if (
+    rawLabel &&
+    !ignoredLabels.includes(lower(rawLabel))
+  ) {
+    return `<span class="pill local">${escapeHtml(rawLabel)}</span>`;
+  }
+
+  return `<span class="pill normal">Open</span>`;
 }
 function getDisplayOrderWeight(rec) {
   if (!rec) return 0;
