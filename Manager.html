@@ -1066,9 +1066,22 @@ tr.manager-row-flash td{
       <div>
         <div class="panel">
           <div class="panel-head">
-            <h2>Manager Visibility Queue</h2>
-            <span class="mini">Rep activity and install-base release updates</span>
-          </div>
+  <h2>Manager Visibility Queue</h2>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="mini">
+      Rep activity and install-base release updates
+    </span>
+
+    <button
+      type="button"
+      class="secondary hidden"
+      id="showCompletedProjectsBtn"
+    >
+      Show Completed Projects
+    </button>
+  </div>
+</div>
 
           <div class="panel-body table-wrap">
             <table>
@@ -1108,10 +1121,21 @@ tr.manager-row-flash td{
           <div class="panel-body">
             <div id="emptyState" class="mini">Select a record in the table above.</div>
 
-            <div id="detailArea" class="hidden">
-              <div class="detail-grid" id="detailGrid"></div>
-              <div class="banner" id="resultBanner"></div>
-            </div>
+           <div id="detailArea" class="hidden">
+  <div class="detail-grid" id="detailGrid"></div>
+
+  <div class="btns">
+    <button
+      type="button"
+      class="red hidden"
+      id="hideCompletedProjectBtn"
+    >
+      Hide Completed Project
+    </button>
+  </div>
+
+  <div class="banner" id="resultBanner"></div>
+</div>
           </div>
         </div>
       </div>
@@ -1138,7 +1162,8 @@ const state = {
   records: [],
   selectedId: null,
   selectedRep: null,
-  timelineHighlight: null
+  timelineHighlight: null,
+  showCompleted: true
 };
 
 const $ = (id) => document.getElementById(id);
@@ -2223,10 +2248,29 @@ function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
     </span>
   `;
 }
+function isCompletedManagerRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.lifecycle_completed === true ||
+    lower(rec.rep_status) === "completed" ||
+    lower(rec.rep_action) === "complete" ||
+    lower(rec.rep_action) === "completed" ||
+    lower(rec.project_status) === "completed" ||
+    lower(rec.install_base_completion_status) === "completed_by_rep" ||
+    lower(rec.install_base_response_status) === "project_completed_by_rep"
+  );
+}
 function renderTable() {
   const tbody = $("tableBody");
 
   let records = [...state.records];
+
+  if (!state.showCompleted) {
+    records = records.filter(
+      rec => !isCompletedManagerRecord(rec)
+    );
+  }
 
   if (state.selectedRep) {
     records = records.filter(rec => getRepName(rec) === state.selectedRep);
@@ -2895,12 +2939,16 @@ function renderDetail() {
   const detail = $("detailArea");
   const grid = $("detailGrid");
   const closeBtn = $("closeSelectedBtn");
+  const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 
   if (!rec) {
     if (empty) empty.classList.remove("hidden");
     if (detail) detail.classList.add("hidden");
     if (grid) grid.innerHTML = "";
     if (closeBtn) closeBtn.classList.add("hidden");
+    if (hideCompletedProjectBtn) {
+      hideCompletedProjectBtn.classList.add("hidden");
+    }
     return;
   }
 
@@ -2908,12 +2956,30 @@ function renderDetail() {
   if (detail) detail.classList.remove("hidden");
   if (closeBtn) closeBtn.classList.remove("hidden");
 
+  const completed = isCompletedManagerRecord(rec);
+
+  if (hideCompletedProjectBtn) {
+    hideCompletedProjectBtn.classList.toggle("hidden", !completed);
+  }
+
   const quoteAmount = Number(rec.quote_amount || 0);
   const estimatedCost = Number(rec.quote_estimated_cost || 0);
-  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || rec.trade_in_credit || 0);
-  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  const tradeInCredit = Number(
+    rec.quote_trade_in_credit ||
+    rec.tradein_credit ||
+    rec.trade_in_credit ||
+    0
+  );
+
+  const netQuote = Number(
+    rec.quote_net_amount ||
+    Math.max(0, quoteAmount - tradeInCredit)
+  );
+
   const profit = quoteAmount ? netQuote - estimatedCost : 0;
-  const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
+  const margin = netQuote > 0
+    ? Math.round((profit / netQuote) * 100)
+    : 0;
 
   const alert = getAlerts(rec)[0];
 
@@ -2927,7 +2993,8 @@ function renderDetail() {
     rec.manager_alert_seen !== true;
 
   const hubUpdateCardClass =
-    hasOpenManagerUpdate && rec.manager_flash_type === "install_base_release"
+    hasOpenManagerUpdate &&
+    rec.manager_flash_type === "install_base_release"
       ? "detail-card update-detail-card"
       : "detail-card";
 
@@ -2942,28 +3009,49 @@ function renderDetail() {
       : "detail-card";
 
   grid.innerHTML = `
-    ${renderOverdueManagerAlert(rec)}
+    ${completed ? "" : renderOverdueManagerAlert(rec)}
 
     <div class="selected-summary full">
       <div class="summary-card">
         <div class="summary-title">Facility</div>
-        <div class="summary-main">${escapeHtml(getFacility(rec))}</div>
+        <div class="summary-main">
+          ${escapeHtml(getFacility(rec))}
+        </div>
         <div class="summary-sub">
-          ${escapeHtml([rec.site_address, rec.city, rec.state, rec.zip_code].filter(Boolean).join(", ") || "No address entered")}
+          ${escapeHtml(
+            [
+              rec.site_address,
+              rec.city,
+              rec.state,
+              rec.zip_code
+            ]
+              .filter(Boolean)
+              .join(", ") || "No address entered"
+          )}
         </div>
       </div>
 
       <div class="summary-card">
         <div class="summary-title">Equipment / Project</div>
-        <div class="summary-main">${escapeHtml(`${rec.make || ""} ${rec.model || ""}`.trim() || "-")}</div>
+        <div class="summary-main">
+          ${escapeHtml(
+            `${rec.make || ""} ${rec.model || ""}`.trim() || "-"
+          )}
+        </div>
         <div class="summary-sub">
-          ${escapeHtml(rec.modality || "-")} • Serial: ${escapeHtml(rec.serial_number || rec.serial || "-")} • DOM: ${escapeHtml(rec.dom || "-")}
+          ${escapeHtml(rec.modality || "-")}
+          • Serial:
+          ${escapeHtml(rec.serial_number || rec.serial || "-")}
+          • DOM:
+          ${escapeHtml(rec.dom || "-")}
         </div>
       </div>
 
       <div class="summary-card">
         <div class="summary-title">Assigned Rep</div>
-        <div class="summary-main">${escapeHtml(getRepName(rec))}</div>
+        <div class="summary-main">
+          ${escapeHtml(getRepName(rec))}
+        </div>
         <div class="summary-sub">
           ${escapeHtml(getRepEmail(rec) || "")}<br>
           ${escapeHtml(getRepPhone(rec) || "")}
@@ -2971,22 +3059,47 @@ function renderDetail() {
       </div>
     </div>
 
-      <div class="section-title">Manager Review</div>
+    <div class="section-title">Manager Review</div>
 
-    <div class="detail-card full" style="border:2px solid rgba(255,216,77,.72);background:rgba(255,216,77,.08);">
+    <div
+      class="detail-card full"
+      style="
+        border:2px solid rgba(255,216,77,.72);
+        background:rgba(255,216,77,.08);
+      "
+    >
       <div class="k">Install Base Review</div>
-      <div class="v" style="font-size:20px;font-weight:950;margin-bottom:12px;">
+
+      <div
+        class="v"
+        style="font-size:20px;font-weight:950;margin-bottom:12px;"
+      >
         ${escapeHtml(
           rec.hub_source === "AXIS Install Base Workspace" ||
           rec.install_base_sync_type ||
           rec.install_base_release_status === "auto_synced" ||
           rec.install_base_release_status === "released_to_manager"
             ? normalizeOemReviewLabelForManager(rec)
-            : (alert ? formatReviewText(alert.label || alert.displayType || "Review") : "Normal")
+            : (
+                alert
+                  ? formatReviewText(
+                      alert.label ||
+                      alert.displayType ||
+                      "Review"
+                    )
+                  : "Normal"
+              )
         )}
       </div>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div
+        style="
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          margin-bottom:12px;
+        "
+      >
         <span class="pill local">
           ${escapeHtml(
             rec.hub_source === "AXIS Install Base Workspace" ||
@@ -2994,17 +3107,32 @@ function renderDetail() {
             rec.install_base_release_status === "auto_synced" ||
             rec.install_base_release_status === "released_to_manager"
               ? normalizeOemReviewLabelForManager(rec)
-              : formatReviewText(rec.oem_review_type || rec.review_type || rec.alert_override || alert?.displayType || "Review")
+              : formatReviewText(
+                  rec.oem_review_type ||
+                  rec.review_type ||
+                  rec.alert_override ||
+                  alert?.displayType ||
+                  "Review"
+                )
           )}
         </span>
 
         <span class="pill normal">
-          ${escapeHtml(formatReviewText(rec.oem_review_level || rec.review_level || rec.visibility_level || "Monitor"))}
+          ${escapeHtml(
+            formatReviewText(
+              rec.oem_review_level ||
+              rec.review_level ||
+              rec.visibility_level ||
+              "Monitor"
+            )
+          )}
         </span>
-
       </div>
 
-      <div class="mini" style="font-size:14px;line-height:1.55;">
+      <div
+        class="mini"
+        style="font-size:14px;line-height:1.55;"
+      >
         ${escapeHtml(
           rec.install_base_clarification_reason ||
           rec.install_base_issue_reason ||
@@ -3022,140 +3150,430 @@ function renderDetail() {
     </div>
 
     ${
-      isManagerInstallBaseRequest(rec)
+      !completed && isManagerInstallBaseRequest(rec)
         ? renderManagerInstallBaseCorrectionPanel(rec)
         : ""
     }
 
-    <div class="section-title blue">Manager Action / Rep Communication</div>
-
-    <div class="detail-card full" style="border:2px solid rgba(0,229,255,.38);background:rgba(0,229,255,.07);">
-      <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:16px;align-items:start;">
-
-        <div>
-          <div class="k">Manager Action</div>
-          <div class="v" style="font-size:14px;margin-bottom:14px;">
-            Select a manager response, add notes, and send the update back to Rep.
-          </div>
-
-          <div class="manager-response-grid" style="grid-template-columns:1fr 180px;">
-            <div>
-              <label for="managerResponseAction">Message to Rep</label>
-              <select id="managerResponseAction">
-                <option value="">Select message</option>
-                <option value="manager_reviewed">Reviewed</option>
-                <option value="needs_follow_up">Needs Follow-Up</option>
-                <option value="needs_rep_update">Needs Rep Update</option>
-                <option value="quote_review_needed">Quote Review Needed</option>
-                <option value="tradein_review_needed">Trade-In Review Needed</option>
-                <option value="project_review_needed">Project Review Needed</option>
-                <option value="close_out">Close Out</option>
-              </select>
+    ${
+      completed
+        ? `
+          <div
+            class="detail-card full"
+            style="
+              border:2px solid rgba(56,189,248,.72);
+              background:rgba(56,189,248,.08);
+            "
+          >
+            <div class="k">Project Status</div>
+            <div
+              class="v"
+              style="
+                font-size:20px;
+                font-weight:950;
+                color:#bdeaff;
+              "
+            >
+              Project Completed
             </div>
 
-            <div>
-              <label for="managerResponseDate">Follow-Up Date</label>
-              <input id="managerResponseDate" type="date" />
+            <div
+              class="mini"
+              style="margin-top:8px;line-height:1.5;"
+            >
+              Completed by:
+              ${escapeHtml(
+                rec.completed_by ||
+                rec.install_base_response_by ||
+                getRepName(rec) ||
+                "-"
+              )}
+              ${
+                rec.completed_at ||
+                rec.install_base_response_at
+                  ? `<br>Completed at: ${escapeHtml(
+                      rec.completed_at ||
+                      rec.install_base_response_at
+                    )}`
+                  : ""
+              }
             </div>
           </div>
-
-          <div style="margin-top:12px;">
-            <label for="managerResponseNotes">Notes / Message to Rep</label>
-            <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
+        `
+        : `
+          <div class="section-title blue">
+            Manager Action / Rep Communication
           </div>
 
-          <div class="btns" style="margin-top:12px;">
-            <button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button>
+          <div
+            class="detail-card full"
+            style="
+              border:2px solid rgba(0,229,255,.38);
+              background:rgba(0,229,255,.07);
+            "
+          >
+            <div
+              style="
+                display:grid;
+                grid-template-columns:1.05fr 1fr;
+                gap:16px;
+                align-items:start;
+              "
+            >
+              <div>
+                <div class="k">Manager Action</div>
+
+                <div
+                  class="v"
+                  style="font-size:14px;margin-bottom:14px;"
+                >
+                  Select a manager response, add notes, and send the
+                  update back to Rep.
+                </div>
+
+                <div
+                  class="manager-response-grid"
+                  style="grid-template-columns:1fr 180px;"
+                >
+                  <div>
+                    <label for="managerResponseAction">
+                      Message to Rep
+                    </label>
+
+                    <select id="managerResponseAction">
+                      <option value="">Select message</option>
+                      <option value="manager_reviewed">
+                        Reviewed
+                      </option>
+                      <option value="needs_follow_up">
+                        Needs Follow-Up
+                      </option>
+                      <option value="needs_rep_update">
+                        Needs Rep Update
+                      </option>
+                      <option value="quote_review_needed">
+                        Quote Review Needed
+                      </option>
+                      <option value="tradein_review_needed">
+                        Trade-In Review Needed
+                      </option>
+                      <option value="project_review_needed">
+                        Project Review Needed
+                      </option>
+                      <option value="close_out">
+                        Close Out
+                      </option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label for="managerResponseDate">
+                      Follow-Up Date
+                    </label>
+
+                    <input
+                      id="managerResponseDate"
+                      type="date"
+                    />
+                  </div>
+                </div>
+
+                <div style="margin-top:12px;">
+                  <label for="managerResponseNotes">
+                    Notes / Message to Rep
+                  </label>
+
+                  <textarea
+                    id="managerResponseNotes"
+                    placeholder="Type notes or message to Rep..."
+                  ></textarea>
+                </div>
+
+                <div class="btns" style="margin-top:12px;">
+                  <button
+                    type="button"
+                    class="green"
+                    onclick="saveManagerResponse()"
+                  >
+                    Send Message to Rep
+                  </button>
+                </div>
+              </div>
+
+              <div
+                class="detail-card"
+                style="
+                  margin:0;
+                  background:rgba(8,18,35,.72);
+                "
+              >
+                <div class="k">
+                  Activity / Manager History
+                </div>
+
+                <div
+                  style="
+                    padding:12px;
+                    border-radius:12px;
+                    border:1px solid rgba(88,184,255,.18);
+                    background:rgba(5,12,24,.62);
+                    margin-bottom:10px;
+                  "
+                >
+                  <div
+                    class="mini"
+                    style="color:#9cffc8;font-weight:900;"
+                  >
+                    Current
+                  </div>
+
+                  <div class="v">
+                    ${renderRepStatus(rec)}
+                  </div>
+                </div>
+
+                ${
+                  rec.rep_notes || rec.quote_follow_up_alert_note
+                    ? `
+                      <div
+                        style="
+                          padding:12px;
+                          border-radius:12px;
+                          border:1px solid rgba(88,184,255,.18);
+                          background:rgba(5,12,24,.62);
+                          margin-bottom:10px;
+                        "
+                      >
+                        <div
+                          class="mini"
+                          style="color:#9bc6ec;font-weight:900;"
+                        >
+                          Rep Notes
+                        </div>
+
+                        <div class="v">
+                          ${escapeHtml(
+                            rec.rep_notes ||
+                            rec.quote_follow_up_alert_note
+                          )}
+                        </div>
+                      </div>
+                    `
+                    : `
+                      <div
+                        style="
+                          padding:12px;
+                          border-radius:12px;
+                          border:1px solid rgba(88,184,255,.18);
+                          background:rgba(5,12,24,.62);
+                          margin-bottom:10px;
+                        "
+                      >
+                        <div
+                          class="mini"
+                          style="color:#9bc6ec;font-weight:900;"
+                        >
+                          Rep Notes
+                        </div>
+
+                        <div class="v">
+                          No rep notes entered.
+                        </div>
+                      </div>
+                    `
+                }
+
+                ${
+                  rec.manager_response_action
+                    ? `
+                      <div
+                        style="
+                          padding:12px;
+                          border-radius:12px;
+                          border:1px solid rgba(65,255,156,.35);
+                          background:rgba(65,255,156,.08);
+                        "
+                      >
+                        <div
+                          class="mini"
+                          style="color:#9cffc8;font-weight:900;"
+                        >
+                          Latest Manager Message
+                        </div>
+
+                        <div class="v">
+                          ${escapeHtml(
+                            formatReviewText(
+                              rec.manager_response_action
+                            )
+                          )}
+                        </div>
+
+                        ${
+                          rec.manager_response_notes
+                            ? `
+                              <div
+                                class="mini"
+                                style="margin-top:6px;"
+                              >
+                                ${escapeHtml(
+                                  rec.manager_response_notes
+                                )}
+                              </div>
+                            `
+                            : ""
+                        }
+
+                        ${
+                          rec.manager_response_at
+                            ? `
+                              <div
+                                class="mini"
+                                style="margin-top:6px;"
+                              >
+                                Sent at:
+                                ${escapeHtml(
+                                  new Date(
+                                    rec.manager_response_at
+                                  ).toLocaleString()
+                                )}
+                              </div>
+                            `
+                            : ""
+                        }
+                      </div>
+                    `
+                    : `
+                      <div
+                        style="
+                          padding:12px;
+                          border-radius:12px;
+                          border:1px solid rgba(88,184,255,.18);
+                          background:rgba(5,12,24,.62);
+                        "
+                      >
+                        <div
+                          class="mini"
+                          style="color:#9bc6ec;font-weight:900;"
+                        >
+                          Manager History
+                        </div>
+
+                        <div class="v">
+                          No manager response sent yet.
+                        </div>
+                      </div>
+                    `
+                }
+              </div>
+            </div>
           </div>
-        </div>
+        `
+    }
 
-        <div class="detail-card" style="margin:0;background:rgba(8,18,35,.72);">
-          <div class="k">Activity / Manager History</div>
-
-          <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
-            <div class="mini" style="color:#9cffc8;font-weight:900;">Current</div>
-            <div class="v">${renderRepStatus(rec)}</div>
-          </div>
-
-          ${
-            rec.rep_notes || rec.quote_follow_up_alert_note
-              ? `
-                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
-                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Rep Notes</div>
-                  <div class="v">${escapeHtml(rec.rep_notes || rec.quote_follow_up_alert_note)}</div>
-                </div>
-              `
-              : `
-                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);margin-bottom:10px;">
-                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Rep Notes</div>
-                  <div class="v">No rep notes entered.</div>
-                </div>
-              `
-          }
-
-          ${
-            rec.manager_response_action
-              ? `
-                <div style="padding:12px;border-radius:12px;border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.08);">
-                  <div class="mini" style="color:#9cffc8;font-weight:900;">Latest Manager Message</div>
-                  <div class="v">${escapeHtml(formatReviewText(rec.manager_response_action))}</div>
-                  ${rec.manager_response_notes ? `<div class="mini" style="margin-top:6px;">${escapeHtml(rec.manager_response_notes)}</div>` : ""}
-                  ${rec.manager_response_at ? `<div class="mini" style="margin-top:6px;">Sent at: ${escapeHtml(new Date(rec.manager_response_at).toLocaleString())}</div>` : ""}
-                </div>
-              `
-              : `
-                <div style="padding:12px;border-radius:12px;border:1px solid rgba(88,184,255,.18);background:rgba(5,12,24,.62);">
-                  <div class="mini" style="color:#9bc6ec;font-weight:900;">Manager History</div>
-                  <div class="v">No manager response sent yet.</div>
-                </div>
-              `
-          }
-        </div>
-      </div>
+    <div class="section-title yellow">
+      Financial Review
     </div>
-
-    <div class="section-title yellow">Financial Review</div>
 
     <div class="detail-card full">
       <div class="k">Financial Review</div>
+
       ${
         quoteAmount > 0
           ? `
-            <div class="v">${escapeHtml(money(quoteAmount))}</div>
-            <div class="mini" style="margin-top:8px;line-height:1.45;">
-              Quote status: ${escapeHtml(formatReviewText(rec.quote_approval_status || rec.quote_status || "Draft"))}
-              ${tradeInCredit ? `<br>Trade-in reference: ${escapeHtml(money(tradeInCredit))}` : ""}
-              ${netQuote ? `<br>Net quote reference: ${escapeHtml(money(netQuote))}` : ""}
+            <div class="v">
+              ${escapeHtml(money(quoteAmount))}
+            </div>
+
+            <div
+              class="mini"
+              style="margin-top:8px;line-height:1.45;"
+            >
+              Quote status:
+              ${escapeHtml(
+                formatReviewText(
+                  rec.quote_approval_status ||
+                  rec.quote_status ||
+                  "Draft"
+                )
+              )}
+
+              ${
+                tradeInCredit
+                  ? `<br>Trade-in reference: ${escapeHtml(
+                      money(tradeInCredit)
+                    )}`
+                  : ""
+              }
+
+              ${
+                netQuote
+                  ? `<br>Net quote reference: ${escapeHtml(
+                      money(netQuote)
+                    )}`
+                  : ""
+              }
             </div>
           `
           : `
-            <div class="v" style="color:#ffd84d;">Quote not created yet</div>
+            <div class="v" style="color:#ffd84d;">
+              Quote not created yet
+            </div>
+
             <div class="mini" style="margin-top:8px;">
-              This equipment review record is visible, but the rep has not entered quote details yet.
+              This equipment review record is visible, but the rep
+              has not entered quote details yet.
             </div>
           `
       }
     </div>
-  
+
     <div class="detail-card full">
       <div class="k">Quote Approval Status</div>
-      <div class="v">${escapeHtml(formatReviewText(rec.quote_approval_status || rec.quote_status || "No quote approval activity"))}</div>
-      <div class="mini" style="margin-top:8px;line-height:1.45;color:#d9c98a;">
-        Quote figures are shown from rep-entered fields. AXIS does not determine pricing, value, profitability, margin, discount, approval, or customer release.
+
+      <div class="v">
+        ${escapeHtml(
+          formatReviewText(
+            rec.quote_approval_status ||
+            rec.quote_status ||
+            "No quote approval activity"
+          )
+        )}
+      </div>
+
+      <div
+        class="mini"
+        style="
+          margin-top:8px;
+          line-height:1.45;
+          color:#d9c98a;
+        "
+      >
+        Quote figures are shown from rep-entered fields. AXIS does
+        not determine pricing, value, profitability, margin,
+        discount, approval, or customer release.
       </div>
     </div>
-
   `;
 
-  const action = $("managerResponseAction");
-  const date = $("managerResponseDate");
-  const notes = $("managerResponseNotes");
+  if (!completed) {
+    const action = $("managerResponseAction");
+    const date = $("managerResponseDate");
+    const notes = $("managerResponseNotes");
 
-  if (action) action.value = rec.manager_response_action || "";
-  if (date) date.value = rec.manager_response_date || "";
-  if (notes) notes.value = rec.manager_response_notes || "";
+    if (action) {
+      action.value = rec.manager_response_action || "";
+    }
+
+    if (date) {
+      date.value = rec.manager_response_date || "";
+    }
+
+    if (notes) {
+      notes.value = rec.manager_response_notes || "";
+    }
+  }
 }
-
 function syncRecordEverywhere(updatedRec) {
   const key = getRecordKey(updatedRec);
   const rec = { ...updatedRec, key };
@@ -3841,7 +4259,35 @@ function scheduleManagerRender() {
     if (!isManagerEditing()) render();
   });
 }
+function hideCompletedManagerProjects() {
+  const rec = findSelectedRecord();
 
+  if (!rec || !isCompletedManagerRecord(rec)) return;
+
+  state.showCompleted = false;
+  state.selectedId = null;
+  state.timelineHighlight = null;
+
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) {
+    showBtn.classList.remove("hidden");
+  }
+
+  render();
+  showBanner("Completed projects are hidden from the current Manager view.");
+}
+
+function showCompletedManagerProjects() {
+  state.showCompleted = true;
+
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) {
+    showBtn.classList.add("hidden");
+  }
+
+  render();
+  showBanner("Completed projects are visible.");
+}
 function render() {
   const main = readArrayKey(STORAGE_KEY);
   const managerQueue = readManagerQueueRecords();
