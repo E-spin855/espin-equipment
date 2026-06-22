@@ -1285,6 +1285,30 @@ tr.rep-new-row-flash td{
     grid-template-columns:1fr;
   }
 }
+#hideCompletedProjectBtn{
+  min-width:250px;
+  min-height:52px;
+  padding:13px 20px;
+  font-size:15px;
+  font-weight:950;
+  margin-top:14px;
+}
+
+#showCompletedProjectsBtn{
+  padding:10px 15px;
+  background:#27496f;
+  color:#ffe28a;
+  border:2px solid rgba(126,189,255,.72);
+  box-shadow:0 0 14px rgba(67,176,255,.18);
+  font-size:12px;
+  font-weight:950;
+}
+
+#showCompletedProjectsBtn:hover{
+  background:#315b89;
+  color:#fff1bd;
+  border-color:rgba(156,211,255,.9);
+}
   </style>
 </head>
 
@@ -1445,11 +1469,21 @@ tr.rep-new-row-flash td{
           </div>
         </div>
 
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Equipment Review Records</h2>
-            <span class="mini">Select a row to review</span>
-          </div>
+        <div class="panel-head">
+  <h2>Equipment Review Records</h2>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span class="mini">Select a row to review</span>
+
+    <button
+      type="button"
+      class="secondary hidden"
+      id="showCompletedProjectsBtn"
+    >
+      Show Completed Projects
+    </button>
+  </div>
+</div>
 
           <div class="panel-body table-wrap">
             <table>
@@ -1481,10 +1515,20 @@ tr.rep-new-row-flash td{
           <div class="panel-body">
             <div id="emptyState" class="mini">Select a record in the table above.</div>
 
-            <div id="detailArea" class="hidden">
-              <div class="detail-grid" id="detailGrid"></div>
+           <div id="detailArea" class="hidden">
+  <div class="detail-grid" id="detailGrid"></div>
 
-              <div class="banner" id="resultBanner"></div>
+  <div class="btns">
+    <button
+      type="button"
+      class="red hidden"
+      id="hideCompletedProjectBtn"
+    >
+      Hide Completed Project
+    </button>
+  </div>
+
+  <div class="banner" id="resultBanner"></div>
 
               <div class="codebox hidden">
   <pre id="payloadPreview">{}</pre>
@@ -1680,11 +1724,12 @@ const UNMATCHED_TRADEIN_KEY = "axis_unmatched_tradeins_v1";
 const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
-   const state = {
+  const state = {
   records: [],
   selectedId: null,
   selectedRep: null,
-  installBaseCommunicationOpen: false
+  installBaseCommunicationOpen: false,
+  showCompleted: true
 };
     const $ = (id) => document.getElementById(id);
 
@@ -3332,10 +3377,31 @@ function renderRepFixOrValue(fieldName, valueHtml) {
 
   return valueHtml;
 }
-    function renderTable() {
+function isCompletedRepRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.lifecycle_completed === true ||
+    lower(rec.rep_status) === "completed" ||
+    lower(rec.rep_action) === "complete" ||
+    lower(rec.rep_action) === "completed" ||
+    lower(rec.project_status) === "completed" ||
+    lower(rec.install_base_completion_status) === "completed_by_rep" ||
+    lower(rec.install_base_response_status) === "project_completed_by_rep"
+  );
+}
+   function renderTable() {
   const tbody = $("tableBody");
 
-  let visibleRecords = state.records.filter(r => r.project_type !== "new_project_record");
+  let visibleRecords = state.records.filter(
+    r => r.project_type !== "new_project_record"
+  );
+
+  if (!state.showCompleted) {
+    visibleRecords = visibleRecords.filter(
+      rec => !isCompletedRepRecord(rec)
+    );
+  }
 
   if (state.selectedRep) {
     visibleRecords = visibleRecords.filter(r => {
@@ -3347,7 +3413,6 @@ function renderRepFixOrValue(fieldName, valueHtml) {
       return rep === state.selectedRep;
     });
   }
-
   if (!visibleRecords.length) {
     tbody.innerHTML = '<tr><td colspan="10">No records</td></tr>';
     return;
@@ -4254,21 +4319,23 @@ function sendQuickRepManagerMessage() {
   const lifecycleDetailPanel = $("lifecycleDetailPanel");
 
   if (!rec) {
-    lifecycleDetailPanel?.classList.add("hidden");
-    $("newProjectDetailArea")?.classList.add("hidden");
-    return;
-  }
+  lifecycleDetailPanel?.classList.add("hidden");
+  $("newProjectDetailArea")?.classList.add("hidden");
+  $("hideCompletedProjectBtn")?.classList.add("hidden");
+  return;
+}
 
   if (rec.project_type === "new_project_record") {
-    lifecycleDetailPanel?.classList.add("hidden");
-    renderNewProjectDetail(rec);
-    return;
-  }
+  lifecycleDetailPanel?.classList.add("hidden");
+  $("hideCompletedProjectBtn")?.classList.add("hidden");
+  renderNewProjectDetail(rec);
+  return;
+}
 
   $("newProjectDetailArea")?.classList.add("hidden");
   lifecycleDetailPanel?.classList.remove("hidden");
 
-  const completed = rec.lifecycle_completed === true;
+  const completed = isCompletedRepRecord(rec);
 
   empty?.classList.add("hidden");
   detail?.classList.remove("hidden");
@@ -4472,6 +4539,14 @@ if (repOutcomeNotesEl) {
   if ($("repOutcomeNotes")) $("repOutcomeNotes").disabled = completed;
   if ($("repManagerQuickMessage")) $("repManagerQuickMessage").disabled = completed;
   if ($("repFollowUpDate")) $("repFollowUpDate").disabled = completed;
+const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
+
+if (hideCompletedProjectBtn) {
+  hideCompletedProjectBtn.classList.toggle(
+    "hidden",
+    !completed
+  );
+}
 }
 function needsInstallBaseCommunication(rec) {
   return Boolean(
@@ -5089,7 +5164,33 @@ function saveRepDataResponse(){
     function visibleToRep(rec) {
   return rec.release_destination !== "manager" && rec.manager_only !== true;
 }
+function hideCompletedRepProjects() {
+  const rec = state.records.find(
+    item => String(item.id) === String(state.selectedId)
+  );
 
+  if (!rec || !isCompletedRepRecord(rec)) return;
+
+  state.showCompleted = false;
+  state.selectedId = null;
+  state.installBaseCommunicationOpen = false;
+
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) showBtn.classList.remove("hidden");
+
+  render();
+  showBanner("Completed projects are hidden from the current Rep view.");
+}
+
+function showCompletedRepProjects() {
+  state.showCompleted = true;
+
+  const showBtn = $("showCompletedProjectsBtn");
+  if (showBtn) showBtn.classList.add("hidden");
+
+  render();
+  showBanner("Completed projects are visible.");
+}
 function render() {
   importRepQueueRecords();
   importTradeInSyncRecords();
@@ -7873,7 +7974,23 @@ function scheduleRepSyncRender() {
   });
 
   $("addNewProjectBtn").addEventListener("click", openNewProjectModal);
+const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 
+if (hideCompletedProjectBtn) {
+  hideCompletedProjectBtn.addEventListener(
+    "click",
+    hideCompletedRepProjects
+  );
+}
+
+const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+
+if (showCompletedProjectsBtn) {
+  showCompletedProjectsBtn.addEventListener(
+    "click",
+    showCompletedRepProjects
+  );
+}
   [
     "quoteAmount",
     "quoteEstimatedCost",
@@ -7909,9 +8026,17 @@ function scheduleRepSyncRender() {
     localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
     localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
 
-    state.records = [];
-    state.selectedId = null;
-    state.selectedRep = null;
+   state.records = [];
+state.selectedId = null;
+state.selectedRep = null;
+state.showCompleted = true;
+state.installBaseCommunicationOpen = false;
+
+const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+
+if (showCompletedProjectsBtn) {
+  showCompletedProjectsBtn.classList.add("hidden");
+}
 
     $("csvInput").value = "";
     render();
