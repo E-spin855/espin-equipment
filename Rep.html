@@ -4722,8 +4722,8 @@ function sendQuickRepManagerMessage() {
         : ""
     }
 
-    <div class="detail-card">
-      <div class="k">Financial Review</div>
+    <div class="detail-card rep-financial-review-card">
+  <div class="k">Financial Review</div>
       <div class="v">
         ${
           quoteAmount
@@ -4768,10 +4768,7 @@ if (detailGridEl) {
   const quotePanel =
     detailGridEl.querySelector(".quote-action-panel");
 
-  if (
-    actionCard &&
-    (reviewCard || financialCard || quotePanel)
-  ) {
+  if (actionCard && (reviewCard || financialCard || quotePanel)) {
     const layout = document.createElement("div");
     layout.className = "rep-workflow-layout";
 
@@ -4797,7 +4794,23 @@ if (detailGridEl) {
     }
 
     if (quotePanel) {
-      rightColumn.appendChild(quotePanel);
+      const hasQuote =
+        Number(rec.quote_amount || 0) > 0 ||
+        Boolean(rec.quote_created_at) ||
+        Boolean(
+          rec.quote_status &&
+          lower(rec.quote_status) !== "draft"
+        );
+
+      const duplicateEmptyQuotePanel =
+        !hasQuote &&
+        quotePanel.classList.contains("locked");
+
+      if (duplicateEmptyQuotePanel) {
+        quotePanel.remove();
+      } else {
+        rightColumn.appendChild(quotePanel);
+      }
     }
   }
 }
