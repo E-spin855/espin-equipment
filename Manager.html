@@ -1722,6 +1722,125 @@ td:nth-child(13){
   font-weight:800;
 }
 
+
+/* Simplified Manager Action / Rep Communication layout */
+.manager-communication-card{
+  padding:14px 16px!important;
+}
+
+.manager-response-body{
+  display:grid!important;
+  grid-template-columns:minmax(0,1.35fr) minmax(340px,.65fr)!important;
+  gap:14px!important;
+  align-items:start!important;
+}
+
+.manager-response-body > div{
+  min-width:0;
+}
+
+.rep-message-to-manager-card{
+  margin:0 0 12px!important;
+  padding:12px 14px!important;
+  border-width:1px!important;
+  box-shadow:none!important;
+}
+
+.rep-message-to-manager-card .rep-message-title{
+  margin-bottom:5px!important;
+  font-size:11px!important;
+}
+
+.rep-message-to-manager-card .rep-message-action{
+  font-size:14px!important;
+}
+
+.rep-message-to-manager-card .rep-message-note{
+  margin-top:4px!important;
+  font-size:14px!important;
+}
+
+.rep-message-to-manager-card .rep-message-meta{
+  margin-top:6px!important;
+  font-size:11px!important;
+}
+
+.manager-response-panel{
+  padding:14px!important;
+}
+
+.manager-response-grid{
+  grid-template-columns:minmax(0,1fr) 210px!important;
+  gap:10px!important;
+  margin-top:10px!important;
+}
+
+.manager-response-grid > div:nth-child(3){
+  grid-column:1 / -1;
+}
+
+.manager-response-grid > button{
+  grid-column:1 / -1;
+  justify-self:start;
+}
+
+.manager-history-compact{
+  display:grid;
+  gap:10px;
+}
+
+.manager-history-status{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:11px 12px;
+  border:1px solid rgba(88,184,255,.18);
+  border-radius:12px;
+  background:rgba(5,12,24,.56);
+}
+
+.manager-history-status .mini{
+  margin:0!important;
+}
+
+.manager-history-latest{
+  padding:12px 14px;
+  border:1px solid rgba(65,255,156,.42);
+  border-radius:12px;
+  background:rgba(65,255,156,.08);
+}
+
+.manager-history-latest .manager-response-title{
+  margin:0 0 6px!important;
+  font-size:12px!important;
+}
+
+.manager-history-latest .manager-response-action{
+  margin:0 0 4px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  color:#d8ffe9!important;
+  font-size:14px!important;
+  text-transform:none!important;
+}
+
+.manager-history-latest .manager-response-text{
+  margin:0 0 5px!important;
+  font-size:14px!important;
+  font-weight:800!important;
+}
+
+.manager-history-latest .manager-response-meta{
+  font-size:11px!important;
+}
+
+@media(max-width:1100px){
+  .manager-response-body{
+    grid-template-columns:1fr!important;
+  }
+}
+
 </style>
 </head>
 
@@ -4518,61 +4637,60 @@ ${
   </div>
 </div>
 
-                ${
-                  rec.rep_manager_message_at ||
-                  rec.rep_manager_message_notes ||
-                  rec.rep_manager_message_label ||
-                  rec.rep_manager_message_action
-                    ? renderRepMessageToManager(rec)
-                    : rec.rep_notes || rec.quote_follow_up_alert_note
-                    ? `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(88,184,255,.18);
-                          background:rgba(5,12,24,.62);
-                          margin-bottom:10px;
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9bc6ec;font-weight:900;"
-                        >
-                          Rep Notes
-                        </div>
+                <div class="manager-history-compact">
+                  <div class="manager-history-status">
+                    <span class="mini" style="color:#9cffc8;font-weight:900;">
+                      Current
+                    </span>
+                    ${renderCurrentManagerStatus(rec)}
+                  </div>
 
-                        <div class="v">
-                          ${escapeHtml(
-                            rec.rep_notes ||
-                            rec.quote_follow_up_alert_note
-                          )}
-                        </div>
-                      </div>
-                    `
-                    : `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(88,184,255,.18);
-                          background:rgba(5,12,24,.62);
-                          margin-bottom:10px;
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9bc6ec;font-weight:900;"
-                        >
-                          Rep Communication
-                        </div>
+                  ${
+                    hasManagerResponse(rec)
+                      ? `
+                        <div class="manager-history-latest">
+                          <div class="manager-response-title">
+                            Latest Manager Message
+                          </div>
 
-                        <div class="v">
-                          No rep message received yet.
+                          <div class="manager-response-action">
+                            ${escapeHtml(
+                              formatManagerResponseAction(
+                                rec.manager_response_action
+                              )
+                            )}
+                          </div>
+
+                          ${
+                            rec.manager_response_notes
+                              ? `
+                                <div class="manager-response-text">
+                                  ${escapeHtml(rec.manager_response_notes)}
+                                </div>
+                              `
+                              : ""
+                          }
+
+                          <div class="manager-response-meta">
+                            ${
+                              rec.manager_response_at
+                                ? `Sent at: ${escapeHtml(
+                                    new Date(
+                                      rec.manager_response_at
+                                    ).toLocaleString()
+                                  )}`
+                                : "Saved manager response"
+                            }
+                          </div>
                         </div>
-                      </div>
-                    `
-                }
+                      `
+                      : `
+                        <div class="manager-response-empty">
+                          No manager message sent yet.
+                        </div>
+                      `
+                  }
+                </div>
 
                 ${
                   rec.manager_response_action
