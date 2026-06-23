@@ -817,44 +817,29 @@ tr.install-base-corrected-row-frame td{
       <div class="detail-grid" id="detailGrid"></div>
 
       <div class="manager-message-box" id="fixMessageBox">
-  <label for="fixMessageSelect" id="fixMessageLabel">
-    Optional Message
+  <label for="fixMessageInput" id="fixMessageLabel">
+    Optional Communication
   </label>
 
-  <select id="fixMessageSelect" class="small-select">
-    <option value="">No message</option>
-
-    <option value="Please review and correct the missing information.">
-      Please review and correct the missing information
-    </option>
-
-    <option value="Please confirm the correct record owner and routing information.">
-      Confirm owner and routing information
-    </option>
-
-    <option value="Please review the source conflict before responding.">
-      Review source conflict
-    </option>
-
-    <option value="Please update the missing equipment information.">
-      Update missing equipment information
-    </option>
-
-    <option value="__other__">
-      Other / custom message
-    </option>
-  </select>
-
-  <input
-    id="fixCustomMessageInput"
-    type="text"
-    class="hidden"
-    placeholder="Type optional message..."
-    style="margin-top:10px;"
-  />
+  <textarea
+    id="fixMessageInput"
+    placeholder="Type an optional message..."
+    style="
+      width:100%;
+      min-height:96px;
+      padding:12px 13px;
+      border-radius:12px;
+      border:1px solid rgba(88,184,255,.18);
+      background:#081223;
+      color:#eef6ff;
+      resize:vertical;
+      font:inherit;
+      outline:none;
+    "
+  ></textarea>
 
   <div class="mini" id="fixMessageHelp">
-    This optional message will follow the spreadsheet FIX target.
+    This message will follow the spreadsheet FIX target.
   </div>
 </div>
 
@@ -1010,37 +995,30 @@ function lower(v) {
   return clean(v).toLowerCase();
 }
 
-function getSelectedManagerMessage() {
-  const el = $("managerMessageSelect");
-  if (!el) return "";
-
-  if (el.value === "__other__") {
-    const custom = $("managerCustomMessageInput");
-    return custom ? clean(custom.value) : "";
-  }
-
-  return clean(el.value);
+function getOptionalFixMessage() {
+  return clean($("fixMessageInput")?.value || "");
 }
 
-function syncManagerCustomMessageVisibility() {
-  const select = $("managerMessageSelect");
-  const custom = $("managerCustomMessageInput");
-  if (!select || !custom) return;
+function clearOptionalFixMessage() {
+  const input = $("fixMessageInput");
 
-  const isOther = select.value === "__other__";
-  custom.classList.toggle("hidden", !isOther);
-
-  if (!isOther) custom.value = "";
+  if (input) {
+    input.value = "";
+  }
 }
 
-function clearSelectedManagerMessage() {
-  const el = $("managerMessageSelect");
-  const custom = $("managerCustomMessageInput");
-  if (el) el.value = "";
-  if (custom) {
-    custom.value = "";
-    custom.classList.add("hidden");
-  }
+function updateFixCommunicationTarget(rec) {
+  const label = $("fixMessageLabel");
+  const help = $("fixMessageHelp");
+
+  if (!label || !help || !rec) return;
+
+  const target = getManualRouteTarget(rec);
+  const targetName = target === "manager" ? "Manager" : "Rep";
+
+  label.textContent = `Optional Message to ${targetName}`;
+  help.textContent =
+    `This message will be sent only to ${targetName} with the record.`;
 }
 function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
@@ -1917,23 +1895,7 @@ function releaseSelected(destination, fixFieldName = "") {
     : "";
  const isFixRequest = Boolean(normalizedFixField);
 
-const managerSelectedMessage =
-  destination === "manager"
-    ? (
-        getSelectedManagerMessage() ||
-        (
-          isFixRequest
-            ? `Please review and correct the missing ${prettyFixField || "install-base data"}.`
-            : ""
-        )
-      )
-    : "";
-  if (destination === "manager" && !managerSelectedMessage) {
-    alert("Please select a message before sending to Manager Review.");
-    const messageSelect = $("managerMessageSelect");
-    if (messageSelect) messageSelect.focus();
-    return;
-  }
+const optionalFixMessage = getOptionalFixMessage();
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -2035,9 +1997,10 @@ if (destination === "manager") {
   updated.install_base_released_to = "manager";
   updated.install_base_release_status = "released_to_manager";
   updated.install_base_manager_request = true;
-  updated.install_base_manager_message = managerSelectedMessage;
-  updated.manager_message_from_install_base = managerSelectedMessage;
-  updated.manager_message_from_install_base_at = managerSelectedMessage ? now : "";
+ updated.install_base_manager_message = optionalFixMessage;
+updated.manager_message_from_install_base = optionalFixMessage;
+updated.manager_message_from_install_base_at =
+  optionalFixMessage ? now : "";
 
   updated.hub_source = "AXIS Install Base Workspace";
   updated.source = "AXIS Install Base Workspace";
@@ -2052,9 +2015,9 @@ if (destination === "manager") {
 
   updated.manager_flash_at = now;
   updated.manager_flash_type = "install_base_release";
-  updated.manager_flash_text = managerSelectedMessage
-    ? `New install-base record released to manager review: ${managerSelectedMessage}`
-    : "New install-base record released to manager review";
+  updated.manager_flash_text = optionalFixMessage
+  ? `New install-base message: ${optionalFixMessage}`
+  : "New install-base record released to manager review";
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
@@ -2069,7 +2032,15 @@ if (destination === "manager") {
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
 if (destination === "rep") {
-  const managerQueueWithoutRecord = readQueue(MANAGER_QUEUE_KEY, {});
+  updated.install_base_rep_message = optionalFixMessage;
+  updated.rep_message_from_install_base = optionalFixMessage;
+  updated.rep_message_from_install_base_at =
+    optionalFixMessage ? now : "";
+
+  const managerQueueWithoutRecord = readQueue(
+    MANAGER_QUEUE_KEY,
+    {}
+  );
 
   Object.keys(managerQueueWithoutRecord).forEach(ownerName => {
     managerQueueWithoutRecord[ownerName] =
@@ -2128,8 +2099,8 @@ if (destination === "rep") {
   }
 
   saveRecords();
-  render();
-
+clearOptionalFixMessage();
+render();
   showBanner(
     destination === "manager"
       ? "Selected record released to Manager Review only."
@@ -2246,11 +2217,12 @@ function showCompletedProjects() {
   showBanner("Completed projects are visible.");
 }
 function updateReleaseButtonVisibility(rec) {
+updateFixCommunicationTarget(rec);
   const repBtn = $("releaseRepBtn");
   const managerBtn = $("releaseManagerBtn");
   const stagedBtn = $("markStagedBtn");
   const hideCompletedBtn = $("hideCompletedProjectBtn");
-  const managerMessageBox = $("managerMessageBox");
+  const managerMessageBox = $("fixMessageBox");
 
   const target = getManualRouteTarget(rec);
   const completed = isCompletedRecord(rec);
