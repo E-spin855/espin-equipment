@@ -3236,10 +3236,10 @@ function managerCorrectedFieldsList(rec) {
 function wasManagerFieldCorrected(rec, fieldName) {
   if (!isManagerRecordFixed(rec)) return false;
 
-  // After Manager clicks away or closes the record,
-  // corrected fields return to normal table styling.
+  // Once Manager leaves the record, show the corrected value normally.
   if (
     rec.manager_alert_seen === true ||
+    rec.install_base_fixed_seen_by_manager === true ||
     hasManagerSeenFix(rec)
   ) {
     return false;
@@ -3275,7 +3275,6 @@ function wasManagerFieldCorrected(rec, fieldName) {
 
   return fixedFields.some(field => aliases.includes(field));
 }
-
 function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
 
@@ -4999,6 +4998,38 @@ function getTimelineHighlightForRecord(rec) {
 
 function selectRow(id) {
   const selectedId = clean(id);
+
+  // Acknowledge the record being left before opening another row.
+  const previousRec = findSelectedRecord();
+
+  if (
+    previousRec &&
+    String(previousRec.id || previousRec.key || "") !== selectedId
+  ) {
+    const seenAt = new Date().toISOString();
+
+    const acknowledgedPrevious = {
+      ...previousRec,
+      key: getRecordKey(previousRec),
+
+      manager_alert_seen: true,
+      manager_unseen_update: false,
+      manager_update_seen_at: seenAt,
+
+      manager_release_id: previousRec.manager_release_id || "",
+      manager_seen_release_id:
+        previousRec.manager_release_id ||
+        previousRec.manager_seen_release_id ||
+        "",
+
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: ""
+    };
+
+    markManagerFixSeenEverywhere(acknowledgedPrevious, seenAt);
+    syncRecordEverywhere(acknowledgedPrevious);
+  }
   if (!selectedId) return;
 
   const rec = state.records.find(item =>
