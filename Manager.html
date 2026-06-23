@@ -1898,6 +1898,7 @@ const state = {
   selectedId: null,
   selectedRep: null,
   timelineHighlight: null,
+  correctedFieldHighlightId: null,
   showCompleted: true
 };
 
@@ -3236,12 +3237,22 @@ function managerCorrectedFieldsList(rec) {
 function wasManagerFieldCorrected(rec, fieldName) {
   if (!isManagerRecordFixed(rec)) return false;
 
-  // Once Manager leaves the record, show the corrected value normally.
-  if (
-    rec.manager_alert_seen === true ||
-    rec.install_base_fixed_seen_by_manager === true ||
-    hasManagerSeenFix(rec)
-  ) {
+  const recordId = String(
+    rec.id ||
+    rec.key ||
+    getRecordKey(rec) ||
+    ""
+  );
+
+  const correctionIsUnseen =
+    rec.manager_alert_seen !== true &&
+    !hasManagerSeenFix(rec);
+
+  const correctionIsCurrentlyOpen =
+    recordId &&
+    recordId === String(state.correctedFieldHighlightId || "");
+
+  if (!correctionIsUnseen && !correctionIsCurrentlyOpen) {
     return false;
   }
 
@@ -5043,8 +5054,22 @@ function selectRow(id) {
   }
 
   const now = new Date().toISOString();
-  const selectionChanged = String(state.selectedId || "") !== String(rec.id || selectedId);
-  state.timelineHighlight = getTimelineHighlightForRecord(rec);
+
+const selectionChanged =
+  String(state.selectedId || "") !==
+  String(rec.id || selectedId);
+
+const correctionWasUnseen =
+  isManagerRecordFixed(rec) &&
+  rec.manager_alert_seen !== true &&
+  !hasManagerSeenFix(rec);
+
+state.correctedFieldHighlightId =
+  correctionWasUnseen
+    ? String(rec.id || rec.key || getRecordKey(rec))
+    : null;
+
+state.timelineHighlight = getTimelineHighlightForRecord(rec);
 
   const updated = {
     ...rec,
@@ -5077,11 +5102,14 @@ function selectRow(id) {
     );
   }
 
-  state.selectedId = updated.id;
-  refreshManagerSelectedRowUI();
-  managerStorageSignature = getManagerStorageSignature();
+state.selectedId = updated.id;
 
-  if (selectionChanged) renderDetail();
+renderTable();
+managerStorageSignature = getManagerStorageSignature();
+
+if (selectionChanged) {
+  renderDetail();
+}
 }
 function closeSelectedRecord() {
   const rec = findSelectedRecord();
@@ -5116,8 +5144,10 @@ function closeSelectedRecord() {
   syncRecordEverywhere(updated);
 
   state.selectedId = null;
-  pingLifecycleSync();
-  render();
+state.correctedFieldHighlightId = null;
+
+pingLifecycleSync();
+render();
 }
 
 function handleCSVUpload(file) {
