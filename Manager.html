@@ -1680,6 +1680,48 @@ td:nth-child(13){
       grid-template-columns:1fr;
     }
   }
+
+/* Rep message displayed inside Manager Action / Rep Communication */
+.rep-message-to-manager-card{
+  margin:0 0 14px;
+  padding:14px 16px;
+  border:2px solid rgba(125,211,252,.62);
+  border-radius:14px;
+  background:rgba(56,189,248,.09);
+  box-shadow:0 0 16px rgba(56,189,248,.12);
+}
+
+.rep-message-to-manager-card .rep-message-title{
+  margin-bottom:7px;
+  color:#9edcff;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+
+.rep-message-to-manager-card .rep-message-action{
+  color:#9edcff;
+  font-size:15px;
+  font-weight:950;
+  line-height:1.35;
+}
+
+.rep-message-to-manager-card .rep-message-note{
+  margin-top:6px;
+  color:#d8f3ff;
+  font-size:14px;
+  font-weight:850;
+  line-height:1.45;
+}
+
+.rep-message-to-manager-card .rep-message-meta{
+  margin-top:8px;
+  color:#a7bdd5;
+  font-size:12px;
+  font-weight:800;
+}
+
 </style>
 </head>
 
@@ -3849,12 +3891,21 @@ function sendManagerUnableToVerify(id) {
 }
 
 function getInstallBaseManagerMessage(rec) {
+  const isRepMessage =
+    rec.manager_flash_type === "rep_message" ||
+    rec.rep_manager_message_at ||
+    rec.rep_manager_message_notes ||
+    rec.rep_manager_message_label ||
+    rec.rep_manager_message_action;
+
   return clean(
     rec.install_base_manager_message ||
     rec.manager_message_from_install_base ||
-    rec.manager_message ||
     rec.install_base_message_to_manager ||
-    rec.manager_flash_text ||
+    (!isRepMessage ? rec.manager_message : "") ||
+    (!isRepMessage && rec.manager_flash_type === "install_base_release"
+      ? rec.manager_flash_text
+      : "") ||
     ""
   );
 }
@@ -3876,6 +3927,58 @@ function renderInstallBaseManagerMessage(rec) {
       <div class="label">Install Base Message to Manager</div>
       <div class="message">${escapeHtml(message)}</div>
       ${sentLabel ? `<div class="mini" style="margin-top:7px;color:#fff2a6;">Sent from Install Base: ${escapeHtml(sentLabel)}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderRepMessageToManager(rec) {
+  const action = clean(
+    rec.rep_manager_message_label ||
+    rec.rep_manager_message_action ||
+    ""
+  );
+
+  const notes = clean(rec.rep_manager_message_notes || "");
+  const sentAt = clean(rec.rep_manager_message_at || "");
+  const sentBy = clean(rec.rep_manager_message_by || getRepName(rec) || "Rep");
+
+  if (!action && !notes && !sentAt) return "";
+
+  let sentLabel = "";
+
+  if (sentAt) {
+    const d = new Date(sentAt);
+    sentLabel = isNaN(d.getTime()) ? sentAt : d.toLocaleString();
+  }
+
+  return `
+    <div class="rep-message-to-manager-card">
+      <div class="rep-message-title">Rep Message to Manager</div>
+
+      ${
+        action
+          ? `
+            <div class="rep-message-action">
+              ${escapeHtml(formatReviewText(action))}
+            </div>
+          `
+          : ""
+      }
+
+      ${
+        notes
+          ? `
+            <div class="rep-message-note">
+              ${escapeHtml(notes)}
+            </div>
+          `
+          : ""
+      }
+
+      <div class="rep-message-meta">
+        From: ${escapeHtml(sentBy)}
+        ${sentLabel ? ` • Sent: ${escapeHtml(sentLabel)}` : ""}
+      </div>
     </div>
   `;
 }
@@ -4286,6 +4389,8 @@ ${
               "
             >
               <div>
+                ${renderRepMessageToManager(rec)}
+
                 <div class="k">Manager Action</div>
 
                 <div
@@ -4414,7 +4519,12 @@ ${
 </div>
 
                 ${
-                  rec.rep_notes || rec.quote_follow_up_alert_note
+                  rec.rep_manager_message_at ||
+                  rec.rep_manager_message_notes ||
+                  rec.rep_manager_message_label ||
+                  rec.rep_manager_message_action
+                    ? renderRepMessageToManager(rec)
+                    : rec.rep_notes || rec.quote_follow_up_alert_note
                     ? `
                       <div
                         style="
@@ -4454,11 +4564,11 @@ ${
                           class="mini"
                           style="color:#9bc6ec;font-weight:900;"
                         >
-                          Rep Notes
+                          Rep Communication
                         </div>
 
                         <div class="v">
-                          No rep notes entered.
+                          No rep message received yet.
                         </div>
                       </div>
                     `
