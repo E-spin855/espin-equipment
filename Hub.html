@@ -1430,19 +1430,7 @@ function isBlankHubField(value, fieldName = "") {
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
-  const releasedTo = lower(
-    rec.install_base_released_to ||
-    rec.release_destination ||
-    rec.install_base_release_destination ||
-    ""
-  );
-
-  const fixSent =
-    releasedTo === "manager" ||
-    releasedTo === "rep" ||
-    rec.install_base_release_status === "released_to_manager" ||
-    rec.install_base_release_status === "released_to_rep";
-
+  const fixSent = rec.install_base_release_status === "released_to_rep";
   const label = fixSent ? "Fix Sent" : "FIX";
 
   return `
@@ -1475,32 +1463,12 @@ function getMissingHubFields(rec) {
 }
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
-    return { type: "completed", label: "Project Completed" };
-  }
-
-  const releasedTo = lower(
-    rec.install_base_released_to ||
-    rec.release_destination ||
-    rec.install_base_release_destination ||
-    ""
-  );
-
-  const sentToManager =
-    releasedTo === "manager" ||
-    rec.install_base_release_status === "released_to_manager" ||
-    rec.install_base_manager_request === true;
-
-  const sentToRep =
-    !sentToManager &&
-    (
-      releasedTo === "rep" ||
-      rec.install_base_release_status === "released_to_rep"
-    );
-
+  return { type: "completed", label: "Project Completed" };
+}
   if (
     !isAutoSyncEligible(rec) &&
-    !sentToManager &&
-    !sentToRep
+    rec.install_base_release_status !== "released_to_rep" &&
+    rec.install_base_release_status !== "released_to_manager"
   ) {
     return { type: "source", label: "Sync Hold" };
   }
@@ -1510,33 +1478,22 @@ function getReviewStatus(rec) {
   }
 
   if (isFixedByRep(rec)) {
-    return {
-      type: "fixed",
-      label: isFixedByManager(rec)
-        ? "Fixed by Manager"
-        : "Fixed by Rep"
-    };
+    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
   }
 
   if (rec.install_base_response_at && !rec.install_base_response_seen) {
-    return {
-      type: "response",
-      label:
-        rec.install_base_response_from === "manager"
-          ? "Manager Response"
-          : "Rep Response"
-    };
-  }
-
-  if (sentToManager) {
-    return { type: "released", label: "Sent to Manager" };
-  }
-
-  if (sentToRep) {
-    return { type: "released", label: "Sent to Rep" };
+    return { type: "response", label: "Rep Response" };
   }
 
   const exceptions = getDataExceptions(rec);
+
+  if (rec.install_base_release_status === "released_to_manager") {
+    return { type: "released", label: "Released to Manager" };
+  }
+
+  if (rec.install_base_release_status === "released_to_rep") {
+    return { type: "released", label: "Sent to Rep" };
+  }
 
   if (exceptions.length) {
     return exceptions[0];
