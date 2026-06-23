@@ -1017,7 +1017,25 @@ td:nth-child(13){
     font-weight:700;
     line-height:1.45;
   }
+.manager-review-row{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(360px,.55fr);
+  gap:14px;
+  align-items:stretch;
+}
 
+.manager-review-row > .detail-card{
+  width:100%;
+  height:100%;
+  margin:0;
+}
+
+@media(max-width:1100px){
+  .manager-review-row{
+    grid-template-columns:1fr;
+  }
+}
  .selected-summary{
   display:grid;
   grid-template-columns:
@@ -3901,38 +3919,6 @@ function renderDetail() {
 
   grid.innerHTML = `
   ${completed ? "" : renderOverdueManagerAlert(rec)}
-
-  ${
-    !completed && getFollowUpDate(rec)
-      ? `
-        <div
-          class="${repFollowUpCardClass} full"
-          style="
-            border:2px solid rgba(65,255,156,.48);
-            background:rgba(65,255,156,.07);
-          "
-        >
-          <div class="k">Rep Follow-Up Date</div>
-
-          <div class="v" style="margin-top:8px;">
-            ${renderFollowUpDatePill(rec)}
-          </div>
-
-          <div
-            class="mini"
-            style="
-              margin-top:10px;
-              font-size:13px;
-              line-height:1.45;
-            "
-          >
-            Follow-up date entered through the rep or manager workflow.
-          </div>
-        </div>
-      `
-      : ""
-  }
-
   <div class="selected-summary full">
       <div class="summary-card">
         <div class="summary-title">Facility</div>
@@ -4010,93 +3996,155 @@ function renderDetail() {
 </div>
 </div>
 
-<div
-  class="detail-card full"
-  style="
-    border:2px solid rgba(255,216,77,.72);
-    background:rgba(255,216,77,.08);
-  "
->
-  <div class="k">Install Base Review</div>
-      <div
-        class="v"
-        style="font-size:20px;font-weight:950;margin-bottom:12px;"
-      >
+<div class="manager-review-row">
+
+  <div
+    class="detail-card"
+    style="
+      border:2px solid rgba(255,216,77,.72);
+      background:rgba(255,216,77,.08);
+    "
+  >
+    <div class="k">Install Base Review</div>
+
+    <div
+      class="v"
+      style="
+        font-size:20px;
+        font-weight:950;
+        margin-bottom:12px;
+      "
+    >
+      ${escapeHtml(
+        rec.hub_source === "AXIS Install Base Workspace" ||
+        rec.install_base_sync_type ||
+        rec.install_base_release_status === "auto_synced" ||
+        rec.install_base_release_status === "released_to_manager"
+          ? normalizeOemReviewLabelForManager(rec)
+          : (
+              alert
+                ? formatReviewText(
+                    alert.label ||
+                    alert.displayType ||
+                    "Review"
+                  )
+                : "Normal"
+            )
+      )}
+    </div>
+
+    <div
+      style="
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-bottom:12px;
+      "
+    >
+      <span class="pill local">
         ${escapeHtml(
           rec.hub_source === "AXIS Install Base Workspace" ||
           rec.install_base_sync_type ||
           rec.install_base_release_status === "auto_synced" ||
           rec.install_base_release_status === "released_to_manager"
             ? normalizeOemReviewLabelForManager(rec)
-            : (
-                alert
-                  ? formatReviewText(
-                      alert.label ||
-                      alert.displayType ||
-                      "Review"
-                    )
-                  : "Normal"
+            : formatReviewText(
+                rec.oem_review_type ||
+                rec.review_type ||
+                rec.alert_override ||
+                alert?.displayType ||
+                "Review"
               )
         )}
-      </div>
+      </span>
 
-      <div
-        style="
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          margin-bottom:12px;
-        "
-      >
-        <span class="pill local">
-          ${escapeHtml(
-            rec.hub_source === "AXIS Install Base Workspace" ||
-            rec.install_base_sync_type ||
-            rec.install_base_release_status === "auto_synced" ||
-            rec.install_base_release_status === "released_to_manager"
-              ? normalizeOemReviewLabelForManager(rec)
-              : formatReviewText(
-                  rec.oem_review_type ||
-                  rec.review_type ||
-                  rec.alert_override ||
-                  alert?.displayType ||
-                  "Review"
-                )
-          )}
-        </span>
-
-        <span class="pill normal">
-          ${escapeHtml(
-            formatReviewText(
-              rec.oem_review_level ||
-              rec.review_level ||
-              rec.visibility_level ||
-              "Monitor"
-            )
-          )}
-        </span>
-      </div>
-
-      <div
-        class="mini"
-        style="font-size:14px;line-height:1.55;"
-      >
+      <span class="pill normal">
         ${escapeHtml(
-          rec.install_base_clarification_reason ||
-          rec.install_base_issue_reason ||
-          rec.install_base_action_reason ||
-          rec.install_base_issue_note ||
-          rec.conflict_notes ||
-          rec.oem_review_reason ||
-          rec.review_reason ||
-          rec.proactive_reason ||
-          "Install Base review context is attached to this record."
+          formatReviewText(
+            rec.oem_review_level ||
+            rec.review_level ||
+            rec.visibility_level ||
+            "Monitor"
+          )
         )}
-      </div>
-
-      ${renderInstallBaseManagerMessage(rec)}
+      </span>
     </div>
 
+    <div
+      class="mini"
+      style="
+        font-size:14px;
+        line-height:1.55;
+      "
+    >
+      ${escapeHtml(
+        rec.install_base_clarification_reason ||
+        rec.install_base_issue_reason ||
+        rec.install_base_action_reason ||
+        rec.install_base_issue_note ||
+        rec.conflict_notes ||
+        rec.oem_review_reason ||
+        rec.review_reason ||
+        rec.proactive_reason ||
+        "Install Base review context is attached to this record."
+      )}
+    </div>
+
+    ${renderInstallBaseManagerMessage(rec)}
+  </div>
+
+  ${
+    !completed && getFollowUpDate(rec)
+      ? `
+        <div
+          class="${repFollowUpCardClass}"
+          style="
+            border:2px solid rgba(65,255,156,.48);
+            background:rgba(65,255,156,.07);
+          "
+        >
+          <div class="k">Rep Follow-Up Date</div>
+
+          <div
+            class="v"
+            style="margin-top:8px;"
+          >
+            ${renderFollowUpDatePill(rec)}
+          </div>
+
+          <div
+            class="mini"
+            style="
+              margin-top:10px;
+              font-size:13px;
+              line-height:1.45;
+            "
+          >
+            Follow-up date entered through the rep or manager workflow.
+          </div>
+        </div>
+      `
+      : `
+        <div
+          class="detail-card"
+          style="
+            border:1px solid rgba(88,184,255,.18);
+            background:rgba(8,18,35,.72);
+          "
+        >
+          <div class="k">Rep Follow-Up Date</div>
+
+          <div
+            class="mini"
+            style="margin-top:8px;"
+          >
+            No follow-up date set.
+          </div>
+        </div>
+      `
+  }
+
+</div>
     ${
       !completed && isManagerInstallBaseRequest(rec)
         ? renderManagerInstallBaseCorrectionPanel(rec)
