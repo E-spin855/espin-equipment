@@ -1627,7 +1627,55 @@ tr.manager-response-flash td:last-child{
   color:#f1f6fb;
   border:1px solid rgba(148,163,184,.48);
 }
-  </style>
+  
+/* Entire table panel flashes when its table receives an update */
+.panel.table-update-flash{
+  position:relative;
+  overflow:visible;
+  border:3px solid rgba(65,255,156,.98)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.42),
+    0 0 24px rgba(65,255,156,.58),
+    0 0 48px rgba(65,255,156,.28)!important;
+  animation:tableUpdateFramePulse 1.05s ease-in-out infinite!important;
+}
+
+.panel.table-update-flash::after{
+  content:"NEW UPDATE";
+  position:absolute;
+  top:-12px;
+  right:18px;
+  z-index:20;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid rgba(142,255,195,.95);
+  background:#123d2d;
+  color:#caffdf;
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.10em;
+  box-shadow:0 0 18px rgba(65,255,156,.52);
+  pointer-events:none;
+}
+
+@keyframes tableUpdateFramePulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.72);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.28),
+      0 0 16px rgba(65,255,156,.30),
+      0 0 30px rgba(65,255,156,.14);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.58),
+      0 0 34px rgba(65,255,156,.88),
+      0 0 62px rgba(65,255,156,.36);
+  }
+}
+
+</style>
 </head>
 
 <body>
@@ -5681,7 +5729,99 @@ function showCompletedRepProjects() {
   render();
   showBanner("Completed projects are visible.");
 }
+
+const REP_TABLE_BODY_IDS = [
+  "tableBody",
+  "newProjectsTableBody",
+  "unmatchedTradeInTableBody"
+];
+
+let repTableSignatures = {};
+let repTableSignaturesReady = false;
+
+function getRepTableSignature(tbody) {
+  if (!tbody) return "";
+
+  return Array.from(tbody.querySelectorAll("tr")).map(row => {
+    const id = row.dataset.recordId || row.dataset.id || "";
+    const cells = Array.from(row.cells || []).map(cell =>
+      String(cell.textContent || "").replace(/\s+/g, " ").trim()
+    ).join("|");
+
+    return `${id}::${cells}`;
+  }).join("||");
+}
+
+function captureRepTableSignatures() {
+  const signatures = {};
+
+  REP_TABLE_BODY_IDS.forEach(id => {
+    const tbody = document.getElementById(id);
+    signatures[id] = getRepTableSignature(tbody);
+  });
+
+  return signatures;
+}
+
+function clearRepTableFrame(panel) {
+  if (panel) panel.classList.remove("table-update-flash");
+}
+
+function flashChangedRepTables(previous, next) {
+  REP_TABLE_BODY_IDS.forEach(id => {
+    const tbody = document.getElementById(id);
+    if (!tbody) return;
+
+    const panel = tbody.closest(".panel");
+    if (!panel) return;
+
+    if (
+      Object.prototype.hasOwnProperty.call(previous, id) &&
+      previous[id] !== next[id]
+    ) {
+      panel.classList.add("table-update-flash");
+    }
+  });
+}
+
+function finishRepTableUpdateCheck(previous) {
+  const next = captureRepTableSignatures();
+
+  if (repTableSignaturesReady) {
+    flashChangedRepTables(previous, next);
+  }
+
+  repTableSignatures = next;
+  repTableSignaturesReady = true;
+}
+
+function syncRepTableSignaturesAfterAcknowledgement() {
+  requestAnimationFrame(() => {
+    repTableSignatures = captureRepTableSignatures();
+    repTableSignaturesReady = true;
+  });
+}
+
+function bindRepTableFrameDismissal() {
+  document.addEventListener("click", event => {
+    document.querySelectorAll(".panel.table-update-flash").forEach(panel => {
+      const clickedInside = panel.contains(event.target);
+
+      // Clicking the updated table acknowledges that frame.
+      // Clicking elsewhere dismisses the flashing frame as requested.
+      if (clickedInside || !clickedInside) {
+        clearRepTableFrame(panel);
+      }
+    });
+  });
+}
+
 function render() {
+  const previousTableSignatures =
+    repTableSignaturesReady
+      ? { ...repTableSignatures }
+      : captureRepTableSignatures();
+
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
@@ -5696,6 +5836,8 @@ function render() {
   renderTable();
   renderDetail();
   updateAxisShareStatus();
+
+  finishRepTableUpdateCheck(previousTableSignatures);
 }
     function handleCSVUpload(file) {
       const reader = new FileReader();
@@ -8350,6 +8492,7 @@ function handleRepRowClick(id) {
   if (!selectionChanged && !seenStateChanged && !recordChanged) return;
 
   refreshSelectedRowUI();
+  syncRepTableSignaturesAfterAcknowledgement();
   if (selectionChanged) renderDetail();
 }
 const ROW_INTERACTIVE_SELECTOR =
@@ -8381,6 +8524,11 @@ function bindRepRowDelegation(tbody, rowHandler) {
 let repSyncRenderQueued = false;
 
 function refreshRepFromSync() {
+  const previousTableSignatures =
+    repTableSignaturesReady
+      ? { ...repTableSignatures }
+      : captureRepTableSignatures();
+
   loadRecords(true);
   importRepQueueRecords();
   importTradeInSyncRecords();
@@ -8394,6 +8542,8 @@ function refreshRepFromSync() {
   renderNewProjectsTable();
   renderTable();
   refreshSelectedRowUI();
+
+  finishRepTableUpdateCheck(previousTableSignatures);
 
   const active = document.activeElement;
   const editingDetail =
@@ -8433,6 +8583,7 @@ function scheduleRepSyncRender() {
 
   bindRepRowDelegation($("tableBody"), handleRepRowClick);
   bindRepRowDelegation($("newProjectsTableBody"), selectRow);
+  bindRepTableFrameDismissal();
 
   window.addEventListener("storage", (e) => {
     if (
