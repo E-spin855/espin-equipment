@@ -456,21 +456,6 @@ tbody tr.selected{
   font-weight:800;
 }
 
-.manager-message-box{
-  margin:12px 0 10px;
-  padding:12px;
-  border-radius:14px;
-  background:rgba(8,18,35,.72);
-  border:1px solid rgba(88,184,255,.16);
-}
-
-.manager-message-box label{
-  margin-bottom:7px;
-}
-
-.manager-message-box .mini{
-  margin-top:7px;
-}
 
 .hidden{
   display:none!important;
@@ -816,33 +801,6 @@ tr.install-base-corrected-row-frame td{
     <div id="detailArea" class="hidden">
       <div class="detail-grid" id="detailGrid"></div>
 
-      <div class="manager-message-box" id="fixMessageBox">
-  <label for="fixMessageInput" id="fixMessageLabel">
-    Optional Communication
-  </label>
-
-  <textarea
-    id="fixMessageInput"
-    placeholder="Type an optional message..."
-    style="
-      width:100%;
-      min-height:96px;
-      padding:12px 13px;
-      border-radius:12px;
-      border:1px solid rgba(88,184,255,.18);
-      background:#081223;
-      color:#eef6ff;
-      resize:vertical;
-      font:inherit;
-      outline:none;
-    "
-  ></textarea>
-
-  <div class="mini" id="fixMessageHelp">
-    This message will follow the spreadsheet FIX target.
-  </div>
-</div>
-
       <div class="btns">
         <button type="button" class="green" id="releaseRepBtn">
           Release Selected to Rep Review
@@ -995,31 +953,6 @@ function lower(v) {
   return clean(v).toLowerCase();
 }
 
-function getOptionalFixMessage() {
-  return clean($("fixMessageInput")?.value || "");
-}
-
-function clearOptionalFixMessage() {
-  const input = $("fixMessageInput");
-
-  if (input) {
-    input.value = "";
-  }
-}
-
-function updateFixCommunicationTarget(rec) {
-  const label = $("fixMessageLabel");
-  const help = $("fixMessageHelp");
-
-  if (!label || !help || !rec) return;
-
-  const target = getManualRouteTarget(rec);
-  const targetName = target === "manager" ? "Manager" : "Rep";
-
-  label.textContent = `Optional Message to ${targetName}`;
-  help.textContent =
-    `This message will be sent only to ${targetName} with the record.`;
-}
 function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
 
@@ -1895,7 +1828,6 @@ function releaseSelected(destination, fixFieldName = "") {
     : "";
  const isFixRequest = Boolean(normalizedFixField);
 
-const optionalFixMessage = getOptionalFixMessage();
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1974,7 +1906,14 @@ install_base_issue_reason:
     oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
     oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
     threshold_years: rec.threshold_years || "",
-    alert_enabled: rec.alert_enabled || "yes"
+    alert_enabled: rec.alert_enabled || "yes",
+
+    install_base_manager_message: "",
+    manager_message_from_install_base: "",
+    manager_message_from_install_base_at: "",
+    install_base_rep_message: "",
+    rep_message_from_install_base: "",
+    rep_message_from_install_base_at: ""
   };
 
   state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
@@ -1997,10 +1936,6 @@ if (destination === "manager") {
   updated.install_base_released_to = "manager";
   updated.install_base_release_status = "released_to_manager";
   updated.install_base_manager_request = true;
- updated.install_base_manager_message = optionalFixMessage;
-updated.manager_message_from_install_base = optionalFixMessage;
-updated.manager_message_from_install_base_at =
-  optionalFixMessage ? now : "";
 
   updated.hub_source = "AXIS Install Base Workspace";
   updated.source = "AXIS Install Base Workspace";
@@ -2015,9 +1950,7 @@ updated.manager_message_from_install_base_at =
 
   updated.manager_flash_at = now;
   updated.manager_flash_type = "install_base_release";
-  updated.manager_flash_text = optionalFixMessage
-  ? `New install-base message: ${optionalFixMessage}`
-  : "New install-base record released to manager review";
+  updated.manager_flash_text = "New install-base record released to manager review";
     const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
     const ownerName = getOwnerName(updated);
 
@@ -2032,10 +1965,6 @@ updated.manager_message_from_install_base_at =
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
 if (destination === "rep") {
-  updated.install_base_rep_message = optionalFixMessage;
-  updated.rep_message_from_install_base = optionalFixMessage;
-  updated.rep_message_from_install_base_at =
-    optionalFixMessage ? now : "";
 
   const managerQueueWithoutRecord = readQueue(
     MANAGER_QUEUE_KEY,
@@ -2099,8 +2028,7 @@ if (destination === "rep") {
   }
 
   saveRecords();
-clearOptionalFixMessage();
-render();
+  render();
   showBanner(
     destination === "manager"
       ? "Selected record released to Manager Review only."
@@ -2217,12 +2145,10 @@ function showCompletedProjects() {
   showBanner("Completed projects are visible.");
 }
 function updateReleaseButtonVisibility(rec) {
-updateFixCommunicationTarget(rec);
   const repBtn = $("releaseRepBtn");
   const managerBtn = $("releaseManagerBtn");
   const stagedBtn = $("markStagedBtn");
   const hideCompletedBtn = $("hideCompletedProjectBtn");
-  const managerMessageBox = $("fixMessageBox");
 
   const target = getManualRouteTarget(rec);
   const completed = isCompletedRecord(rec);
@@ -2231,7 +2157,6 @@ updateFixCommunicationTarget(rec);
 
   if (stagedBtn) stagedBtn.classList.remove("hidden");
   if (hideCompletedBtn) hideCompletedBtn.classList.add("hidden");
-if (managerMessageBox) managerMessageBox.classList.remove("hidden");
   if (completed) {
   repBtn.classList.add("hidden");
   managerBtn.classList.add("hidden");
@@ -3247,14 +3172,6 @@ function renderDetail() {
       </div>
     ` : ""}
 
-    ${clean(rec.manager_message_from_install_base || rec.install_base_manager_message) ? `
-      <div class="detail-card" style="grid-column:1 / -1;border:1px solid rgba(67,176,255,.55);background:rgba(67,176,255,.08);">
-        <div class="k">Manager Message</div>
-        <div class="v">${escapeHtml(rec.manager_message_from_install_base || rec.install_base_manager_message)}</div>
-        <div class="mini" style="margin-top:8px;">Sent from Install Base${rec.manager_message_from_install_base_at ? ` • ${escapeHtml(rec.manager_message_from_install_base_at)}` : ""}</div>
-      </div>
-    ` : ""}
-
     <div class="detail-card">
       <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
@@ -3442,11 +3359,6 @@ if (showCompletedProjectsBtn) {
       state.filter = e.target.value || "";
       render();
     });
-  }
-
-  const managerMessageSelect = $("managerMessageSelect");
-  if (managerMessageSelect) {
-    managerMessageSelect.addEventListener("change", syncManagerCustomMessageVisibility);
   }
 const releaseRepBtn = $("releaseRepBtn");
 
