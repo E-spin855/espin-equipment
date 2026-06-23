@@ -4641,21 +4641,17 @@ ${
 </div>
 `;
   if (!completed) {
+    // Keep the message composer ready for a new manager message.
+    // Previously these fields were repopulated from the last saved response
+    // every time render() ran, which made a successfully sent message appear
+    // as though it had not cleared.
     const action = $("managerResponseAction");
     const date = $("managerResponseDate");
     const notes = $("managerResponseNotes");
 
-    if (action) {
-      action.value = rec.manager_response_action || "";
-    }
-
-    if (date) {
-      date.value = rec.manager_response_date || "";
-    }
-
-    if (notes) {
-      notes.value = rec.manager_response_notes || "";
-    }
+    if (action) action.value = "";
+    if (date) date.value = "";
+    if (notes) notes.value = "";
   }
 }
 function syncRecordEverywhere(updatedRec) {
@@ -4781,7 +4777,17 @@ function saveManagerResponse() {
   syncRecordEverywhere(updated);
   syncManagerResponseToRep(updated);
 
-  state.selectedId = updated.id;
+  state.selectedId = updated.id || updated.key || getRecordKey(updated);
+
+  // Clear the current composer immediately after a successful send.
+  // render() below also rebuilds it empty, so it stays reset.
+  const actionField = $("managerResponseAction");
+  const dateField = $("managerResponseDate");
+  const notesField = $("managerResponseNotes");
+
+  if (actionField) actionField.value = "";
+  if (dateField) dateField.value = "";
+  if (notesField) notesField.value = "";
 
   const banner = $("resultBanner");
 
