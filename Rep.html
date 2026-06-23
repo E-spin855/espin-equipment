@@ -4094,6 +4094,121 @@ function formatTimelineDate(value) {
 
   return String(value);
 }
+function buildRepMiniTimeline(rec) {
+  const items = [];
+
+  if (
+    rec.manager_response_at ||
+    rec.manager_response_notes ||
+    rec.manager_response_action
+  ) {
+    items.push({
+      type: "manager-response",
+      date:
+        rec.manager_response_at ||
+        rec.manager_response_date ||
+        "Manager",
+      title: "Manager Response",
+      note:
+        rec.manager_response_notes ||
+        formatReviewText(rec.manager_response_action || "")
+    });
+  }
+
+  if (
+    rec.rep_manager_message_at ||
+    rec.rep_manager_message_notes ||
+    rec.rep_manager_message_label
+  ) {
+    items.push({
+      type: "rep-message",
+      date: rec.rep_manager_message_at || "Rep",
+      title: "Rep Message to Manager",
+      note:
+        rec.rep_manager_message_notes ||
+        formatReviewText(
+          rec.rep_manager_message_label ||
+          rec.rep_manager_message_action ||
+          ""
+        )
+    });
+  }
+
+  if (rec.rep_follow_up_date) {
+    items.push({
+      type: "rep-action",
+      date: rec.rep_follow_up_date,
+      title: "Rep Follow-Up Scheduled",
+      note: rec.rep_notes || ""
+    });
+  }
+
+  if (
+    rec.rep_last_action_at ||
+    rec.rep_action_label ||
+    rec.rep_selected_manual_action_label
+  ) {
+    items.push({
+      type: "rep-action",
+      date:
+        rec.rep_last_action_at ||
+        rec.rep_selected_action_at ||
+        "Current",
+      title:
+        rec.rep_action_label ||
+        rec.rep_selected_manual_action_label ||
+        rec.rep_selected_action_label ||
+        "Rep Action Recorded",
+      note: rec.rep_notes || ""
+    });
+  }
+
+  if (!items.length) {
+    return [
+      '<div class="rep-mini-timeline">',
+      '  <div class="rep-mini-timeline-item">',
+      '    <div class="rep-mini-timeline-date">Current</div>',
+      '    <div class="rep-mini-timeline-text">',
+      '      No rep / manager activity yet.',
+      '    </div>',
+      '  </div>',
+      '</div>'
+    ].join("");
+  }
+
+  const timelineItems = items
+    .slice(0, 4)
+    .map(function (item) {
+      const noteHtml = item.note
+        ? `
+          <div class="rep-mini-timeline-note">
+            ${escapeHtml(item.note)}
+          </div>
+        `
+        : "";
+
+      return `
+        <div class="rep-mini-timeline-item ${escapeHtml(item.type || "")}">
+          <div class="rep-mini-timeline-date">
+            ${escapeHtml(formatTimelineDate(item.date))}
+          </div>
+
+          <div class="rep-mini-timeline-text">
+            ${escapeHtml(item.title || "")}
+          </div>
+
+          ${noteHtml}
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="rep-mini-timeline">
+      ${timelineItems}
+    </div>
+  `;
+}
 function renderQuoteApprovalActionPanel(rec) {
   if (!rec || !rec.quote_amount) {
     return `
