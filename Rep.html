@@ -1629,6 +1629,53 @@ tr.manager-response-flash td:last-child{
 }
   
 
+
+/* Detail-card update frames: flash only around the section that changed */
+.detail-update-frame{
+  position:relative;
+  border:2px solid rgba(65,255,156,.98)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.34),
+    0 0 20px rgba(65,255,156,.52),
+    0 0 38px rgba(65,255,156,.22)!important;
+  animation:detailUpdateFramePulse 1.05s ease-in-out infinite!important;
+}
+
+.detail-update-frame::after{
+  content:"NEW UPDATE";
+  position:absolute;
+  top:-11px;
+  right:14px;
+  z-index:10;
+  padding:4px 9px;
+  border-radius:999px;
+  border:1px solid rgba(142,255,195,.92);
+  background:#123d2d;
+  color:#caffdf;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.10em;
+  box-shadow:0 0 14px rgba(65,255,156,.46);
+  pointer-events:none;
+}
+
+@keyframes detailUpdateFramePulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.68);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.24),
+      0 0 12px rgba(65,255,156,.26),
+      0 0 24px rgba(65,255,156,.12);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.54),
+      0 0 28px rgba(65,255,156,.82),
+      0 0 50px rgba(65,255,156,.28);
+  }
+}
+
 </style>
 </head>
 
@@ -2055,7 +2102,12 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
   selectedId: null,
   selectedRep: null,
   installBaseCommunicationOpen: false,
-  showCompleted: true
+  showCompleted: true,
+  detailUpdateFlash: {
+    manager: false,
+    review: false,
+    financial: false
+  }
 };
     const $ = (id) => document.getElementById(id);
 
@@ -4740,7 +4792,96 @@ function sendQuickRepManagerMessage() {
   if (notesEl) notesEl.value = "";
   if (quickMessageEl) quickMessageEl.value = "";
 }
-    function renderDetail() {
+    
+function getDetailUpdateFlashState(rec) {
+  if (!rec) {
+    return { manager: false, review: false, financial: false };
+  }
+
+  const manager =
+    rec.manager_response_seen_by_rep !== true &&
+    Boolean(
+      rec.manager_response_action ||
+      rec.manager_response_notes ||
+      rec.manager_response_at
+    );
+
+  const review =
+    rec.install_base_release_seen !== true ||
+    rec.install_base_release_new === true ||
+    rec.install_base_fixed_seen_by_rep !== true ||
+    rec.rep_unseen_update === true ||
+    rec.rep_flash_type === "install_base_update" ||
+    rec.rep_status === "install_base_data_fixed" ||
+    rec.rep_status === "needed";
+
+  const financial =
+    rec.quote_seen_by_rep === false ||
+    rec.quote_approval_seen_by_rep === false ||
+    rec.tradein_seen_by_rep === false ||
+    rec.rep_flash_type === "quote_update" ||
+    rec.rep_flash_type === "tradein_update" ||
+    Boolean(rec.quote_approval_unseen);
+
+  return { manager, review, financial };
+}
+
+function applyDetailUpdateFrames() {
+  const detailGridEl = $("detailGrid");
+  if (!detailGridEl) return;
+
+  const flash = state.detailUpdateFlash || {};
+
+  const actionCard = detailGridEl.querySelector(".rep-action-main-card");
+  const reviewCard = detailGridEl.querySelector(".rep-review-request-card");
+  const financialCard = detailGridEl.querySelector(".rep-financial-review-card");
+  const quotePanel = detailGridEl.querySelector(".quote-action-panel");
+
+  if (flash.manager && actionCard) {
+    actionCard.classList.add("detail-update-frame");
+  }
+
+  if (flash.review && reviewCard) {
+    reviewCard.classList.add("detail-update-frame");
+  }
+
+  if (flash.financial) {
+    if (financialCard) financialCard.classList.add("detail-update-frame");
+    if (quotePanel) quotePanel.classList.add("detail-update-frame");
+  }
+}
+
+function clearDetailUpdateFrames() {
+  state.detailUpdateFlash = {
+    manager: false,
+    review: false,
+    financial: false
+  };
+
+  document
+    .querySelectorAll(".detail-update-frame")
+    .forEach(el => el.classList.remove("detail-update-frame"));
+}
+
+function bindDetailUpdateFrameDismissal() {
+  if (document.body.dataset.detailFrameDismissBound === "true") return;
+  document.body.dataset.detailFrameDismissBound = "true";
+
+  document.addEventListener("click", event => {
+    const flashing = document.querySelector(".detail-update-frame");
+    if (!flashing) return;
+
+    const selectedRowClick =
+      event.target.closest("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]");
+
+    // Keep the frame visible for the row click that opened the detail.
+    if (selectedRowClick) return;
+
+    clearDetailUpdateFrames();
+  });
+}
+
+function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
   const detail = $("detailArea");
@@ -4999,6 +5140,9 @@ if (detailGridEl) {
     }
   }
 }
+
+applyDetailUpdateFrames();
+
 const manualActionSelect = $("manualActionSelect");
 const savedManualAction = rec.rep_selected_manual_action || rec.rep_action || "";
 
@@ -8330,6 +8474,12 @@ function handleRepRowClick(id) {
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
 
+  const recBeforeSeen = state.records.find(
+    r => String(r.id || "") === selectedId
+  );
+
+  state.detailUpdateFlash = getDetailUpdateFlashState(recBeforeSeen);
+
   const seenStateChanged = markRepRowUpdateSeen(selectedId);
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
@@ -8352,10 +8502,17 @@ function handleRepRowClick(id) {
     }
   }
 
-  if (!selectionChanged && !seenStateChanged && !recordChanged) return;
+  const hasDetailFlash = Object.values(
+    state.detailUpdateFlash || {}
+  ).some(Boolean);
+
+  if (!selectionChanged && !seenStateChanged && !recordChanged && !hasDetailFlash) return;
 
   refreshSelectedRowUI();
-  if (selectionChanged) renderDetail();
+
+  if (selectionChanged || seenStateChanged || recordChanged || hasDetailFlash) {
+    renderDetail();
+  }
 }
 const ROW_INTERACTIVE_SELECTOR =
   "button, input, select, textarea, label, a, [contenteditable='true'], [role='button']";
@@ -8438,6 +8595,7 @@ function scheduleRepSyncRender() {
 
   bindRepRowDelegation($("tableBody"), handleRepRowClick);
   bindRepRowDelegation($("newProjectsTableBody"), selectRow);
+  bindDetailUpdateFrameDismissal();
 
   window.addEventListener("storage", (e) => {
     if (
