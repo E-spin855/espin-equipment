@@ -1915,9 +1915,19 @@ function releaseSelected(destination, fixFieldName = "") {
   const prettyFixField = normalizedFixField
     ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
-  const isFixRequest = destination === "rep" && Boolean(normalizedFixField);
-  const managerSelectedMessage = destination === "manager" ? getSelectedManagerMessage() : "";
+ const isFixRequest = Boolean(normalizedFixField);
 
+const managerSelectedMessage =
+  destination === "manager"
+    ? (
+        getSelectedManagerMessage() ||
+        (
+          isFixRequest
+            ? `Please review and correct the missing ${prettyFixField || "install-base data"}.`
+            : ""
+        )
+      )
+    : "";
   if (destination === "manager" && !managerSelectedMessage) {
     alert("Please select a message before sending to Manager Review.");
     const messageSelect = $("managerMessageSelect");
@@ -2008,6 +2018,16 @@ install_base_issue_reason:
   state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
 
 if (destination === "manager") {
+  const repQueueWithoutRecord = readQueue(REP_QUEUE_KEY, []).filter(
+    item =>
+      String(item.key || getRecordKey(item)) !==
+      String(updated.key || getRecordKey(updated))
+  );
+
+  localStorage.setItem(
+    REP_QUEUE_KEY,
+    JSON.stringify(repQueueWithoutRecord)
+  );
   updated.manager_visible = true;
   updated.rep_visible = false;
   updated.release_destination = "manager";
@@ -2049,6 +2069,21 @@ if (destination === "manager") {
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   }
 if (destination === "rep") {
+  const managerQueueWithoutRecord = readQueue(MANAGER_QUEUE_KEY, {});
+
+  Object.keys(managerQueueWithoutRecord).forEach(ownerName => {
+    managerQueueWithoutRecord[ownerName] =
+      (managerQueueWithoutRecord[ownerName] || []).filter(
+        item =>
+          String(item.key || getRecordKey(item)) !==
+          String(updated.key || getRecordKey(updated))
+      );
+  });
+
+  localStorage.setItem(
+    MANAGER_QUEUE_KEY,
+    JSON.stringify(managerQueueWithoutRecord)
+  );
   updated.rep_visible = true;
   updated.manager_visible = false;
   updated.release_destination = "rep";
@@ -2107,7 +2142,10 @@ function requestFixForRecord(id, event, fieldName = "") {
     event.stopPropagation();
   }
 
-  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+  const rec = state.records.find(
+    r => String(r.id || "") === String(id || "")
+  );
+
   if (!rec) return;
 
   if (isFixedByRep(rec)) {
@@ -2115,14 +2153,21 @@ function requestFixForRecord(id, event, fieldName = "") {
     return;
   }
 
-  const missingFields = getMissingHubFields(rec);
   const requestedField = canonicalInstallBaseFieldName(fieldName);
+  const missingFields = getMissingHubFields(rec);
 
   const issueFields = missingFields.length
     ? missingFields
     : requestedField
       ? [requestedField]
       : [];
+
+  const spreadsheetTarget = getManualRouteTarget(rec);
+
+  const destination =
+    spreadsheetTarget === "manager"
+      ? "manager"
+      : "rep";
 
   state.selectedId = rec.id;
 
@@ -2131,24 +2176,33 @@ function requestFixForRecord(id, event, fieldName = "") {
 
     return {
       ...r,
+
       install_base_issue_field: issueFields.join(", "),
       install_base_issue_type: "missing_field",
       install_base_action_label: "Install Base FIX",
+
       install_base_action_reason: issueFields.length
-        ? `Install Base requested rep correction for missing field(s): ${issueFields.join(", ")}.`
-        : "Install Base requested rep correction for missing install-base data.",
+        ? `Install Base requested ${destination} correction for missing field(s): ${issueFields.join(", ")}.`
+        : `Install Base requested ${destination} correction for missing install-base data.`,
+
       install_base_issue_note: issueFields.length
         ? `Missing field(s): ${issueFields.join(", ")}.`
         : "Missing install-base data.",
+
       install_base_manual_route: true,
-      install_base_released_to: "rep",
-      rep_fix_required: "Install Base FIX"
+      install_base_released_to: destination,
+      release_destination: destination,
+
+      rep_fix_required:
+        destination === "rep"
+          ? "Install Base FIX"
+          : ""
     };
   });
 
   saveRecords();
 
-  releaseSelected("rep");
+  releaseSelected(destination, requestedField);
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
