@@ -1912,6 +1912,19 @@ install_base_issue_reason: exactInstallBaseReason,
     oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
     oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
     oem_review_reason: exactInstallBaseReason,
+    rep_action_required:
+      rec.rep_action_required ||
+      rec.oem_review_action_required ||
+      rec.install_base_rep_action_required ||
+      getOriginalRepRequest(rec),
+    oem_review_action_required:
+      rec.oem_review_action_required ||
+      rec.rep_action_required ||
+      getOriginalRepRequest(rec),
+    install_base_rep_action_required:
+      rec.install_base_rep_action_required ||
+      rec.rep_action_required ||
+      getOriginalRepRequest(rec),
 review_reason: exactInstallBaseReason,
     oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
     oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
@@ -2520,6 +2533,11 @@ axis_clarification_reason:
         oem_review_type: obj.oem_review_type || obj.review_type || "",
         oem_review_label: obj.oem_review_label || obj.review_label || "",
         oem_review_reason: obj.oem_review_reason || obj.review_reason || "",
+        rep_action_required:
+          obj.rep_action_required ||
+          obj.oem_review_action_required ||
+          obj.install_base_rep_action_required ||
+          "",
         oem_review_date: excelDateToISO(obj.oem_review_date || obj.review_date || ""),
         oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
 
@@ -3029,17 +3047,72 @@ function formatInstallBaseResponseStatus(value) {
     : "Response Sent";
 }
 function getOriginalRepRequest(rec) {
-  return clean(
+  const directRequest = clean(
     rec.rep_action_required ||
     rec.oem_review_action_required ||
     rec.install_base_rep_action_required ||
     rec.manager_review_request ||
-    rec.install_base_action_reason ||
-    rec.install_base_issue_reason ||
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    "Review the Install Base request and provide the requested confirmation."
+    ""
   );
+
+  if (directRequest) return directRequest;
+
+  const label = lower(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.proactive_type ||
+    ""
+  );
+
+  const site = clean(rec.site || rec.facility || rec.hospital || "this facility");
+  const model = clean(rec.model || "this equipment");
+  const serial = clean(rec.serial_number || rec.serial || "");
+  const equipment = serial ? `${model} (${serial})` : model;
+
+  if (label.includes("data") || label.includes("quality")) {
+    return `Confirm the status of ${equipment} at ${site}: active, replaced, removed, or relocated.`;
+  }
+
+  if (label.includes("asset status") || label.includes("status")) {
+    return `Confirm whether ${equipment} is active, replaced, removed, relocated, or recorded under another asset ID.`;
+  }
+
+  if (label.includes("source") || label.includes("mismatch") || hasSourceConflict(rec)) {
+    return `Review the conflicting source information and confirm the correct equipment record.`;
+  }
+
+  if (label.includes("site") || label.includes("account") || label.includes("ownership")) {
+    return `Confirm the correct customer and facility for ${equipment}.`;
+  }
+
+  if (label.includes("service")) {
+    return `Confirm any known service-coverage or equipment-status changes for ${equipment}.`;
+  }
+
+  if (label.includes("planning")) {
+    return `Provide any known customer or project-planning update for ${equipment}, or confirm that none is available.`;
+  }
+
+  if (label.includes("age")) {
+    return `Confirm that ${equipment} is still active at ${site} and note any known replacement or removal activity.`;
+  }
+
+  if (label.includes("utilization")) {
+    return `Confirm whether the recorded utilization for ${equipment} is still accurate.`;
+  }
+
+  if (label.includes("project") || label.includes("asset")) {
+    return `Confirm which equipment record belongs to this project.`;
+  }
+
+  const issueField = clean(rec.install_base_issue_field || rec.axis_clarification_reason || "");
+  if (issueField) {
+    return `Confirm or correct the requested information: ${issueField}.`;
+  }
+
+  return "Confirm the equipment information requested by Install Base and provide any correction needed.";
 }
 
 function formatDateTime(value) {
