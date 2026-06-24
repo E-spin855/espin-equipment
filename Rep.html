@@ -6355,23 +6355,45 @@ if (
     New project records are normally shown only in the New Project Review Items table.
     Once marked WON, promote the record into the regular Equipment Review Records table.
   */
-  if (rec.project_type === "new_project_record") {
-    rec.project_type = "equipment_review_record";
-    rec.lifecycle_created_from_quote_won = true;
-    rec.install_base_lifecycle_entry = true;
-    rec.install_base_lifecycle_status = "active";
-    rec.install_base_review_status = "lifecycle_active";
-    rec.install_base_sync_type = "won_project_lifecycle_entry";
-    rec.source = "Rep Won Project";
-    rec.hub_source = "Equipment Review Workspace";
+  const isNewProjectRecord =
+  rec.project_type === "new_project_record" ||
+  rec.project_type === "new_sales_project" ||
+  rec.new_project_badge === true ||
+  rec.source === "New AXIS Project";
 
-    rec.oem_review_type = "project";
-    rec.review_type = "project";
-    rec.oem_review_label = "Project Won - Enter Lifecycle Review";
-    rec.review_label = "Project Won - Enter Lifecycle Review";
-    rec.oem_review_reason = "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility.";
-    rec.review_reason = "Rep marked the new project as Won. Add this project to Install Base lifecycle visibility.";
-  }
+if (isNewProjectRecord) {
+  rec.project_type = "equipment_review_record";
+
+  /* Remove it from New Project Review Items */
+  rec.new_project_badge = false;
+  rec.new_project_promoted = true;
+  rec.new_project_promoted_at = now;
+
+  /* Add it to Equipment Review Records */
+  rec.rep_visible = true;
+  rec.rep_hidden = false;
+  rec.rep_deleted = false;
+
+  rec.lifecycle_created_from_quote_won = true;
+  rec.install_base_lifecycle_entry = true;
+  rec.install_base_lifecycle_status = "active";
+  rec.install_base_review_status = "lifecycle_active";
+  rec.install_base_sync_type = "won_project_lifecycle_entry";
+
+  rec.source = "Rep Won Project";
+  rec.hub_source = "Equipment Review Workspace";
+
+  rec.oem_review_type = "project";
+  rec.review_type = "project";
+  rec.oem_review_label = "Project Won - Enter Equipment Review";
+  rec.review_label = "Project Won - Enter Equipment Review";
+
+  rec.oem_review_reason =
+    "Rep marked the new project as Won. The record was moved into Equipment Review Records.";
+
+  rec.review_reason =
+    "Rep marked the new project as Won. The record was moved into Equipment Review Records.";
+}
 
   rec.project_management_visible = true;
   rec.project_management_status = "Available for PM Review";
@@ -6404,9 +6426,24 @@ if (
 
       rec.rep_last_action_at = now;
 
-      syncFeedStatus(rec);
-      closeQuoteModal();
-      render();
+syncFeedStatus(rec);
+
+const promotedRecord = state.records.find(
+  item => String(item.id) === String(rec.id)
+);
+
+if (promotedRecord && status === "won") {
+  promotedRecord.project_type = "equipment_review_record";
+  promotedRecord.new_project_badge = false;
+  promotedRecord.new_project_promoted = true;
+  promotedRecord.rep_visible = true;
+  promotedRecord.rep_hidden = false;
+
+  saveRecords();
+}
+
+closeQuoteModal();
+render();
 
             showBanner(
   status === "won"
