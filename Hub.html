@@ -3004,14 +3004,23 @@ function formatInstallBaseResponseStatus(value) {
     : "Response Sent";
 }
 function renderRepResponseCard(rec) {
-  if (!rec.install_base_response_at) return "";
+  const hasResponse = Boolean(
+    rec.install_base_response_at ||
+    rec.install_base_response_message ||
+    rec.install_base_response_note ||
+    rec.rep_response_message ||
+    rec.rep_response_note ||
+    rec.response_message ||
+    rec.response_note
+  );
 
-  const responseFrom = String(rec.install_base_response_from || "").toLowerCase();
+  const responseFrom = String(rec.install_base_response_from || "rep").toLowerCase();
   const responseTitle = responseFrom === "manager"
-    ? "Manager Response from Review Page"
-    : "Rep Response from Review Page";
+    ? "Manager Response"
+    : "Rep Response to Install Base";
 
   const seen =
+    !hasResponse ||
     rec.install_base_response_seen === true ||
     rec.install_base_fixed_seen_by_install_base === true;
 
@@ -3023,54 +3032,68 @@ function renderRepResponseCard(rec) {
     rec.response_message ||
     rec.response_note ||
     rec.rep_notes ||
-    "No message entered.";
-const correctedFieldsObj =
-  rec.corrected_fields && typeof rec.corrected_fields === "object"
-    ? rec.corrected_fields
-    : {};
+    "";
 
-const correctedFieldsHtml = Object.keys(correctedFieldsObj).length
-  ? `
-    <div class="mini" style="margin-top:12px;line-height:1.6;">
-      <strong>Corrected fields:</strong><br>
-      ${Object.entries(correctedFieldsObj).map(([field, value]) => {
-        const labelMap = {
-          dom: "DOM / Year",
-          manager_name: "Owner Group",
-          owner_group_name: "Owner Group",
-          assigned_rep_name: "Rep Owner",
-          serial_number: "Serial Number",
-          serial: "Serial Number",
-          site: "Site",
-          model: "Model",
-          make: "Make",
-          modality: "Modality"
-        };
+  const correctedFieldsObj =
+    rec.corrected_fields && typeof rec.corrected_fields === "object"
+      ? rec.corrected_fields
+      : {};
 
-        return `
-          ${escapeHtml(labelMap[field] || field)}:
-          <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>
-        `;
-      }).join("")}
-    </div>
-  `
-  : "";
+  const correctedFieldsHtml = Object.keys(correctedFieldsObj).length
+    ? `
+      <div class="mini" style="margin-top:12px;line-height:1.6;">
+        <strong>Corrected fields:</strong><br>
+        ${Object.entries(correctedFieldsObj).map(([field, value]) => {
+          const labelMap = {
+            dom: "DOM / Year",
+            manager_name: "Owner Group",
+            owner_group_name: "Owner Group",
+            assigned_rep_name: "Rep Owner",
+            serial_number: "Serial Number",
+            serial: "Serial Number",
+            site: "Site",
+            model: "Model",
+            make: "Make",
+            modality: "Modality"
+          };
+
+          return `
+            ${escapeHtml(labelMap[field] || field)}:
+            <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>
+          `;
+        }).join("")}
+      </div>
+    `
+    : "";
+
+  if (!hasResponse) {
+    return `
+      <div class="detail-card rep-response-card" style="grid-column:1 / -1;border-color:rgba(88,184,255,.30)!important;background:rgba(67,176,255,.06)!important;box-shadow:none!important;">
+        <div class="k">Rep Response to Install Base</div>
+        <div class="v" style="font-size:16px;color:#d8ebff;">Waiting for rep response</div>
+        <div class="mini" style="margin-top:7px;">
+          The rep's response to the Install Base review request will appear here.
+        </div>
+      </div>
+    `;
+  }
+
   const clickHandler = seen
     ? ""
     : `onclick="markRepResponseSeen(findSelectedRecord()); render();"`;
 
   return `
     <div
-      class="detail-card ${seen ? "" : "install-base-update-frame"}"
+      class="detail-card rep-response-card ${seen ? "" : "install-base-update-frame"}"
       ${clickHandler}
     >
       <div class="k">${escapeHtml(responseTitle)}</div>
-      <div class="v">${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</div>
-      <div class="mini" style="margin-top:8px;line-height:1.55;">
-        Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
-        Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong><br>
-        Message: ${escapeHtml(msg)}
-${correctedFieldsHtml}
+      <div class="v" style="font-size:18px;line-height:1.45;">${escapeHtml(msg || "No response text entered.")}</div>
+      <div class="mini" style="margin-top:10px;line-height:1.55;">
+        Status: <strong>${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</strong><br>
+        Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "Rep")}</strong><br>
+        Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong>
+        ${correctedFieldsHtml}
       </div>
     </div>
   `;
