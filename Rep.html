@@ -2896,6 +2896,16 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
       oem_review_label: reviewLabel,
       oem_review_reason: reviewReason,
+      rep_action_required:
+        incoming.rep_action_required ||
+        incoming.oem_review_action_required ||
+        incoming.install_base_rep_action_required ||
+        incoming.manager_review_request ||
+        "",
+      oem_review_action_required:
+        incoming.oem_review_action_required || incoming.rep_action_required || "",
+      manager_review_request:
+        incoming.manager_review_request || incoming.rep_action_required || incoming.oem_review_action_required || "",
 
       install_base_issue_reason: reviewReason,
       install_base_issue_note: reviewReason,
@@ -3134,6 +3144,11 @@ function buildManagerSyncPacket(rec) {
       rec.rep_action_label ||
       rec.rep_selected_action_label ||
       "Rep updated record",
+
+    rep_action_required: getInstallBaseRepActionRequired(rec),
+    oem_review_action_required: getInstallBaseRepActionRequired(rec),
+    manager_review_request: getInstallBaseRepActionRequired(rec),
+    install_base_rep_action_required: getInstallBaseRepActionRequired(rec),
 
     source: rec.source || "Rep Review Page",
     hub_source: rec.hub_source || "Rep Review Page"
@@ -5403,6 +5418,59 @@ function getRepFixPanelIssues(rec) {
 
   return issues;
 }
+function getInstallBaseRepActionRequired(rec) {
+  const direct = clean(
+    rec.rep_action_required ||
+    rec.oem_review_action_required ||
+    rec.install_base_rep_action_required ||
+    rec.manager_review_request ||
+    ""
+  );
+
+  if (direct) return direct;
+
+  const type = lower(
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.proactive_type ||
+    rec.alert_override ||
+    ""
+  );
+
+  const site = clean(rec.site || rec.hospital || rec.facility || "the listed facility");
+  const model = clean(rec.model || "this equipment");
+  const serial = clean(rec.serial_number || rec.serial || "");
+  const equipment = serial ? `${model} (Serial ${serial})` : model;
+
+  const requests = {
+    data_quality:
+      `Confirm whether ${equipment} is still installed and active at ${site}. If it has been removed, replaced, relocated, or is no longer associated with this facility, provide the current status and corrected information.`,
+    status_clarification:
+      `Confirm the current status of ${equipment} at ${site}. Indicate whether it is active, replaced, removed, relocated, or recorded under another asset ID, and provide any known updated asset information.`,
+    source_conflict:
+      `Review the conflicting source information for ${equipment} and confirm the correct equipment details. Enter the corrected value or explain why it cannot yet be confirmed.`,
+    site_account:
+      `Confirm the correct customer and facility associated with ${equipment}. Provide the correct site name and location, or explain why the site cannot yet be confirmed.`,
+    project_asset:
+      `Confirm which equipment record belongs to this project. Provide the correct asset ID, serial number, model, or assigned rep information needed to resolve the project-to-asset conflict.`,
+    site_ownership:
+      `Confirm the current customer, facility, or ownership information for ${equipment}. Provide any corrected account or site details.`,
+    ownership:
+      `Confirm the current customer, facility, or ownership information for ${equipment}. Provide any corrected account or site details.`,
+    service:
+      `Review the service-coverage information for ${equipment} and confirm any known contract, customer, or equipment-status changes relevant to this record.`,
+    utilization:
+      `Review the recorded utilization for ${equipment} and confirm whether it reflects the equipment's current use at ${site}. Add any known operational or site changes.`,
+    lifecycle:
+      `Confirm that the manufacturing year and current status of ${equipment} are accurate. Add any known replacement, removal, relocation, or customer planning information.`,
+    planning:
+      `Review ${equipment} for current customer or project-planning information. Document any known planning activity, or confirm that no update is currently available.`
+  };
+
+  return requests[type] ||
+    `Review the identified Install Base issue for ${equipment}. Confirm or correct the requested information and provide a note if it cannot yet be verified.`;
+}
+
 function renderInstallBaseCorrectionPanel(rec) {
   const correctionAlreadySent =
     rec.install_base_correction_status === "corrected_by_rep" ||
@@ -5443,6 +5511,8 @@ function renderInstallBaseCorrectionPanel(rec) {
     ""
   );
 
+  const reviewActionRequired = getInstallBaseRepActionRequired(rec);
+
   const hasReviewContext =
     reviewLabel ||
     reviewType ||
@@ -5478,13 +5548,20 @@ function renderInstallBaseCorrectionPanel(rec) {
          
         </div>
 
-        <div class="mini" style="line-height:1.45;">
-          ${
-            reviewReason
-              ? escapeHtml(formatReviewText(reviewReason))
-              : "Install Base requested rep review for missing install-base data."
-          }
+        <div style="margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.58);background:rgba(255,216,77,.10);">
+          <div style="font-size:11px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
+            Rep Action Needed
+          </div>
+          <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
+            ${escapeHtml(reviewActionRequired)}
+          </div>
         </div>
+
+        ${
+          reviewReason
+            ? `<div class="mini" style="line-height:1.45;"><strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}</div>`
+            : ""
+        }
 
         ${
           correctionAlreadySent
@@ -5541,19 +5618,21 @@ function renderInstallBaseCorrectionPanel(rec) {
 
       <div style="margin-bottom:12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.48);background:rgba(255,216,77,.10);">
         <div style="font-size:12px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
-          Install Base Needs Rep Review
+          Rep Action Needed
         </div>
 
-        <div style="font-size:15px;font-weight:850;line-height:1.4;color:#fff4cc;">
-          ${
-            reviewReason
-              ? escapeHtml(formatReviewText(reviewReason))
-              : "Install Base requested rep review for missing install-base data."
-          }
+        <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
+          ${escapeHtml(reviewActionRequired)}
         </div>
+
+        ${
+          reviewReason
+            ? `<div class="mini" style="margin-top:9px;line-height:1.45;"><strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}</div>`
+            : ""
+        }
 
         <div class="mini" style="margin-top:8px;line-height:1.45;">
-          Rep may correct the requested field, or send a reason back if the information cannot be confirmed.
+          Correct the requested field below, or provide a reason if the information cannot be confirmed.
         </div>
       </div>
 
@@ -5923,6 +6002,9 @@ function render() {
             oem_review_type: obj.oem_review_type || obj.review_type || "",
             oem_review_label: obj.oem_review_label || obj.review_label || "",
             oem_review_reason: obj.oem_review_reason || obj.review_reason || "",
+            rep_action_required: obj.rep_action_required || obj.oem_review_action_required || obj.install_base_rep_action_required || "",
+            oem_review_action_required: obj.oem_review_action_required || obj.rep_action_required || "",
+            manager_review_request: obj.manager_review_request || obj.rep_action_required || obj.oem_review_action_required || "",
             oem_review_date: "",
             oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
 
