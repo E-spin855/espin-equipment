@@ -1507,8 +1507,20 @@ function getMissingHubFields(rec) {
 }
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
-  return { type: "completed", label: "Project Completed" };
-}
+    return { type: "completed", label: "Project Completed" };
+  }
+
+  // A new human response temporarily replaces the record's normal badge.
+  // After Install Base clicks away from the record, the response is marked seen
+  // and the original badge (for example Auto-Synced) returns.
+  if (rec.install_base_response_at && rec.install_base_response_seen !== true) {
+    const responseFrom = lower(rec.install_base_response_from || "rep");
+    return {
+      type: "response",
+      label: responseFrom === "manager" ? "Manager Response" : "Rep Response"
+    };
+  }
+
   if (
     !isAutoSyncEligible(rec) &&
     rec.install_base_release_status !== "released_to_rep" &&
@@ -1523,10 +1535,6 @@ function getReviewStatus(rec) {
 
   if (isFixedByRep(rec)) {
     return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
-  }
-
-  if (rec.install_base_response_at && !rec.install_base_response_seen) {
-    return { type: "response", label: "Rep Response" };
   }
 
   const exceptions = getDataExceptions(rec);
@@ -2951,6 +2959,11 @@ function renderOwnerGroups() {
 }
 
 function selectOwner(name) {
+  const previousRec = findSelectedRecord();
+  if (previousRec) {
+    markRepResponseSeen(previousRec);
+  }
+
   state.selectedOwner = name || "";
   state.selectedId = null;
   render();
@@ -3082,13 +3095,20 @@ function markInstallBaseCorrectedFieldsSeen(rec) {
   saveRecords();
 }
 function selectRecord(id) {
+  const previousRec = findSelectedRecord();
+  const changingRecords =
+    previousRec && String(previousRec.id || "") !== String(id || "");
+
+  // Clicking away from a record acknowledges its temporary response badge.
+  if (changingRecords) {
+    markRepResponseSeen(previousRec);
+  }
+
   state.selectedId = id;
 
   const rec = findSelectedRecord();
-
   if (rec) {
     markInstallBaseCorrectedFieldsSeen(rec);
-    markRepResponseSeen(rec);
   }
 
   render();
