@@ -4494,7 +4494,12 @@ function sendInstallBaseCorrection(id) {
     })
     .join("; ");
 
-  const message = typedMessage || fixedValues || "Rep sent correction.";
+  if (!typedMessage && !fixedValues) {
+    alert("Enter a response or corrected information before sending to Install Base.");
+    return;
+  }
+
+  const message = typedMessage || fixedValues;
 
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
@@ -4612,7 +4617,7 @@ function sendInstallBaseCorrection(id) {
 
     rep_visible: true,
     install_base_visible: true,
-    manager_visible: false,
+    manager_visible: true,
 
     install_base_show_communication: false,
     install_base_has_open_issue: false,
@@ -4713,6 +4718,8 @@ function sendInstallBaseCorrection(id) {
   repQueue.unshift(updated);
   writeArrayKey(REP_QUEUE_KEY, repQueue);
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+
+  syncToManagerQueue(updated);
 
   state.installBaseCommunicationOpen = false;
 
@@ -5444,31 +5451,31 @@ function getInstallBaseRepActionRequired(rec) {
 
   const requests = {
     data_quality:
-      `Confirm whether ${equipment} is still installed and active at ${site}. If it has been removed, replaced, relocated, or is no longer associated with this facility, provide the current status and corrected information.`,
+      `Confirm the current status of ${equipment} at ${site}: active, replaced, removed, or relocated.`,
     status_clarification:
-      `Confirm the current status of ${equipment} at ${site}. Indicate whether it is active, replaced, removed, relocated, or recorded under another asset ID, and provide any known updated asset information.`,
+      `Confirm the current status of ${equipment}: active, replaced, removed, relocated, or listed under another asset ID.`,
     source_conflict:
-      `Review the conflicting source information for ${equipment} and confirm the correct equipment details. Enter the corrected value or explain why it cannot yet be confirmed.`,
+      `Confirm the correct equipment details and note which source information is accurate.`,
     site_account:
-      `Confirm the correct customer and facility associated with ${equipment}. Provide the correct site name and location, or explain why the site cannot yet be confirmed.`,
+      `Confirm the correct customer and facility for ${equipment}.`,
     project_asset:
-      `Confirm which equipment record belongs to this project. Provide the correct asset ID, serial number, model, or assigned rep information needed to resolve the project-to-asset conflict.`,
+      `Confirm which equipment record belongs to this project and provide the missing or corrected details.`,
     site_ownership:
-      `Confirm the current customer, facility, or ownership information for ${equipment}. Provide any corrected account or site details.`,
+      `Confirm the current customer, facility, or ownership information for ${equipment}.`,
     ownership:
-      `Confirm the current customer, facility, or ownership information for ${equipment}. Provide any corrected account or site details.`,
+      `Confirm the current customer, facility, or ownership information for ${equipment}.`,
     service:
-      `Review the service-coverage information for ${equipment} and confirm any known contract, customer, or equipment-status changes relevant to this record.`,
+      `Confirm any known service-coverage or equipment-status changes for ${equipment}.`,
     utilization:
-      `Review the recorded utilization for ${equipment} and confirm whether it reflects the equipment's current use at ${site}. Add any known operational or site changes.`,
+      `Confirm whether the recorded utilization reflects the current use of ${equipment}.`,
     lifecycle:
-      `Confirm that the manufacturing year and current status of ${equipment} are accurate. Add any known replacement, removal, relocation, or customer planning information.`,
+      `Confirm the manufacturing year and current status of ${equipment}.`,
     planning:
-      `Review ${equipment} for current customer or project-planning information. Document any known planning activity, or confirm that no update is currently available.`
+      `Provide any known customer or project-planning update for ${equipment}, or confirm that none is available.`
   };
 
   return requests[type] ||
-    `Review the identified Install Base issue for ${equipment}. Confirm or correct the requested information and provide a note if it cannot yet be verified.`;
+    `Confirm or correct the requested Install Base information for ${equipment}.`;
 }
 
 function renderInstallBaseCorrectionPanel(rec) {
@@ -5570,19 +5577,36 @@ function renderInstallBaseCorrectionPanel(rec) {
                 Response already sent back to Install Base.
               </div>
             `
-            : issues.length
-              ? `
-                <div class="btns" style="margin-top:12px;">
+            : `
+              <div style="margin-top:12px;display:grid;gap:9px;">
+                <label for="installBaseFixReason">Response to Install Base</label>
+                <textarea
+                  id="installBaseFixReason"
+                  placeholder="Enter your confirmation or updated information."
+                  style="min-height:78px;"
+                >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
+
+                <div class="btns">
                   <button
                     type="button"
                     class="green install-base-send-btn"
-                    onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
+                    onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
                   >
-                    Open Install Base Review
+                    Send Response to Install Base
                   </button>
+
+                  ${issues.length ? `
+                    <button
+                      type="button"
+                      class="secondary"
+                      onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
+                    >
+                      Correct Record Fields
+                    </button>
+                  ` : ""}
                 </div>
-              `
-              : ""
+              </div>
+            `
         }
       </div>
     `;
