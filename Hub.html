@@ -1815,7 +1815,8 @@ function releaseSelected(destination, fixFieldName = "") {
     ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
  const isFixRequest = Boolean(normalizedFixField);
-
+const exactInstallBaseReason =
+  formatMergedInstallBaseClarificationReason(rec);
 
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -1842,11 +1843,7 @@ install_base_sync_type: isAutoSyncEligible(rec)
 
 install_base_manual_route: true,
 
-install_base_clarification_reason:
-  getClarificationReason(rec) ||
-  rec.install_base_issue_reason ||
-  rec.conflict_notes ||
-  "",
+install_base_clarification_reason: exactInstallBaseReason,
     asset_id: rec.asset_id || "",
     site_address: rec.site_address || "",
     city: rec.city || "",
@@ -1869,28 +1866,18 @@ install_base_clarification_reason:
     install_base_issue_field: normalizedFixField || rec.install_base_issue_field || "",
     install_base_issue_type: isFixRequest ? "missing_field" : (rec.install_base_issue_type || ""),
     install_base_action_label: isFixRequest ? "Fix requested by Install Base" : (rec.install_base_action_label || ""),
-    install_base_action_reason: isFixRequest
-      ? `Install Base requested rep review for missing ${prettyFixField || "data"}.`
-      : (rec.install_base_action_reason || ""),
-    rep_fix_required: isFixRequest
-      ? `Fix missing ${prettyFixField || "data"}`
-      : (rec.rep_fix_required || ""),
-    install_base_issue_note: isFixRequest
-      ? `Missing ${prettyFixField || "data"} field needs rep correction.`
-      : (rec.install_base_issue_note || ""),
-install_base_issue_reason:
-  isFixRequest
-    ? `Missing ${prettyFixField || "data"} field sent to rep for correction.`
-    : (rec.install_base_issue_reason ||
-      rec.install_base_action_reason ||
-      rec.install_base_issue_note ||
-      rec.conflict_notes ||
-      rec.oem_review_reason ||
-      rec.review_reason ||
-      ""),
+    install_base_action_reason: exactInstallBaseReason,
+
+rep_fix_required: isFixRequest
+  ? `Fix missing ${prettyFixField || "data"}`
+  : (rec.rep_fix_required || ""),
+
+install_base_issue_note: exactInstallBaseReason,
+install_base_issue_reason: exactInstallBaseReason,
     oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
     oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
-    oem_review_reason: rec.oem_review_reason || rec.review_reason || rec.install_base_issue_note || "",
+    oem_review_reason: exactInstallBaseReason,
+review_reason: exactInstallBaseReason,
     oem_review_date: rec.oem_review_date || rec.review_date || rec.proactive_date || "",
     oem_review_level: rec.oem_review_level || rec.review_level || rec.visibility_level || "",
     threshold_years: rec.threshold_years || "",
