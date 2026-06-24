@@ -1329,18 +1329,28 @@ function isBlankHubField(value, fieldName = "") {
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
-  const fixSent = rec.install_base_release_status === "released_to_rep";
-const label = "Fix Sent";
+  const fixSent =
+    rec.install_base_release_status === "released_to_rep" ||
+    rec.install_base_release_status === "released_to_manager" ||
+    rec.install_base_released_to === "rep" ||
+    rec.install_base_released_to === "manager";
+
+  const label = fixSent ? "Fix Sent" : "FIX";
 
   return `
     <button
       type="button"
       class="fix-data-badge ${fixSent ? "active" : ""}"
-      onclick="requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}')"
-    >${escapeHtml(label)}</button>
+      onclick="requestFixForRecord(
+        '${escapeJs(rec.id || "")}',
+        event,
+        '${escapeJs(fieldName || "")}'
+      )"
+    >
+      ${escapeHtml(label)}
+    </button>
   `;
 }
-
 function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   const fieldIsBlank = isBlankHubField(rawValue, fieldName);
   const normalHtml = escapeHtml(fieldIsBlank ? fallbackHtml : rawValue);
