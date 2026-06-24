@@ -4212,6 +4212,94 @@ function getInstallBaseReviewReasonForManager(rec) {
     "Install Base review context is attached to this record."
   );
 }
+function arrangeManagerWorkflowLayout() {
+  const grid = $("detailGrid");
+  if (!grid) return;
+
+  const reviewRow = grid.querySelector(".manager-review-row");
+  const financialRow = grid.querySelector(".manager-financial-row");
+
+  const actionTitle = Array.from(
+    grid.querySelectorAll(".section-title.blue")
+  ).find(el =>
+    String(el.textContent || "")
+      .toLowerCase()
+      .includes("manager action")
+  );
+
+  const financialTitle = Array.from(
+    grid.querySelectorAll(".section-title.yellow")
+  ).find(el =>
+    String(el.textContent || "")
+      .toLowerCase()
+      .includes("financial review")
+  );
+
+  const actionCard = actionTitle?.nextElementSibling || null;
+
+  if (
+    !reviewRow ||
+    !financialRow ||
+    !actionTitle ||
+    !actionCard
+  ) {
+    return;
+  }
+
+  const reviewCard = reviewRow.children[0] || null;
+  const followUpCard = reviewRow.children[1] || null;
+
+  const financialCard = financialRow.children[0] || null;
+  const quoteApprovalCard = financialRow.children[1] || null;
+
+  if (!reviewCard || !financialCard) return;
+
+  const workflow = document.createElement("div");
+  workflow.className = "manager-workflow-layout";
+
+  const left = document.createElement("div");
+  left.className = "manager-workflow-left";
+
+  const right = document.createElement("div");
+  right.className = "manager-workflow-right";
+
+  workflow.appendChild(left);
+  workflow.appendChild(right);
+
+  reviewRow.parentNode.insertBefore(workflow, reviewRow);
+
+  left.appendChild(actionTitle);
+  left.appendChild(actionCard);
+
+  right.appendChild(reviewCard);
+  right.appendChild(financialCard);
+
+  const secondaryItems = [
+    followUpCard,
+    quoteApprovalCard
+  ].filter(Boolean);
+
+  if (secondaryItems.length) {
+    const secondaryRow = document.createElement("div");
+    secondaryRow.className = "manager-workflow-secondary";
+
+    secondaryItems.forEach(item => {
+      secondaryRow.appendChild(item);
+    });
+
+    workflow.parentNode.insertBefore(
+      secondaryRow,
+      workflow.nextSibling
+    );
+  }
+
+  reviewRow.remove();
+  financialRow.remove();
+
+  if (financialTitle) {
+    financialTitle.remove();
+  }
+}
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -4694,7 +4782,7 @@ ${
     "
   >
     Activity / Rep History
-  </div>
+  </div>\
                <div
   style="
     padding:12px;
@@ -4963,7 +5051,10 @@ ${
 
 </div>
 `;
-  if (!completed) {
+
+arrangeManagerWorkflowLayout();
+
+if (!completed) {
     // Keep the message composer ready for a new manager message.
     // Previously these fields were repopulated from the last saved response
     // every time render() ran, which made a successfully sent message appear
