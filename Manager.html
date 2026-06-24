@@ -1346,6 +1346,74 @@ td:nth-child(11) .manager-waiting-badge{
     box-shadow:0 0 18px rgba(65,255,156,.18);
   }
 
+
+.manager-install-base-communication-card{
+  grid-column:1 / -1;
+  padding:18px!important;
+  border:2px solid rgba(0,229,255,.46)!important;
+  background:linear-gradient(135deg,rgba(0,229,255,.07),rgba(8,18,35,.90))!important;
+  box-shadow:0 0 22px rgba(0,229,255,.12)!important;
+}
+.manager-install-base-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.05fr) minmax(420px,.95fr);
+  gap:18px;
+  align-items:stretch;
+}
+.manager-install-base-left{min-width:0;}
+.manager-install-base-history{
+  min-width:0;
+  padding:14px;
+  border-radius:14px;
+  border:1px solid rgba(88,184,255,.18);
+  background:rgba(8,18,35,.58);
+}
+.manager-install-base-history-title{
+  margin-bottom:10px;
+  color:#8fb1cf;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.manager-install-base-history-list{display:grid;gap:9px;}
+.manager-install-base-history-item{
+  padding:11px 12px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.16);
+  background:rgba(7,17,31,.74);
+}
+.manager-install-base-history-item.install-base{
+  border-color:rgba(255,216,77,.42);
+  background:rgba(255,216,77,.07);
+}
+.manager-install-base-history-item.manager{
+  border-color:rgba(125,211,252,.48);
+  background:rgba(56,189,248,.08);
+}
+.manager-install-base-history-date{
+  color:#a2f5ff;
+  font-size:12px;
+  font-weight:900;
+  margin-bottom:4px;
+}
+.manager-install-base-history-text{
+  color:#eef6ff;
+  font-size:13px;
+  font-weight:800;
+  line-height:1.4;
+}
+.manager-install-base-history-note{
+  margin-top:4px;
+  color:#9db6d2;
+  font-size:12px;
+  line-height:1.4;
+}
+@media(max-width:1000px){
+  .manager-install-base-layout{grid-template-columns:1fr;}
+}
+
+
   /* =========================================================
      MANAGER RESPONSE
      ========================================================= */
@@ -2155,6 +2223,7 @@ const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const MANAGER_SEEN_FIX_KEY = "axis_manager_seen_install_base_fixes_v1";
+const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
@@ -4475,6 +4544,102 @@ const secondaryItems = [
     financialTitle.remove();
   }
 }
+
+function getManagerInstallBaseConversationHistory(rec) {
+  const history = Array.isArray(rec?.manager_install_base_conversation_history)
+    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
+    : [];
+  return [...history].sort((a,b) => (new Date(a.at||0).getTime()||0) - (new Date(b.at||0).getTime()||0));
+}
+function sendManagerMessageToInstallBase() {
+  const rec = findSelectedRecord();
+  if (!rec) return;
+  const input = $("managerMessageToInstallBase");
+  const message = clean(input?.value);
+  if (!message) {
+    alert("Enter a message to Install Base before sending.");
+    return;
+  }
+  const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+  const history = getManagerInstallBaseConversationHistory(rec);
+  const item = {
+    id: "manager_install_base_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
+    sender: "manager",
+    sender_label: MANAGER_NAME,
+    message,
+    at: now,
+    seen_by_install_base: false
+  };
+  const update = {
+    manager_install_base_conversation_history: [...history, item],
+    manager_message_to_install_base: message,
+    manager_message_to_install_base_at: now,
+    manager_message_to_install_base_by: MANAGER_NAME,
+    manager_message_to_install_base_seen: false,
+    install_base_response_at: now,
+    install_base_response_from: "manager",
+    install_base_response_seen: false
+  };
+
+  state.records = state.records.map(r => sameRecord(r,rec) || getRecordKey(r)===key ? {...r,...update} : r);
+  writeManagerQueueRecord({...rec,...update,key});
+
+  const installBase = readArrayKey(INSTALL_BASE_KEY);
+  let matched=false;
+  const updatedInstallBase = installBase.map(r=>{
+    if (!sameRecord(r,rec) && getRecordKey(r)!==key) return r;
+    matched=true;
+    return {...r,...update};
+  });
+  if(!matched) updatedInstallBase.push({...rec,...update,key});
+  localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(updatedInstallBase));
+  localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+  input.value="";
+  render();
+  showBanner("Message sent to Install Base.");
+}
+function renderManagerInstallBaseCommunication(rec) {
+  const history = getManagerInstallBaseConversationHistory(rec);
+  return `
+    <div class="detail-card full manager-install-base-communication-card">
+      <div class="manager-install-base-layout">
+        <div class="manager-install-base-left">
+          <div class="k">Manager / Install Base Communication</div>
+          <div class="v" style="font-size:14px;margin-bottom:14px;">
+            Send a message, confirmation, or follow-up question to Install Base.
+          </div>
+          <label for="managerMessageToInstallBase">Message to Install Base</label>
+          <textarea id="managerMessageToInstallBase" placeholder="Type message to Install Base..."></textarea>
+          <div class="btns" style="margin-top:12px;">
+            <button type="button" class="green" onclick="sendManagerMessageToInstallBase()">
+              Send Message to Install Base
+            </button>
+          </div>
+        </div>
+        <div class="manager-install-base-history">
+          <div class="manager-install-base-history-title">Activity / Install Base Communication History</div>
+          <div class="manager-install-base-history-list">
+            ${history.length ? history.map(item => `
+              <div class="manager-install-base-history-item ${lower(item.sender)==="manager" ? "manager" : "install-base"}">
+                <div class="manager-install-base-history-date">${escapeHtml(formatTimelineDate(item.at))}</div>
+                <div class="manager-install-base-history-text">${escapeHtml(lower(item.sender)==="manager" ? "Manager Response" : "Install Base Message")}</div>
+                <div class="manager-install-base-history-note">${escapeHtml(item.message)}</div>
+              </div>
+            `).join("") : `
+              <div class="manager-install-base-history-item install-base">
+                <div class="manager-install-base-history-date">No messages yet</div>
+                <div class="manager-install-base-history-text">Manager / Install Base</div>
+                <div class="manager-install-base-history-note">Messages between Manager and Install Base will appear here.</div>
+              </div>
+            `}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -4551,6 +4716,8 @@ function renderDetail() {
       : "detail-card";
 
   grid.innerHTML = `
+    ${renderManagerInstallBaseCommunication(rec)}
+
   ${completed ? "" : renderOverdueManagerAlert(rec)}
   <div class="selected-summary full">
       <div class="summary-card">
