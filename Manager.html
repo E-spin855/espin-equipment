@@ -2227,13 +2227,54 @@ function mergeRecordsByKey(...groups) {
       ? incomingSeenReleaseId || ""
       : incomingSeenReleaseId || existingSeenReleaseId || "";
 
-    const repFixSeen = repFixRecord && (
-      hasManagerSeenFix(rec) ||
-      hasManagerSeenFix(existing) ||
-      (incomingIsRepFix && rec.manager_alert_seen === true)
-    );
+   const incomingUpdateAt = clean(
+  rec.manager_flash_at ||
+  rec.rep_manager_message_at ||
+  rec.rep_last_action_at ||
+  ""
+);
 
-    const normalSeen = existing.manager_alert_seen === true || rec.manager_alert_seen === true;
+const previouslySeenAt = clean(
+  existing.manager_update_seen_at ||
+  ""
+);
+
+const repUpdateTypes = [
+  "rep_message",
+  "rep_action",
+  "rep_update",
+  "follow_up",
+  "completed",
+  "quote_created",
+  "quote_sent",
+  "tradein_sync"
+];
+
+const isFreshRepUpdate =
+  rec.manager_unseen_update === true &&
+  repUpdateTypes.includes(lower(rec.manager_flash_type)) &&
+  (
+    !previouslySeenAt ||
+    !incomingUpdateAt ||
+    new Date(incomingUpdateAt).getTime() >
+      new Date(previouslySeenAt).getTime()
+  );
+
+const repFixSeen =
+  repFixRecord &&
+  !isFreshRepUpdate &&
+  (
+    hasManagerSeenFix(rec) ||
+    hasManagerSeenFix(existing) ||
+    (incomingIsRepFix && rec.manager_alert_seen === true)
+  );
+
+const normalSeen = isFreshRepUpdate
+  ? false
+  : (
+      existing.manager_alert_seen === true ||
+      rec.manager_alert_seen === true
+    );
 
     const baseFlashType = repFixSeen ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
     const baseFlashText = repFixSeen ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
@@ -2259,7 +2300,11 @@ function mergeRecordsByKey(...groups) {
       (rec.manager_unseen_update === true || existing.manager_unseen_update === true) &&
       baseFlashType !== "manager_response";
 
-    const shouldFlash = repFixUnseen || releaseIsUnseen || legacyUnseen;
+   const shouldFlash =
+  isFreshRepUpdate ||
+  repFixUnseen ||
+  releaseIsUnseen ||
+  legacyUnseen;
 
     map.set(key, {
       ...existing,
@@ -2288,9 +2333,38 @@ function mergeRecordsByKey(...groups) {
           ? ""
           : rec.manager_update_seen_at || existing.manager_update_seen_at || "",
 
-      manager_flash_at: repFixUnseen ? (rec.manager_flash_at || existing.manager_flash_at || new Date().toISOString()) : baseFlashAt,
-      manager_flash_type: repFixUnseen ? "rep_update" : baseFlashType,
-      manager_flash_text: repFixUnseen ? "Rep corrected install-base data" : baseFlashText,
+     manager_flash_at: isFreshRepUpdate
+  ? (
+      rec.manager_flash_at ||
+      rec.rep_manager_message_at ||
+      rec.rep_last_action_at ||
+      new Date().toISOString()
+    )
+  : repFixUnseen
+  ? (
+      rec.manager_flash_at ||
+      existing.manager_flash_at ||
+      new Date().toISOString()
+    )
+  : baseFlashAt,
+
+manager_flash_type: isFreshRepUpdate
+  ? rec.manager_flash_type
+  : repFixUnseen
+  ? "rep_update"
+  : baseFlashType,
+
+manager_flash_text: isFreshRepUpdate
+  ? (
+      rec.manager_flash_text ||
+      rec.rep_manager_message_notes ||
+      rec.rep_manager_message_label ||
+      rec.rep_action_label ||
+      "New rep update"
+    )
+  : repFixUnseen
+  ? "Rep corrected install-base data"
+  : baseFlashText,
 
       install_base_manager_request:
         rec.install_base_manager_request === true ||
