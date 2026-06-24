@@ -2963,12 +2963,32 @@ function mergeInstallBaseQueueIntoRepRecords() {
         existingRecord.install_base_response_status === "rep_correction_sent";
 
       state.records[existingIndex] = {
-        ...(existingAlreadyFixed ? repRecord : existingRecord),
-        ...(existingAlreadyFixed ? existingRecord : repRecord),
+        ...existingRecord,
+        ...repRecord,
         key: existingRecord.key || repRecord.key,
         id: existingRecord.id || repRecord.id,
         rep_visible: true,
-        manager_visible: false
+        manager_visible: false,
+
+        // Always accept the newest Install Base communication, even after the
+        // rep has already submitted an earlier correction or response.
+        install_base_reply_to_rep:
+          incoming.install_base_reply_to_rep || existingRecord.install_base_reply_to_rep || "",
+        install_base_reply_to_rep_by:
+          incoming.install_base_reply_to_rep_by || existingRecord.install_base_reply_to_rep_by || "",
+        install_base_reply_to_rep_at:
+          incoming.install_base_reply_to_rep_at || existingRecord.install_base_reply_to_rep_at || "",
+        install_base_reply_to_rep_seen:
+          incoming.install_base_reply_to_rep_at &&
+          incoming.install_base_reply_to_rep_at !== existingRecord.install_base_reply_to_rep_at
+            ? false
+            : (incoming.install_base_reply_to_rep_seen === true || existingRecord.install_base_reply_to_rep_seen === true),
+        install_base_conversation_history:
+          Array.isArray(incoming.install_base_conversation_history)
+            ? incoming.install_base_conversation_history
+            : (Array.isArray(existingRecord.install_base_conversation_history)
+                ? existingRecord.install_base_conversation_history
+                : [])
       };
     } else {
       state.records.unshift(repRecord);
@@ -4522,6 +4542,15 @@ function sendInstallBaseCorrection(id) {
 
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
+  const existingConversationHistory = getInstallBaseConversationHistory(rec);
+  const repConversationItem = {
+    id: "rep_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    sender: "rep",
+    sender_label: rec.assigned_rep_name || rec.rep || "Rep",
+    message,
+    at: now,
+    seen_by_install_base: false
+  };
 
   const normalizeCorrectedFieldName = (rawKey) => {
     const k = String(rawKey || "")
@@ -4626,6 +4655,7 @@ function sendInstallBaseCorrection(id) {
     install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
     install_base_response_at: now,
     install_base_response_seen: false,
+    install_base_conversation_history: [...existingConversationHistory, repConversationItem],
 
     install_base_correction_status: "corrected_by_rep",
     install_base_correction_note: message,
@@ -5497,11 +5527,31 @@ function getInstallBaseRepActionRequired(rec) {
     `Confirm or correct the requested Install Base information for ${equipment}.`;
 }
 
+function getInstallBaseConversationHistory(rec) {
+  const history = Array.isArray(rec?.install_base_conversation_history)
+    ? rec.install_base_conversation_history.filter(item => item && clean(item.message))
+    : [];
+
+  return [...history].sort((a, b) => {
+    const aTime = new Date(a.at || 0).getTime() || 0;
+    const bTime = new Date(b.at || 0).getTime() || 0;
+    return aTime - bTime;
+  });
+}
+
 function renderInstallBaseReplyCard(rec) {
-  const message = clean(rec.install_base_reply_to_rep || "");
+  const conversationHistory = getInstallBaseConversationHistory(rec);
+  const latestInstallBaseMessage = [...conversationHistory]
+    .reverse()
+    .find(item => lower(item.sender) === "install_base");
+  const message = clean(latestInstallBaseMessage?.message || rec.install_base_reply_to_rep || "");
   if (!message) return "";
 
-  const unseen = rec.install_base_reply_to_rep_seen !== true;
+  const messageAt = latestInstallBaseMessage?.at || rec.install_base_reply_to_rep_at || "";
+  const messageBy = latestInstallBaseMessage?.sender_label || rec.install_base_reply_to_rep_by || "Install Base";
+  const unseen = latestInstallBaseMessage
+    ? latestInstallBaseMessage.seen_by_rep !== true
+    : rec.install_base_reply_to_rep_seen !== true;
   return `
     <div
       class="${unseen ? "detail-update-frame" : ""}"
@@ -5514,7 +5564,7 @@ function renderInstallBaseReplyCard(rec) {
         ${escapeHtml(message)}
       </div>
       <div class="mini" style="margin-top:8px;color:#b9ffd8;font-weight:850;">
-        Sent by ${escapeHtml(rec.install_base_reply_to_rep_by || "Install Base")} · ${escapeHtml(rec.install_base_reply_to_rep_at ? new Date(rec.install_base_reply_to_rep_at).toLocaleString() : "")}
+        Sent by ${escapeHtml(messageBy)} · ${escapeHtml(messageAt ? new Date(messageAt).toLocaleString() : "")}
       </div>
     </div>
   `;
@@ -5522,6 +5572,7 @@ function renderInstallBaseReplyCard(rec) {
 
 function buildInstallBaseMiniTimeline(rec) {
   const items = [];
+  const conversationHistory = getInstallBaseConversationHistory(rec);
 
   const requestText = getInstallBaseRepActionRequired(rec);
   if (requestText) {
@@ -5537,34 +5588,46 @@ function buildInstallBaseMiniTimeline(rec) {
     });
   }
 
-  const repResponse = clean(
-    rec.install_base_response_message ||
-    rec.install_base_response_note ||
-    rec.rep_response_message ||
-    rec.install_base_correction_note ||
-    ""
-  );
-
-  if (repResponse) {
-    items.push({
-      type: "rep-message",
-      date:
-        rec.install_base_response_at ||
-        rec.install_base_correction_at ||
-        "Rep",
-      title: "Rep Response to Install Base",
-      note: repResponse
+  if (conversationHistory.length) {
+    conversationHistory.forEach(item => {
+      const fromRep = lower(item.sender) === "rep";
+      items.push({
+        type: fromRep ? "rep-message" : "manager-response",
+        date: item.at || (fromRep ? "Rep" : "Install Base"),
+        title: fromRep ? "Rep Response to Install Base" : "Install Base Response",
+        note: item.message
+      });
     });
-  }
+  } else {
+    const repResponse = clean(
+      rec.install_base_response_message ||
+      rec.install_base_response_note ||
+      rec.rep_response_message ||
+      rec.install_base_correction_note ||
+      ""
+    );
 
-  const installBaseResponse = clean(rec.install_base_reply_to_rep || "");
-  if (installBaseResponse) {
-    items.push({
-      type: "manager-response",
-      date: rec.install_base_reply_to_rep_at || "Install Base",
-      title: "Install Base Response",
-      note: installBaseResponse
-    });
+    if (repResponse) {
+      items.push({
+        type: "rep-message",
+        date:
+          rec.install_base_response_at ||
+          rec.install_base_correction_at ||
+          "Rep",
+        title: "Rep Response to Install Base",
+        note: repResponse
+      });
+    }
+
+    const installBaseResponse = clean(rec.install_base_reply_to_rep || "");
+    if (installBaseResponse) {
+      items.push({
+        type: "manager-response",
+        date: rec.install_base_reply_to_rep_at || "Install Base",
+        title: "Install Base Response",
+        note: installBaseResponse
+      });
+    }
   }
 
   if (!items.length) {

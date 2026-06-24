@@ -3244,6 +3244,18 @@ function getInstallBaseReplyDraft(recordId) {
   return state.installBaseReplyDrafts[String(recordId || "")] || "";
 }
 
+function getInstallBaseConversationHistory(rec) {
+  const history = Array.isArray(rec?.install_base_conversation_history)
+    ? rec.install_base_conversation_history.filter(item => item && clean(item.message))
+    : [];
+
+  return [...history].sort((a, b) => {
+    const aTime = new Date(a.at || 0).getTime() || 0;
+    const bTime = new Date(b.at || 0).getTime() || 0;
+    return aTime - bTime;
+  });
+}
+
 function sendInstallBaseReplyToRep(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
@@ -3257,11 +3269,22 @@ function sendInstallBaseReplyToRep(recordId) {
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+  const existingHistory = getInstallBaseConversationHistory(rec);
+  const newHistoryItem = {
+    id: "install_base_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    sender: "install_base",
+    sender_label: "Install Base",
+    message,
+    at: now,
+    seen_by_rep: false
+  };
+
   const reply = {
     install_base_reply_to_rep: message,
     install_base_reply_to_rep_by: "Install Base",
     install_base_reply_to_rep_at: now,
-    install_base_reply_to_rep_seen: false
+    install_base_reply_to_rep_seen: false,
+    install_base_conversation_history: [...existingHistory, newHistoryItem]
   };
 
   state.records = state.records.map(r =>
@@ -3270,11 +3293,17 @@ function sendInstallBaseReplyToRep(recordId) {
       : r
   );
 
-  const repQueue = readArrayKey(REP_QUEUE_KEY).map(r =>
-    sameRecord(r, rec) || getRecordKey(r) === key
-      ? { ...r, ...reply }
-      : r
-  );
+  const currentRepQueue = readArrayKey(REP_QUEUE_KEY);
+  let matched = false;
+  const repQueue = currentRepQueue.map(r => {
+    if (!sameRecord(r, rec) && getRecordKey(r) !== key) return r;
+    matched = true;
+    return { ...r, ...reply };
+  });
+
+  if (!matched) {
+    repQueue.push({ ...rec, ...reply, key });
+  }
 
   writeArrayKey(REP_QUEUE_KEY, repQueue);
   localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
@@ -3307,7 +3336,15 @@ function renderRepResponseCard(rec) {
     ""
   );
 
-  const replyText = clean(rec.install_base_reply_to_rep || "");
+  const conversationHistory = getInstallBaseConversationHistory(rec);
+  const latestInstallBaseMessage = [...conversationHistory]
+    .reverse()
+    .find(item => lower(item.sender) === "install_base");
+  const replyText = clean(
+    latestInstallBaseMessage?.message ||
+    rec.install_base_reply_to_rep ||
+    ""
+  );
   const seen =
     !hasResponse ||
     rec.install_base_response_seen === true ||
@@ -3414,8 +3451,13 @@ function renderRepResponseCard(rec) {
               <div class="install-base-history-text">Rep Response</div>
               <div class="install-base-history-note">${escapeHtml(hasResponse ? (msg || "Response submitted without notes.") : "Waiting for rep response.")}</div>
             </div>
-
-            ${replyText ? `
+            ${conversationHistory.length ? conversationHistory.map(item => `
+              <div class="install-base-history-item ${lower(item.sender) === "rep" ? "rep" : "install-base"}">
+                <div class="install-base-history-date">${escapeHtml(formatDateTime(item.at))}</div>
+                <div class="install-base-history-text">${escapeHtml(lower(item.sender) === "rep" ? "Rep Response" : "Install Base Response")}</div>
+                <div class="install-base-history-note">${escapeHtml(item.message)}</div>
+              </div>
+            `).join("") : (replyText ? `
               <div class="install-base-history-item install-base">
                 <div class="install-base-history-date">${escapeHtml(installBaseHistoryDate)}</div>
                 <div class="install-base-history-text">Install Base Response</div>
@@ -3427,7 +3469,7 @@ function renderRepResponseCard(rec) {
                 <div class="install-base-history-text">Install Base Response</div>
                 <div class="install-base-history-note">Use the response field to confirm the update or ask the rep a follow-up question.</div>
               </div>
-            `}
+            `)}
           </div>
         </div>
       </div>
