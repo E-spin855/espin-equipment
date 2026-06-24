@@ -1436,6 +1436,25 @@ tr.manager-response-flash td:last-child{
   color:#d8f3ff!important;
   font-weight:850;
 }
+
+.rep-mini-timeline-item.install-base-request{
+  border-color:rgba(255,216,77,.52);
+  background:rgba(255,216,77,.08);
+}
+
+.rep-mini-timeline-item.install-base-request .rep-mini-timeline-date{
+  color:#ffe890!important;
+}
+
+.rep-mini-timeline-item.install-base-request .rep-mini-timeline-text{
+  color:#fff4cc!important;
+  font-weight:950;
+}
+
+.rep-mini-timeline-item.install-base-request .rep-mini-timeline-note{
+  color:#f5e7b2!important;
+  font-weight:850;
+}
 .rep-action-left,
 .rep-action-history{
   min-width:0;
@@ -5501,6 +5520,85 @@ function renderInstallBaseReplyCard(rec) {
   `;
 }
 
+function buildInstallBaseMiniTimeline(rec) {
+  const items = [];
+
+  const requestText = getInstallBaseRepActionRequired(rec);
+  if (requestText) {
+    items.push({
+      type: "install-base-request",
+      date:
+        rec.install_base_released_at ||
+        rec.oem_review_date ||
+        rec.review_date ||
+        "Current",
+      title: "Install Base Request",
+      note: requestText
+    });
+  }
+
+  const repResponse = clean(
+    rec.install_base_response_message ||
+    rec.install_base_response_note ||
+    rec.rep_response_message ||
+    rec.install_base_correction_note ||
+    ""
+  );
+
+  if (repResponse) {
+    items.push({
+      type: "rep-message",
+      date:
+        rec.install_base_response_at ||
+        rec.install_base_correction_at ||
+        "Rep",
+      title: "Rep Response to Install Base",
+      note: repResponse
+    });
+  }
+
+  const installBaseResponse = clean(rec.install_base_reply_to_rep || "");
+  if (installBaseResponse) {
+    items.push({
+      type: "manager-response",
+      date: rec.install_base_reply_to_rep_at || "Install Base",
+      title: "Install Base Response",
+      note: installBaseResponse
+    });
+  }
+
+  if (!items.length) {
+    return `
+      <div class="rep-mini-timeline">
+        <div class="rep-mini-timeline-item">
+          <div class="rep-mini-timeline-date">Current</div>
+          <div class="rep-mini-timeline-text">No Install Base communication yet.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="rep-mini-timeline">
+      ${items.map(item => `
+        <div class="rep-mini-timeline-item ${escapeHtml(item.type || "")}">
+          <div class="rep-mini-timeline-date">
+            ${escapeHtml(formatTimelineDate(item.date))}
+          </div>
+          <div class="rep-mini-timeline-text">
+            ${escapeHtml(item.title || "")}
+          </div>
+          ${item.note ? `
+            <div class="rep-mini-timeline-note">
+              ${escapeHtml(item.note)}
+            </div>
+          ` : ""}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderInstallBaseCorrectionPanel(rec) {
   const correctionAlreadySent =
     rec.install_base_correction_status === "corrected_by_rep" ||
@@ -5530,8 +5628,6 @@ function renderInstallBaseCorrectionPanel(rec) {
     ""
   );
 
-  const reviewDate = "";
-
   const reviewReason = clean(
     rec.oem_review_reason ||
     rec.review_reason ||
@@ -5547,171 +5643,138 @@ function renderInstallBaseCorrectionPanel(rec) {
     reviewLabel ||
     reviewType ||
     reviewLevel ||
-    reviewDate ||
     reviewReason ||
     issues.length;
 
   if (!hasReviewContext) return "";
 
+  const headerHtml = `
+    <div class="k">Rep / Install Base Communication</div>
+
+    <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
+      ${escapeHtml(formatReviewText(reviewLabel))}
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      ${reviewType ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>` : ""}
+      ${reviewLevel ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>` : ""}
+    </div>
+  `;
+
+  const requestHtml = `
+    <div style="margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.58);background:rgba(255,216,77,.10);">
+      <div style="font-size:11px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
+        Install Base Request
+      </div>
+      <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
+        ${escapeHtml(reviewActionRequired)}
+      </div>
+      ${reviewReason ? `
+        <div class="mini" style="margin-top:9px;line-height:1.45;">
+          <strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}
+        </div>
+      ` : ""}
+    </div>
+  `;
+
+  const historyHtml = `
+    <div class="rep-action-history">
+      <div class="rep-action-history-title">Activity / Install Base History</div>
+      ${buildInstallBaseMiniTimeline(rec)}
+    </div>
+  `;
+
   if (!state.installBaseCommunicationOpen || correctionAlreadySent || !issues.length) {
     return `
       <div class="detail-card full oem-review-note-card needs-rep-input rep-review-request-card">
-        <div class="k">Review Request</div>
+        ${headerHtml}
 
-        <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
-          ${escapeHtml(formatReviewText(reviewLabel))}
-        </div>
+        <div class="rep-action-split">
+          <div class="rep-action-left">
+            ${requestHtml}
+            ${renderInstallBaseReplyCard(rec)}
 
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-          ${
-            reviewType
-              ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>`
-              : ""
-          }
-
-          ${
-            reviewLevel
-              ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>`
-              : ""
-          }
-
-         
-        </div>
-
-        <div style="margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.58);background:rgba(255,216,77,.10);">
-          <div style="font-size:11px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
-            Rep Action Needed
-          </div>
-          <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
-            ${escapeHtml(reviewActionRequired)}
-          </div>
-        </div>
-
-        ${
-          reviewReason
-            ? `<div class="mini" style="line-height:1.45;"><strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}</div>`
-            : ""
-        }
-
-        ${renderInstallBaseReplyCard(rec)}
-
-        ${
-          correctionAlreadySent
-            ? `
+            ${correctionAlreadySent ? `
               <div class="mini" style="margin-top:10px;color:#b9ffd8;font-weight:850;">
-                Response already sent back to Install Base.
+                Response sent to Install Base. Use the field below to send an additional message or answer a follow-up.
               </div>
-            `
-            : `
-              <div style="margin-top:12px;display:grid;gap:9px;">
-                <label for="installBaseFixReason">Response to Install Base</label>
-                <textarea
-                  id="installBaseFixReason"
-                  placeholder="Enter your confirmation or updated information."
-                  style="min-height:78px;"
-                >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
+            ` : ""}
 
-                <div class="btns">
+            <div style="margin-top:12px;display:grid;gap:9px;">
+              <label for="installBaseFixReason">Response to Install Base</label>
+              <textarea
+                id="installBaseFixReason"
+                placeholder="Enter your confirmation, response, or follow-up message."
+                style="min-height:110px;"
+              >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
+
+              <div class="btns">
+                <button
+                  type="button"
+                  class="green install-base-send-btn"
+                  onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
+                >
+                  Send Message to Install Base
+                </button>
+
+                ${issues.length ? `
                   <button
                     type="button"
-                    class="green install-base-send-btn"
-                    onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
+                    class="secondary"
+                    onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
                   >
-                    Send Response to Install Base
+                    Correct Record Fields
                   </button>
-
-                  ${issues.length ? `
-                    <button
-                      type="button"
-                      class="secondary"
-                      onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
-                    >
-                      Correct Record Fields
-                    </button>
-                  ` : ""}
-                </div>
+                ` : ""}
               </div>
-            `
-        }
+            </div>
+          </div>
+
+          ${historyHtml}
+        </div>
       </div>
     `;
   }
 
   return `
     <div class="detail-card full oem-review-note-card needs-rep-input install-base-comm-open rep-review-request-card">
-      <div class="k">Review Request</div>
+      ${headerHtml}
 
-      <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-bottom:10px;">
-        ${escapeHtml(formatReviewText(reviewLabel))}
-      </div>
+      <div class="rep-action-split">
+        <div class="rep-action-left">
+          ${requestHtml}
+          ${renderInstallBaseReplyCard(rec)}
 
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-        ${
-          reviewType
-            ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>`
-            : ""
-        }
+          <div style="display:grid;gap:10px;margin-top:12px;">
+            ${issues.map(([field,label]) => `
+              <label>${escapeHtml(label)}</label>
+              <input
+                id="fix_${field}"
+                value="${escapeHtml(rec[field] || "")}"
+                placeholder="Enter ${escapeHtml(label)}"
+              />
+            `).join("")}
 
-        ${
-          reviewLevel
-            ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>`
-            : ""
-        }
+            <label for="installBaseFixReason">Response to Install Base</label>
+            <textarea
+              id="installBaseFixReason"
+              placeholder="Enter your confirmation, corrected information, or follow-up message."
+              style="min-height:110px;"
+            >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
 
-        ${
-          reviewDate
-            ? `<span class="quote-sub-badge">${escapeHtml(reviewDate)}</span>`
-            : ""
-        }
-      </div>
+            <div class="btns">
+              <button type="button" class="green install-base-send-btn" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
+                Save Fix / Send to Install Base
+              </button>
 
-      <div style="margin-bottom:12px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.48);background:rgba(255,216,77,.10);">
-        <div style="font-size:12px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
-          Rep Action Needed
+              <button type="button" class="secondary" onclick="closeInstallBaseCommunication()">
+                Close Field Correction
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
-          ${escapeHtml(reviewActionRequired)}
-        </div>
-
-        ${
-          reviewReason
-            ? `<div class="mini" style="margin-top:9px;line-height:1.45;"><strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}</div>`
-            : ""
-        }
-
-        <div class="mini" style="margin-top:8px;line-height:1.45;">
-          Correct the requested field below, or provide a reason if the information cannot be confirmed.
-        </div>
-      </div>
-
-      ${renderInstallBaseReplyCard(rec)}
-
-      <div style="display:grid;gap:10px;margin-top:12px;">
-        ${issues.map(([field,label]) => `
-          <label>${escapeHtml(label)}</label>
-          <input
-            id="fix_${field}"
-            value="${escapeHtml(rec[field] || "")}"
-            placeholder="Enter ${escapeHtml(label)}"
-          />
-        `).join("")}
-
-        <label>Reason if not corrected</label>
-        <textarea
-          id="installBaseFixReason"
-          placeholder="Example: Site name confirmed with customer contact."
-        >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
-
-        <div class="btns">
-          <button type="button" class="green install-base-send-btn" onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')">
-            Save Fix / Send Back to Install Base
-          </button>
-
-          <button type="button" class="secondary" onclick="closeInstallBaseCommunication()">
-            Close
-          </button>
-        </div>
+        ${historyHtml}
       </div>
     </div>
   `;
