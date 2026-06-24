@@ -171,11 +171,11 @@ label{
   margin-bottom:8px;
 }
 
-input,button,select{
+input,button,select,textarea{
   font:inherit;
 }
 
-input,select{
+input,select,textarea{
   width:100%;
   padding:12px 13px;
   border-radius:12px;
@@ -183,6 +183,11 @@ input,select{
   background:#081223;
   color:var(--text);
   outline:none;
+}
+
+textarea{
+  min-height:86px;
+  resize:vertical;
 }
 
 button{
@@ -456,6 +461,26 @@ tbody tr.selected{
   font-weight:800;
 }
 
+
+.install-base-request-card{
+  grid-column:1 / -1;
+  border:1px solid rgba(255,216,77,.42)!important;
+  background:rgba(255,216,77,.07)!important;
+}
+
+.install-base-reply-box{
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid rgba(88,184,255,.18);
+}
+
+.install-base-reply-history{
+  margin-top:12px;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid rgba(67,176,255,.34);
+  background:rgba(67,176,255,.08);
+}
 
 .hidden{
   display:none!important;
@@ -3003,6 +3028,66 @@ function formatInstallBaseResponseStatus(value) {
     ? raw.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "Response Sent";
 }
+function getOriginalRepRequest(rec) {
+  return clean(
+    rec.rep_action_required ||
+    rec.oem_review_action_required ||
+    rec.install_base_rep_action_required ||
+    rec.manager_review_request ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_reason ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    "Review the Install Base request and provide the requested confirmation."
+  );
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString();
+}
+
+function sendInstallBaseReplyToRep(recordId) {
+  const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+  if (!rec) return;
+
+  const input = document.getElementById("installBaseReplyToRep");
+  const message = clean(input?.value);
+  if (!message) {
+    alert("Enter a response to the rep before sending.");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const key = getRecordKey(rec);
+  const reply = {
+    install_base_reply_to_rep: message,
+    install_base_reply_to_rep_by: "Install Base",
+    install_base_reply_to_rep_at: now,
+    install_base_reply_to_rep_seen: false
+  };
+
+  state.records = state.records.map(r =>
+    sameRecord(r, rec) || getRecordKey(r) === key
+      ? { ...r, ...reply }
+      : r
+  );
+
+  const repQueue = readArrayKey(REP_QUEUE_KEY).map(r =>
+    sameRecord(r, rec) || getRecordKey(r) === key
+      ? { ...r, ...reply }
+      : r
+  );
+
+  writeArrayKey(REP_QUEUE_KEY, repQueue);
+  localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  saveRecords();
+  render();
+  showBanner("Response sent to Rep Review.");
+}
+
 function renderRepResponseCard(rec) {
   const hasResponse = Boolean(
     rec.install_base_response_at ||
@@ -3014,17 +3099,8 @@ function renderRepResponseCard(rec) {
     rec.response_note
   );
 
-  const responseFrom = String(rec.install_base_response_from || "rep").toLowerCase();
-  const responseTitle = responseFrom === "manager"
-    ? "Manager Response"
-    : "Rep Response to Install Base";
-
-  const seen =
-    !hasResponse ||
-    rec.install_base_response_seen === true ||
-    rec.install_base_fixed_seen_by_install_base === true;
-
-  const msg =
+  const requestText = getOriginalRepRequest(rec);
+  const msg = clean(
     rec.install_base_response_message ||
     rec.install_base_response_note ||
     rec.rep_response_message ||
@@ -3032,7 +3108,14 @@ function renderRepResponseCard(rec) {
     rec.response_message ||
     rec.response_note ||
     rec.rep_notes ||
-    "";
+    ""
+  );
+
+  const replyText = clean(rec.install_base_reply_to_rep || "");
+  const seen =
+    !hasResponse ||
+    rec.install_base_response_seen === true ||
+    rec.install_base_fixed_seen_by_install_base === true;
 
   const correctedFieldsObj =
     rec.corrected_fields && typeof rec.corrected_fields === "object"
@@ -3056,48 +3139,63 @@ function renderRepResponseCard(rec) {
             make: "Make",
             modality: "Modality"
           };
-
-          return `
-            ${escapeHtml(labelMap[field] || field)}:
-            <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>
-          `;
+          return `${escapeHtml(labelMap[field] || field)}: <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>`;
         }).join("")}
       </div>
     `
     : "";
 
-  if (!hasResponse) {
-    return `
-      <div class="detail-card rep-response-card" style="grid-column:1 / -1;border-color:rgba(88,184,255,.30)!important;background:rgba(67,176,255,.06)!important;box-shadow:none!important;">
-        <div class="k">Rep Response to Install Base</div>
-        <div class="v" style="font-size:16px;color:#d8ebff;">Waiting for rep response</div>
-        <div class="mini" style="margin-top:7px;">
-          The rep's response to the Install Base review request will appear here.
-        </div>
-      </div>
-    `;
-  }
-
-  const clickHandler = seen
-    ? ""
-    : `onclick="markRepResponseSeen(findSelectedRecord()); render();"`;
+  const clickHandler = hasResponse && !seen
+    ? `onclick="markRepResponseSeen(findSelectedRecord()); render();"`
+    : "";
 
   return `
-    <div
-      class="detail-card rep-response-card ${seen ? "" : "install-base-update-frame"}"
-      ${clickHandler}
-    >
-      <div class="k">${escapeHtml(responseTitle)}</div>
-      <div class="v" style="font-size:18px;line-height:1.45;">${escapeHtml(msg || "No response text entered.")}</div>
-      <div class="mini" style="margin-top:10px;line-height:1.55;">
-        Status: <strong>${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</strong><br>
-        Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "Rep")}</strong><br>
-        Sent at: <strong>${escapeHtml(rec.install_base_response_at || "-")}</strong>
-        ${correctedFieldsHtml}
+    <div class="detail-card install-base-request-card">
+      <div class="k">Original Request to Rep</div>
+      <div class="v" style="font-size:17px;line-height:1.45;color:#fff4cc;">
+        ${escapeHtml(requestText)}
+      </div>
+    </div>
+
+    <div class="detail-card rep-response-card ${hasResponse && !seen ? "install-base-update-frame" : ""}" ${clickHandler}>
+      <div class="k">Rep Response to Install Base</div>
+      ${hasResponse ? `
+        <div class="v" style="font-size:18px;line-height:1.45;">${escapeHtml(msg || "No response text entered.")}</div>
+        <div class="mini" style="margin-top:10px;line-height:1.55;">
+          Status: <strong>${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</strong><br>
+          Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "Rep")}</strong><br>
+          Sent at: <strong>${escapeHtml(formatDateTime(rec.install_base_response_at))}</strong>
+          ${correctedFieldsHtml}
+        </div>
+      ` : `
+        <div class="v" style="font-size:16px;color:#d8ebff;">Waiting for rep response</div>
+        <div class="mini" style="margin-top:7px;">The rep's response will appear here.</div>
+      `}
+
+      <div class="install-base-reply-box">
+        <label for="installBaseReplyToRep">Install Base Response to Rep</label>
+        <textarea id="installBaseReplyToRep" placeholder="Enter a response, confirmation, or follow-up question for the rep."></textarea>
+        <div class="btns">
+          <button type="button" class="green" onclick="sendInstallBaseReplyToRep('${escapeJs(rec.id || "")}')">
+            Send Response to Rep
+          </button>
+        </div>
+
+        ${replyText ? `
+          <div class="install-base-reply-history">
+            <div class="k">Latest Install Base Response</div>
+            <div class="v" style="font-size:16px;line-height:1.45;">${escapeHtml(replyText)}</div>
+            <div class="mini" style="margin-top:8px;">
+              Sent by: <strong>${escapeHtml(rec.install_base_reply_to_rep_by || "Install Base")}</strong><br>
+              Sent at: <strong>${escapeHtml(formatDateTime(rec.install_base_reply_to_rep_at))}</strong>
+            </div>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;
 }
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
