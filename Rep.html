@@ -5156,8 +5156,8 @@ function toggleRepManagerCommunication(recordId) {
   const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
   state.managerCommunicationOpen[key] = willOpen;
 
-  // Opening an incoming message acknowledges it. A reply is optional.
-  if (willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
+  // Hiding communication marks the latest incoming message as read. A reply is optional.
+  if (!willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
     const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
     state.records = state.records.map(r =>
       String(r.id || r.key || getRecordKey(r)) === key
@@ -5696,8 +5696,11 @@ function toggleInstallBaseCommunication(id = "") {
   if (willOpen) {
     state.installBaseCommunicationDismissedId = "";
     state.installBaseCommunicationDismissedSignature = "";
+  } else {
+    state.installBaseCommunicationDismissedId = String(state.selectedId || "");
+    state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
 
-    // Opening the incoming request/message acknowledges it. A reply is optional.
+    // Hiding communication marks the latest incoming request/message as read. A reply is optional.
     const signature = getInstallBaseIncomingSignature(rec);
     if (rec && signature) {
       state.records = state.records.map(r =>
@@ -5711,9 +5714,6 @@ function toggleInstallBaseCommunication(id = "") {
       );
       saveRecords();
     }
-  } else {
-    state.installBaseCommunicationDismissedId = String(state.selectedId || "");
-    state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
   }
 
   renderDetail();
