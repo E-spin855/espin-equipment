@@ -2212,6 +2212,74 @@ td:nth-child(11) .manager-waiting-badge{
 
   pointer-events:none;
 }
+
+/* Manager table with Rep Owner column */
+table{
+  min-width:1620px;
+}
+
+/* Rep Owner */
+th:nth-child(9),
+td:nth-child(9){
+  width:155px;
+  text-align:center;
+}
+
+/* Facility */
+th:nth-child(10),
+td:nth-child(10){
+  width:215px;
+  text-align:left;
+}
+
+/* Install Base Review */
+th:nth-child(11),
+td:nth-child(11){
+  width:145px;
+  text-align:center;
+}
+
+/* Record Status */
+th:nth-child(12),
+td:nth-child(12){
+  width:150px;
+  text-align:center;
+}
+
+/* Source */
+th:nth-child(13),
+td:nth-child(13){
+  width:135px;
+  text-align:center;
+}
+
+/* Open */
+th:nth-child(14),
+td:nth-child(14){
+  width:80px;
+  min-width:80px;
+  text-align:center;
+  white-space:nowrap;
+  overflow:visible;
+}
+
+td:nth-child(11) .alert-badge{
+  width:128px;
+  max-width:128px;
+  margin:0 auto;
+}
+
+td:nth-child(12) .pill,
+td:nth-child(12) .manager-waiting-badge{
+  width:132px;
+  max-width:132px;
+  margin:0 auto;
+}
+
+td:nth-child(9) .manager-fix-badge{
+  min-width:86px;
+}
+
 </style>
 </head>
 
@@ -2325,6 +2393,7 @@ td:nth-child(11) .manager-waiting-badge{
                   <th>DOM</th>
                   <th>Age</th>
                   <th>Trade-In Ref</th>
+                  <th>Rep Owner</th>
                   <th>Facility</th>
                   <th>Install Base Review</th>
 <th>Record Status</th>
@@ -3756,7 +3825,8 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
       serial: "Fix Serial",
       dom: "Fix DOM",
       site: "Fix Site",
-      facility: "Fix Facility"
+      facility: "Fix Facility",
+      rep: "Fix Rep Owner"
     };
 
     const fixLabel = labelMap[fieldName] || "Fix Data";
@@ -3888,6 +3958,48 @@ function isCompletedManagerRecord(rec) {
     lower(rec.install_base_response_status) === "project_completed_by_rep"
   );
 }
+function renderManagerRepOwnerCell(rec) {
+  const repOwner = String(
+    rec.assigned_rep_name ||
+    rec.rep ||
+    rec.sales_rep_name ||
+    ""
+  ).trim();
+
+  const normalized = repOwner.toLowerCase();
+  const isMissing = !repOwner || [
+    "unassigned",
+    "unassigned rep",
+    "no rep",
+    "none",
+    "n/a",
+    "na",
+    "unknown",
+    "-"
+  ].includes(normalized);
+
+  if (!isMissing) {
+    return renderManagerFixOrValue(
+      rec,
+      "rep",
+      escapeHtml(repOwner)
+    );
+  }
+
+  const id = rec.id || "";
+
+  return `
+    <button
+      type="button"
+      class="manager-fix-badge manager-fix-clickable open-record-btn"
+      data-select-record-id="${escapeHtml(id)}"
+      title="Assign Rep Owner"
+    >
+      FIX
+    </button>
+  `;
+}
+
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -3908,7 +4020,7 @@ function renderTable() {
   if (!records.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="13" style="color:#9db6d2;">
+        <td colspan="14" style="color:#9db6d2;">
           No records.
         </td>
       </tr>
@@ -3993,6 +4105,10 @@ function renderTable() {
     </td>
 
     <td>${tradeRef ? escapeHtml(money(tradeRef)) : "-"}</td>
+
+    <td>
+      ${renderManagerRepOwnerCell(rec)}
+    </td>
 
     <td>
   ${renderManagerFixOrValue(
