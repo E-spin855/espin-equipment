@@ -5246,14 +5246,7 @@ function getRepManagerCommunicationUi(rec) {
   const history = getRepManagerCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
   const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
-  const managerAction = lower(rec.manager_response_action || "");
-  const isFixOrAssignmentUpdate =
-    managerAction === "install_base_data_corrected" ||
-    managerAction === "install_base_assignment" ||
-    lower(rec.install_base_response_status || "") === "manager_correction_sent";
-
   const needsResponse = Boolean(
-    !isFixOrAssignmentUpdate &&
     latest &&
     lower(latest.sender) === "manager" &&
     rec.rep_manager_ack_signature !== latestSignature
@@ -5895,8 +5888,6 @@ function hasExplicitInstallBaseRepRequest(rec) {
 }
 
 function installBaseCommunicationNeedsResponse(rec) {
-  if (isInstallBaseFixedByRep(rec)) return false;
-
   const history = getInstallBaseConversationHistory(rec);
   if (history.length) {
     const latest = history[history.length - 1];
@@ -8591,64 +8582,21 @@ if (reservedTradeWindow && !reservedTradeWindow.closed) {
 return true;
     }
 
-    if (type === "tradein_desk") {
+    if (type === "tradein_desk" || type === "disposal") {
       rec.associated_tradein_submitted_to = type;
       rec.associated_tradein_submitted_at = new Date().toISOString();
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "sent_to_tradein_desk";
-      rec.manager_flash_text = "Rep sent associated trade-in equipment to Trade-In Desk";
+      rec.manager_flash_type = type === "tradein_desk" ? "sent_to_tradein_desk" : "sent_to_disposal";
+      rec.manager_flash_text = type === "tradein_desk"
+        ? "Rep sent equipment to Trade-In Desk"
+        : "Rep sent equipment to Disposal Review";
 
       syncFeedStatus(rec);
       render();
-      showBanner("✅ Associated trade-in sent to Trade-In Desk");
+
+      showBanner(type === "tradein_desk" ? "✅ Sent to Trade-In Desk" : "✅ Sent to Disposal Review");
       return true;
-    }
-
-    if (type === "disposal") {
-      const disposalRecord = {
-        ...rec,
-        id: rec.id || state.selectedId,
-        oem_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
-        make: rec.tradein_equipment_make || rec.make || "",
-        model: rec.tradein_equipment_model || rec.model || "",
-        modality: rec.tradein_equipment_modality || rec.modality || "",
-        serial_number:
-          rec.tradein_equipment_serial_number ||
-          rec.tradein_equipment_serial ||
-          rec.serial_number ||
-          "",
-        dom:
-          rec.tradein_equipment_dom ||
-          rec.tradein_equipment_year ||
-          rec.dom ||
-          "",
-        project_type: "associated_tradein_disposal",
-        source: "Associated Trade-In Equipment"
-      };
-
-      rec.associated_tradein_submitted_to = "disposal";
-      rec.associated_tradein_submitted_at = new Date().toISOString();
-      rec.manager_unseen_update = true;
-      rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "sent_to_disposal";
-      rec.manager_flash_text = "Rep sent associated trade-in equipment to Disposal Review";
-
-      syncFeedStatus(rec);
-
-      const opened = await sendToConnectWithDecision(
-        disposalRecord,
-        "",
-        true
-      );
-
-      render();
-
-      if (opened) {
-        showBanner("✅ Associated trade-in sent to Disposal Review. Opening Espin Connect...");
-      }
-
-      return opened;
     }
 
     showBanner("❌ Unknown action type");
@@ -8678,161 +8626,68 @@ return true;
 
   if (banner) {
     banner.style.display = "block";
-    banner.textContent = "Creating project in Espin Connect...";
-  }
-
-  // Reserve the new tab immediately so desktop browsers do not block it
-  // after the Espin Connect API request completes.
-  const reservedConnectWindow =
-    connectWindow || window.open("about:blank", "_blank");
-
-  if (reservedConnectWindow) {
-    try {
-      reservedConnectWindow.document.title = "Opening Espin Connect";
-      reservedConnectWindow.document.body.style.fontFamily = "Arial, sans-serif";
-      reservedConnectWindow.document.body.style.padding = "24px";
-      reservedConnectWindow.document.body.innerHTML =
-        "<h2>Creating Espin Connect project...</h2><p>Please wait while the equipment and project information are synced.</p>";
-    } catch {}
+    banner.textContent = "Opening Espin Connect demo...";
   }
 
   const now = new Date().toISOString();
-  const connectEmail = "info@espinmedical.com";
-  const normalizedModality =
-    String(rec.modality || "").toUpperCase().trim() || "OTHER";
 
-  const projectName =
-    `${rec.site || rec.facility || rec.hospital || "Unknown Facility"} – ${rec.make || ""} ${rec.model || ""}`
-      .replace(/\s+/g, " ")
-      .trim();
+  rec.submitted_to = "connect_demo";
+  rec.connect_sync_status = "demo_opened";
+  rec.submitted_at = now;
+  rec.disposal_required = Boolean(disposalRequired);
+  rec.magnet_event = magnetEvent || "";
 
-  const projectPayload = {
-    action: "create",
-    project_name: projectName,
-    site_address: rec.site_address || "",
-    zip_code: rec.zip_code || "",
-    modality: normalizedModality,
-    magnet_event: normalizedModality === "MRI" ? (magnetEvent || "") : null,
-    disposal_required: Boolean(disposalRequired),
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "sent_to_connect_demo";
+  rec.manager_flash_text = "Rep opened Espin Connect demo handoff";
 
-    // Extra handoff fields are included for the Connect API to retain when supported.
-    source: "espin_link",
-    handoff: "disposal_review",
-    axis_record_id: rec.id || "",
-    axis_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
-    facility: rec.site || rec.facility || rec.hospital || "",
-    city: rec.city || "",
-    state: rec.state || "",
-    make: rec.make || "",
-    model: rec.model || "",
-    serial_number: rec.serial_number || rec.serial || "",
-    dom: rec.dom || rec.manufacture_year || "",
-    sales_rep_first: rec.sales_rep_first || "",
-    sales_rep_last: rec.sales_rep_last || "",
-    sales_rep_company: rec.sales_rep_company || "",
-    sales_rep_phone: rec.sales_rep_phone || "",
-    sales_rep_email: rec.sales_rep_email || ""
-  };
+  syncFeedStatus(rec);
+  render();
 
-  try {
-    const createRes = await fetchWithTimeout(
-      "https://espin-medical-app.vercel.app/api/projects",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-email": connectEmail,
-          "x-useremail": connectEmail,
-          "x-user_email": connectEmail
-        },
-        body: JSON.stringify(projectPayload)
-      }
-    );
+  const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
 
-    const createText = await createRes.text();
-    let createdProject = {};
+  connectUrl.searchParams.set("source", "axis_demo");
+  connectUrl.searchParams.set("handoff", "disposal_review");
+  connectUrl.searchParams.set("demo", "true");
 
-    try {
-      createdProject = createText ? JSON.parse(createText) : {};
-    } catch {
-      console.error("ESPIN CONNECT PROJECT RAW RESPONSE:", createText);
-    }
+  connectUrl.searchParams.set("axis_record_id", rec.id || "");
+  connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
+  connectUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
 
-    if (!createRes.ok) {
-      throw new Error(
-        createdProject?.error ||
-        createdProject?.message ||
-        `Espin Connect project creation failed (${createRes.status})`
-      );
-    }
+  connectUrl.searchParams.set(
+    "project_name",
+    `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim()
+  );
 
-    const connectProjectId =
-      createdProject?.id ||
-      createdProject?.projectId ||
-      createdProject?.project_id ||
-      "";
+  connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
+  connectUrl.searchParams.set("site_address", rec.site_address || "");
+  connectUrl.searchParams.set("city", rec.city || "");
+  connectUrl.searchParams.set("state", rec.state || "");
+  connectUrl.searchParams.set("zip_code", rec.zip_code || "");
 
-    rec.submitted_to = "espin_connect";
-    rec.connect_sync_status = "project_created";
-    rec.connect_project_id = connectProjectId;
-    rec.submitted_at = now;
-    rec.disposal_required = Boolean(disposalRequired);
-    rec.magnet_event = magnetEvent || "";
+  connectUrl.searchParams.set("make", rec.make || "");
+  connectUrl.searchParams.set("model", rec.model || "");
+  connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
+  connectUrl.searchParams.set("serial_number", rec.serial_number || "");
+  connectUrl.searchParams.set("dom", rec.dom || "");
 
-    rec.manager_unseen_update = true;
-    rec.manager_flash_at = now;
-    rec.manager_flash_type = "sent_to_connect";
-    rec.manager_flash_text = "Rep created an Espin Connect disposal project";
+  connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
+  connectUrl.searchParams.set("magnet_event", magnetEvent || "");
 
-    syncFeedStatus(rec);
-    render();
+  connectUrl.searchParams.set("sales_rep_first", rec.sales_rep_first || "");
+  connectUrl.searchParams.set("sales_rep_last", rec.sales_rep_last || "");
+  connectUrl.searchParams.set("sales_rep_company", rec.sales_rep_company || "");
+  connectUrl.searchParams.set("sales_rep_phone", rec.sales_rep_phone || "");
+  connectUrl.searchParams.set("sales_rep_email", rec.sales_rep_email || "");
 
-    const connectUrl = new URL(
-      "https://espin-medical-app.vercel.app/Projects.html"
-    );
+  console.log("Opening Espin Connect demo URL:", connectUrl.toString());
 
-    connectUrl.searchParams.set("source", "espin_link");
-    connectUrl.searchParams.set("handoff", "disposal_review");
+  showBanner("✅ Opening Espin Connect demo handoff...");
 
-    if (connectProjectId) {
-      connectUrl.searchParams.set("projectId", connectProjectId);
-      connectUrl.searchParams.set("id", connectProjectId);
-    }
+  window.open(connectUrl.toString(), "_blank");
 
-    console.log("Espin Connect project created:", createdProject);
-    console.log("Opening Espin Connect URL:", connectUrl.toString());
-
-    if (reservedConnectWindow && !reservedConnectWindow.closed) {
-      reservedConnectWindow.location.href = connectUrl.toString();
-    } else {
-      const fallbackWindow = window.open(
-        connectUrl.toString(),
-        "_blank",
-        "noopener,noreferrer"
-      );
-
-      if (!fallbackWindow && banner) {
-        banner.innerHTML =
-          `✅ Project created in Espin Connect. <a href="${connectUrl.toString()}" target="_blank" rel="noopener noreferrer" style="color:#c8ffdf;text-decoration:underline;font-weight:900;">Open Espin Connect</a>`;
-      }
-    }
-
-    showBanner("✅ Project synced into Espin Connect");
-    return true;
-
-  } catch (err) {
-    console.error("ESPIN CONNECT SYNC ERROR:", err);
-
-    if (reservedConnectWindow && !reservedConnectWindow.closed) {
-      try {
-        reservedConnectWindow.document.body.innerHTML =
-          `<h2>Espin Connect sync failed</h2><p>${String(err?.message || err || "Unable to create project.")}</p><p>Please close this tab and try again.</p>`;
-      } catch {}
-    }
-
-    showBanner(`❌ Espin Connect sync failed: ${String(err?.message || "Unable to create project")}`);
-    return false;
-  }
+return true;
 }
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
       const controller = new AbortController();
