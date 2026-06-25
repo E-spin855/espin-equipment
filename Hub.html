@@ -2564,24 +2564,29 @@ function autoSyncEligibleRecordsToRepAndManager() {
     state.records.map(r => String(getRecordKey(r)))
   );
 
-  // Remove current Install Base records from Rep queue first.
-  // Records are added back only when a valid rep has already been assigned.
+  // Remove current Install Base records from Rep queue.
+  // Records are added back only when a valid rep is already assigned.
   repQueue = repQueue.filter(r => {
     const key = String(r.key || getRecordKey(r));
     return !currentInstallBaseKeys.has(key);
   });
 
-  // Remove current Install Base records from every Manager queue first.
+  // Do not automatically add or refresh unassigned records in Manager queues.
   Object.keys(managerQueue).forEach(ownerName => {
     managerQueue[ownerName] = (managerQueue[ownerName] || []).filter(r => {
       const key = String(r.key || getRecordKey(r));
-      return !currentInstallBaseKeys.has(key);
+
+      if (!currentInstallBaseKeys.has(key)) return true;
+
+      // Preserve only records that were manually sent from Hub.
+      return r.install_base_manual_route === true;
     });
   });
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
     const missingFixFields = getRoutingBlockingFields(rec);
+    const repAssigned = hasValidAssignedRep(rec);
 
     if (missingFixFields.length) {
       return {
@@ -2595,17 +2600,37 @@ function autoSyncEligibleRecordsToRepAndManager() {
         install_base_issue_field: missingFixFields.join(", "),
         install_base_issue_type: "missing_data",
         install_base_action_label: "Install Base FIX",
-        install_base_action_reason: `Install Base needs correction for: ${missingFixFields.join(", ")}.`,
-        install_base_issue_note: `Missing field(s): ${missingFixFields.join(", ")}.`,
+        install_base_action_reason:
+          `Install Base needs correction for: ${missingFixFields.join(", ")}.`,
+        install_base_issue_note:
+          `Missing field(s): ${missingFixFields.join(", ")}.`,
         rep_fix_required: "Install Base FIX"
       };
     }
 
-    const repAssigned = hasValidAssignedRep(rec);
+    // Missing rep owner stays on Hub until Hub manually clicks FIX.
+    if (!repAssigned) {
+      return {
+        ...rec,
+        key,
+        rep_visible: false,
+        manager_visible: false,
+        rep_assignment_required: true,
+        manager_action_required: "",
+        install_base_release_status: "awaiting_manual_fix",
+        install_base_sync_type: "manual_rep_assignment_hold",
+        install_base_manual_route: false,
+        install_base_released_to: "",
+        release_destination: "",
+        manager_unseen_update: false,
+        manager_alert_seen: true,
+        manager_flash_at: "",
+        manager_flash_type: "",
+        manager_flash_text: ""
+      };
+    }
 
-    // A missing rep assignment must never stop Manager routing.
-    // Normal auto-sync eligibility is enforced only after a rep already exists.
-    if (repAssigned && !isAutoSyncEligible(rec)) {
+    if (!isAutoSyncEligible(rec)) {
       return {
         ...rec,
         key,
@@ -2625,98 +2650,55 @@ function autoSyncEligibleRecordsToRepAndManager() {
     return {
       ...rec,
       key,
-      hub_source: "AXIS Install Base Workspace",
-      source: rec.source || "AXIS Install Base Workspace",
-
-      install_base_sync_type: repAssigned
-        ? "automatic_assigned_rep"
-        : "automatic_manager_assignment_required",
+      hub_source: "ESPIN LINK Install Base Workspace",
+      source: rec.source || "ESPIN LINK Install Base Workspace",
+      install_base_sync_type: "automatic_assigned_rep",
       install_base_manual_route: false,
-      install_base_release_status: repAssigned
-        ? "auto_synced"
-        : "awaiting_manager_rep_assignment",
+      install_base_release_status: "auto_synced",
       install_base_released_at: rec.install_base_released_at || now,
-      install_base_released_to: repAssigned
-        ? "rep_and_manager"
-        : "manager",
-
-      rep_visible: repAssigned,
+      install_base_released_to: "rep_and_manager",
+      rep_visible: true,
       manager_visible: true,
-      rep_assignment_required: !repAssigned,
-
-      manager_unseen_update: false,
-      manager_alert_seen: true,
-      manager_flash_at: "",
-      manager_flash_type: "",
-      manager_flash_text: ""
+      rep_assignment_required: false
     };
   });
 
+  // Only records that already have a valid rep may sync automatically.
   state.records
-    .filter(rec => {
-      const repAssigned = hasValidAssignedRep(rec);
-      const coreDataComplete = getRoutingBlockingFields(rec).length === 0;
-
-      // Unassigned records with complete equipment data always go to Manager.
-      return coreDataComplete && (!repAssigned || isAutoSyncEligible(rec));
-    })
+    .filter(rec =>
+      hasValidAssignedRep(rec) &&
+      isAutoSyncEligible(rec) &&
+      !getRoutingBlockingFields(rec).length
+    )
     .forEach(rec => {
-      const repAssigned = hasValidAssignedRep(rec);
-
-      // Every eligible record goes to the appropriate Manager queue.
       const ownerName = getOwnerName(rec);
       if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
 
       managerQueue[ownerName].push({
         ...rec,
         manager_visible: true,
-        rep_visible: repAssigned,
-        rep_assignment_required: !repAssigned,
-        manager_action_required: !repAssigned
-          ? "Assign Rep"
-          : (rec.manager_action_required || ""),
-        manager_action_reason: !repAssigned
-          ? "No rep was assigned in the imported Install Base record."
-          : (rec.manager_action_reason || ""),
-        install_base_released_to: repAssigned ? "rep_and_manager" : "manager",
-        release_destination: repAssigned ? "rep_and_manager" : "manager",
-        install_base_release_status: repAssigned
-          ? "auto_synced"
-          : "released_to_manager",
-        install_base_manager_request: !repAssigned,
-        manager_unseen_update: !repAssigned,
-        manager_alert_seen: repAssigned,
-        manager_flash_at: !repAssigned ? now : "",
-        manager_flash_type: !repAssigned ? "install_base_release" : "",
-        manager_flash_text: !repAssigned
-          ? "New Install Base record requires rep assignment"
-          : "",
-        manager_release_id: !repAssigned
-          ? `mgr_assignment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-          : (rec.manager_release_id || ""),
-        manager_seen_release_id: !repAssigned ? "" : (rec.manager_seen_release_id || "")
+        rep_visible: true,
+        rep_assignment_required: false,
+        install_base_released_to: "rep_and_manager",
+        release_destination: "rep_and_manager",
+        install_base_release_status: "auto_synced"
       });
 
-      // Only records with a real assigned rep enter the Rep queue.
-      if (repAssigned) {
-        const repRecord = {
-          ...rec,
-          project:
-            rec.site ||
-            rec.site_address ||
-            rec.oem_project_id ||
-            rec.asset_id ||
-            "Unknown Site",
-          rep: rec.assigned_rep_name,
-          rep_visible: true,
-          manager_visible: true,
-          rep_assignment_required: false,
-          alert: getReviewStatus(rec).label,
-          timestamp: now
-        };
-
-        repQueue.push(repRecord);
-      }
+      repQueue.push({
+        ...rec,
+        project:
+          rec.site ||
+          rec.site_address ||
+          rec.oem_project_id ||
+          rec.asset_id ||
+          "Unknown Site",
+        rep: rec.assigned_rep_name,
+        rep_visible: true,
+        manager_visible: true,
+        rep_assignment_required: false,
+        alert: getReviewStatus(rec).label,
+        timestamp: now
+      });
     });
 
   localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
