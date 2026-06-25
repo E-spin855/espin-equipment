@@ -2509,6 +2509,32 @@ function updateReleaseButtonVisibility(rec) {
     !isCompletedRecord(rec)
   );
 }
+
+function hasValidAssignedRep(rec) {
+  const name = clean(
+    rec?.assigned_rep_name ||
+    rec?.rep ||
+    rec?.sales_rep_name ||
+    ""
+  );
+
+  const normalized = lower(name);
+
+  return Boolean(
+    name &&
+    ![
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "none",
+      "n/a",
+      "na",
+      "unknown",
+      "-"
+    ].includes(normalized)
+  );
+}
+
 function autoSyncEligibleRecordsToRepAndManager() {
   const now = new Date().toISOString();
 
@@ -2520,7 +2546,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
   );
 
   // Remove current Install Base records from Rep queue first.
-  // Then add back only auto-sync eligible records.
+  // Records are added back only when a valid rep has already been assigned.
   repQueue = repQueue.filter(r => {
     const key = String(r.key || getRecordKey(r));
     return !currentInstallBaseKeys.has(key);
@@ -2573,51 +2599,78 @@ function autoSyncEligibleRecordsToRepAndManager() {
       };
     }
 
+    const repAssigned = hasValidAssignedRep(rec);
+
     return {
       ...rec,
       key,
       hub_source: "AXIS Install Base Workspace",
       source: rec.source || "AXIS Install Base Workspace",
 
-      install_base_sync_type: "automatic",
+      install_base_sync_type: repAssigned
+        ? "automatic_assigned_rep"
+        : "automatic_manager_assignment_required",
       install_base_manual_route: false,
-      install_base_release_status: "auto_synced",
+      install_base_release_status: repAssigned
+        ? "auto_synced"
+        : "awaiting_manager_rep_assignment",
       install_base_released_at: rec.install_base_released_at || now,
-      install_base_released_to: "rep_and_manager",
+      install_base_released_to: repAssigned
+        ? "rep_and_manager"
+        : "manager",
 
-      rep_visible: true,
+      rep_visible: repAssigned,
       manager_visible: true,
+      rep_assignment_required: !repAssigned,
 
-     manager_unseen_update: false,
-manager_alert_seen: true,
-manager_flash_at: "",
-manager_flash_type: "",
-manager_flash_text: ""
+      manager_unseen_update: false,
+      manager_alert_seen: true,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: ""
     };
   });
 
   state.records
     .filter(rec => isAutoSyncEligible(rec) && !getMissingHubFields(rec).length)
     .forEach(rec => {
-      const repRecord = {
-        ...rec,
-        project:
-          rec.site ||
-          rec.site_address ||
-          rec.oem_project_id ||
-          rec.asset_id ||
-          "Unknown Site",
-        rep: rec.assigned_rep_name || "Unassigned",
-        alert: getReviewStatus(rec).label,
-        timestamp: now
-      };
+      const repAssigned = hasValidAssignedRep(rec);
 
-      repQueue.push(repRecord);
-
+      // Every eligible record goes to the appropriate Manager queue.
       const ownerName = getOwnerName(rec);
       if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
 
-      managerQueue[ownerName].push(rec);
+      managerQueue[ownerName].push({
+        ...rec,
+        manager_visible: true,
+        rep_visible: repAssigned,
+        rep_assignment_required: !repAssigned,
+        install_base_released_to: repAssigned ? "rep_and_manager" : "manager",
+        install_base_release_status: repAssigned
+          ? "auto_synced"
+          : "awaiting_manager_rep_assignment"
+      });
+
+      // Only records with a real assigned rep enter the Rep queue.
+      if (repAssigned) {
+        const repRecord = {
+          ...rec,
+          project:
+            rec.site ||
+            rec.site_address ||
+            rec.oem_project_id ||
+            rec.asset_id ||
+            "Unknown Site",
+          rep: rec.assigned_rep_name,
+          rep_visible: true,
+          manager_visible: true,
+          rep_assignment_required: false,
+          alert: getReviewStatus(rec).label,
+          timestamp: now
+        };
+
+        repQueue.push(repRecord);
+      }
     });
 
   localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));

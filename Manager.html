@@ -4316,6 +4316,32 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   `;
 }
 
+
+function hasValidAssignedRep(rec) {
+  const name = String(
+    rec?.assigned_rep_name ||
+    rec?.rep ||
+    rec?.sales_rep_name ||
+    ""
+  ).trim();
+
+  const normalized = name.toLowerCase();
+
+  return Boolean(
+    name &&
+    ![
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "none",
+      "n/a",
+      "na",
+      "unknown",
+      "-"
+    ].includes(normalized)
+  );
+}
+
 function sendManagerInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -4378,7 +4404,18 @@ function sendManagerInstallBaseCorrection(id) {
     install_base_response_seen: false,
 
     manager_visible: true,
-    rep_visible: true,
+    rep_visible: hasValidAssignedRep({
+      ...rec,
+      ...correctedValues,
+      assigned_rep_name:
+        correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? ""
+    }),
+    rep_assignment_required: !hasValidAssignedRep({
+      ...rec,
+      ...correctedValues,
+      assigned_rep_name:
+        correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? ""
+    }),
     manager_unseen_update: false,
     manager_alert_seen: true,
 
@@ -4404,38 +4441,53 @@ function sendManagerInstallBaseCorrection(id) {
     upsertRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY))
   );
 
-  const repSyncRecord = {
-    ...updated,
-    manager_visible: false,
-    rep_visible: true,
-    release_destination: "rep",
-    install_base_released_to: "rep",
-    install_base_response_from: "manager",
-    install_base_response_to: "rep",
-    manager_response_action: "install_base_data_corrected",
-    manager_response_action_label: "Install Base Data Corrected",
-    manager_response_seen_by_rep: false,
-    manager_response_at: now,
-    manager_response_by: MANAGER_NAME
-  };
+  if (hasValidAssignedRep(updated)) {
+    const repSyncRecord = {
+      ...updated,
+      manager_visible: false,
+      rep_visible: true,
+      release_destination: "rep",
+      install_base_released_to: "rep",
+      install_base_response_from: "manager",
+      install_base_response_to: "rep",
+      manager_response_action: "install_base_data_corrected",
+      manager_response_action_label: "Install Base Data Corrected",
+      manager_response_seen_by_rep: false,
+      manager_response_at: now,
+      manager_response_by: MANAGER_NAME
+    };
 
-  const upsertRepRecord = (records) => {
-    let found = false;
+    const upsertRepRecord = (records) => {
+      let found = false;
 
-    const next = (Array.isArray(records) ? records : []).map(item => {
-      if (!sameRecord(item, rec) && !sameRecord(item, repSyncRecord)) return item;
-      found = true;
-      return { ...item, ...repSyncRecord, key };
-    });
+      const next = (Array.isArray(records) ? records : []).map(item => {
+        if (!sameRecord(item, rec) && !sameRecord(item, repSyncRecord)) return item;
+        found = true;
+        return { ...item, ...repSyncRecord, key };
+      });
 
-    if (!found) next.unshift(repSyncRecord);
-    return next;
-  };
+      if (!found) next.unshift(repSyncRecord);
+      return next;
+    };
 
-  writeArrayKey(
-    STORAGE_KEY,
-    upsertRepRecord(readArrayKey(STORAGE_KEY))
-  );
+    writeArrayKey(
+      STORAGE_KEY,
+      upsertRepRecord(readArrayKey(STORAGE_KEY))
+    );
+  } else {
+    updated.rep_visible = false;
+    updated.rep_assignment_required = true;
+
+    // Remove any stale copy from Rep-facing storage and queue until assignment exists.
+    writeArrayKey(
+      STORAGE_KEY,
+      readArrayKey(STORAGE_KEY).filter(item => !sameRecord(item, updated))
+    );
+    writeArrayKey(
+      REP_QUEUE_KEY,
+      readArrayKey(REP_QUEUE_KEY).filter(item => !sameRecord(item, updated))
+    );
+  }
 
   let managerQueue = {};
 
@@ -5642,7 +5694,8 @@ function syncRecordEverywhere(updatedRec) {
 }
 
 function syncManagerResponseToRep(updatedRec) {
-  if (!updatedRec || !updatedRec.manager_response_action) return;
+  if (!updatedRec || !hasValidAssignedRep(updatedRec)) return;
+  if (!updatedRec.manager_response_action) return;
 
   const key = getRecordKey(updatedRec);
   const now = updatedRec.manager_response_at || new Date().toISOString();

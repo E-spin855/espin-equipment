@@ -3127,6 +3127,32 @@ function getInstallBaseFixLabel(rec) {
 
   return "Fix Data";
 }
+
+function hasValidAssignedRep(rec) {
+  const name = String(
+    rec?.assigned_rep_name ||
+    rec?.rep ||
+    rec?.sales_rep_name ||
+    ""
+  ).trim();
+
+  const normalized = name.toLowerCase();
+
+  return Boolean(
+    name &&
+    ![
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "none",
+      "n/a",
+      "na",
+      "unknown",
+      "-"
+    ].includes(normalized)
+  );
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -3134,6 +3160,8 @@ function mergeInstallBaseQueueIntoRepRecords() {
   let changed = false;
 
   queue.forEach(incoming => {
+    if (!hasValidAssignedRep(incoming)) return;
+
     const key =
       incoming.key ||
       getRecordKey(incoming) ||
@@ -3276,6 +3304,7 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
     state.records = Array.isArray(saved)
       ? saved.filter(rec =>
+          hasValidAssignedRep(rec) &&
           rec.install_base_released_to !== "manager" &&
           rec.release_destination !== "manager" &&
           rec.manager_visible !== true
@@ -3326,6 +3355,7 @@ function importRepQueueRecords() {
  let changed = false;
 
 queue.forEach(item => {
+  if (!hasValidAssignedRep(item)) return;
   if (item.install_base_released_to !== "rep") return;
 
   if (
