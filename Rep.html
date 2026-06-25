@@ -5139,7 +5139,12 @@ function getRepManagerCommunicationUi(rec) {
   const id = String(rec.id || rec.key || getRecordKey(rec));
   const history = getRepManagerCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const needsResponse = Boolean(latest && lower(latest.sender) === "manager" && rec.manager_response_seen_by_rep !== true);
+  const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
+  const needsResponse = Boolean(
+    latest &&
+    lower(latest.sender) === "manager" &&
+    rec.rep_manager_ack_signature !== latestSignature
+  );
   const manualOpen = state.managerCommunicationOpen[id];
   return { history, latest, needsResponse, composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true, historyOpen: state.managerHistoryOpen[id] === true };
 }
@@ -5147,7 +5152,21 @@ function toggleRepManagerCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
   const ui = getRepManagerCommunicationUi(rec);
-  state.managerCommunicationOpen[String(recordId || rec.id || rec.key || getRecordKey(rec))] = !ui.composerOpen;
+  const willOpen = !ui.composerOpen;
+  const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
+  state.managerCommunicationOpen[key] = willOpen;
+
+  // Opening an incoming message acknowledges it. A reply is optional.
+  if (willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
+    const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
+    state.records = state.records.map(r =>
+      String(r.id || r.key || getRecordKey(r)) === key
+        ? { ...r, rep_manager_ack_signature: signature, manager_response_seen_by_rep: true }
+        : r
+    );
+    saveRecords();
+  }
+
   render();
 }
 function toggleRepManagerHistory(recordId) {
@@ -5677,6 +5696,21 @@ function toggleInstallBaseCommunication(id = "") {
   if (willOpen) {
     state.installBaseCommunicationDismissedId = "";
     state.installBaseCommunicationDismissedSignature = "";
+
+    // Opening the incoming request/message acknowledges it. A reply is optional.
+    const signature = getInstallBaseIncomingSignature(rec);
+    if (rec && signature) {
+      state.records = state.records.map(r =>
+        String(r.id || "") === String(rec.id || "")
+          ? {
+              ...r,
+              rep_install_base_ack_signature: signature,
+              install_base_reply_to_rep_seen: true
+            }
+          : r
+      );
+      saveRecords();
+    }
   } else {
     state.installBaseCommunicationDismissedId = String(state.selectedId || "");
     state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
@@ -5692,7 +5726,8 @@ function installBaseCommunicationNeedsResponse(rec) {
   const history = getInstallBaseConversationHistory(rec);
   if (history.length) {
     const latest = history[history.length - 1];
-    return lower(latest.sender) === "install_base";
+    const signature = [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|");
+    return lower(latest.sender) === "install_base" && rec.rep_install_base_ack_signature !== signature;
   }
 
   const hasIncomingRequest = Boolean(clean(
@@ -5708,15 +5743,8 @@ function installBaseCommunicationNeedsResponse(rec) {
     ""
   ));
 
-  const hasRepResponse = Boolean(clean(
-    rec.install_base_response_message ||
-    rec.install_base_response_note ||
-    rec.rep_response_message ||
-    rec.install_base_correction_note ||
-    ""
-  ));
-
-  return hasIncomingRequest && !hasRepResponse;
+  const requestSignature = getInstallBaseIncomingSignature(rec);
+  return hasIncomingRequest && rec.rep_install_base_ack_signature !== requestSignature;
 }
 function getLatestInstallBaseCommunicationItem(rec) {
   const history = getInstallBaseConversationHistory(rec);

@@ -3538,9 +3538,13 @@ function getHubRepCommunicationUi(rec) {
   );
 
   const latestSender = latest ? lower(latest.sender) : "";
+  const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
+  const legacySignature = legacyRepResponse ? ["rep", clean(rec.install_base_response_at), legacyRepResponse].join("|") : "";
+  const incomingSignature = latestSignature || legacySignature;
   const needsResponse = Boolean(
-    latestSender === "rep" ||
-    (!latest && legacyRepResponse && !clean(rec.install_base_reply_to_rep))
+    incomingSignature &&
+    (latestSender === "rep" || (!latest && legacyRepResponse)) &&
+    rec.hub_rep_ack_signature !== incomingSignature
   );
 
   const composerOpen = Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, id)
@@ -3555,7 +3559,28 @@ function toggleHubRepCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
   const ui = getHubRepCommunicationUi(rec);
-  state.repCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
+  const willOpen = !ui.composerOpen;
+  state.repCommunicationOpen[String(recordId || "")] = willOpen;
+
+  // Opening an incoming message acknowledges it. A reply is optional.
+  if (willOpen && ui.needsResponse) {
+    const signature = ui.latest
+      ? [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|")
+      : ["rep", clean(rec.install_base_response_at), clean(ui.legacyRepResponse)].join("|");
+    state.records = state.records.map(r =>
+      sameRecord(r, rec)
+        ? { ...r, hub_rep_ack_signature: signature, install_base_response_seen: true }
+        : r
+    );
+    const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(r =>
+      sameRecord(r, rec) || getRecordKey(r) === getRecordKey(rec)
+        ? { ...r, hub_rep_ack_signature: signature, install_base_response_seen: true }
+        : r
+    );
+    writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+    saveRecords();
+  }
+
   render();
 }
 
@@ -3704,7 +3729,12 @@ function getHubManagerCommunicationUi(rec) {
   const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const needsResponse = Boolean(latest && lower(latest.sender) === "manager");
+  const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
+  const needsResponse = Boolean(
+    latest &&
+    lower(latest.sender) === "manager" &&
+    rec.hub_manager_ack_signature !== latestSignature
+  );
   const composerOpen = Object.prototype.hasOwnProperty.call(state.managerCommunicationOpen, id)
     ? state.managerCommunicationOpen[id]
     : needsResponse;
@@ -3715,7 +3745,20 @@ function toggleHubManagerCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
   const ui = getHubManagerCommunicationUi(rec);
-  state.managerCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
+  const willOpen = !ui.composerOpen;
+  state.managerCommunicationOpen[String(recordId || "")] = willOpen;
+
+  // Opening an incoming message acknowledges it. A reply is optional.
+  if (willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
+    const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
+    state.records = state.records.map(r =>
+      sameRecord(r, rec)
+        ? { ...r, hub_manager_ack_signature: signature, manager_message_to_install_base_seen: true }
+        : r
+    );
+    saveRecords();
+  }
+
   render();
 }
 function toggleHubManagerHistory(recordId) {
