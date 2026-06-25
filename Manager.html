@@ -4929,17 +4929,33 @@ function getManagerUpdatedFieldNames(rec) {
 function captureManagerUpdateHighlight(rec) {
   if (!rec) return null;
 
+  const quoteActivityUnseen = Boolean(
+    rec.quote_seen !== true &&
+    (
+      Number(rec.quote_amount || 0) > 0 ||
+      clean(rec.quote_status) ||
+      clean(rec.quote_approval_status) ||
+      clean(rec.quote_approved_at) ||
+      clean(rec.quote_submitted_at)
+    )
+  );
+
   const unseen = Boolean(
     rec.manager_unseen_update === true ||
     rec.manager_alert_seen !== true ||
-    isManagerRepFixUnseen(rec)
+    isManagerRepFixUnseen(rec) ||
+    quoteActivityUnseen
   );
 
   if (!unseen) return null;
 
+  const detectedType = quoteActivityUnseen
+    ? "quote_update"
+    : lower(rec.manager_flash_type || "");
+
   return {
     recordId: String(rec.id || rec.key || getRecordKey(rec)),
-    type: lower(rec.manager_flash_type || ""),
+    type: detectedType,
     fields: getManagerUpdatedFieldNames(rec),
     text: clean(rec.manager_flash_text || "")
   };
@@ -5004,8 +5020,17 @@ function applyManagerUpdatedFieldFrames(rec) {
   }
 
   if (
-    ["quote_created","quote_sent","tradein_sync","quote_update","financial_update"].includes(type) ||
-    hasAny(["quote","cost","profit","margin","tradein","trade_in","credit"])
+    [
+      "quote_created",
+      "quote_sent",
+      "quote_submitted",
+      "quote_approved",
+      "quote_update",
+      "quote_approval",
+      "financial_update",
+      "tradein_sync"
+    ].includes(type) ||
+    hasAny(["quote","cost","profit","margin","tradein","trade_in","credit","approval"])
   ) {
     addFrame(financialCard);
   }
@@ -5776,7 +5801,7 @@ state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
     id: rec.id || selectedId,
     key: getRecordKey(rec),
 
-    quote_seen: true,
+    quote_seen: rec.quote_seen === true,
 
     manager_alert_seen: true,
     manager_unseen_update: false,
@@ -6331,6 +6356,29 @@ if (tableBody) {
     if (!state.managerUpdateHighlight) return;
     if (e.target.closest("#tableBody")) return;
     if (e.target.closest(".manager-field-update-frame")) return;
+
+    const rec = findSelectedRecord();
+    const wasQuoteUpdate =
+      state.managerUpdateHighlight?.type === "quote_update" ||
+      state.managerUpdateHighlight?.type === "quote_created" ||
+      state.managerUpdateHighlight?.type === "quote_sent" ||
+      state.managerUpdateHighlight?.type === "quote_submitted" ||
+      state.managerUpdateHighlight?.type === "quote_approved" ||
+      state.managerUpdateHighlight?.type === "quote_approval" ||
+      state.managerUpdateHighlight?.type === "financial_update";
+
+    if (rec && wasQuoteUpdate && rec.quote_seen !== true) {
+      const updated = {
+        ...rec,
+        quote_seen: true,
+        manager_update_seen_at: rec.manager_update_seen_at || new Date().toISOString()
+      };
+      syncRecordEverywhere(updated);
+      state.records = mergeRecordsByKey(
+        readArrayKey(STORAGE_KEY),
+        readManagerQueueRecords()
+      );
+    }
 
     state.managerUpdateHighlight = null;
     renderDetail();
