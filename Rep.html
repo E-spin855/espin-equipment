@@ -2283,6 +2283,8 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
   selectedRep: null,
   installBaseCommunicationOpen: false,
   installBaseHistoryOpen: false,
+  managerCommunicationOpen: {},
+  managerHistoryOpen: {},
   showCompleted: true,
   detailUpdateFlash: {
     manager: false,
@@ -5022,6 +5024,12 @@ function sendQuickRepManagerMessage() {
 
   sendRepManagerMessage(action, selectedText, notes);
 
+  const activeManagerCommRec = findSelectedRecord();
+  if (activeManagerCommRec) {
+    const managerCommKey = String(activeManagerCommRec.id || activeManagerCommRec.key || getRecordKey(activeManagerCommRec));
+    state.managerCommunicationOpen[managerCommKey] = false;
+  }
+
   if (notesEl) notesEl.value = "";
   if (quickMessageEl) quickMessageEl.value = "";
 }
@@ -5114,6 +5122,111 @@ function bindDetailUpdateFrameDismissal() {
   });
 }
 
+
+function getRepManagerCommunicationHistory(rec) {
+  const items = [];
+  if (rec.rep_manager_message_at || rec.rep_manager_message_notes || rec.rep_manager_message_label || rec.rep_manager_message_action) {
+    items.push({ sender:"rep", at:rec.rep_manager_message_at || "", message:clean(rec.rep_manager_message_notes || formatReviewText(rec.rep_manager_message_label || rec.rep_manager_message_action || "")) });
+  }
+  if (rec.manager_response_at || rec.manager_response_notes || rec.manager_response_action) {
+    items.push({ sender:"manager", at:rec.manager_response_at || rec.manager_response_date || "", message:clean(rec.manager_response_notes || formatReviewText(rec.manager_response_action || "")) });
+  }
+  return items.filter(item => item.message).sort((a,b) => new Date(a.at || 0) - new Date(b.at || 0));
+}
+function getRepManagerCommunicationUi(rec) {
+  const id = String(rec.id || rec.key || getRecordKey(rec));
+  const history = getRepManagerCommunicationHistory(rec);
+  const latest = history[history.length - 1] || null;
+  const needsResponse = Boolean(latest && lower(latest.sender) === "manager" && rec.manager_response_seen_by_rep !== true);
+  const manualOpen = state.managerCommunicationOpen[id];
+  return { history, latest, needsResponse, composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true, historyOpen: state.managerHistoryOpen[id] === true };
+}
+function toggleRepManagerCommunication(recordId) {
+  const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
+  if (!rec) return;
+  const ui = getRepManagerCommunicationUi(rec);
+  state.managerCommunicationOpen[String(recordId || rec.id || rec.key || getRecordKey(rec))] = !ui.composerOpen;
+  render();
+}
+function toggleRepManagerHistory(recordId) {
+  const key = String(recordId || "");
+  state.managerHistoryOpen[key] = state.managerHistoryOpen[key] !== true;
+  render();
+}
+function renderRepManagerCommunication(rec) {
+  const ui = getRepManagerCommunicationUi(rec);
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+  const latestText = ui.latest ? `${lower(ui.latest.sender) === "manager" ? "Manager" : "Rep"}: ${ui.latest.message}` : "No messages yet.";
+  return `
+    <div class="detail-card full comm-shell ${ui.needsResponse ? "detail-update-frame" : ""}">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Rep / Manager Communication</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
+          <div class="comm-latest">${escapeHtml(latestText)}</div>
+        </div>
+        <div class="comm-actions">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleRepManagerCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="secondary" onclick="toggleRepManagerHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
+        </div>
+      </div>
+      ${ui.composerOpen ? `
+        <div class="comm-composer">
+          <div class="row" style="margin-bottom:10px;">
+            <label for="manualActionSelect">Rep Action</label>
+            <select id="manualActionSelect" class="placeholder">
+              <option value="">Select Action</option>
+              <option value="quote_review">Prepare Quote Review</option>
+              <option value="submit_quote_approval">Submit Quote for Approval</option>
+              <option value="open_email_draft">Open Approved Email Draft</option>
+              <option value="send_tradein_app">Send to Trade-In App</option>
+              <option value="send_disposal_review">Send to Disposal Review</option>
+              <option value="contact_customer">Contact Customer</option>
+              <option value="schedule_follow_up">Schedule Follow-Up</option>
+              <option value="message_manager_reviewed">Message Manager: Reviewed</option>
+              <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
+              <option value="message_manager_more_info">Message Manager: Need More Information</option>
+              <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
+              <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
+              <option value="message_manager_custom">Message Manager: Custom Message</option>
+              <option value="add_note">Add Note</option>
+              <option value="mark_reviewed">Mark Reviewed</option>
+              <option value="complete">Complete Project</option>
+              <option value="remove">Remove From My View</option>
+            </select>
+          </div>
+          <div class="row" style="max-width:320px;margin-bottom:10px;">
+            <label for="repFollowUpDate">Follow-Up Date</label>
+            <input id="repFollowUpDate" type="date" value="${escapeHtml(rec.rep_follow_up_date || "")}" />
+          </div>
+          <div class="row" style="margin-bottom:10px;">
+            <label for="repOutcomeNotes">Notes / Message to Manager</label>
+            <textarea id="repOutcomeNotes" placeholder="Type rep notes or message to Manager..."></textarea>
+          </div>
+          <div class="btns">
+            <button type="button" class="green" onclick="confirmManualAction()">Continue Rep Action</button>
+            <button type="button" class="secondary" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
+          </div>
+        </div>
+      ` : ""}
+      ${ui.historyOpen ? `
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Manager Communication History</div>
+          <div class="rep-mini-timeline">
+            ${ui.history.length ? ui.history.map(item => `
+              <div class="rep-mini-timeline-item ${lower(item.sender) === "manager" ? "manager-response" : ""}">
+                <div class="rep-mini-timeline-date">${escapeHtml(formatTimelineDate(item.at))}</div>
+                <div class="rep-mini-timeline-text">${escapeHtml(lower(item.sender) === "manager" ? "Manager Response" : "Rep Message to Manager")}</div>
+                <div class="rep-mini-timeline-note">${escapeHtml(item.message)}</div>
+              </div>
+            `).join("") : `<div class="mini">No communication history yet.</div>`}
+          </div>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
@@ -5196,64 +5309,7 @@ function renderDetail() {
       <div class="v">${escapeHtml(rec.alert_override || "None")}</div>
     </div>
 
- <div
-  class="detail-card rep-action-main-card"
-  style="grid-column:1 / -1;border:2px solid rgba(0,229,255,.35);background:rgba(0,229,255,.07);"
->
-  <div class="k">Rep Action / Manager Communication</div>
-
-  <div class="rep-action-split">
-    <div class="rep-action-left">
-      <div class="v" style="font-size:14px;font-weight:600;color:#d8ebff;margin-bottom:12px;">
-        Select the rep action, add notes, and message Manager from one place.
-      </div>
-
-      <div class="row" style="margin-bottom:10px;">
-        <label for="manualActionSelect">Rep Action</label>
-        <select id="manualActionSelect" class="placeholder">
-          <option value="">Select Action</option>
-          <option value="quote_review">Prepare Quote Review</option>
-          <option value="submit_quote_approval">Submit Quote for Approval</option>
-          <option value="open_email_draft">Open Approved Email Draft</option>
-          <option value="send_tradein_app">Send to Trade-In App</option>
-          <option value="send_disposal_review">Send to Disposal Review</option>
-          <option value="contact_customer">Contact Customer</option>
-          <option value="schedule_follow_up">Schedule Follow-Up</option>
-          <option value="message_manager_reviewed">Message Manager: Reviewed</option>
-          <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
-          <option value="message_manager_more_info">Message Manager: Need More Information</option>
-          <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
-          <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
-          <option value="message_manager_custom">Message Manager: Custom Message</option>
-          <option value="add_note">Add Note</option>
-          <option value="mark_reviewed">Mark Reviewed</option>
-          <option value="complete">Complete Project</option>
-          <option value="remove">Remove From My View</option>
-        </select>
-      </div>
-
-      <div class="row" style="max-width:320px;margin-bottom:10px;">
-        <label for="repFollowUpDate">Follow-Up Date</label>
-        <input id="repFollowUpDate" type="date" value="${escapeHtml(rec.rep_follow_up_date || "")}" />
-      </div>
-
-      <div class="row" style="margin-bottom:10px;">
-        <label for="repOutcomeNotes">Notes / Message to Manager</label>
-        <textarea id="repOutcomeNotes" placeholder="Type rep notes or message to Manager..."></textarea>
-      </div>
-
-      <div class="btns">
-        <button type="button" class="green" onclick="confirmManualAction()">Continue Rep Action</button>
-        <button type="button" class="secondary" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
-      </div>
-    </div>
-
-    <div class="rep-action-history">
-      <div class="rep-action-history-title">Activity / Manager History</div>
-      ${buildRepMiniTimeline(rec)}
-    </div>
-  </div>
-</div>
+    ${renderRepManagerCommunication(rec)}
 
     ${renderInstallBaseCorrectionPanel(rec)}
 

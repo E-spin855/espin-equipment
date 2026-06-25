@@ -2321,7 +2321,9 @@ const state = {
   correctedFieldHighlightId: null,
   showCompleted: true,
   installBaseCommunicationOpen: {},
-  installBaseHistoryOpen: {}
+  installBaseHistoryOpen: {},
+  repCommunicationOpen: {},
+  repHistoryOpen: {}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -4752,6 +4754,117 @@ function renderManagerInstallBaseCommunication(rec) {
   `;
 }
 
+
+function getManagerRepCommunicationHistory(rec) {
+  const items = [];
+  if (rec.rep_manager_message_at || rec.rep_manager_message_notes || rec.rep_manager_message_label || rec.rep_manager_message_action) {
+    items.push({
+      sender: "rep",
+      at: rec.rep_manager_message_at || "",
+      message: clean(rec.rep_manager_message_notes || formatReviewText(rec.rep_manager_message_label || rec.rep_manager_message_action || ""))
+    });
+  }
+  if (rec.manager_response_at || rec.manager_response_notes || rec.manager_response_action) {
+    items.push({
+      sender: "manager",
+      at: rec.manager_response_at || rec.manager_response_date || "",
+      message: clean(rec.manager_response_notes || formatReviewText(rec.manager_response_action || ""))
+    });
+  }
+  return items.filter(item => item.message).sort((a,b) => new Date(a.at || 0) - new Date(b.at || 0));
+}
+function getManagerRepCommunicationUi(rec) {
+  const id = String(rec.id || rec.key || getRecordKey(rec));
+  const history = getManagerRepCommunicationHistory(rec);
+  const latest = history[history.length - 1] || null;
+  const needsResponse = Boolean(latest && lower(latest.sender) === "rep");
+  const manualOpen = state.repCommunicationOpen[id];
+  return {
+    history,
+    latest,
+    needsResponse,
+    composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true,
+    historyOpen: state.repHistoryOpen[id] === true
+  };
+}
+function toggleManagerRepCommunication(recordId) {
+  const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
+  if (!rec) return;
+  const ui = getManagerRepCommunicationUi(rec);
+  state.repCommunicationOpen[String(recordId || rec.id || rec.key || getRecordKey(rec))] = !ui.composerOpen;
+  render();
+}
+function toggleManagerRepHistory(recordId) {
+  const key = String(recordId || "");
+  state.repHistoryOpen[key] = state.repHistoryOpen[key] !== true;
+  render();
+}
+function renderManagerRepCommunication(rec) {
+  const ui = getManagerRepCommunicationUi(rec);
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+  const latestText = ui.latest
+    ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
+    : "No messages yet.";
+  return `
+    <div class="detail-card full comm-shell">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Manager / Rep Communication</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
+          <div class="comm-latest">${escapeHtml(latestText)}</div>
+        </div>
+        <div class="comm-actions">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerRepCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="secondary" onclick="toggleManagerRepHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
+        </div>
+      </div>
+      ${ui.composerOpen ? `
+        <div class="comm-composer">
+          ${renderRepMessageToManager(rec)}
+          <div class="manager-response-grid" style="grid-template-columns:minmax(220px,1fr) 180px;">
+            <div>
+              <label for="managerResponseAction">Message to Rep</label>
+              <select id="managerResponseAction">
+                <option value="">Select message</option>
+                <option value="manager_reviewed">Reviewed</option>
+                <option value="needs_follow_up">Needs Follow-Up</option>
+                <option value="needs_rep_update">Needs Rep Update</option>
+                <option value="quote_review_needed">Quote Review Needed</option>
+                <option value="tradein_review_needed">Trade-In Review Needed</option>
+                <option value="project_review_needed">Project Review Needed</option>
+                <option value="close_out">Close Out</option>
+              </select>
+            </div>
+            <div>
+              <label for="managerResponseDate">Follow-Up Date</label>
+              <input id="managerResponseDate" type="date" />
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <label for="managerResponseNotes">Notes / Message to Rep</label>
+            <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
+          </div>
+          <div class="btns" style="margin-top:12px;"><button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button></div>
+        </div>
+      ` : ""}
+      ${ui.historyOpen ? `
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Rep Communication History</div>
+          <div class="manager-install-base-history-list">
+            ${ui.history.length ? ui.history.map(item => `
+              <div class="manager-install-base-history-item ${lower(item.sender) === "manager" ? "manager" : "install-base"}">
+                <div class="manager-install-base-history-date">${escapeHtml(formatTimelineDate(item.at))}</div>
+                <div class="manager-install-base-history-text">${escapeHtml(lower(item.sender) === "manager" ? "Manager Response" : "Rep Message")}</div>
+                <div class="manager-install-base-history-note">${escapeHtml(item.message)}</div>
+              </div>
+            `).join("") : `<div class="mini">No communication history yet.</div>`}
+          </div>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -5114,306 +5227,7 @@ ${
           </div>
         `
         : `
-          <div class="section-title blue">
-            Manager Action / Rep Communication
-          </div>
-
-          <div
-            class="detail-card full"
-            style="
-              border:2px solid rgba(0,229,255,.38);
-              background:rgba(0,229,255,.07);
-            "
-          >
-           <div
-  style="
-    display:grid;
-    grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);
-    gap:18px;
-    align-items:stretch;
-  "
->
-              <div>
-                ${renderRepMessageToManager(rec)}
-
-                <div class="k">Manager Action</div>
-
-                <div
-                  class="v"
-                  style="font-size:14px;margin-bottom:14px;"
-                >
-                  Select a manager response, add notes, and send the
-                  update back to Rep.
-                </div>
-
-                <div
-                  class="manager-response-grid"
-                  style="grid-template-columns:1fr 180px;"
-                >
-                  <div>
-                    <label for="managerResponseAction">
-                      Message to Rep
-                    </label>
-
-                    <select id="managerResponseAction">
-                      <option value="">Select message</option>
-                      <option value="manager_reviewed">
-                        Reviewed
-                      </option>
-                      <option value="needs_follow_up">
-                        Needs Follow-Up
-                      </option>
-                      <option value="needs_rep_update">
-                        Needs Rep Update
-                      </option>
-                      <option value="quote_review_needed">
-                        Quote Review Needed
-                      </option>
-                      <option value="tradein_review_needed">
-                        Trade-In Review Needed
-                      </option>
-                      <option value="project_review_needed">
-                        Project Review Needed
-                      </option>
-                      <option value="close_out">
-                        Close Out
-                      </option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label for="managerResponseDate">
-                      Follow-Up Date
-                    </label>
-
-                    <input
-                      id="managerResponseDate"
-                      type="date"
-                    />
-                  </div>
-                </div>
-
-                <div style="margin-top:12px;">
-                  <label for="managerResponseNotes">
-                    Notes / Message to Rep
-                  </label>
-
-                  <textarea
-                    id="managerResponseNotes"
-                    placeholder="Type notes or message to Rep..."
-                  ></textarea>
-                </div>
-
-                <div class="btns" style="margin-top:12px;">
-                  <button
-                    type="button"
-                    class="green"
-                    onclick="saveManagerResponse()"
-                  >
-                    Send Message to Rep
-                  </button>
-                </div>
-              </div>
-
-            <div
-  style="
-    min-width:0;
-    height:100%;
-    padding:14px;
-    border:1px solid rgba(88,184,255,.18);
-    border-radius:14px;
-    background:rgba(8,18,35,.56);
-  "
->
-  <div
-    class="k"
-    style="
-      margin-bottom:10px;
-      color:#8fb1cf;
-      font-size:11px;
-      font-weight:900;
-      letter-spacing:.12em;
-    "
-  >
-    Activity / Rep History
-  </div>\
-               <div
-  style="
-    padding:12px;
-    border-radius:12px;
-    border:1px solid rgba(88,184,255,.18);
-    background:rgba(5,12,24,.62);
-    margin-bottom:10px;
-    display:flex;
-    align-items:center;
-    gap:14px;
-  "
->
-  <div
-    class="mini"
-    style="
-      color:#9cffc8;
-      font-weight:900;
-      flex:0 0 auto;
-      margin:0;
-    "
-  >
-    Current
-  </div>
-
-  <div
-    class="v"
-    style="
-      margin:0;
-      display:flex;
-      align-items:center;
-    "
-  >
-    ${renderRepStatus(rec)}
-  </div>
-</div>
-
-                ${
-                  rec.rep_manager_message_at ||
-                  rec.rep_manager_message_notes ||
-                  rec.rep_manager_message_label ||
-                  rec.rep_manager_message_action
-                    ? renderRepMessageToManager(rec)
-                    : rec.rep_notes || rec.quote_follow_up_alert_note
-                    ? `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(88,184,255,.18);
-                          background:rgba(5,12,24,.62);
-                          margin-bottom:10px;
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9bc6ec;font-weight:900;"
-                        >
-                          Rep Notes
-                        </div>
-
-                        <div class="v">
-                          ${escapeHtml(
-                            rec.rep_notes ||
-                            rec.quote_follow_up_alert_note
-                          )}
-                        </div>
-                      </div>
-                    `
-                    : `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(88,184,255,.18);
-                          background:rgba(5,12,24,.62);
-                          margin-bottom:10px;
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9bc6ec;font-weight:900;"
-                        >
-                          Rep Communication
-                        </div>
-
-                        <div class="v">
-                          No rep message received yet.
-                        </div>
-                      </div>
-                    `
-                }
-
-                ${
-                  rec.manager_response_action
-                    ? `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(65,255,156,.35);
-                          background:rgba(65,255,156,.08);
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9cffc8;font-weight:900;"
-                        >
-                          Latest Manager Message
-                        </div>
-
-                        <div class="v">
-                          ${escapeHtml(
-                            formatReviewText(
-                              rec.manager_response_action
-                            )
-                          )}
-                        </div>
-
-                        ${
-                          rec.manager_response_notes
-                            ? `
-                              <div
-                                class="mini"
-                                style="margin-top:6px;"
-                              >
-                                ${escapeHtml(
-                                  rec.manager_response_notes
-                                )}
-                              </div>
-                            `
-                            : ""
-                        }
-
-                        ${
-                          rec.manager_response_at
-                            ? `
-                              <div
-                                class="mini"
-                                style="margin-top:6px;"
-                              >
-                                Sent at:
-                                ${escapeHtml(
-                                  new Date(
-                                    rec.manager_response_at
-                                  ).toLocaleString()
-                                )}
-                              </div>
-                            `
-                            : ""
-                        }
-                      </div>
-                    `
-                    : `
-                      <div
-                        style="
-                          padding:12px;
-                          border-radius:12px;
-                          border:1px solid rgba(88,184,255,.18);
-                          background:rgba(5,12,24,.62);
-                        "
-                      >
-                        <div
-                          class="mini"
-                          style="color:#9bc6ec;font-weight:900;"
-                        >
-                          Manager History
-                        </div>
-
-                        <div class="v">
-                          No manager response sent yet.
-                        </div>
-                      </div>
-                    `
-                }
-              </div>
-            </div>
-          </div>
+          ${renderManagerRepCommunication(rec)}
         `
     }
 
@@ -5644,6 +5458,9 @@ function saveManagerResponse() {
 
   syncRecordEverywhere(updated);
   syncManagerResponseToRep(updated);
+
+  const managerRepCommKey = String(updated.id || updated.key || getRecordKey(updated));
+  state.repCommunicationOpen[managerRepCommKey] = false;
 
   state.selectedId = updated.id || updated.key || getRecordKey(updated);
 
