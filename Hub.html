@@ -658,6 +658,15 @@ tbody tr.selected{
   .manager-install-base-layout{grid-template-columns:1fr;}
 }
 
+.manager-comm-toolbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:12px 14px;border:1px solid rgba(88,184,255,.18);border-radius:14px;background:rgba(8,18,35,.58);
+}
+.manager-comm-status{font-size:13px;font-weight:900;color:#d8ebff;}
+.manager-comm-status.needs-response{color:#fff1b8;}
+.manager-comm-toolbar .btns{margin-top:0;}
+.manager-comm-collapsed-note{margin-top:10px;color:#9db6d2;font-size:12px;}
+
 .hidden{
   display:none!important;
 }
@@ -1035,7 +1044,9 @@ const state = {
   filter: "",
   showCompleted: true,
   installBaseReplyDrafts: {},
-  managerMessageDrafts: {}
+  managerMessageDrafts: {},
+  managerCommunicationOpen: {},
+  managerHistoryOpen: {}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -3618,20 +3629,60 @@ function sendInstallBaseMessageToManager(recordId) {
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
   state.managerMessageDrafts[String(recordId||"")] = "";
+  state.managerCommunicationOpen[String(recordId||"")] = false;
   saveRecords();
   render();
   showBanner("Message sent to Manager Review.");
 }
-function renderManagerInstallBaseCommunication(rec) {
+function getHubManagerCommunicationUi(rec) {
+  const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
+  const latest = history[history.length - 1] || null;
+  const needsResponse = Boolean(latest && lower(latest.sender) === "manager");
+  const composerOpen = Object.prototype.hasOwnProperty.call(state.managerCommunicationOpen, id)
+    ? state.managerCommunicationOpen[id]
+    : needsResponse;
+  const historyOpen = state.managerHistoryOpen[id] === true;
+  return { history, latest, needsResponse, composerOpen, historyOpen };
+}
+function toggleHubManagerCommunication(recordId) {
+  const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+  if (!rec) return;
+  const ui = getHubManagerCommunicationUi(rec);
+  state.managerCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
+  render();
+}
+function toggleHubManagerHistory(recordId) {
+  const current = state.managerHistoryOpen[String(recordId || "")] === true;
+  state.managerHistoryOpen[String(recordId || "")] = !current;
+  render();
+}
+function renderManagerInstallBaseCommunication(rec) {
+  const ui = getHubManagerCommunicationUi(rec);
+  const latestText = ui.latest
+    ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
+    : "No messages yet.";
   return `
     <div class="detail-card manager-install-base-communication-card">
-      <div class="manager-install-base-layout">
-        <div class="manager-install-base-left">
+      <div class="manager-comm-toolbar">
+        <div>
           <div class="k">Install Base / Manager Communication</div>
-          <div class="v" style="font-size:14px;margin-bottom:14px;">
-            Send a message, confirmation, or follow-up question to the assigned manager.
+          <div class="manager-comm-status ${ui.needsResponse ? "needs-response" : ""}">
+            ${ui.needsResponse ? "Response needed" : "No response currently required"}
           </div>
+          <div class="manager-comm-collapsed-note">${escapeHtml(latestText)}</div>
+        </div>
+        <div class="btns">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleHubManagerCommunication('${escapeJs(rec.id || "")}')">
+            ${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}
+          </button>
+          <button type="button" class="secondary" onclick="toggleHubManagerHistory('${escapeJs(rec.id || "")}')">
+            ${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}
+          </button>
+        </div>
+      </div>
+      ${ui.composerOpen ? `
+        <div class="manager-install-base-left" style="margin-top:14px;">
           <label for="installBaseMessageToManager">Message to Manager</label>
           <textarea
             id="installBaseMessageToManager"
@@ -3641,30 +3692,24 @@ function renderManagerInstallBaseCommunication(rec) {
             placeholder="Type message to Manager..."
           >${escapeHtml(getHubManagerDraft(rec.id || ""))}</textarea>
           <div class="btns">
-            <button type="button" class="green" onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')">
-              Send Message to Manager
-            </button>
+            <button type="button" class="green" onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')">Send Message to Manager</button>
           </div>
         </div>
-        <div class="manager-install-base-history">
+      ` : ""}
+      ${ui.historyOpen ? `
+        <div class="manager-install-base-history" style="margin-top:14px;">
           <div class="manager-install-base-history-title">Activity / Manager Communication History</div>
           <div class="manager-install-base-history-list">
-            ${history.length ? history.map(item => `
+            ${ui.history.length ? ui.history.map(item => `
               <div class="manager-install-base-history-item ${lower(item.sender)==="manager" ? "manager" : "install-base"}">
                 <div class="manager-install-base-history-date">${escapeHtml(formatDateTime(item.at))}</div>
                 <div class="manager-install-base-history-text">${escapeHtml(lower(item.sender)==="manager" ? "Manager Response" : "Install Base Message")}</div>
                 <div class="manager-install-base-history-note">${escapeHtml(item.message)}</div>
               </div>
-            `).join("") : `
-              <div class="manager-install-base-history-item install-base">
-                <div class="manager-install-base-history-date">No messages yet</div>
-                <div class="manager-install-base-history-text">Install Base / Manager</div>
-                <div class="manager-install-base-history-note">Messages between Install Base and Manager will appear here.</div>
-              </div>
-            `}
+            `).join("") : `<div class="mini">No communication history yet.</div>`}
           </div>
         </div>
-      </div>
+      ` : ""}
     </div>
   `;
 }
