@@ -3219,8 +3219,8 @@ function mergeInstallBaseQueueIntoRepRecords() {
       key,
       id: incoming.id || key,
 
-      hub_source: incoming.hub_source || "Install Base",
-      source: incoming.source || "Install Base",
+      hub_source: "Install Base",
+      source: "Install Base",
 
       install_base_received_by_rep: true,
       install_base_received_at:
@@ -3398,7 +3398,10 @@ queue.forEach(item => {
     );
     const releasedRecord = {
       ...item,
-      source: item.hub_source || item.source || "AXIS Install Base Workspace",
+      source:
+        lower(item.hub_source || item.source || "").includes("install base")
+          ? "Install Base"
+          : (item.hub_source || item.source || "Install Base"),
       install_base_release_status: item.install_base_release_status || "released_to_rep",
       rep_status: item.rep_status || "needed",
       rep_action: item.rep_action || "",
@@ -4270,12 +4273,16 @@ const equipmentBadge = equipmentFixField
 	      ""
 	    );
 
+	    const rawSource =
+	      rec.hub_source ||
+	      rec.source_system ||
+	      rec.source ||
+	      "CSV";
+
 	    const sourceText =
-	      rec.hub_source === "AXIS Install Base Workspace" ||
-	      rec.source === "AXIS Install Base Workspace" ||
-	      rec.source_system === "AXIS Install Base Workspace"
+	      lower(rawSource).includes("install base")
 	        ? "Install Base"
-	        : rec.hub_source || rec.source_system || rec.source || "CSV";
+	        : rawSource;
 
 	    return `
       <tr
