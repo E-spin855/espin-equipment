@@ -8624,71 +8624,173 @@ return true;
     return false;
   }
 
+  // Reserve the tab before the async request so Safari does not block it.
+  const reservedWindow = connectWindow || window.open("", "_blank");
+
+  if (reservedWindow && !reservedWindow.closed) {
+    try {
+      reservedWindow.document.write(`
+        <!doctype html>
+        <html>
+          <head><title>Opening Espin Connect</title></head>
+          <body style="font-family:-apple-system,sans-serif;padding:32px;">
+            <h2>Creating Espin Connect project…</h2>
+            <p>Please wait.</p>
+          </body>
+        </html>
+      `);
+      reservedWindow.document.close();
+    } catch (e) {}
+  }
+
   if (banner) {
     banner.style.display = "block";
-    banner.textContent = "Opening Espin Connect demo...";
+    banner.textContent = "Creating project in Espin Connect...";
   }
 
   const now = new Date().toISOString();
+  const connectEmail =
+    rec.sales_rep_email ||
+    rec.assigned_rep_email ||
+    localStorage.getItem("espinUserEmail") ||
+    "info@espinmedical.com";
 
-  rec.submitted_to = "connect_demo";
-  rec.connect_sync_status = "demo_opened";
-  rec.submitted_at = now;
-  rec.disposal_required = Boolean(disposalRequired);
-  rec.magnet_event = magnetEvent || "";
+  const projectName = `${rec.site || rec.facility || rec.hospital || "Unknown Facility"} – ${rec.make || ""} ${rec.model || ""}`
+    .replace(/\s+/g, " ")
+    .trim();
 
-  rec.manager_unseen_update = true;
-  rec.manager_flash_at = now;
-  rec.manager_flash_type = "sent_to_connect_demo";
-  rec.manager_flash_text = "Rep opened Espin Connect demo handoff";
+  const projectPayload = {
+    action: "create",
+    project_name: projectName,
+    site_address: rec.site_address || "",
+    zip_code: rec.zip_code || "",
+    modality: String(rec.modality || "").toUpperCase().trim() || "OTHER",
+    magnet_event:
+      String(rec.modality || "").toUpperCase().trim() === "MRI"
+        ? (magnetEvent || "")
+        : "",
+    disposal_required: Boolean(disposalRequired),
 
-  syncFeedStatus(rec);
-  render();
+    source: "espin_link",
+    handoff: "disposal_review",
+    axis_record_id: rec.id || "",
+    axis_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
 
-  const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
+    facility: rec.site || rec.facility || rec.hospital || "",
+    city: rec.city || "",
+    state: rec.state || "",
+    make: rec.make || "",
+    model: rec.model || "",
+    serial_number: rec.serial_number || rec.serial || "",
+    dom: rec.dom || "",
 
-  connectUrl.searchParams.set("source", "axis_demo");
-  connectUrl.searchParams.set("handoff", "disposal_review");
-  connectUrl.searchParams.set("demo", "true");
+    sales_rep_first: rec.sales_rep_first || "",
+    sales_rep_last: rec.sales_rep_last || "",
+    sales_rep_company: rec.sales_rep_company || "",
+    sales_rep_phone: rec.sales_rep_phone || "",
+    sales_rep_email: connectEmail
+  };
 
-  connectUrl.searchParams.set("axis_record_id", rec.id || "");
-  connectUrl.searchParams.set("axis_project_id", rec.oem_project_id || rec.id || "");
-  connectUrl.searchParams.set("axis_serial_number", rec.serial_number || "");
+  try {
+    const response = await fetchWithTimeout(
+      "https://espin-medical-app.vercel.app/api/projects",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": connectEmail,
+          "x-useremail": connectEmail,
+          "x-user_email": connectEmail
+        },
+        body: JSON.stringify(projectPayload)
+      },
+      15000
+    );
 
-  connectUrl.searchParams.set(
-    "project_name",
-    `${rec.site || "Unknown"} – ${rec.make || ""} ${rec.model || ""}`.trim()
-  );
+    const responseText = await response.text();
+    let result = {};
 
-  connectUrl.searchParams.set("facility", rec.site || rec.facility || rec.hospital || "");
-  connectUrl.searchParams.set("site_address", rec.site_address || "");
-  connectUrl.searchParams.set("city", rec.city || "");
-  connectUrl.searchParams.set("state", rec.state || "");
-  connectUrl.searchParams.set("zip_code", rec.zip_code || "");
+    try {
+      result = responseText ? JSON.parse(responseText) : {};
+    } catch (e) {
+      result = { raw: responseText };
+    }
 
-  connectUrl.searchParams.set("make", rec.make || "");
-  connectUrl.searchParams.set("model", rec.model || "");
-  connectUrl.searchParams.set("modality", String(rec.modality || "").toUpperCase().trim() || "OTHER");
-  connectUrl.searchParams.set("serial_number", rec.serial_number || "");
-  connectUrl.searchParams.set("dom", rec.dom || "");
+    if (!response.ok) {
+      const apiMessage =
+        result.error ||
+        result.message ||
+        result.raw ||
+        `HTTP ${response.status}`;
+      throw new Error(apiMessage);
+    }
 
-  connectUrl.searchParams.set("disposal_required", disposalRequired ? "true" : "false");
-  connectUrl.searchParams.set("magnet_event", magnetEvent || "");
+    const connectProjectId =
+      result.projectId ||
+      result.project_id ||
+      result.id ||
+      result.project?.id ||
+      result.data?.id ||
+      "";
 
-  connectUrl.searchParams.set("sales_rep_first", rec.sales_rep_first || "");
-  connectUrl.searchParams.set("sales_rep_last", rec.sales_rep_last || "");
-  connectUrl.searchParams.set("sales_rep_company", rec.sales_rep_company || "");
-  connectUrl.searchParams.set("sales_rep_phone", rec.sales_rep_phone || "");
-  connectUrl.searchParams.set("sales_rep_email", rec.sales_rep_email || "");
+    rec.submitted_to = "espin_connect";
+    rec.connect_sync_status = "project_created";
+    rec.connect_project_id = connectProjectId;
+    rec.submitted_at = now;
+    rec.disposal_required = Boolean(disposalRequired);
+    rec.magnet_event = magnetEvent || "";
 
-  console.log("Opening Espin Connect demo URL:", connectUrl.toString());
+    rec.manager_unseen_update = true;
+    rec.manager_flash_at = now;
+    rec.manager_flash_type = "sent_to_connect";
+    rec.manager_flash_text = "Rep created an Espin Connect disposal project";
 
-  showBanner("✅ Opening Espin Connect demo handoff...");
+    syncFeedStatus(rec);
+    render();
 
-  window.open(connectUrl.toString(), "_blank");
+    const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
+    connectUrl.searchParams.set("source", "espin_link");
+    connectUrl.searchParams.set("handoff", "disposal_review");
 
-return true;
+    if (connectProjectId) {
+      connectUrl.searchParams.set("projectId", connectProjectId);
+      connectUrl.searchParams.set("id", connectProjectId);
+    }
+
+    showBanner("✅ Project created in Espin Connect. Opening project list...");
+
+    if (reservedWindow && !reservedWindow.closed) {
+      reservedWindow.location.replace(connectUrl.toString());
+    } else {
+      const fallbackWindow = window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
+      if (!fallbackWindow && banner) {
+        banner.innerHTML = `✅ Project created in Espin Connect. <a href="${connectUrl.toString()}" target="_blank" rel="noopener noreferrer" style="color:#c8ffdf;text-decoration:underline;font-weight:900;">Open Espin Connect</a>`;
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error("Espin Connect sync failed:", err);
+
+    const message = err?.message || "Unknown sync error";
+
+    if (reservedWindow && !reservedWindow.closed) {
+      try {
+        reservedWindow.document.body.innerHTML = `
+          <div style="font-family:-apple-system,sans-serif;padding:32px;max-width:720px;">
+            <h2 style="color:#b00020;">Espin Connect sync failed</h2>
+            <p>${String(message).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]))}</p>
+            <p>Please close this tab and return to ESPIN LINK.</p>
+          </div>
+        `;
+      } catch (e) {}
+    }
+
+    showBanner(`❌ Espin Connect sync failed: ${message}`);
+    return false;
+  }
 }
+
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
