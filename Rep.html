@@ -5246,7 +5246,14 @@ function getRepManagerCommunicationUi(rec) {
   const history = getRepManagerCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
   const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
+  const managerAction = lower(rec.manager_response_action || "");
+  const isFixOrAssignmentUpdate =
+    managerAction === "install_base_data_corrected" ||
+    managerAction === "install_base_assignment" ||
+    lower(rec.install_base_response_status || "") === "manager_correction_sent";
+
   const needsResponse = Boolean(
+    !isFixOrAssignmentUpdate &&
     latest &&
     lower(latest.sender) === "manager" &&
     rec.rep_manager_ack_signature !== latestSignature
@@ -5888,6 +5895,8 @@ function hasExplicitInstallBaseRepRequest(rec) {
 }
 
 function installBaseCommunicationNeedsResponse(rec) {
+  if (isInstallBaseFixedByRep(rec)) return false;
+
   const history = getInstallBaseConversationHistory(rec);
   if (history.length) {
     const latest = history[history.length - 1];
@@ -8582,21 +8591,64 @@ if (reservedTradeWindow && !reservedTradeWindow.closed) {
 return true;
     }
 
-    if (type === "tradein_desk" || type === "disposal") {
+    if (type === "tradein_desk") {
       rec.associated_tradein_submitted_to = type;
       rec.associated_tradein_submitted_at = new Date().toISOString();
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = type === "tradein_desk" ? "sent_to_tradein_desk" : "sent_to_disposal";
-      rec.manager_flash_text = type === "tradein_desk"
-        ? "Rep sent equipment to Trade-In Desk"
-        : "Rep sent equipment to Disposal Review";
+      rec.manager_flash_type = "sent_to_tradein_desk";
+      rec.manager_flash_text = "Rep sent associated trade-in equipment to Trade-In Desk";
 
       syncFeedStatus(rec);
       render();
-
-      showBanner(type === "tradein_desk" ? "✅ Sent to Trade-In Desk" : "✅ Sent to Disposal Review");
+      showBanner("✅ Associated trade-in sent to Trade-In Desk");
       return true;
+    }
+
+    if (type === "disposal") {
+      const disposalRecord = {
+        ...rec,
+        id: rec.id || state.selectedId,
+        oem_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
+        make: rec.tradein_equipment_make || rec.make || "",
+        model: rec.tradein_equipment_model || rec.model || "",
+        modality: rec.tradein_equipment_modality || rec.modality || "",
+        serial_number:
+          rec.tradein_equipment_serial_number ||
+          rec.tradein_equipment_serial ||
+          rec.serial_number ||
+          "",
+        dom:
+          rec.tradein_equipment_dom ||
+          rec.tradein_equipment_year ||
+          rec.dom ||
+          "",
+        project_type: "associated_tradein_disposal",
+        source: "Associated Trade-In Equipment"
+      };
+
+      rec.associated_tradein_submitted_to = "disposal";
+      rec.associated_tradein_submitted_at = new Date().toISOString();
+      rec.manager_unseen_update = true;
+      rec.manager_flash_at = new Date().toISOString();
+      rec.manager_flash_type = "sent_to_disposal";
+      rec.manager_flash_text = "Rep sent associated trade-in equipment to Disposal Review";
+
+      syncFeedStatus(rec);
+
+      const opened = await sendToConnectWithDecision(
+        disposalRecord,
+        "",
+        true
+      );
+
+      render();
+
+      if (opened) {
+        showBanner("✅ Associated trade-in sent to Disposal Review. Opening Espin Connect...");
+      }
+
+      return opened;
     }
 
     showBanner("❌ Unknown action type");

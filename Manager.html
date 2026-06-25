@@ -4378,7 +4378,8 @@ function sendManagerInstallBaseCorrection(id) {
     install_base_response_seen: false,
 
     manager_visible: true,
-    rep_visible: true,
+    rep_visible: Boolean(clean(correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "")) &&
+      lower(correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "") !== "unassigned",
     manager_unseen_update: false,
     manager_alert_seen: true,
 
@@ -4403,6 +4404,9 @@ function sendManagerInstallBaseCorrection(id) {
     INSTALL_BASE_RESPONSE_KEY,
     upsertRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY))
   );
+
+  const assignedRepName = clean(updated.assigned_rep_name);
+  const hasAssignedRep = Boolean(assignedRepName) && lower(assignedRepName) !== "unassigned";
 
   const repSyncRecord = {
     ...updated,
@@ -4432,10 +4436,17 @@ function sendManagerInstallBaseCorrection(id) {
     return next;
   };
 
-  writeArrayKey(
-    STORAGE_KEY,
-    upsertRepRecord(readArrayKey(STORAGE_KEY))
-  );
+  if (hasAssignedRep) {
+    writeArrayKey(
+      STORAGE_KEY,
+      upsertRepRecord(readArrayKey(STORAGE_KEY))
+    );
+    writeArrayKey(
+      REP_QUEUE_KEY,
+      upsertRepRecord(readArrayKey(REP_QUEUE_KEY))
+    );
+    localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+  }
 
   let managerQueue = {};
 
@@ -4470,7 +4481,10 @@ function sendManagerInstallBaseCorrection(id) {
   state.records = upsertRecord(state.records);
   state.selectedId = updated.id;
 
-  alert("Correction sent back to Install Base.");
+  alert(hasAssignedRep
+    ? "Correction sent to Install Base and assigned project released to Rep."
+    : "Correction sent to Install Base. Project remains Manager-only until a rep is assigned."
+  );
   renderStats();
   renderRepMenu();
   renderTable();

@@ -1015,8 +1015,8 @@ tr.install-base-corrected-row-frame td{
 
   <div class="stats">
     <div class="stat"><div class="k">Install Base Records</div><div class="v" id="statTotal">0</div></div>
-    <div class="stat"><div class="k">Owner Groups</div><div class="v" id="statOwners">0</div></div>
-    <div class="stat"><div class="k">Rep Owners</div><div class="v" id="statReps">0</div></div>
+    <div class="stat"><div class="k">Manager Routing</div><div class="v">Manager Only</div></div>
+    <div class="stat"><div class="k">Rep Release</div><div class="v">After Assignment</div></div>
     <div class="stat"><div class="k">Data Exceptions</div><div class="v" id="statExceptions">0</div></div>
   </div>
 
@@ -1104,9 +1104,6 @@ tr.install-base-corrected-row-frame td{
               <tr>
                 <th>Project / Asset ID</th>
                 <th>Make</th>
-                <th>Owner Group</th>
-                <th>Territory</th>
-                <th>Rep Owner</th>
                 <th>Site</th>
                 <th>Modality</th>
                 <th>Model</th>
@@ -1556,17 +1553,8 @@ function getDataExceptions(rec) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
-  if (!clean(rec.assigned_rep_name) || rec.assigned_rep_name === "Unassigned") {
-    issues.push({ type: "owner", label: "Missing Rep Owner" });
-  }
 
-  if (!clean(rec.manager_name) || rec.manager_name === "Unassigned Owner Group") {
-    issues.push({ type: "owner", label: "Missing Owner Group" });
-  }
 
-  if (!clean(rec.manager_region || rec.manager_territory || rec.territory) || getOwnerTerritory(rec) === "Unassigned Territory") {
-    issues.push({ type: "owner", label: "Missing Territory" });
-  }
 
   if (
     lower(rec.source_conflict) === "yes" ||
@@ -1717,7 +1705,7 @@ function getMissingHubFields(rec) {
     return window.AxisUtils.getMissingInstallBaseFields(rec);
   }
 
-  return ["project", "make", "model", "modality", "serial", "dom", "site", "rep", "manager"]
+  return ["project", "make", "model", "modality", "serial", "dom", "site"]
     .filter(field => isBlankHubField(getSharedInstallBaseFieldValue(rec, field), field));
 }
 function getReviewStatus(rec) {
@@ -2583,9 +2571,11 @@ function autoSyncEligibleRecordsToRepAndManager() {
       install_base_manual_route: false,
       install_base_release_status: "auto_synced",
       install_base_released_at: rec.install_base_released_at || now,
-      install_base_released_to: "rep_and_manager",
+      install_base_released_to: "manager",
 
-      rep_visible: true,
+      // Hub routes the record to Manager first. Rep visibility begins only
+      // after Manager saves a specific rep assignment.
+      rep_visible: false,
       manager_visible: true,
 
      manager_unseen_update: false,
@@ -2599,21 +2589,8 @@ manager_flash_text: ""
   state.records
     .filter(rec => isAutoSyncEligible(rec) && !getMissingHubFields(rec).length)
     .forEach(rec => {
-      const repRecord = {
-        ...rec,
-        project:
-          rec.site ||
-          rec.site_address ||
-          rec.oem_project_id ||
-          rec.asset_id ||
-          "Unknown Site",
-        rep: rec.assigned_rep_name || "Unassigned",
-        alert: getReviewStatus(rec).label,
-        timestamp: now
-      };
-
-      repQueue.push(repRecord);
-
+      // Do not push to the Rep queue from Hub. Manager assignment controls
+      // which specific rep receives the project.
       const ownerName = getOwnerName(rec);
       if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
 
@@ -3199,7 +3176,7 @@ function renderTable() {
   if (!records.length) {
     tbody.innerHTML = `
       <tr>
-	        <td colspan="13" style="color:#9db6d2;">
+	        <td colspan="10" style="color:#9db6d2;">
           No records match the current view.
         </td>
       </tr>
@@ -3249,11 +3226,6 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubFieldValue(rec, "make", rec.make)}</td>
 
-	      <td>${renderHubFieldValue(rec, "owner", rec.manager_name || rec.owner_group_name)}</td>
-
-	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
-
-	      <td>${renderHubFieldValue(rec, "rep", rec.assigned_rep_name)}</td>
 
 	      <td>${renderHubFieldValue(rec, "site", rec.site)}</td>
 
@@ -3569,7 +3541,12 @@ function getHubRepCommunicationUi(rec) {
   const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
   const legacySignature = legacyRepResponse ? ["rep", clean(rec.install_base_response_at), legacyRepResponse].join("|") : "";
   const incomingSignature = latestSignature || legacySignature;
+  const isFixCorrection = isFixedByRep(rec) ||
+    lower(rec.install_base_response_status) === "rep_correction_sent" ||
+    lower(rec.install_base_fix_status) === "rep_reviewed";
+
   const needsResponse = Boolean(
+    !isFixCorrection &&
     incomingSignature &&
     (latestSender === "rep" || (!latest && legacyRepResponse)) &&
     rec.hub_rep_ack_signature !== incomingSignature
@@ -3895,22 +3872,8 @@ function renderDetail() {
       </div>
     ` : ""}
 
-    <div class="detail-card">
-      <div class="k">Owner Group</div>
-      <div class="v">${escapeHtml(getOwnerName(rec))}</div>
-      <div class="mini">${escapeHtml(rec.manager_email || "")}</div>
-    </div>
 
-    <div class="detail-card">
-      <div class="k">Territory</div>
-      <div class="v">${escapeHtml(getOwnerTerritory(rec))}</div>
-    </div>
 
-    <div class="detail-card">
-      <div class="k">Rep Owner</div>
-      <div class="v">${escapeHtml(rec.assigned_rep_name || "-")}</div>
-      <div class="mini">${escapeHtml(rec.assigned_rep_email || "")}</div>
-    </div>
 
     <div class="detail-card">
       <div class="k">Review Status</div>
