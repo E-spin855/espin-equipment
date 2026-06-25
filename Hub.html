@@ -2510,6 +2510,20 @@ function updateReleaseButtonVisibility(rec) {
   );
 }
 
+
+function getRoutingBlockingFields(rec) {
+  return getMissingHubFields(rec).filter(field => {
+    const normalized = canonicalInstallBaseFieldName(field);
+    return ![
+      "rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep_owner",
+      "sales_rep"
+    ].includes(normalized);
+  });
+}
+
 function hasValidAssignedRep(rec) {
   const name = clean(
     rec?.assigned_rep_name ||
@@ -2562,7 +2576,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
-    const missingFixFields = getMissingHubFields(rec);
+    const missingFixFields = getRoutingBlockingFields(rec);
 
     if (missingFixFields.length) {
       return {
@@ -2632,7 +2646,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
   });
 
   state.records
-    .filter(rec => isAutoSyncEligible(rec) && !getMissingHubFields(rec).length)
+    .filter(rec => isAutoSyncEligible(rec) && !getRoutingBlockingFields(rec).length)
     .forEach(rec => {
       const repAssigned = hasValidAssignedRep(rec);
 
@@ -2645,10 +2659,25 @@ function autoSyncEligibleRecordsToRepAndManager() {
         manager_visible: true,
         rep_visible: repAssigned,
         rep_assignment_required: !repAssigned,
+        manager_action_required: !repAssigned
+          ? "Assign Rep"
+          : (rec.manager_action_required || ""),
+        manager_action_reason: !repAssigned
+          ? "No rep was assigned in the imported Install Base record."
+          : (rec.manager_action_reason || ""),
         install_base_released_to: repAssigned ? "rep_and_manager" : "manager",
+        release_destination: repAssigned ? "rep_and_manager" : "manager",
         install_base_release_status: repAssigned
           ? "auto_synced"
-          : "awaiting_manager_rep_assignment"
+          : "awaiting_manager_rep_assignment",
+        install_base_manager_request: !repAssigned,
+        manager_unseen_update: !repAssigned,
+        manager_alert_seen: repAssigned,
+        manager_flash_at: !repAssigned ? now : "",
+        manager_flash_type: !repAssigned ? "rep_assignment_required" : "",
+        manager_flash_text: !repAssigned
+          ? "New Install Base record requires rep assignment"
+          : ""
       });
 
       // Only records with a real assigned rep enter the Rep queue.
