@@ -5731,6 +5731,32 @@ function toggleInstallBaseHistory() {
   state.installBaseHistoryOpen = !state.installBaseHistoryOpen;
   renderDetail();
 }
+function hasExplicitInstallBaseRepRequest(rec) {
+  if (!rec) return false;
+
+  const explicitRequest = clean(
+    rec.rep_action_required ||
+    rec.oem_review_action_required ||
+    rec.install_base_rep_action_required ||
+    rec.manager_review_request ||
+    ""
+  );
+
+  const manualRepClarification =
+    lower(rec.oem_review_level || rec.review_level || rec.visibility_level || "") === "manual clarification" &&
+    lower(rec.axis_manual_route_target || rec.install_base_released_to || rec.release_destination || "") === "rep" &&
+    Boolean(clean(
+      rec.axis_clarification_reason ||
+      rec.install_base_clarification_reason ||
+      rec.install_base_issue_reason ||
+      rec.install_base_action_reason ||
+      rec.install_base_issue_note ||
+      ""
+    ));
+
+  return Boolean(explicitRequest || manualRepClarification);
+}
+
 function installBaseCommunicationNeedsResponse(rec) {
   const history = getInstallBaseConversationHistory(rec);
   if (history.length) {
@@ -5739,21 +5765,10 @@ function installBaseCommunicationNeedsResponse(rec) {
     return lower(latest.sender) === "install_base" && rec.rep_install_base_ack_signature !== signature;
   }
 
-  const hasIncomingRequest = Boolean(clean(
-    rec.rep_action_required ||
-    rec.oem_review_action_required ||
-    rec.install_base_rep_action_required ||
-    rec.manager_review_request ||
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    rec.install_base_issue_reason ||
-    rec.install_base_action_reason ||
-    rec.install_base_issue_note ||
-    ""
-  ));
+  if (!hasExplicitInstallBaseRepRequest(rec)) return false;
 
   const requestSignature = getInstallBaseIncomingSignature(rec);
-  return hasIncomingRequest && rec.rep_install_base_ack_signature !== requestSignature;
+  return Boolean(requestSignature) && rec.rep_install_base_ack_signature !== requestSignature;
 }
 function getLatestInstallBaseCommunicationItem(rec) {
   const history = getInstallBaseConversationHistory(rec);
@@ -6043,8 +6058,19 @@ function renderInstallBaseCorrectionPanel(rec) {
   );
 
   const reviewActionRequired = getInstallBaseRepActionRequired(rec);
-  const hasReviewContext = reviewLabel || reviewType || reviewLevel || reviewReason || issues.length;
-  if (!hasReviewContext) return "";
+  const hasConversation = getInstallBaseConversationHistory(rec).length > 0 || Boolean(clean(
+    rec.install_base_reply_to_rep ||
+    rec.install_base_response_message ||
+    rec.install_base_response_note ||
+    rec.rep_response_message ||
+    ""
+  ));
+  const hasCommunicationPurpose = hasExplicitInstallBaseRepRequest(rec) || issues.length > 0 || hasConversation;
+
+  // Informational Install Base reviews such as Equipment Age, Service Coverage,
+  // Utilization, Capital Planning, and Asset Status belong in the normal Rep
+  // Action workflow. They must not open the Install Base communication composer.
+  if (!hasCommunicationPurpose) return "";
 
   const needsResponse = installBaseCommunicationNeedsResponse(rec);
   const latestItem = getLatestInstallBaseCommunicationItem(rec);
@@ -9068,28 +9094,8 @@ function markRepRowUpdateSeen(id) {
   return true;
 }
 function handleRepRowClick(id) {
-  const rec = state.records.find(r =>
-    String(r.id || "") === String(id) ||
-    String(r.key || "") === String(id)
-  );
-
-  if (!rec) {
-    selectRow(id);
-    return;
-  }
-
-  const isInstallBaseRepRequest =
-    rec.install_base_released_to === "rep" ||
-    rec.release_destination === "rep" ||
-    rec.install_base_release_status === "released_to_rep" ||
-    rec.install_base_sync_type === "manual_clarification" ||
-    rec.install_base_manual_route === true;
-
-  if (isInstallBaseRepRequest) {
-    openInstallBaseCommunication(id);
-    return;
-  }
-
+  // A row click always opens the normal selected-record workflow.
+  // Install Base communication is opened only from its own communication/FIX control.
   selectRow(id);
 }
     function selectRow(id) {
