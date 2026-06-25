@@ -8273,10 +8273,19 @@ function openDecisionModal() {
 
   closeDecisionModal();
 
+  const connectWindow = window.open("about:blank", "_blank");
+  if (connectWindow) {
+    try {
+      connectWindow.document.body.innerHTML =
+        "<div style=\"font-family:-apple-system,sans-serif;padding:36px\"><h2>Creating Espin Connect project…</h2><p>Please wait.</p></div>";
+    } catch {}
+  }
+
   await sendToConnectWithDecision(
     rec,
     magnetEvent,
-    disposalRequired
+    disposalRequired,
+    connectWindow
   );
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
@@ -8621,174 +8630,118 @@ return true;
 
   if (!rec) {
     alert("Open a record first");
+    if (connectWindow && !connectWindow.closed) connectWindow.close();
     return false;
   }
 
-  // Reserve the tab before the async request so Safari does not block it.
-  const reservedWindow = connectWindow || window.open("", "_blank");
-
-  if (reservedWindow && !reservedWindow.closed) {
-    try {
-      reservedWindow.document.write(`
-        <!doctype html>
-        <html>
-          <head><title>Opening Espin Connect</title></head>
-          <body style="font-family:-apple-system,sans-serif;padding:32px;">
-            <h2>Creating Espin Connect project…</h2>
-            <p>Please wait.</p>
-          </body>
-        </html>
-      `);
-      reservedWindow.document.close();
-    } catch (e) {}
-  }
-
-  if (banner) {
-    banner.style.display = "block";
-    banner.textContent = "Creating project in Espin Connect...";
-  }
-
-  const now = new Date().toISOString();
-  const connectEmail =
+  const cleanText = value => String(value || "").trim();
+  const modality = cleanText(rec.modality).toUpperCase() || "OTHER";
+  const repEmail = cleanText(
     rec.sales_rep_email ||
     rec.assigned_rep_email ||
-    localStorage.getItem("espinUserEmail") ||
-    "info@espinmedical.com";
+    rec.rep_email ||
+    ""
+  ).toLowerCase();
 
-  const projectName = `${rec.site || rec.facility || rec.hospital || "Unknown Facility"} – ${rec.make || ""} ${rec.model || ""}`
-    .replace(/\s+/g, " ")
-    .trim();
+  const equipmentParts = [
+    cleanText(rec.make),
+    cleanText(rec.model),
+    cleanText(rec.serial_number || rec.serial)
+      ? `S/N ${cleanText(rec.serial_number || rec.serial)}`
+      : "",
+    cleanText(rec.dom)
+      ? `DOM ${cleanText(rec.dom)}`
+      : ""
+  ].filter(Boolean);
 
-  const projectPayload = {
-    action: "create",
-    project_name: projectName,
-    site_address: rec.site_address || "",
-    zip_code: rec.zip_code || "",
-    modality: String(rec.modality || "").toUpperCase().trim() || "OTHER",
-    magnet_event:
-      String(rec.modality || "").toUpperCase().trim() === "MRI"
-        ? (magnetEvent || "")
-        : "",
-    disposal_required: Boolean(disposalRequired),
+  const projectName =
+    cleanText(rec.site || rec.facility || rec.hospital || rec.customer) ||
+    `${cleanText(rec.make)} ${cleanText(rec.model)}`.trim() ||
+    `Disposal Project ${cleanText(rec.oem_project_id || rec.id)}`;
 
-    source: "espin_link",
-    handoff: "disposal_review",
-    axis_record_id: rec.id || "",
-    axis_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
+  const handoffUrl = new URL(
+    "https://espin-medical-app.vercel.app/EspinConnectHandoff.html"
+  );
 
-    facility: rec.site || rec.facility || rec.hospital || "",
-    city: rec.city || "",
-    state: rec.state || "",
-    make: rec.make || "",
-    model: rec.model || "",
-    serial_number: rec.serial_number || rec.serial || "",
-    dom: rec.dom || "",
+  handoffUrl.searchParams.set("project_name", projectName);
+  handoffUrl.searchParams.set(
+    "site_address",
+    cleanText(rec.site_address || rec.address)
+  );
+  handoffUrl.searchParams.set(
+    "zip_code",
+    cleanText(rec.zip_code || rec.zip)
+  );
+  handoffUrl.searchParams.set("equipment", equipmentParts.join(" · "));
+  handoffUrl.searchParams.set("modality", modality);
+  handoffUrl.searchParams.set(
+    "magnet_event",
+    modality === "MRI" ? cleanText(magnetEvent) : ""
+  );
+  handoffUrl.searchParams.set(
+    "disposal_required",
+    disposalRequired ? "true" : "false"
+  );
 
-    sales_rep_first: rec.sales_rep_first || "",
-    sales_rep_last: rec.sales_rep_last || "",
-    sales_rep_company: rec.sales_rep_company || "",
-    sales_rep_phone: rec.sales_rep_phone || "",
-    sales_rep_email: connectEmail
-  };
+  handoffUrl.searchParams.set(
+    "sales_rep_first",
+    cleanText(rec.sales_rep_first || rec.rep_first_name)
+  );
+  handoffUrl.searchParams.set(
+    "sales_rep_last",
+    cleanText(rec.sales_rep_last || rec.rep_last_name)
+  );
+  handoffUrl.searchParams.set(
+    "sales_rep_company",
+    cleanText(rec.sales_rep_company || rec.rep_company || "ESPIN LINK")
+  );
+  handoffUrl.searchParams.set(
+    "sales_rep_phone",
+    cleanText(rec.sales_rep_phone || rec.assigned_rep_phone || rec.rep_phone)
+  );
+  handoffUrl.searchParams.set("sales_rep_email", repEmail);
 
-  try {
-    const response = await fetchWithTimeout(
-      "https://espin-medical-app.vercel.app/api/projects",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-email": connectEmail,
-          "x-useremail": connectEmail,
-          "x-user_email": connectEmail
-        },
-        body: JSON.stringify(projectPayload)
-      },
-      15000
-    );
+  handoffUrl.searchParams.set(
+    "contact_name",
+    cleanText(rec.contact_name || rec.hospital_contact_name)
+  );
+  handoffUrl.searchParams.set(
+    "contact_title",
+    cleanText(rec.contact_title || rec.hospital_contact_title)
+  );
+  handoffUrl.searchParams.set(
+    "contact_phone",
+    cleanText(rec.contact_phone || rec.hospital_contact_phone)
+  );
+  handoffUrl.searchParams.set(
+    "contact_email",
+    cleanText(rec.contact_email || rec.hospital_contact_email)
+  );
 
-    const responseText = await response.text();
-    let result = {};
+  const now = new Date().toISOString();
 
-    try {
-      result = responseText ? JSON.parse(responseText) : {};
-    } catch (e) {
-      result = { raw: responseText };
-    }
+  rec.submitted_to = "espin_connect";
+  rec.connect_sync_status = "handoff_opened";
+  rec.connect_handoff_at = now;
+  rec.disposal_required = Boolean(disposalRequired);
+  rec.magnet_event = magnetEvent || "";
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "sent_to_connect";
+  rec.manager_flash_text = "Rep sent equipment to Espin Connect disposal review";
 
-    if (!response.ok) {
-      const apiMessage =
-        result.error ||
-        result.message ||
-        result.raw ||
-        `HTTP ${response.status}`;
-      throw new Error(apiMessage);
-    }
+  syncFeedStatus(rec);
+  render();
 
-    const connectProjectId =
-      result.projectId ||
-      result.project_id ||
-      result.id ||
-      result.project?.id ||
-      result.data?.id ||
-      "";
+  showBanner("✅ Opening secure Espin Connect project handoff...");
 
-    rec.submitted_to = "espin_connect";
-    rec.connect_sync_status = "project_created";
-    rec.connect_project_id = connectProjectId;
-    rec.submitted_at = now;
-    rec.disposal_required = Boolean(disposalRequired);
-    rec.magnet_event = magnetEvent || "";
-
-    rec.manager_unseen_update = true;
-    rec.manager_flash_at = now;
-    rec.manager_flash_type = "sent_to_connect";
-    rec.manager_flash_text = "Rep created an Espin Connect disposal project";
-
-    syncFeedStatus(rec);
-    render();
-
-    const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
-    connectUrl.searchParams.set("source", "espin_link");
-    connectUrl.searchParams.set("handoff", "disposal_review");
-
-    if (connectProjectId) {
-      connectUrl.searchParams.set("projectId", connectProjectId);
-      connectUrl.searchParams.set("id", connectProjectId);
-    }
-
-    showBanner("✅ Project created in Espin Connect. Opening project list...");
-
-    if (reservedWindow && !reservedWindow.closed) {
-      reservedWindow.location.replace(connectUrl.toString());
-    } else {
-      const fallbackWindow = window.open(connectUrl.toString(), "_blank", "noopener,noreferrer");
-      if (!fallbackWindow && banner) {
-        banner.innerHTML = `✅ Project created in Espin Connect. <a href="${connectUrl.toString()}" target="_blank" rel="noopener noreferrer" style="color:#c8ffdf;text-decoration:underline;font-weight:900;">Open Espin Connect</a>`;
-      }
-    }
-
-    return true;
-  } catch (err) {
-    console.error("Espin Connect sync failed:", err);
-
-    const message = err?.message || "Unknown sync error";
-
-    if (reservedWindow && !reservedWindow.closed) {
-      try {
-        reservedWindow.document.body.innerHTML = `
-          <div style="font-family:-apple-system,sans-serif;padding:32px;max-width:720px;">
-            <h2 style="color:#b00020;">Espin Connect sync failed</h2>
-            <p>${String(message).replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]))}</p>
-            <p>Please close this tab and return to ESPIN LINK.</p>
-          </div>
-        `;
-      } catch (e) {}
-    }
-
-    showBanner(`❌ Espin Connect sync failed: ${message}`);
-    return false;
+  if (connectWindow && !connectWindow.closed) {
+    connectWindow.location.replace(handoffUrl.toString());
+  } else {
+    window.open(handoffUrl.toString(), "_blank");
   }
+
+  return true;
 }
 
     function fetchWithTimeout(url, options = {}, timeout = 12000) {
