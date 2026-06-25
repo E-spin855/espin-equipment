@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Starting Installation Project | Espin Connect</title>
+  <style>
+    :root{
+      --blue:#0066B2;
+      --green:#2e7d32;
+      --red:#b00020;
+      --bg:#f8f9fa;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      background:var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+      color:#17202a;
+    }
+    .card{
+      width:min(560px,100%);
+      padding:28px;
+      border-radius:18px;
+      background:#fff;
+      border:1px solid #e5e7eb;
+      box-shadow:0 18px 50px rgba(0,0,0,.10);
+    }
+    h1{margin:0 0 12px;color:var(--blue);font-size:27px}
+    p{font-size:17px;line-height:1.5}
+    .spinner{
+      width:42px;height:42px;margin:22px auto;
+      border:5px solid #dce7f1;border-top-color:var(--blue);
+      border-radius:50%;animation:spin .8s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error h1{color:var(--red)}
+    .success h1{color:var(--green)}
+    button{
+      width:100%;margin-top:16px;padding:14px;
+      border:0;border-radius:12px;background:var(--blue);
+      color:#fff;font-size:16px;font-weight:800;cursor:pointer;
+    }
+    pre{
+      display:none;
+      white-space:pre-wrap;
+      overflow-wrap:anywhere;
+      padding:12px;
+      border-radius:10px;
+      background:#f3f4f6;
+      font-size:12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" id="card">
+    <h1>Starting installation project</h1>
+    <p id="status">Please wait while the project is added to Espin Connect.</p>
+    <div class="spinner" id="spinner"></div>
+    <pre id="details"></pre>
+    <button id="retryBtn" style="display:none">Try Again</button>
+  </main>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const card = document.getElementById("card");
+  const status = document.getElementById("status");
+  const spinner = document.getElementById("spinner");
+  const details = document.getElementById("details");
+  const retryBtn = document.getElementById("retryBtn");
+
+  const clean = value => String(value || "").trim();
+
+  function showError(message, extra) {
+    card.classList.add("error");
+    spinner.style.display = "none";
+    retryBtn.style.display = "block";
+    card.querySelector("h1").textContent = "Installation project sync failed";
+    status.textContent = message || "The project could not be created.";
+    if (extra) {
+      details.style.display = "block";
+      details.textContent = extra;
+    }
+  }
+
+  async function createProject() {
+    card.classList.remove("error","success");
+    spinner.style.display = "block";
+    retryBtn.style.display = "none";
+    details.style.display = "none";
+    card.querySelector("h1").textContent = "Starting installation project";
+    status.textContent = "Please wait while the project is added to Espin Connect.";
+
+    const storedEmail = clean(localStorage.getItem("espinUserEmail")).toLowerCase();
+    const repEmail = clean(params.get("sales_rep_email") || storedEmail).toLowerCase();
+
+    const payload = {
+      project_name: clean(params.get("project_name")) || "Installation Project",
+      site_address: clean(params.get("site_address")),
+      zip_code: clean(params.get("zip_code")),
+      equipment: clean(params.get("equipment")),
+      modality: clean(params.get("modality")).toUpperCase() || "OTHER",
+      magnet_event: null,
+      disposal_required: false,
+      sales_rep_first: clean(params.get("sales_rep_first")),
+      sales_rep_last: clean(params.get("sales_rep_last")),
+      sales_rep_company: clean(params.get("sales_rep_company")) || "ESPIN LINK",
+      sales_rep_phone: clean(params.get("sales_rep_phone")),
+      sales_rep_email: repEmail,
+      contact_name: clean(params.get("contact_name")),
+      contact_title: clean(params.get("contact_title")),
+      contact_phone: clean(params.get("contact_phone")),
+      contact_email: clean(params.get("contact_email")),
+      source: "espin_link_installation"
+    };
+
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(repEmail ? {"x-user-email": repEmail} : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const raw = await response.text();
+      let result = null;
+      try { result = raw ? JSON.parse(raw) : null; } catch {}
+
+      if (!response.ok) {
+        throw new Error(result?.error || result?.message || raw || `HTTP ${response.status}`);
+      }
+
+      const projectId = clean(result?.id || result?.projectId);
+      if (!projectId) throw new Error("Project was created without a project ID.");
+
+      localStorage.setItem("activeProjectId", projectId);
+
+      card.classList.add("success");
+      card.querySelector("h1").textContent = "Installation project created";
+      status.textContent = "Opening the installation project list…";
+
+      const destination = new URL("/install-projects.html", location.origin);
+      destination.searchParams.set("created", projectId);
+      destination.searchParams.set("source", "espin_link_installation");
+
+      setTimeout(() => location.replace(destination.toString()), 500);
+    } catch (error) {
+      console.error("Installation project handoff failed:", error);
+      showError(error?.message || "Load failed");
+    }
+  }
+
+  retryBtn.addEventListener("click", createProject);
+  createProject();
+})();
+</script>
+</body>
+</html>

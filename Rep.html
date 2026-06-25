@@ -6364,6 +6364,144 @@ function saveInstallBaseFix(id) {
     setTimeout(() => banner.style.display = "none", 2500);
   }
 }
+
+    function startInstallationProject(id) {
+      const rec = state.records.find(r => String(r.id) === String(id));
+      if (!rec) {
+        alert("New project record not found.");
+        return;
+      }
+
+      const cleanText = value => String(value || "").trim();
+      const now = new Date().toISOString();
+
+      const repEmail = cleanText(
+        rec.sales_rep_email ||
+        rec.assigned_rep_email ||
+        rec.rep_email ||
+        localStorage.getItem("espinUserEmail") ||
+        ""
+      ).toLowerCase();
+
+      const handoffUrl = new URL(
+        "https://espin-medical-app.vercel.app/InstallProjectHandoff.html"
+      );
+
+      handoffUrl.searchParams.set(
+        "project_name",
+        cleanText(rec.new_project_name || rec.model || rec.site || "Installation Project")
+      );
+
+      handoffUrl.searchParams.set(
+        "site_address",
+        [
+          cleanText(rec.site_address),
+          cleanText(rec.city),
+          cleanText(rec.state)
+        ].filter(Boolean).join(", ")
+      );
+
+      handoffUrl.searchParams.set("zip_code", cleanText(rec.zip_code));
+      handoffUrl.searchParams.set(
+        "equipment",
+        [
+          cleanText(rec.make),
+          cleanText(rec.model),
+          cleanText(rec.serial_number || rec.serial)
+            ? `S/N ${cleanText(rec.serial_number || rec.serial)}`
+            : "",
+          cleanText(rec.dom)
+            ? `DOM ${cleanText(rec.dom)}`
+            : ""
+        ].filter(Boolean).join(" · ")
+      );
+
+      handoffUrl.searchParams.set(
+        "modality",
+        cleanText(rec.modality && rec.modality !== "PROJECT" ? rec.modality : "OTHER")
+      );
+
+      handoffUrl.searchParams.set("sales_rep_first", cleanText(rec.sales_rep_first));
+      handoffUrl.searchParams.set("sales_rep_last", cleanText(rec.sales_rep_last));
+      handoffUrl.searchParams.set(
+        "sales_rep_company",
+        cleanText(rec.sales_rep_company || "ESPIN LINK")
+      );
+      handoffUrl.searchParams.set(
+        "sales_rep_phone",
+        cleanText(rec.sales_rep_phone || rec.assigned_rep_phone)
+      );
+      handoffUrl.searchParams.set("sales_rep_email", repEmail);
+
+      handoffUrl.searchParams.set("contact_name", cleanText(rec.contact_name));
+      handoffUrl.searchParams.set("contact_title", cleanText(rec.contact_title));
+      handoffUrl.searchParams.set("contact_phone", cleanText(rec.contact_phone));
+      handoffUrl.searchParams.set("contact_email", cleanText(rec.contact_email));
+
+      handoffUrl.searchParams.set("axis_record_id", cleanText(rec.id));
+      handoffUrl.searchParams.set(
+        "axis_project_id",
+        cleanText(rec.oem_project_id || rec.project_id)
+      );
+
+      rec.install_project_started = true;
+      rec.install_project_started_at = now;
+      rec.project_management_ready = true;
+      rec.project_management_status = "sent_to_espin_connect_install";
+      rec.project_management_created_at =
+        rec.project_management_created_at || now;
+      rec.rep_last_action_at = now;
+      rec.rep_action = "installation_project_started";
+      rec.rep_action_label = "Installation Project Started";
+      rec.rep_notes = "New project details sent to Espin Connect installation workspace.";
+      rec.manager_unseen_update = true;
+      rec.manager_flash_at = now;
+      rec.manager_flash_type = "installation_project_started";
+      rec.manager_flash_text = "Rep started installation project in Espin Connect";
+
+      try {
+        saveState();
+      } catch (e) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+        } catch (_) {}
+      }
+
+      render();
+
+      const newTab = window.open("about:blank", "_blank");
+
+      if (newTab) {
+        newTab.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Opening Espin Connect</title>
+            <style>
+              body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:48px;color:#111}
+              h1{color:#0066B2}
+            </style>
+          </head>
+          <body>
+            <h1>Opening Espin Connect</h1>
+            <p>Preparing the installation project...</p>
+          </body>
+          </html>
+        `);
+        newTab.document.close();
+        newTab.location.replace(handoffUrl.toString());
+      } else {
+        location.href = handoffUrl.toString();
+      }
+
+      const banner = $("resultBanner");
+      if (banner) {
+        banner.style.display = "block";
+        banner.textContent = "Opening Espin Connect installation project...";
+      }
+    }
+
     function renderNewProjectDetail(rec) {
       const detail = $("newProjectDetailArea");
       const grid = $("newProjectDetailGrid");
@@ -6447,6 +6585,13 @@ ${renderQuoteApprovalActionPanel(rec)}
          <div class="v" style="margin-bottom:12px;">${escapeHtml(formatStatusText(rec.quote_status || "open"))}</div>
           <div class="btns">
             <button type="button" class="green" onclick="openQuoteModal()">Create / Update Quote</button>
+            <button
+              type="button"
+              class="green"
+              onclick="startInstallationProject('${rec.id}')"
+            >
+              ${rec.install_project_started ? "Open Installation Project" : "Start Installation Project"}
+            </button>
             ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">Send to Trade-In App</button>`}
             ${rec.tradein_required !== "no" && rec.tradein_sync_received ? `<button type="button" class="green" onclick="submitAssociatedTradeIn('tradein_desk')">Send Associated Trade-In to Desk</button><button type="button" class="pink" onclick="submitAssociatedTradeIn('disposal')">Send Associated Trade-In to Disposal</button>` : ""}
             <button type="button" class="green" onclick="markNewProjectWon('${rec.id}')">Mark Won</button>
