@@ -1660,6 +1660,52 @@ tr.manager-response-flash td:last-child{
   
 
 
+
+.review-reason-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:inherit;
+  box-shadow:none;
+  cursor:pointer;
+}
+
+.review-reason-button:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.08);
+}
+
+.review-reason-button:focus-visible{
+  outline:3px solid rgba(0,229,255,.52);
+  outline-offset:3px;
+}
+
+.oem-review-reason-block{
+  margin-top:12px;
+  padding:12px 14px;
+  border-radius:14px;
+  border:1px solid rgba(67,176,255,.34);
+  background:rgba(67,176,255,.08);
+  color:#eaf6ff;
+  font-size:15px;
+  font-weight:850;
+  line-height:1.45;
+}
+
+.oem-review-reason-block .label{
+  display:block;
+  margin-bottom:5px;
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
 /* Detail-card update frames: flash only around the section that changed */
 .detail-update-frame{
   position:relative;
@@ -4166,7 +4212,15 @@ const equipmentBadge = equipmentFixField
         </td>
 
         <td>
-          ${renderReviewSignalCell(rec)}
+          <button
+            type="button"
+            class="review-reason-button"
+            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
+            aria-label="Open Install Base review reason"
+            title="Show why this Install Base review was created"
+          >
+            ${renderReviewSignalCell(rec)}
+          </button>
         </td>
 
         <td>
@@ -4386,6 +4440,18 @@ return `
       : ""
   }
 </div>
+
+    ${
+      importedReason
+        ? `
+          <div class="oem-review-reason-block">
+            <span class="label">Reason for review</span>
+            ${escapeHtml(importedReason)}
+          </div>
+        `
+        : ""
+    }
+
     ${
       importedReason &&
       rec.install_base_released_to === "rep" &&
@@ -9085,6 +9151,28 @@ function markRepRowUpdateSeen(id) {
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
   return true;
 }
+function openInstallBaseReviewReason(id) {
+  selectRow(id);
+
+  window.setTimeout(() => {
+    const reviewCard = document.querySelector(
+      "#detailGrid .oem-review-compact-card, #detailGrid .rep-review-request-card"
+    );
+
+    if (!reviewCard) return;
+
+    reviewCard.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    reviewCard.classList.add("detail-update-frame");
+    window.setTimeout(() => {
+      reviewCard.classList.remove("detail-update-frame");
+    }, 1800);
+  }, 40);
+}
+
 function handleRepRowClick(id) {
   // A row click always opens the normal selected-record workflow.
   // Install Base communication is opened only from its own communication/FIX control.
