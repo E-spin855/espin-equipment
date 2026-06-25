@@ -2066,6 +2066,81 @@ td:nth-child(11) .manager-waiting-badge{
 .manager-quote-approval-embedded .mini{
   margin-top:10px!important;
 }
+
+/* Unified collapsible communication layout */
+.comm-shell{
+  grid-column:1 / -1;
+  padding:16px 18px!important;
+  border:2px solid rgba(0,229,255,.46)!important;
+  border-radius:16px!important;
+  background:linear-gradient(135deg,rgba(0,229,255,.055),rgba(8,18,35,.92))!important;
+  box-shadow:0 0 22px rgba(0,229,255,.10)!important;
+}
+.comm-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  padding:14px 16px;
+  border:1px solid rgba(88,184,255,.22);
+  border-radius:14px;
+  background:rgba(7,17,31,.72);
+}
+.comm-heading{min-width:0;flex:1 1 420px;}
+.comm-title{
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.comm-status{
+  margin-top:7px;
+  color:#eef6ff;
+  font-size:14px;
+  font-weight:950;
+  line-height:1.25;
+}
+.comm-status.needs-response{color:#fff2b3;}
+.comm-latest{
+  margin-top:7px;
+  color:#9db6d2;
+  font-size:13px;
+  line-height:1.42;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.comm-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.comm-actions button{min-height:42px;padding:10px 14px;}
+.comm-composer{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history-title{
+  margin-bottom:10px;
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+@media(max-width:760px){
+  .comm-toolbar{align-items:flex-start;}
+  .comm-actions{width:100%;}
+  .comm-actions button{flex:1 1 180px;}
+}
+
 </style>
 </head>
 
@@ -4640,36 +4715,28 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full manager-install-base-communication-card">
-      <div class="manager-comm-toolbar">
-        <div>
-          <div class="k">Manager / Install Base Communication</div>
-          <div class="manager-comm-status ${ui.needsResponse ? "needs-response" : ""}">
-            ${ui.needsResponse ? "Response needed" : "No response currently required"}
-          </div>
-          <div class="manager-comm-collapsed-note">${escapeHtml(latestText)}</div>
+    <div class="detail-card full comm-shell">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Manager / Install Base Communication</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
+          <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
-        <div class="btns">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">
-            ${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}
-          </button>
-          <button type="button" class="secondary" onclick="toggleManagerInstallBaseHistory('${escapeJs(rec.id || "")}')">
-            ${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}
-          </button>
+        <div class="comm-actions">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="secondary" onclick="toggleManagerInstallBaseHistory('${escapeJs(rec.id || "")}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
       ${ui.composerOpen ? `
-        <div class="manager-install-base-left" style="margin-top:14px;">
+        <div class="comm-composer">
           <label for="managerMessageToInstallBase">Message to Install Base</label>
           <textarea id="managerMessageToInstallBase" placeholder="Type message to Install Base..."></textarea>
-          <div class="btns" style="margin-top:12px;">
-            <button type="button" class="green" onclick="sendManagerMessageToInstallBase()">Send Message to Install Base</button>
-          </div>
+          <div class="btns" style="margin-top:12px;"><button type="button" class="green" onclick="sendManagerMessageToInstallBase()">Send Message to Install Base</button></div>
         </div>
       ` : ""}
       ${ui.historyOpen ? `
-        <div class="manager-install-base-history" style="margin-top:14px;">
-          <div class="manager-install-base-history-title">Activity / Install Base Communication History</div>
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Install Base Communication History</div>
           <div class="manager-install-base-history-list">
             ${ui.history.length ? ui.history.map(item => `
               <div class="manager-install-base-history-item ${lower(item.sender)==="manager" ? "manager" : "install-base"}">

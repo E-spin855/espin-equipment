@@ -1781,6 +1781,81 @@ tr.manager-response-flash td:last-child{
   display:none!important;
 }
 
+
+/* Unified collapsible communication layout */
+.comm-shell{
+  grid-column:1 / -1;
+  padding:16px 18px!important;
+  border:2px solid rgba(0,229,255,.46)!important;
+  border-radius:16px!important;
+  background:linear-gradient(135deg,rgba(0,229,255,.055),rgba(8,18,35,.92))!important;
+  box-shadow:0 0 22px rgba(0,229,255,.10)!important;
+}
+.comm-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  padding:14px 16px;
+  border:1px solid rgba(88,184,255,.22);
+  border-radius:14px;
+  background:rgba(7,17,31,.72);
+}
+.comm-heading{min-width:0;flex:1 1 420px;}
+.comm-title{
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.comm-status{
+  margin-top:7px;
+  color:#eef6ff;
+  font-size:14px;
+  font-weight:950;
+  line-height:1.25;
+}
+.comm-status.needs-response{color:#fff2b3;}
+.comm-latest{
+  margin-top:7px;
+  color:#9db6d2;
+  font-size:13px;
+  line-height:1.42;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.comm-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.comm-actions button{min-height:42px;padding:10px 14px;}
+.comm-composer{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history-title{
+  margin-bottom:10px;
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+@media(max-width:760px){
+  .comm-toolbar{align-items:flex-start;}
+  .comm-actions{width:100%;}
+  .comm-actions button{flex:1 1 180px;}
+}
+
 </style>
 </head>
 
@@ -5936,59 +6011,34 @@ function renderInstallBaseCorrectionPanel(rec) {
   `;
 
   return `
-    <div class="detail-card full rep-install-base-compact-card ${needsResponse ? "needs-rep-input" : ""}">
-      <div class="rep-install-base-compact-head">
-        <div>
-          <div class="k">Rep / Install Base Communication</div>
-          <div class="v" style="font-size:18px;font-weight:950;line-height:1.25;margin-top:6px;">
-            ${escapeHtml(formatReviewText(reviewLabel))}
-          </div>
-          <div class="rep-install-base-compact-status">
-            ${reviewType ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewType))}</span>` : ""}
-            ${reviewLevel ? `<span class="quote-sub-badge">${escapeHtml(formatReviewText(reviewLevel))}</span>` : ""}
-            ${needsResponse
-              ? `<span class="rep-install-base-response-needed">Response needed</span>`
-              : `<span class="rep-install-base-no-response">No response needed</span>`}
-          </div>
+    <div class="detail-card full comm-shell ${needsResponse ? "needs-rep-input" : ""}">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Rep / Install Base Communication</div>
+          <div class="comm-status ${needsResponse ? "needs-response" : ""}">${needsResponse ? "Response needed" : "No response currently required"}</div>
+          <div class="comm-latest"><strong>${escapeHtml(latestLabel)}${latestAt ? ` · ${escapeHtml(latestAt)}` : ""}:</strong> ${escapeHtml(latestText)}</div>
         </div>
-
-        <div class="rep-install-base-toggle-row">
-          <button
-            type="button"
-            class="${needsResponse ? "green" : "secondary"}"
-            onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}')"
-          >
-            ${isOpen ? "Hide Communication" : (needsResponse ? "Respond" : "Open Communication")}
-          </button>
-
-          <button
-            type="button"
-            class="secondary"
-            onclick="toggleInstallBaseHistory()"
-          >
-            ${historyOpen ? "Hide History" : `View History${historyCount ? ` · ${historyCount}` : ""}`}
-          </button>
+        <div class="comm-actions">
+          <button type="button" class="${needsResponse ? "green" : "secondary"}" onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}')">${isOpen ? "Hide Communication" : (needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="secondary" onclick="toggleInstallBaseHistory()">${historyOpen ? "Hide History" : `View History (${historyCount})`}</button>
         </div>
-      </div>
-
-      <div class="rep-install-base-latest">
-        <strong>${escapeHtml(latestLabel)}${latestAt ? ` · ${escapeHtml(latestAt)}` : ""}:</strong>
-        ${escapeHtml(latestText)}
       </div>
 
       ${isOpen ? `
-        <div class="rep-install-base-expanded">
-          <div class="rep-action-split">
-            <div class="rep-action-left">
-              ${requestHtml}
-              ${renderInstallBaseReplyCard(rec)}
-              ${correctionFieldsHtml}
-              ${responseFieldHtml}
-            </div>
-            ${historyHtml}
-          </div>
+        <div class="comm-composer">
+          ${requestHtml}
+          ${renderInstallBaseReplyCard(rec)}
+          ${correctionFieldsHtml}
+          ${responseFieldHtml}
         </div>
-      ` : historyHtml}
+      ` : ""}
+
+      ${historyOpen ? `
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Install Base Communication History</div>
+          ${buildInstallBaseMiniTimeline(rec)}
+        </div>
+      ` : ""}
     </div>
   `;
 }

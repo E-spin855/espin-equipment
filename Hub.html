@@ -592,6 +592,37 @@ tbody tr.selected{
 }
 
 
+
+.rep-comm-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:12px 14px;
+  border:1px solid rgba(88,184,255,.18);
+  border-radius:14px;
+  background:rgba(8,18,35,.58);
+}
+.rep-comm-status{
+  font-size:13px;
+  font-weight:900;
+  color:#d8ebff;
+}
+.rep-comm-status.needs-response{color:#fff1b8;}
+.rep-comm-toolbar .btns{margin-top:0;}
+.rep-comm-collapsed-note{
+  margin-top:10px;
+  color:#9db6d2;
+  font-size:12px;
+  line-height:1.45;
+}
+.rep-comm-expanded{
+  margin-top:14px;
+  display:grid;
+  gap:14px;
+}
+
 .manager-install-base-communication-card{
   grid-column:1 / -1;
   padding:18px!important;
@@ -851,6 +882,81 @@ tr.install-base-corrected-row-frame td{
     0 0 18px rgba(67,176,255,.28);
   transform:translateY(-1px);
 }
+
+/* Unified collapsible communication layout */
+.comm-shell{
+  grid-column:1 / -1;
+  padding:16px 18px!important;
+  border:2px solid rgba(0,229,255,.46)!important;
+  border-radius:16px!important;
+  background:linear-gradient(135deg,rgba(0,229,255,.055),rgba(8,18,35,.92))!important;
+  box-shadow:0 0 22px rgba(0,229,255,.10)!important;
+}
+.comm-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  padding:14px 16px;
+  border:1px solid rgba(88,184,255,.22);
+  border-radius:14px;
+  background:rgba(7,17,31,.72);
+}
+.comm-heading{min-width:0;flex:1 1 420px;}
+.comm-title{
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.comm-status{
+  margin-top:7px;
+  color:#eef6ff;
+  font-size:14px;
+  font-weight:950;
+  line-height:1.25;
+}
+.comm-status.needs-response{color:#fff2b3;}
+.comm-latest{
+  margin-top:7px;
+  color:#9db6d2;
+  font-size:13px;
+  line-height:1.42;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.comm-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.comm-actions button{min-height:42px;padding:10px 14px;}
+.comm-composer{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history{
+  margin-top:14px;
+  padding:16px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(8,18,35,.66);
+}
+.comm-history-title{
+  margin-bottom:10px;
+  color:#9bc6ec;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+@media(max-width:760px){
+  .comm-toolbar{align-items:flex-start;}
+  .comm-actions{width:100%;}
+  .comm-actions button{flex:1 1 180px;}
+}
+
 </style>
 </head>
 
@@ -1044,6 +1150,8 @@ const state = {
   filter: "",
   showCompleted: true,
   installBaseReplyDrafts: {},
+  repCommunicationOpen: {},
+  repHistoryOpen: {},
   managerMessageDrafts: {},
   managerCommunicationOpen: {},
   managerHistoryOpen: {}
@@ -3407,24 +3515,18 @@ function sendInstallBaseReplyToRep(recordId) {
   writeArrayKey(REP_QUEUE_KEY, repQueue);
   localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
   state.installBaseReplyDrafts[String(recordId || "")] = "";
+  state.repCommunicationOpen[String(recordId || "")] = false;
   saveRecords();
   render();
   showBanner("Response sent to Rep Review.");
 }
 
-function renderRepResponseCard(rec) {
-  const hasResponse = Boolean(
-    rec.install_base_response_at ||
-    rec.install_base_response_message ||
-    rec.install_base_response_note ||
-    rec.rep_response_message ||
-    rec.rep_response_note ||
-    rec.response_message ||
-    rec.response_note
-  );
+function getHubRepCommunicationUi(rec) {
+  const id = String(rec?.id || "");
+  const history = getInstallBaseConversationHistory(rec);
+  const latest = history[history.length - 1] || null;
 
-  const requestText = getOriginalRepRequest(rec);
-  const msg = clean(
+  const legacyRepResponse = clean(
     rec.install_base_response_message ||
     rec.install_base_response_note ||
     rec.rep_response_message ||
@@ -3435,137 +3537,101 @@ function renderRepResponseCard(rec) {
     ""
   );
 
-  const conversationHistory = getInstallBaseConversationHistory(rec);
-  const latestInstallBaseMessage = [...conversationHistory]
-    .reverse()
-    .find(item => lower(item.sender) === "install_base");
-  const replyText = clean(
-    latestInstallBaseMessage?.message ||
-    rec.install_base_reply_to_rep ||
-    ""
-  );
-  const seen =
-    !hasResponse ||
-    rec.install_base_response_seen === true ||
-    rec.install_base_fixed_seen_by_install_base === true;
-
-  const correctedFieldsObj =
-    rec.corrected_fields && typeof rec.corrected_fields === "object"
-      ? rec.corrected_fields
-      : {};
-
-  const correctedFieldsHtml = Object.keys(correctedFieldsObj).length
-    ? `
-      <div class="mini" style="margin-top:12px;line-height:1.6;">
-        <strong>Corrected fields:</strong><br>
-        ${Object.entries(correctedFieldsObj).map(([field, value]) => {
-          const labelMap = {
-            dom: "DOM / Year",
-            manager_name: "Owner Group",
-            owner_group_name: "Owner Group",
-            assigned_rep_name: "Rep Owner",
-            serial_number: "Serial Number",
-            serial: "Serial Number",
-            site: "Site",
-            model: "Model",
-            make: "Make",
-            modality: "Modality"
-          };
-          return `${escapeHtml(labelMap[field] || field)}: <span class="corrected-field-value">${escapeHtml(value || "-")}</span><br>`;
-        }).join("")}
-      </div>
-    `
-    : "";
-
-  const requestDate = clean(
-    rec.install_base_released_at ||
-    rec.oem_review_date ||
-    rec.review_date ||
-    rec.proactive_date ||
-    ""
+  const latestSender = latest ? lower(latest.sender) : "";
+  const needsResponse = Boolean(
+    latestSender === "rep" ||
+    (!latest && legacyRepResponse && !clean(rec.install_base_reply_to_rep))
   );
 
-  const requestHistoryDate = requestDate ? formatDateTime(requestDate) : "Original request";
-  const repHistoryDate = rec.install_base_response_at
-    ? formatDateTime(rec.install_base_response_at)
-    : "Waiting for response";
-  const installBaseHistoryDate = rec.install_base_reply_to_rep_at
-    ? formatDateTime(rec.install_base_reply_to_rep_at)
-    : "No response sent";
+  const composerOpen = Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, id)
+    ? state.repCommunicationOpen[id]
+    : needsResponse;
+  const historyOpen = state.repHistoryOpen[id] === true;
+
+  return { history, latest, legacyRepResponse, needsResponse, composerOpen, historyOpen };
+}
+
+function toggleHubRepCommunication(recordId) {
+  const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+  if (!rec) return;
+  const ui = getHubRepCommunicationUi(rec);
+  state.repCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
+  render();
+}
+
+function toggleHubRepHistory(recordId) {
+  const current = state.repHistoryOpen[String(recordId || "")] === true;
+  state.repHistoryOpen[String(recordId || "")] = !current;
+  render();
+}
+
+function renderRepResponseCard(rec) {
+  const ui = getHubRepCommunicationUi(rec);
+  const requestText = getOriginalRepRequest(rec);
+  const latestRepItem = [...ui.history].reverse().find(item => lower(item.sender) === "rep");
+  const latestRepText = clean(latestRepItem?.message || ui.legacyRepResponse || "");
+  const latestText = ui.latest
+    ? `${ui.latest.sender_label || (lower(ui.latest.sender) === "rep" ? "Rep" : "Install Base")}: ${ui.latest.message}`
+    : (latestRepText ? `Rep: ${latestRepText}` : "No messages yet.");
+  const hasUnseenRepResponse = Boolean(
+    latestRepText && rec.install_base_response_seen !== true && rec.install_base_fixed_seen_by_install_base !== true
+  );
 
   return `
-    <div class="detail-card install-base-communication-card ${hasResponse && !seen ? "install-base-update-frame" : ""}">
-      <div class="install-base-communication-layout">
-        <div class="install-base-communication-left">
+    <div class="detail-card comm-shell ${hasUnseenRepResponse ? "install-base-update-frame" : ""}">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Install Base / Rep Communication</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">
+            ${ui.needsResponse ? "Response needed" : "No response currently required"}
+          </div>
+          <div class="comm-latest">${escapeHtml(latestText)}</div>
+        </div>
+        <div class="comm-actions">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleHubRepCommunication('${escapeJs(rec.id || "")}')">
+            ${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}
+          </button>
+          <button type="button" class="secondary" onclick="toggleHubRepHistory('${escapeJs(rec.id || "")}')">
+            ${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}
+          </button>
+        </div>
+      </div>
+
+      ${ui.composerOpen ? `
+        <div class="comm-composer">
           <div class="install-base-request-block">
             <div class="k">Original Request to Rep</div>
-            <div class="v" style="font-size:17px;line-height:1.45;color:#fff4cc;">
-              ${escapeHtml(requestText)}
+            <div class="v" style="font-size:17px;line-height:1.45;color:#fff4cc;">${escapeHtml(requestText)}</div>
+          </div>
+          ${latestRepText ? `
+            <div class="install-base-rep-response-block" style="margin-top:12px;">
+              <div class="k">Latest Rep Response</div>
+              <div class="v" style="font-size:18px;line-height:1.45;">${escapeHtml(latestRepText)}</div>
+              <div class="mini" style="margin-top:8px;">${escapeHtml(latestRepItem?.at ? formatDateTime(latestRepItem.at) : formatDateTime(rec.install_base_response_at))}</div>
             </div>
-          </div>
-
-          <div class="install-base-rep-response-block">
-            <div class="k">Rep Response to Install Base</div>
-            ${hasResponse ? `
-              <div class="v" style="font-size:18px;line-height:1.45;">${escapeHtml(msg || "No response text entered.")}</div>
-              <div class="mini" style="margin-top:10px;line-height:1.55;">
-                Status: <strong>${escapeHtml(formatInstallBaseResponseStatus(rec.install_base_response_status))}</strong><br>
-                Sent by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "Rep")}</strong><br>
-                Sent at: <strong>${escapeHtml(formatDateTime(rec.install_base_response_at))}</strong>
-                ${correctedFieldsHtml}
-              </div>
-            ` : `
-              <div class="v" style="font-size:16px;color:#d8ebff;">Waiting for rep response</div>
-              <div class="mini" style="margin-top:7px;">The rep's response will appear here.</div>
-            `}
-          </div>
-
+          ` : ""}
           <div class="install-base-reply-box" onclick="event.stopPropagation();">
             <label for="installBaseReplyToRep">Install Base Response to Rep</label>
-            <textarea id="installBaseReplyToRep"
-              onclick="event.stopPropagation();"
-              onmousedown="event.stopPropagation();"
-              oninput="saveInstallBaseReplyDraft('${escapeJs(rec.id || "")}', this.value)"
-              placeholder="Enter a response, confirmation, or follow-up question for the rep."
-            >${escapeHtml(getInstallBaseReplyDraft(rec.id || ""))}</textarea>
-            <div class="btns">
-              <button type="button" class="green" onclick="sendInstallBaseReplyToRep('${escapeJs(rec.id || "")}')">
-                Send Response to Rep
-              </button>
-            </div>
+            <textarea id="installBaseReplyToRep" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveInstallBaseReplyDraft('${escapeJs(rec.id || "")}', this.value)" placeholder="Enter a response, confirmation, or follow-up question for the rep.">${escapeHtml(getInstallBaseReplyDraft(rec.id || ""))}</textarea>
+            <div class="btns"><button type="button" class="green" onclick="sendInstallBaseReplyToRep('${escapeJs(rec.id || "")}')">Send Response to Rep</button></div>
           </div>
         </div>
+      ` : ""}
 
-        <div class="install-base-communication-history">
-          <div class="install-base-history-title">Activity / Rep Communication History</div>
+      ${ui.historyOpen ? `
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Rep Communication History</div>
           <div class="install-base-history-list">
-            <div class="install-base-history-item rep">
-              <div class="install-base-history-date">${escapeHtml(repHistoryDate)}</div>
-              <div class="install-base-history-text">Rep Response</div>
-              <div class="install-base-history-note">${escapeHtml(hasResponse ? (msg || "Response submitted without notes.") : "Waiting for rep response.")}</div>
-            </div>
-            ${conversationHistory.length ? conversationHistory.map(item => `
+            ${ui.history.length ? ui.history.map(item => `
               <div class="install-base-history-item ${lower(item.sender) === "rep" ? "rep" : "install-base"}">
                 <div class="install-base-history-date">${escapeHtml(formatDateTime(item.at))}</div>
                 <div class="install-base-history-text">${escapeHtml(lower(item.sender) === "rep" ? "Rep Response" : "Install Base Response")}</div>
                 <div class="install-base-history-note">${escapeHtml(item.message)}</div>
               </div>
-            `).join("") : (replyText ? `
-              <div class="install-base-history-item install-base">
-                <div class="install-base-history-date">${escapeHtml(installBaseHistoryDate)}</div>
-                <div class="install-base-history-text">Install Base Response</div>
-                <div class="install-base-history-note">${escapeHtml(replyText)}</div>
-              </div>
-            ` : `
-              <div class="install-base-history-item install-base">
-                <div class="install-base-history-date">No response sent</div>
-                <div class="install-base-history-text">Install Base Response</div>
-                <div class="install-base-history-note">Use the response field to confirm the update or ask the rep a follow-up question.</div>
-              </div>
-            `)}
+            `).join("") : `<div class="mini">No communication history yet.</div>`}
           </div>
         </div>
-      </div>
+      ` : ""}
     </div>
   `;
 }
@@ -3663,42 +3729,28 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card manager-install-base-communication-card">
-      <div class="manager-comm-toolbar">
-        <div>
-          <div class="k">Install Base / Manager Communication</div>
-          <div class="manager-comm-status ${ui.needsResponse ? "needs-response" : ""}">
-            ${ui.needsResponse ? "Response needed" : "No response currently required"}
-          </div>
-          <div class="manager-comm-collapsed-note">${escapeHtml(latestText)}</div>
+    <div class="detail-card comm-shell">
+      <div class="comm-toolbar">
+        <div class="comm-heading">
+          <div class="comm-title">Install Base / Manager Communication</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
+          <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
-        <div class="btns">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleHubManagerCommunication('${escapeJs(rec.id || "")}')">
-            ${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}
-          </button>
-          <button type="button" class="secondary" onclick="toggleHubManagerHistory('${escapeJs(rec.id || "")}')">
-            ${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}
-          </button>
+        <div class="comm-actions">
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleHubManagerCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="secondary" onclick="toggleHubManagerHistory('${escapeJs(rec.id || "")}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
       ${ui.composerOpen ? `
-        <div class="manager-install-base-left" style="margin-top:14px;">
+        <div class="comm-composer">
           <label for="installBaseMessageToManager">Message to Manager</label>
-          <textarea
-            id="installBaseMessageToManager"
-            onclick="event.stopPropagation();"
-            onmousedown="event.stopPropagation();"
-            oninput="saveHubManagerDraft('${escapeJs(rec.id || "")}', this.value)"
-            placeholder="Type message to Manager..."
-          >${escapeHtml(getHubManagerDraft(rec.id || ""))}</textarea>
-          <div class="btns">
-            <button type="button" class="green" onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')">Send Message to Manager</button>
-          </div>
+          <textarea id="installBaseMessageToManager" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveHubManagerDraft('${escapeJs(rec.id || "")}', this.value)" placeholder="Type message to Manager...">${escapeHtml(getHubManagerDraft(rec.id || ""))}</textarea>
+          <div class="btns"><button type="button" class="green" onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')">Send Message to Manager</button></div>
         </div>
       ` : ""}
       ${ui.historyOpen ? `
-        <div class="manager-install-base-history" style="margin-top:14px;">
-          <div class="manager-install-base-history-title">Activity / Manager Communication History</div>
+        <div class="comm-history">
+          <div class="comm-history-title">Activity / Manager Communication History</div>
           <div class="manager-install-base-history-list">
             ${ui.history.length ? ui.history.map(item => `
               <div class="manager-install-base-history-item ${lower(item.sender)==="manager" ? "manager" : "install-base"}">
