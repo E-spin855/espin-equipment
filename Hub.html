@@ -1679,11 +1679,16 @@ function isBlankHubField(value, fieldName = "") {
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
+  // "Fix Sent" is shown only after a user manually sends a FIX request
+  // from Hub. Automatic routing to Manager does not count as a FIX request.
   const fixSent =
-    rec.install_base_release_status === "released_to_rep" ||
-    rec.install_base_release_status === "released_to_manager" ||
-    rec.install_base_released_to === "rep" ||
-    rec.install_base_released_to === "manager";
+    rec.install_base_manual_route === true &&
+    (
+      rec.install_base_release_status === "released_to_rep" ||
+      rec.install_base_release_status === "released_to_manager" ||
+      rec.install_base_released_to === "rep" ||
+      rec.install_base_released_to === "manager"
+    );
 
   const label = fixSent ? "Fix Sent" : "FIX";
 
@@ -2596,7 +2601,11 @@ function autoSyncEligibleRecordsToRepAndManager() {
       };
     }
 
-    if (!isAutoSyncEligible(rec)) {
+    const repAssigned = hasValidAssignedRep(rec);
+
+    // A missing rep assignment must never stop Manager routing.
+    // Normal auto-sync eligibility is enforced only after a rep already exists.
+    if (repAssigned && !isAutoSyncEligible(rec)) {
       return {
         ...rec,
         key,
@@ -2612,8 +2621,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
           ""
       };
     }
-
-    const repAssigned = hasValidAssignedRep(rec);
 
     return {
       ...rec,
@@ -2646,7 +2653,13 @@ function autoSyncEligibleRecordsToRepAndManager() {
   });
 
   state.records
-    .filter(rec => isAutoSyncEligible(rec) && !getRoutingBlockingFields(rec).length)
+    .filter(rec => {
+      const repAssigned = hasValidAssignedRep(rec);
+      const coreDataComplete = getRoutingBlockingFields(rec).length === 0;
+
+      // Unassigned records with complete equipment data always go to Manager.
+      return coreDataComplete && (!repAssigned || isAutoSyncEligible(rec));
+    })
     .forEach(rec => {
       const repAssigned = hasValidAssignedRep(rec);
 
@@ -2669,15 +2682,19 @@ function autoSyncEligibleRecordsToRepAndManager() {
         release_destination: repAssigned ? "rep_and_manager" : "manager",
         install_base_release_status: repAssigned
           ? "auto_synced"
-          : "awaiting_manager_rep_assignment",
+          : "released_to_manager",
         install_base_manager_request: !repAssigned,
         manager_unseen_update: !repAssigned,
         manager_alert_seen: repAssigned,
         manager_flash_at: !repAssigned ? now : "",
-        manager_flash_type: !repAssigned ? "rep_assignment_required" : "",
+        manager_flash_type: !repAssigned ? "install_base_release" : "",
         manager_flash_text: !repAssigned
           ? "New Install Base record requires rep assignment"
-          : ""
+          : "",
+        manager_release_id: !repAssigned
+          ? `mgr_assignment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+          : (rec.manager_release_id || ""),
+        manager_seen_release_id: !repAssigned ? "" : (rec.manager_seen_release_id || "")
       });
 
       // Only records with a real assigned rep enter the Rep queue.
