@@ -2350,6 +2350,7 @@ const REP_QUEUE_KEY = "espin_rep_queue";
 const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
 const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
+const MANAGER_FINANCIAL_SEEN_KEY = "axis_manager_financial_seen_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const MANAGER_SEEN_FIX_KEY = "axis_manager_seen_install_base_fixes_v1";
@@ -4913,6 +4914,83 @@ function renderManagerRepCommunication(rec) {
 }
 
 
+
+function getManagerFinancialSignature(rec) {
+  if (!rec) return "";
+
+  const hasFinancialActivity = Boolean(
+    Number(rec.quote_amount || 0) > 0 ||
+    clean(rec.quote_status) ||
+    clean(rec.quote_approval_status) ||
+    clean(rec.quote_trade_in_credit || rec.tradein_credit || rec.trade_in_credit) ||
+    clean(rec.quote_net_amount) ||
+    clean(rec.quote_created_at) ||
+    clean(rec.quote_updated_at) ||
+    clean(rec.quote_submitted_at) ||
+    clean(rec.quote_approved_at)
+  );
+
+  if (!hasFinancialActivity) return "";
+
+  return JSON.stringify({
+    quote_amount: Number(rec.quote_amount || 0),
+    quote_status: clean(rec.quote_status),
+    quote_approval_status: clean(rec.quote_approval_status),
+    quote_trade_in_credit: Number(
+      rec.quote_trade_in_credit ||
+      rec.tradein_credit ||
+      rec.trade_in_credit ||
+      0
+    ),
+    quote_net_amount: Number(rec.quote_net_amount || 0),
+    quote_created_at: clean(rec.quote_created_at),
+    quote_updated_at: clean(rec.quote_updated_at),
+    quote_submitted_at: clean(rec.quote_submitted_at),
+    quote_approved_at: clean(rec.quote_approved_at)
+  });
+}
+
+function readManagerFinancialSeenMap() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(MANAGER_FINANCIAL_SEEN_KEY) || "{}"
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function markManagerFinancialSeen(rec) {
+  if (!rec) return;
+
+  const signature = getManagerFinancialSignature(rec);
+  if (!signature) return;
+
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+  const seen = readManagerFinancialSeenMap();
+  seen[recordId] = signature;
+
+  localStorage.setItem(
+    MANAGER_FINANCIAL_SEEN_KEY,
+    JSON.stringify(seen)
+  );
+}
+
+function hasUnseenManagerFinancialUpdate(rec) {
+  if (!rec) return false;
+
+  const signature = getManagerFinancialSignature(rec);
+  if (!signature) return false;
+
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+  const seen = readManagerFinancialSeenMap();
+
+  return seen[recordId] !== signature;
+}
+
 function getManagerUpdatedFieldNames(rec) {
   return String(
     rec.install_base_corrected_fields ||
@@ -4929,16 +5007,8 @@ function getManagerUpdatedFieldNames(rec) {
 function captureManagerUpdateHighlight(rec) {
   if (!rec) return null;
 
-  const quoteActivityUnseen = Boolean(
-    rec.quote_seen !== true &&
-    (
-      Number(rec.quote_amount || 0) > 0 ||
-      clean(rec.quote_status) ||
-      clean(rec.quote_approval_status) ||
-      clean(rec.quote_approved_at) ||
-      clean(rec.quote_submitted_at)
-    )
-  );
+  const quoteActivityUnseen =
+    hasUnseenManagerFinancialUpdate(rec);
 
   const unseen = Boolean(
     rec.manager_unseen_update === true ||
@@ -5739,6 +5809,7 @@ function selectRow(id) {
     previousRec &&
     String(previousRec.id || previousRec.key || "") !== selectedId
   ) {
+    markManagerFinancialSeen(previousRec);
     const seenAt = new Date().toISOString();
 
     const acknowledgedPrevious = {
@@ -5844,6 +5915,8 @@ function closeSelectedRecord() {
     render();
     return;
   }
+
+  markManagerFinancialSeen(rec);
 
   const now = new Date().toISOString();
 
@@ -6367,17 +6440,24 @@ if (tableBody) {
       state.managerUpdateHighlight?.type === "quote_approval" ||
       state.managerUpdateHighlight?.type === "financial_update";
 
-    if (rec && wasQuoteUpdate && rec.quote_seen !== true) {
-      const updated = {
-        ...rec,
-        quote_seen: true,
-        manager_update_seen_at: rec.manager_update_seen_at || new Date().toISOString()
-      };
-      syncRecordEverywhere(updated);
-      state.records = mergeRecordsByKey(
-        readArrayKey(STORAGE_KEY),
-        readManagerQueueRecords()
-      );
+    if (rec && wasQuoteUpdate) {
+      markManagerFinancialSeen(rec);
+
+      if (rec.quote_seen !== true) {
+        const updated = {
+          ...rec,
+          quote_seen: true,
+          manager_update_seen_at:
+            rec.manager_update_seen_at ||
+            new Date().toISOString()
+        };
+
+        syncRecordEverywhere(updated);
+        state.records = mergeRecordsByKey(
+          readArrayKey(STORAGE_KEY),
+          readManagerQueueRecords()
+        );
+      }
     }
 
     state.managerUpdateHighlight = null;
@@ -6408,6 +6488,7 @@ if (tableBody) {
       localStorage.removeItem(INSTALL_BASE_RESPONSE_KEY);
       localStorage.removeItem(INSTALL_BASE_RESPONSE_PING_KEY);
       localStorage.removeItem(MANAGER_SEEN_FIX_KEY);
+      localStorage.removeItem(MANAGER_FINANCIAL_SEEN_KEY);
 
       state.records = [];
       state.selectedId = null;
