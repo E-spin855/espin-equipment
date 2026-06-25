@@ -1304,6 +1304,22 @@ tr.manager-response-flash td:last-child{
 .rep-action-history{
   min-height:100%;
 }
+
+.rep-action-only-card{
+  grid-column:1 / -1;
+  padding:18px 20px!important;
+  border:1px solid rgba(67,176,255,.42)!important;
+  background:
+    linear-gradient(135deg,rgba(67,176,255,.08),rgba(8,18,35,.90))!important;
+}
+
+.rep-action-only-card > .k{
+  margin-bottom:14px;
+  color:#9bc6ec!important;
+  font-size:12px!important;
+  font-weight:950!important;
+  letter-spacing:.14em!important;
+}
 .rep-financial-review-card{
   position:relative;
   padding:18px 20px!important;
@@ -5079,30 +5095,15 @@ function syncInstallBaseCorrection(updated) {
   alert("Install Base update sent.");
 }
 function sendQuickRepManagerMessage() {
-  const quickMessageEl = $("repManagerQuickMessage");
-  const notesEl = $("repOutcomeNotes");
-
-  const selectedValue = quickMessageEl?.value || "";
+  const notesEl = $("repManagerMessage");
   const notes = notesEl?.value?.trim() || "";
 
-  if (!selectedValue && !notes) {
-    alert("Select a quick message or type a note to Manager.");
+  if (!notes) {
+    alert("Type a message to Manager.");
     return;
   }
 
-  if (selectedValue === "custom_message" && !notes) {
-    alert("Type a custom message before sending.");
-    return;
-  }
-
-  const action = selectedValue || "custom_message";
-
-  const selectedText =
-    selectedValue
-      ? quickMessageEl?.selectedOptions?.[0]?.textContent || "Custom Message"
-      : "Custom Message";
-
-  sendRepManagerMessage(action, selectedText, notes);
+  sendRepManagerMessage("custom_message", "Rep Message", notes);
 
   const activeManagerCommRec = findSelectedRecord();
   if (activeManagerCommRec) {
@@ -5111,7 +5112,6 @@ function sendQuickRepManagerMessage() {
   }
 
   if (notesEl) notesEl.value = "";
-  if (quickMessageEl) quickMessageEl.value = "";
 }
     
 function getDetailUpdateFlashState(rec) {
@@ -5252,6 +5252,56 @@ function toggleRepManagerHistory(recordId) {
   state.managerHistoryOpen[key] = state.managerHistoryOpen[key] !== true;
   render();
 }
+
+function renderRegularRepAction(rec) {
+  return `
+    <div class="detail-card full rep-action-only-card">
+      <div class="k">Rep Action</div>
+
+      <div class="row" style="margin-bottom:10px;">
+        <label for="manualActionSelect">Rep Action</label>
+        <select id="manualActionSelect" class="placeholder">
+          <option value="">Select Action</option>
+          <option value="quote_review">Prepare Quote Review</option>
+          <option value="submit_quote_approval">Submit Quote for Approval</option>
+          <option value="open_email_draft">Open Approved Email Draft</option>
+          <option value="send_tradein_app">Send to Trade-In App</option>
+          <option value="send_disposal_review">Send to Disposal Review</option>
+          <option value="contact_customer">Contact Customer</option>
+          <option value="schedule_follow_up">Schedule Follow-Up</option>
+          <option value="add_note">Add Note</option>
+          <option value="mark_reviewed">Mark Reviewed</option>
+          <option value="complete">Complete Project</option>
+          <option value="remove">Remove From My View</option>
+        </select>
+      </div>
+
+      <div class="row" style="max-width:320px;margin-bottom:10px;">
+        <label for="repFollowUpDate">Follow-Up Date</label>
+        <input
+          id="repFollowUpDate"
+          type="date"
+          value="${escapeHtml(rec.rep_follow_up_date || "")}"
+        />
+      </div>
+
+      <div class="row" style="margin-bottom:10px;">
+        <label for="repActionNotes">Rep Action Notes</label>
+        <textarea
+          id="repActionNotes"
+          placeholder="Add notes for this rep action..."
+        ></textarea>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="green" onclick="confirmManualAction()">
+          Continue Rep Action
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function renderRepManagerCommunication(rec) {
   const ui = getRepManagerCommunicationUi(rec);
   const recordId = String(rec.id || rec.key || getRecordKey(rec));
@@ -5272,39 +5322,20 @@ function renderRepManagerCommunication(rec) {
       ${ui.composerOpen ? `
         <div class="comm-composer">
           <div class="row" style="margin-bottom:10px;">
-            <label for="manualActionSelect">Rep Action</label>
-            <select id="manualActionSelect" class="placeholder">
-              <option value="">Select Action</option>
-              <option value="quote_review">Prepare Quote Review</option>
-              <option value="submit_quote_approval">Submit Quote for Approval</option>
-              <option value="open_email_draft">Open Approved Email Draft</option>
-              <option value="send_tradein_app">Send to Trade-In App</option>
-              <option value="send_disposal_review">Send to Disposal Review</option>
-              <option value="contact_customer">Contact Customer</option>
-              <option value="schedule_follow_up">Schedule Follow-Up</option>
-              <option value="message_manager_reviewed">Message Manager: Reviewed</option>
-              <option value="message_manager_follow_up">Message Manager: Will Follow Up</option>
-              <option value="message_manager_more_info">Message Manager: Need More Information</option>
-              <option value="message_manager_quote_updated">Message Manager: Quote Updated</option>
-              <option value="message_manager_customer_contacted">Message Manager: Customer Contacted</option>
-              <option value="message_manager_custom">Message Manager: Custom Message</option>
-              <option value="add_note">Add Note</option>
-              <option value="mark_reviewed">Mark Reviewed</option>
-              <option value="complete">Complete Project</option>
-              <option value="remove">Remove From My View</option>
-            </select>
-          </div>
-          <div class="row" style="max-width:320px;margin-bottom:10px;">
-            <label for="repFollowUpDate">Follow-Up Date</label>
-            <input id="repFollowUpDate" type="date" value="${escapeHtml(rec.rep_follow_up_date || "")}" />
-          </div>
-          <div class="row" style="margin-bottom:10px;">
-            <label for="repOutcomeNotes">Notes / Message to Manager</label>
-            <textarea id="repOutcomeNotes" placeholder="Type rep notes or message to Manager..."></textarea>
+            <label for="repManagerMessage">Message to Manager</label>
+            <textarea
+              id="repManagerMessage"
+              placeholder="Type a message to Manager..."
+            ></textarea>
           </div>
           <div class="btns">
-            <button type="button" class="green" onclick="confirmManualAction()">Continue Rep Action</button>
-            <button type="button" class="secondary" onclick="sendQuickRepManagerMessage()">Send Note to Manager</button>
+            <button
+              type="button"
+              class="green"
+              onclick="sendQuickRepManagerMessage()"
+            >
+              Send Message to Manager
+            </button>
           </div>
         </div>
       ` : ""}
@@ -5418,6 +5449,8 @@ function renderDetail() {
         ${escapeHtml(rec.oem_review_reason || "No OEM review reason was provided for this record.")}
       </div>
     </div>
+
+    ${renderRegularRepAction(rec)}
 
     ${renderRepManagerCommunication(rec)}
 
@@ -7189,7 +7222,7 @@ function showBanner(text) {
       }
 
       const action = $("repAction").value;
-      const notes = $("repOutcomeNotes").value;
+      const notes = $("repActionNotes")?.value || "";
       const followUpDate = $("repFollowUpDate").value;
 
       if (!action) {
@@ -7277,14 +7310,6 @@ if (!action) {
 	}
 	const notes = $("repOutcomeNotes").value;
 	const followUpDate = $("repFollowUpDate").value;
-	const messageActionMap = {
-	  message_manager_reviewed: "reviewed",
-	  message_manager_follow_up: "will_follow_up",
-	  message_manager_more_info: "need_more_information",
-	  message_manager_quote_updated: "quote_updated",
-	  message_manager_customer_contacted: "customer_contacted",
-	  message_manager_custom: "custom_message"
-	};
 
 if (!action) {
   alert("Select action first.");
@@ -7297,10 +7322,6 @@ if (!action) {
 	}
 	
 	const label = $("manualActionSelect").selectedOptions[0]?.textContent || action;
-	if (messageActionMap[action]) {
-	  sendRepManagerMessage(messageActionMap[action], label.replace(/^Message Manager:\s*/i, ""), notes);
-	  return;
-	}
 
 	      if (!confirm(`Confirm action:\n\n${label}\n\nAXIS will document this rep-selected action.`)) {
 	        return;
