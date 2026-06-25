@@ -1340,6 +1340,12 @@ tr.manager-response-flash td:last-child{
   margin-top:10px;
 }
 
+.rep-financial-review-card .quote-action-panel{
+  margin-top:14px;
+  margin-bottom:0;
+  box-shadow:none;
+}
+
 /* ADD THE NEW REVIEW REQUEST CSS HERE */
 
 .rep-review-request-card{
@@ -5367,7 +5373,7 @@ function renderDetail() {
     }
 
     <div class="detail-card rep-financial-review-card">
-  <div class="k">Financial Review</div>
+      <div class="k">Financial Record</div>
       <div class="v">
         ${
           quoteAmount
@@ -5381,9 +5387,6 @@ function renderDetail() {
                 Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
                 Estimated Margin: ${margin}%
               </div>
-              <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
-                Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.
-              </div>
             `
             : `
               <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
@@ -5392,10 +5395,20 @@ function renderDetail() {
               </div>
             `
         }
+
+        ${renderQuoteApprovalActionPanel(rec)}
+
+        ${
+          quoteAmount
+            ? `
+              <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+                Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
+              </div>
+            `
+            : ""
+        }
       </div>
     </div>
-
-    ${renderQuoteApprovalActionPanel(rec)}
   `;
 const detailGridEl = $("detailGrid");
 
@@ -5410,9 +5423,9 @@ if (detailGridEl) {
     detailGridEl.querySelector(".rep-financial-review-card");
 
   const quotePanel =
-    detailGridEl.querySelector(".quote-action-panel");
+    financialCard?.querySelector(".quote-action-panel") || null;
 
-  if (actionCard && (reviewCard || financialCard || quotePanel)) {
+  if (actionCard && (reviewCard || financialCard)) {
     const layout = document.createElement("div");
     layout.className = "rep-workflow-layout";
 
@@ -5437,25 +5450,6 @@ if (detailGridEl) {
       rightColumn.appendChild(financialCard);
     }
 
-    if (quotePanel) {
-      const hasQuote =
-        Number(rec.quote_amount || 0) > 0 ||
-        Boolean(rec.quote_created_at) ||
-        Boolean(
-          rec.quote_status &&
-          lower(rec.quote_status) !== "draft"
-        );
-
-      const duplicateEmptyQuotePanel =
-        !hasQuote &&
-        quotePanel.classList.contains("locked");
-
-      if (duplicateEmptyQuotePanel) {
-        quotePanel.remove();
-      } else {
-        rightColumn.appendChild(quotePanel);
-      }
-    }
   }
 }
 
