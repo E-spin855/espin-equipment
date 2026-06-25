@@ -2282,6 +2282,8 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
   selectedId: null,
   selectedRep: null,
   installBaseCommunicationOpen: false,
+  installBaseCommunicationDismissedId: "",
+  installBaseCommunicationDismissedSignature: "",
   installBaseHistoryOpen: false,
   managerCommunicationOpen: {},
   managerHistoryOpen: {},
@@ -5645,9 +5647,41 @@ function closeInstallBaseCommunication() {
   state.installBaseCommunicationOpen = false;
   renderDetail();
 }
+function getInstallBaseIncomingSignature(rec) {
+  if (!rec) return "";
+
+  const history = getInstallBaseConversationHistory(rec);
+  const latestIncoming = [...history].reverse().find(item => lower(item.sender) === "install_base");
+
+  if (latestIncoming) {
+    return [
+      clean(latestIncoming.at),
+      clean(latestIncoming.message)
+    ].join("|");
+  }
+
+  return [
+    clean(rec.rep_action_required || rec.oem_review_action_required || rec.install_base_rep_action_required || rec.manager_review_request),
+    clean(rec.oem_review_reason || rec.review_reason || rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note)
+  ].join("|");
+}
+
 function toggleInstallBaseCommunication(id = "") {
   if (id) state.selectedId = String(id);
-  state.installBaseCommunicationOpen = !state.installBaseCommunicationOpen;
+
+  const rec = state.records.find(r => String(r.id || "") === String(state.selectedId || ""));
+  const willOpen = !state.installBaseCommunicationOpen;
+
+  state.installBaseCommunicationOpen = willOpen;
+
+  if (willOpen) {
+    state.installBaseCommunicationDismissedId = "";
+    state.installBaseCommunicationDismissedSignature = "";
+  } else {
+    state.installBaseCommunicationDismissedId = String(state.selectedId || "");
+    state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
+  }
+
   renderDetail();
 }
 function toggleInstallBaseHistory() {
@@ -5982,8 +6016,14 @@ function renderInstallBaseCorrectionPanel(rec) {
     clean(rec.install_base_response_message || rec.install_base_reply_to_rep || "") ? 1 : 0
   );
 
-  // Incoming unanswered communication opens automatically.
-  if (needsResponse && String(state.selectedId) === String(rec.id)) {
+  // Incoming unanswered communication opens automatically, unless the user
+  // explicitly hid this exact message. A newer incoming message opens it again.
+  const incomingSignature = getInstallBaseIncomingSignature(rec);
+  const hiddenForThisMessage =
+    String(state.installBaseCommunicationDismissedId || "") === String(rec.id || "") &&
+    String(state.installBaseCommunicationDismissedSignature || "") === String(incomingSignature || "");
+
+  if (needsResponse && String(state.selectedId) === String(rec.id) && !hiddenForThisMessage) {
     state.installBaseCommunicationOpen = true;
   }
 
