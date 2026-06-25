@@ -971,6 +971,52 @@ td:nth-child(11) .manager-waiting-badge{
     background:rgba(9,18,35,.45)!important;
   }
 
+  /* Updated manager fields: flash only until the user clicks away. */
+  .manager-field-update-frame{
+    position:relative;
+    border:2px solid rgba(65,255,156,.98)!important;
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.34),
+      0 0 22px rgba(65,255,156,.58),
+      0 0 42px rgba(65,255,156,.20)!important;
+    animation:managerFieldUpdatePulse 1.05s ease-in-out infinite!important;
+  }
+
+  .manager-field-update-frame::after{
+    content:"UPDATED";
+    position:absolute;
+    top:-11px;
+    right:14px;
+    z-index:20;
+    padding:4px 9px;
+    border-radius:999px;
+    border:1px solid rgba(142,255,195,.92);
+    background:#123d2d;
+    color:#caffdf;
+    font-size:9px;
+    font-weight:950;
+    letter-spacing:.10em;
+    box-shadow:0 0 14px rgba(65,255,156,.46);
+    pointer-events:none;
+  }
+
+  @keyframes managerFieldUpdatePulse{
+    0%,100%{
+      border-color:rgba(65,255,156,.68);
+      box-shadow:
+        0 0 0 1px rgba(65,255,156,.22),
+        0 0 12px rgba(65,255,156,.28),
+        0 0 24px rgba(65,255,156,.10);
+    }
+    50%{
+      border-color:rgba(142,255,195,1);
+      box-shadow:
+        0 0 0 2px rgba(142,255,195,.52),
+        0 0 30px rgba(65,255,156,.84),
+        0 0 52px rgba(65,255,156,.26);
+    }
+  }
+
   /* =========================================================
      FOLLOW-UP
      ========================================================= */
@@ -2319,6 +2365,7 @@ const state = {
   selectedRep: null,
   timelineHighlight: null,
   correctedFieldHighlightId: null,
+  managerUpdateHighlight: null,
   showCompleted: true,
   installBaseCommunicationOpen: {},
   installBaseHistoryOpen: {},
@@ -4692,12 +4739,7 @@ function getManagerInstallBaseCommunicationUi(rec) {
   const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
-  const needsResponse = Boolean(
-    latest &&
-    lower(latest.sender) === "install_base" &&
-    rec.manager_install_base_ack_signature !== latestSignature
-  );
+  const needsResponse = Boolean(latest && lower(latest.sender) === "install_base");
   const composerOpen = Object.prototype.hasOwnProperty.call(state.installBaseCommunicationOpen, id)
     ? state.installBaseCommunicationOpen[id]
     : needsResponse;
@@ -4708,17 +4750,7 @@ function toggleManagerInstallBaseCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
   const ui = getManagerInstallBaseCommunicationUi(rec);
-  const willOpen = !ui.composerOpen;
-  state.installBaseCommunicationOpen[String(recordId || "")] = willOpen;
-
-  // Hiding communication marks the latest incoming message as read. A reply is optional.
-  if (!willOpen && ui.latest && lower(ui.latest.sender) === "install_base") {
-    const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
-    const updated = { ...rec, manager_install_base_ack_signature: signature, install_base_message_to_manager_seen: true };
-    state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
-    writeManagerQueueRecord(updated);
-  }
-
+  state.installBaseCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
   render();
 }
 function toggleManagerInstallBaseHistory(recordId) {
@@ -4792,12 +4824,7 @@ function getManagerRepCommunicationUi(rec) {
   const id = String(rec.id || rec.key || getRecordKey(rec));
   const history = getManagerRepCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
-  const needsResponse = Boolean(
-    latest &&
-    lower(latest.sender) === "rep" &&
-    rec.manager_rep_ack_signature !== latestSignature
-  );
+  const needsResponse = Boolean(latest && lower(latest.sender) === "rep");
   const manualOpen = state.repCommunicationOpen[id];
   return {
     history,
@@ -4811,18 +4838,7 @@ function toggleManagerRepCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
   const ui = getManagerRepCommunicationUi(rec);
-  const willOpen = !ui.composerOpen;
-  const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
-  state.repCommunicationOpen[key] = willOpen;
-
-  // Hiding communication marks the latest incoming message as read. A reply is optional.
-  if (!willOpen && ui.latest && lower(ui.latest.sender) === "rep") {
-    const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
-    const updated = { ...rec, manager_rep_ack_signature: signature };
-    state.records = state.records.map(r => sameRecord(r, rec) ? updated : r);
-    writeManagerQueueRecord(updated);
-  }
-
+  state.repCommunicationOpen[String(recordId || rec.id || rec.key || getRecordKey(rec))] = !ui.composerOpen;
   render();
 }
 function toggleManagerRepHistory(recordId) {
@@ -4894,6 +4910,119 @@ function renderManagerRepCommunication(rec) {
       ` : ""}
     </div>
   `;
+}
+
+
+function getManagerUpdatedFieldNames(rec) {
+  return String(
+    rec.install_base_corrected_fields ||
+    rec.install_base_issue_field ||
+    rec.manager_updated_fields ||
+    ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function captureManagerUpdateHighlight(rec) {
+  if (!rec) return null;
+
+  const unseen = Boolean(
+    rec.manager_unseen_update === true ||
+    rec.manager_alert_seen !== true ||
+    isManagerRepFixUnseen(rec)
+  );
+
+  if (!unseen) return null;
+
+  return {
+    recordId: String(rec.id || rec.key || getRecordKey(rec)),
+    type: lower(rec.manager_flash_type || ""),
+    fields: getManagerUpdatedFieldNames(rec),
+    text: clean(rec.manager_flash_text || "")
+  };
+}
+
+function applyManagerUpdatedFieldFrames(rec) {
+  const highlight = state.managerUpdateHighlight;
+  if (!highlight || !rec) return;
+
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+  if (highlight.recordId !== recordId) return;
+
+  const grid = $("detailGrid");
+  if (!grid) return;
+
+  const addFrame = element => {
+    if (element) element.classList.add("manager-field-update-frame");
+  };
+
+  const fields = new Set(highlight.fields);
+  const type = highlight.type;
+
+  const hasAny = aliases =>
+    aliases.some(alias =>
+      Array.from(fields).some(field =>
+        field === alias ||
+        field.includes(alias) ||
+        alias.includes(field)
+      )
+    );
+
+  const summaryCards = grid.querySelectorAll(".selected-summary .summary-card");
+
+  if (hasAny(["site","facility","hospital","customer","address","city","state","zip","location"])) {
+    addFrame(summaryCards[0]);
+  }
+
+  if (hasAny(["make","manufacturer","brand","model","modality","serial","serial_number","dom","year","equipment","asset"])) {
+    addFrame(summaryCards[1]);
+  }
+
+  if (hasAny(["rep","assigned_rep","assigned_rep_name","rep_name","rep_email","rep_phone"])) {
+    addFrame(summaryCards[2]);
+  }
+
+  const reviewCard = grid.querySelector(".manager-review-row > .detail-card:first-child");
+  const followUpCard = grid.querySelector(".manager-followup-card");
+  const financialCard = grid.querySelector(".manager-financial-row > .detail-card");
+  const communicationCards = grid.querySelectorAll(".comm-shell");
+
+  if (
+    type === "install_base_release" ||
+    type === "rep_update" ||
+    type === "install_base_update" ||
+    hasAny(["manager","manager_name","territory","region","owner","review","status"])
+  ) {
+    addFrame(reviewCard);
+  }
+
+  if (type === "follow_up" || hasAny(["follow_up","followup","follow_up_date"])) {
+    addFrame(followUpCard);
+  }
+
+  if (
+    ["quote_created","quote_sent","tradein_sync","quote_update","financial_update"].includes(type) ||
+    hasAny(["quote","cost","profit","margin","tradein","trade_in","credit"])
+  ) {
+    addFrame(financialCard);
+  }
+
+  if (type === "rep_message") {
+    addFrame(communicationCards[0]);
+  }
+
+  if (type === "install_base_message" || type === "install_base_release") {
+    addFrame(communicationCards[communicationCards.length - 1]);
+  }
+
+  // Safe fallback: if the record is new/updated but no exact category was found,
+  // frame the Install Base Review card so the update is still visible.
+  if (!grid.querySelector(".manager-field-update-frame")) {
+    addFrame(reviewCard);
+  }
 }
 
 function renderDetail() {
@@ -5345,6 +5474,7 @@ ${
 `;
 
 arrangeManagerWorkflowLayout();
+applyManagerUpdatedFieldFrames(rec);
 
 if (!completed) {
     // Keep the message composer ready for a new manager message.
@@ -5610,6 +5740,8 @@ function selectRow(id) {
   }
   if (!selectedId) return;
 
+  state.managerUpdateHighlight = null;
+
   const rec = state.records.find(item =>
     String(item.id || "") === selectedId ||
     String(item.key || "") === selectedId
@@ -5637,6 +5769,7 @@ state.correctedFieldHighlightId =
     : null;
 
 state.timelineHighlight = getTimelineHighlightForRecord(rec);
+state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 
   const updated = {
     ...rec,
@@ -5712,6 +5845,7 @@ function closeSelectedRecord() {
 
   state.selectedId = null;
 state.correctedFieldHighlightId = null;
+state.managerUpdateHighlight = null;
 
 pingLifecycleSync();
 render();
@@ -6190,6 +6324,15 @@ if (tableBody) {
     if (e.target.closest(".timeline-update-highlight")) return;
 
     state.timelineHighlight = null;
+    renderDetail();
+  });
+
+  document.addEventListener("click", function(e) {
+    if (!state.managerUpdateHighlight) return;
+    if (e.target.closest("#tableBody")) return;
+    if (e.target.closest(".manager-field-update-frame")) return;
+
+    state.managerUpdateHighlight = null;
     renderDetail();
   });
 
