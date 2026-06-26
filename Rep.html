@@ -10097,9 +10097,25 @@ function handleRepRowClick(id) {
   const hasIncomingCommunication =
     hasUnseenIncomingCommunication(recBeforeSeen);
 
+  const incomingCommunicationSeenChanged = hasIncomingCommunication
+    ? markIncomingCommunicationSeen(selectedId)
+    : false;
+
   const seenStateChanged = hasIncomingCommunication
-    ? false
+    ? incomingCommunicationSeenChanged
     : markRepRowUpdateSeen(selectedId);
+
+  if (hasIncomingCommunication) {
+    document
+      .querySelectorAll("tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash")
+      .forEach(row => {
+        row.classList.remove(
+          "incoming-communication-flash",
+          "manager-response-flash",
+          "rep-new-row-flash"
+        );
+      });
+  }
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
 
@@ -10130,6 +10146,11 @@ function handleRepRowClick(id) {
   ).some(Boolean);
 
   if (!selectionChanged && !seenStateChanged && !recordChanged && !hasDetailFlash) return;
+
+  if (seenStateChanged && hasIncomingCommunication) {
+    renderTable();
+    renderNewProjectsTable();
+  }
 
   refreshSelectedRowUI();
 
