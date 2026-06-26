@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js">
+window.setTimeout(bindHubUpdateFrameClickAway, 0);
+</script>
 <script src="assets/js/axis-utils.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ESPIN LINK Install Base Workspace</title>
@@ -1582,15 +1584,40 @@ function getDataExceptions(rec) {
 
   return issues;
 }
-function isFixedByRep(rec) {
-  return (
+function hasActualInstallBaseCorrection(rec) {
+  if (!rec) return false;
+
+  const statusIsCorrection =
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "rep_correction_sent" ||
     rec.install_base_response_status === "manager_correction_sent" ||
     rec.install_base_fix_status === "rep_reviewed" ||
-    rec.install_base_fix_status === "manager_reviewed"
-  );
+    rec.install_base_fix_status === "manager_reviewed";
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
+  )
+    .split(",")
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
+
+  const hasCorrectionEvidence =
+    correctedFields.length > 0 ||
+    Boolean(
+      rec.install_base_correction_id ||
+      rec.install_base_correction_at ||
+      rec.install_base_fixed_at
+    );
+
+  return statusIsCorrection && hasCorrectionEvidence;
+}
+
+function isFixedByRep(rec) {
+  return hasActualInstallBaseCorrection(rec);
 }
 function isFixedByManager(rec) {
   return (
@@ -3395,18 +3422,15 @@ function selectRecord(id) {
   const changingRecords =
     previousRec && String(previousRec.id || "") !== String(id || "");
 
-  // Clicking away from a record acknowledges its temporary response badge.
+  // Clicking to another row acknowledges the prior row's temporary update.
   if (changingRecords) {
     markRepResponseSeen(previousRec);
+    if (hasActualInstallBaseCorrection(previousRec)) {
+      markInstallBaseCorrectedFieldsSeen(previousRec);
+    }
   }
 
   state.selectedId = id;
-
-  const rec = findSelectedRecord();
-  if (rec) {
-    markInstallBaseCorrectedFieldsSeen(rec);
-  }
-
   render();
 }
 
@@ -3414,6 +3438,40 @@ function findSelectedRecord() {
   if (!state.selectedId) return null;
   return state.records.find(r => String(r.id) === String(state.selectedId)) || null;
 }
+function bindHubUpdateFrameClickAway() {
+  if (document.body.dataset.hubUpdateFrameClickAwayBound === "true") return;
+  document.body.dataset.hubUpdateFrameClickAwayBound = "true";
+
+  document.addEventListener("click", event => {
+    const rec = findSelectedRecord();
+    if (!rec) return;
+
+    const selectedRow = event.target.closest("tr");
+    if (
+      selectedRow &&
+      selectedRow.getAttribute("onclick")?.includes(
+        `selectRecord('${String(rec.id || "").replace(/'/g, "\\'")}')`
+      )
+    ) {
+      return;
+    }
+
+    const fixedUnseen =
+      hasActualInstallBaseCorrection(rec) &&
+      rec.install_base_fixed_seen_by_install_base !== true;
+
+    const responseUnseen =
+      rec.install_base_response_at &&
+      rec.install_base_response_seen !== true;
+
+    if (!fixedUnseen && !responseUnseen) return;
+
+    if (fixedUnseen) markInstallBaseCorrectedFieldsSeen(rec);
+    if (responseUnseen) markRepResponseSeen(rec);
+    render();
+  });
+}
+
 function renderFixedDataCard(rec) {
   if (!isFixedByRep(rec)) return "";
 

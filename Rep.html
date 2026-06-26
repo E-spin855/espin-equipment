@@ -4492,9 +4492,28 @@ function getLatestIncomingInstallBaseCommunication(rec) {
   };
 }
 
+function getInstallBaseIncomingSignature(rec) {
+  const latest = getLatestIncomingInstallBaseCommunication(rec);
+  if (!latest) return "";
+
+  return [
+    clean(latest.at || ""),
+    clean(latest.message || "")
+  ].join("|");
+}
+
 function hasUnseenInstallBaseCommunication(rec) {
   const latest = getLatestIncomingInstallBaseCommunication(rec);
   if (!latest) return false;
+
+  const signature = getInstallBaseIncomingSignature(rec);
+
+  if (
+    signature &&
+    clean(rec.rep_install_base_ack_signature || "") === signature
+  ) {
+    return false;
+  }
 
   if (latest.seen_by_rep !== true) return true;
 
@@ -4516,6 +4535,7 @@ function markIncomingCommunicationSeen(id) {
 
   const now = new Date().toISOString();
   const latestManager = getLatestIncomingManagerCommunication(rec);
+  const installBaseSignature = getInstallBaseIncomingSignature(rec);
   const managerSignature = latestManager
     ? [
         clean(latestManager.sender),
@@ -4544,7 +4564,9 @@ function markIncomingCommunicationSeen(id) {
       install_base_reply_to_rep_seen_at: now,
       manager_response_seen_by_rep: true,
       manager_response_seen_at: now,
-      rep_manager_ack_signature: managerSignature
+      rep_manager_ack_signature: managerSignature,
+      rep_install_base_ack_signature:
+        installBaseSignature || r.rep_install_base_ack_signature || ""
     };
   };
 
@@ -4584,16 +4606,18 @@ function bindIncomingCommunicationFrameDismissal() {
       return;
     }
 
-    const rec = state.records.find(r => String(r.id || "") === selectedId);
-    if (!rec || !hasUnseenIncomingCommunication(rec)) return;
+    window.setTimeout(() => {
+      const rec = state.records.find(r => String(r.id || "") === selectedId);
+      if (!rec || !hasUnseenIncomingCommunication(rec)) return;
 
-    if (markIncomingCommunicationSeen(selectedId)) {
-      renderTable();
-      renderNewProjectsTable();
-      refreshSelectedRowUI();
-      renderDetail();
-    }
-  });
+      if (markIncomingCommunicationSeen(selectedId)) {
+        renderTable();
+        renderNewProjectsTable();
+        refreshSelectedRowUI();
+        renderDetail();
+      }
+    }, 0);
+  }, true);
 }
 
    function renderTable() {
