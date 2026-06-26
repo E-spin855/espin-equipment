@@ -9144,12 +9144,39 @@ return true;
   rec.connect_handoff_at = now;
   rec.disposal_required = Boolean(disposalRequired);
   rec.magnet_event = magnetEvent || "";
+
+  // Final confirmed disposal action must be visible to Manager.
+  rec.rep_selected_action = "send_disposal_review";
+  rec.rep_selected_action_label = "Sent to Disposal Review";
+  rec.rep_selected_action_at = now;
+
+  rec.rep_action = "send_disposal_review";
+  rec.rep_action_label = "Sent to Disposal Review";
+  rec.rep_status = "sent_to_disposal_review";
+  rec.rep_last_action_at = now;
+  rec.rep_notes = "";
+
+  rec.disposal_review_status = "sent";
+  rec.disposal_review_sent_at = now;
+  rec.disposal_review_sent_by =
+    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+    rec.assigned_rep_name ||
+    rec.rep ||
+    "Rep";
+
+  rec.manager_visible = true;
   rec.manager_unseen_update = true;
+  rec.manager_alert_seen = false;
+  rec.manager_update_seen_at = "";
   rec.manager_flash_at = now;
-  rec.manager_flash_type = "sent_to_connect";
+  rec.manager_flash_type = "rep_action";
   rec.manager_flash_text = "Rep sent equipment to Espin Connect disposal review";
 
+  // Save locally, then force one fresh Manager packet.
   syncFeedStatus(rec);
+  syncToManagerQueue(rec);
+
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
   render();
 
   showBanner("✅ Opening secure Espin Connect project handoff...");
