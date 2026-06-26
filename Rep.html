@@ -3365,15 +3365,14 @@ function mergeInstallBaseQueueIntoRepRecords() {
       oem_review_label: reviewLabel,
       oem_review_reason: reviewReason,
       rep_action_required:
-        incoming.rep_action_required ||
-        incoming.oem_review_action_required ||
         incoming.install_base_rep_action_required ||
-        incoming.manager_review_request ||
+        incoming.rep_fix_required ||
+        incoming.rep_action_required ||
         "",
       oem_review_action_required:
-        incoming.oem_review_action_required || incoming.rep_action_required || "",
+        incoming.oem_review_action_required || "",
       manager_review_request:
-        incoming.manager_review_request || incoming.rep_action_required || incoming.oem_review_action_required || "",
+        incoming.manager_review_request || "",
 
       install_base_issue_reason: reviewReason,
       install_base_issue_note: reviewReason,
@@ -3658,11 +3657,10 @@ function buildManagerSyncPacket(rec) {
       rec.rep_selected_action_label ||
       "Rep updated record",
 
-    // Manager communication must not create or overwrite Install Base requests.
-    rep_action_required: rec.rep_action_required || "",
-    oem_review_action_required: rec.oem_review_action_required || "",
-    manager_review_request: rec.manager_review_request || "",
-    install_base_rep_action_required: rec.install_base_rep_action_required || "",
+    rep_action_required: getInstallBaseRepActionRequired(rec),
+    oem_review_action_required: getInstallBaseRepActionRequired(rec),
+    manager_review_request: getInstallBaseRepActionRequired(rec),
+    install_base_rep_action_required: getInstallBaseRepActionRequired(rec),
 
     source: rec.source || "Rep Review Page",
     hub_source: rec.hub_source || "Rep Review Page"
@@ -5905,20 +5903,18 @@ if (hideCompletedProjectBtn) {
 }
 }
 function needsInstallBaseCommunication(rec) {
-  return Boolean(
-    rec.install_base_show_communication === true ||
-    rec.install_base_has_open_issue === true ||
-    rec.install_base_issue_field ||
-    rec.install_base_issue_type ||
-    rec.install_base_action_label ||
-    rec.rep_fix_required ||
-    String(rec.source_conflict || "").toLowerCase() === "yes" ||
-    rec.conflict_notes ||
-    !String(rec.serial_number || rec.serial || "").trim() ||
-    !String(rec.dom || "").trim() ||
-    !String(rec.site || "").trim() ||
-    String(rec.site || "").trim() === "Unknown Site"
-  );
+  if (!rec) return false;
+
+  const history = getInstallBaseConversationHistory(rec);
+  const hasInstallBaseMessage =
+    history.some(
+      item =>
+        lower(item.sender) === "install_base" &&
+        clean(item.message)
+    ) ||
+    Boolean(clean(rec.install_base_reply_to_rep));
+
+  return hasInstallBaseMessage || hasExplicitInstallBaseRepRequest(rec);
 }
 function renderFieldOrFixData(rec, fieldName, valueHtml) {
   const badge = getFixDataBadge(rec, fieldName);
@@ -6060,6 +6056,12 @@ function openInstallBaseCommunication(id, fieldName = "") {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
+  const rec = state.records.find(
+    item => String(item.id || "") === selectedId
+  );
+
+  if (!rec || !needsInstallBaseCommunication(rec)) return;
+
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = true;
   state.installBaseActiveFixField = fieldName || "";
@@ -6091,8 +6093,20 @@ function getInstallBaseIncomingSignature(rec) {
   }
 
   return [
-    clean(rec.rep_action_required || rec.oem_review_action_required || rec.install_base_rep_action_required || rec.manager_review_request),
-    clean(rec.oem_review_reason || rec.review_reason || rec.install_base_issue_reason || rec.install_base_action_reason || rec.install_base_issue_note)
+    clean(
+      rec.install_base_rep_action_required ||
+      rec.rep_fix_required ||
+      rec.install_base_clarification_reason ||
+      rec.axis_clarification_reason ||
+      rec.install_base_issue_field ||
+      ""
+    ),
+    clean(
+      rec.install_base_issue_reason ||
+      rec.install_base_action_reason ||
+      rec.install_base_issue_note ||
+      ""
+    )
   ].join("|");
 }
 
@@ -6136,34 +6150,41 @@ function toggleInstallBaseHistory() {
 function hasExplicitInstallBaseRepRequest(rec) {
   if (!rec) return false;
 
-  const history = getInstallBaseConversationHistory(rec);
-  const hasIncomingInstallBaseMessage = history.some(
-    item => lower(item.sender) === "install_base" && clean(item.message)
-  ) || Boolean(clean(rec.install_base_reply_to_rep));
+  const routeTargets = [
+    lower(rec.axis_manual_route_target),
+    lower(rec.install_base_released_to),
+    lower(rec.release_destination)
+  ];
 
-  if (hasIncomingInstallBaseMessage) return true;
+  const routedToRep =
+    routeTargets.includes("rep") ||
+    routeTargets.includes("released_to_rep");
 
-  // A request exists only when Hub/Install Base manually routed a FIX to Rep.
-  const manualFixToRep =
-    rec.install_base_manual_route === true &&
-    [
-      lower(rec.axis_manual_route_target),
-      lower(rec.install_base_released_to),
-      lower(rec.release_destination)
-    ].includes("rep") &&
-    Boolean(clean(
-      rec.rep_action_required ||
-      rec.oem_review_action_required ||
-      rec.install_base_rep_action_required ||
-      rec.install_base_clarification_reason ||
-      rec.axis_clarification_reason ||
-      rec.install_base_issue_reason ||
-      rec.install_base_action_reason ||
-      rec.install_base_issue_note ||
-      ""
-    ));
+  const manualFixFlag =
+    rec.install_base_manual_route === true ||
+    lower(rec.install_base_release_status) === "released_to_rep" ||
+    lower(rec.install_base_sync_type) === "manual_clarification" ||
+    lower(rec.install_base_sync_type) === "manual_fix_routing";
 
-  return manualFixToRep;
+  const requestText = clean(
+    rec.install_base_rep_action_required ||
+    rec.rep_fix_required ||
+    rec.install_base_clarification_reason ||
+    rec.axis_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.install_base_issue_field ||
+    ""
+  );
+
+  // A valid FIX must be an Install Base/manual route to Rep.
+  // Manager-only fields and ordinary OEM review text do not qualify.
+  return Boolean(
+    routedToRep &&
+    manualFixFlag &&
+    requestText
+  );
 }
 
 function installBaseCommunicationNeedsResponse(rec) {
@@ -6432,25 +6453,7 @@ function buildInstallBaseMiniTimeline(rec) {
   `;
 }
 
-function clearFalseInstallBaseRequestState(rec) {
-  if (!rec || hasExplicitInstallBaseRepRequest(rec)) return rec;
-
-  const hasIncomingInstallBaseMessage =
-    getInstallBaseConversationHistory(rec).some(
-      item => lower(item.sender) === "install_base" && clean(item.message)
-    ) || Boolean(clean(rec.install_base_reply_to_rep));
-
-  if (hasIncomingInstallBaseMessage) return rec;
-
-  return {
-    ...rec,
-    rep_install_base_ack_signature: "",
-    install_base_reply_to_rep_seen: true
-  };
-}
-
 function renderInstallBaseCorrectionPanel(rec) {
-  rec = clearFalseInstallBaseRequestState(rec);
   const issues = getRepFixPanelIssues(rec);
 
   const reviewLabel = clean(
