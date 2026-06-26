@@ -2658,8 +2658,10 @@ const state = {
   showCompleted: true,
   installBaseCommunicationOpen: {},
   installBaseHistoryOpen: {},
+  installBaseCommunicationDismissed: {},
   repCommunicationOpen: {},
-  repHistoryOpen: {}
+  repHistoryOpen: {},
+  repCommunicationDismissed: {}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -5230,13 +5232,16 @@ function getManagerInstallBaseCommunicationUi(rec) {
     ? state.installBaseCommunicationOpen[id]
     : needsResponse;
   const historyOpen = state.installBaseHistoryOpen[id] === true;
-  return { history, latest, needsResponse, composerOpen, historyOpen };
+  const dismissed = state.installBaseCommunicationDismissed[id] === true;
+  return { history, latest, needsResponse, composerOpen, historyOpen, dismissed };
 }
 function toggleManagerInstallBaseCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
   const ui = getManagerInstallBaseCommunicationUi(rec);
-  state.installBaseCommunicationOpen[String(recordId || "")] = !ui.composerOpen;
+  const key = String(recordId || "");
+  state.installBaseCommunicationOpen[key] = !ui.composerOpen;
+  if (ui.composerOpen) state.installBaseCommunicationDismissed[key] = true;
   render();
 }
 function toggleManagerInstallBaseHistory(recordId) {
@@ -5258,7 +5263,7 @@ function renderManagerInstallBaseCommunication(rec) {
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse && !ui.dismissed ? "Respond" : "Open Communication")}</button>
           <button type="button" class="secondary" onclick="toggleManagerInstallBaseHistory('${escapeJs(rec.id || "")}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
@@ -5317,14 +5322,17 @@ function getManagerRepCommunicationUi(rec) {
     latest,
     needsResponse,
     composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true,
-    historyOpen: state.repHistoryOpen[id] === true
+    historyOpen: state.repHistoryOpen[id] === true,
+    dismissed: state.repCommunicationDismissed[id] === true
   };
 }
 function toggleManagerRepCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
   const ui = getManagerRepCommunicationUi(rec);
-  state.repCommunicationOpen[String(recordId || rec.id || rec.key || getRecordKey(rec))] = !ui.composerOpen;
+  const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
+  state.repCommunicationOpen[key] = !ui.composerOpen;
+  if (ui.composerOpen) state.repCommunicationDismissed[key] = true;
   render();
 }
 function toggleManagerRepHistory(recordId) {
@@ -5347,7 +5355,7 @@ function renderManagerRepCommunication(rec) {
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerRepCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerRepCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse && !ui.dismissed ? "Respond" : "Open Communication")}</button>
           <button type="button" class="secondary" onclick="toggleManagerRepHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
@@ -6901,6 +6909,32 @@ if (tableBody) {
     selectRow(row.dataset.recordId);
 	  });
 	}
+
+  document.addEventListener("click", function(e) {
+    if (e.target.closest(".comm-shell")) return;
+
+    const rec = findSelectedRecord();
+    if (!rec) return;
+
+    const installBaseKey = String(rec.id || "");
+    const repKey = String(rec.id || rec.key || getRecordKey(rec));
+    let changed = false;
+
+    if (state.installBaseCommunicationOpen[installBaseKey] === true) {
+      state.installBaseCommunicationOpen[installBaseKey] = false;
+      state.installBaseCommunicationDismissed[installBaseKey] = true;
+      changed = true;
+    }
+
+    if (state.repCommunicationOpen[repKey] === true ||
+        (state.repCommunicationOpen[repKey] === undefined && getManagerRepCommunicationUi(rec).composerOpen)) {
+      state.repCommunicationOpen[repKey] = false;
+      state.repCommunicationDismissed[repKey] = true;
+      changed = true;
+    }
+
+    if (changed) renderDetail();
+  });
 
   document.addEventListener("click", function(e) {
     if (!state.timelineHighlight) return;
