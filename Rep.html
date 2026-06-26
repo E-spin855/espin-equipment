@@ -3108,6 +3108,68 @@ if (normalized.includes("service")) {
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
+function getRepVisibleInstallBaseReviewReason(rec) {
+  const originalReason = clean(
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.proactive_reason ||
+    ""
+  );
+
+  const routingText = lower([
+    rec.install_base_issue_field,
+    rec.install_base_issue_reason,
+    rec.install_base_issue_note,
+    rec.install_base_action_reason,
+    rec.axis_clarification_reason,
+    rec.manager_review_request,
+    originalReason
+  ].filter(Boolean).join(" "));
+
+  const routeTargets = [
+    lower(rec.axis_manual_route_target),
+    lower(rec.install_base_released_to),
+    lower(rec.release_destination),
+    lower(rec.install_base_release_status)
+  ];
+
+  const managerOnlyAssignmentRequest =
+    routingText.includes("assigned rep") ||
+    routingText.includes("rep name") ||
+    routingText.includes("rep owner") ||
+    routingText.includes("territory") ||
+    routingText.includes("owner group");
+
+  const routedToManager = routeTargets.some(value =>
+    value === "manager" ||
+    value === "released_to_manager" ||
+    value.includes("manager")
+  );
+
+  // Manager-only ownership/territory corrections may update the Rep's record,
+  // but the Manager request itself must never become the Rep's review reason.
+  if ((managerOnlyAssignmentRequest || routedToManager) && !hasExplicitInstallBaseRepRequest(rec)) {
+    const visibleLabel = normalizeOemReviewLabelForRep(rec);
+    const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+    const age = ageFromDom(dom);
+
+    if (visibleLabel === "Equipment Age") {
+      if (dom && age !== null && age !== undefined && age !== "") {
+        return `Equipment age review based on DOM ${dom} (${age} years).`;
+      }
+      if (dom) return `Equipment age review based on DOM ${dom}.`;
+      return "Equipment age review.";
+    }
+
+    return `${visibleLabel} review.`;
+  }
+
+  const alerts = getAlerts(rec);
+  const primaryReason = clean(alerts?.[0]?.label || "");
+
+  return originalReason || primaryReason || "No OEM review reason was provided for this record.";
+}
+
 function normalizeOemReviewLabelForRep(rec) {
   const directLabel = clean(rec.oem_review_label || rec.review_label || "");
   const directNormalized = lower(directLabel);
@@ -5756,7 +5818,7 @@ function renderDetail() {
     >
       <div class="k" style="color:#ffd84d;">Install Base Review Reason</div>
       <div class="v" style="font-size:17px;font-weight:900;line-height:1.45;color:#fff4cc;">
-        ${escapeHtml(rec.oem_review_reason || "No OEM review reason was provided for this record.")}
+        ${escapeHtml(getRepVisibleInstallBaseReviewReason(rec))}
       </div>
     </div>
 
