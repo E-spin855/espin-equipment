@@ -1587,13 +1587,24 @@ function getDataExceptions(rec) {
 function hasActualInstallBaseCorrection(rec) {
   if (!rec) return false;
 
-  // Show "Install Base Data Fixed" only for a real FIX return,
-  // not for normal Hub/Rep or Hub/Manager text messages.
+  // Show "Install Base Data Fixed" only when a real FIX was returned.
+  // A normal text message may still carry old response status values,
+  // so this must require both FIX routing and corrected field data.
   const statusIsFixReturn =
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "rep_correction_sent" ||
     rec.install_base_response_status === "manager_correction_sent";
+
+  const wasManualFixRequest =
+    rec.install_base_manual_route === true &&
+    Boolean(clean(
+      rec.install_base_corrected_fields ||
+      rec.corrected_fields ||
+      rec.install_base_issue_field ||
+      rec.install_base_fix_field ||
+      ""
+    ));
 
   const correctedFields = String(
     rec.install_base_corrected_fields ||
@@ -1604,7 +1615,7 @@ function hasActualInstallBaseCorrection(rec) {
     .map(v => String(v || "").trim())
     .filter(Boolean);
 
-  return statusIsFixReturn && correctedFields.length > 0;
+  return statusIsFixReturn && wasManualFixRequest && correctedFields.length > 0;
 }
 
 function isFixedByRep(rec) {
@@ -2099,24 +2110,28 @@ function mergeRepResponsesIntoRecords() {
 	  ...canonicalMerged,
 
  install_base_correction_status:
-  resp.install_base_correction_status ||
-  rec.install_base_correction_status ||
-  "",
+  clean(resp.install_base_corrected_fields || "") ||
+  clean(resp.corrected_fields || "")
+    ? (resp.install_base_correction_status || rec.install_base_correction_status || "")
+    : (rec.install_base_correction_status || ""),
 
 install_base_response_status:
-  resp.install_base_response_status ||
-  rec.install_base_response_status ||
-  "",
+  clean(resp.install_base_corrected_fields || "") ||
+  clean(resp.corrected_fields || "")
+    ? (resp.install_base_response_status || rec.install_base_response_status || "")
+    : (rec.install_base_response_status || ""),
 
 install_base_fix_status:
-  resp.install_base_fix_status ||
-  rec.install_base_fix_status ||
-  "",
+  clean(resp.install_base_corrected_fields || "") ||
+  clean(resp.corrected_fields || "")
+    ? (resp.install_base_fix_status || rec.install_base_fix_status || "")
+    : (rec.install_base_fix_status || ""),
 
 install_base_corrected_fields:
-  resp.install_base_corrected_fields ||
-  rec.install_base_corrected_fields ||
-  "",
+  clean(resp.install_base_corrected_fields || "") ||
+  clean(resp.corrected_fields || "")
+    ? (resp.install_base_corrected_fields || resp.corrected_fields || rec.install_base_corrected_fields || "")
+    : (rec.install_base_corrected_fields || ""),
 
 install_base_fixed_seen_by_install_base:
   resp.install_base_fixed_seen_by_install_base === true ||
