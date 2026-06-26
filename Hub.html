@@ -1587,33 +1587,24 @@ function getDataExceptions(rec) {
 function hasActualInstallBaseCorrection(rec) {
   if (!rec) return false;
 
-  const statusIsCorrection =
+  // Show "Install Base Data Fixed" only for a real FIX return,
+  // not for normal Hub/Rep or Hub/Manager text messages.
+  const statusIsFixReturn =
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_response_status === "manager_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed" ||
-    rec.install_base_fix_status === "manager_reviewed";
+    rec.install_base_response_status === "manager_correction_sent";
 
   const correctedFields = String(
     rec.install_base_corrected_fields ||
     rec.corrected_fields ||
-    rec.install_base_issue_field ||
     ""
   )
     .split(",")
     .map(v => String(v || "").trim())
     .filter(Boolean);
 
-  const hasCorrectionEvidence =
-    correctedFields.length > 0 ||
-    Boolean(
-      rec.install_base_correction_id ||
-      rec.install_base_correction_at ||
-      rec.install_base_fixed_at
-    );
-
-  return statusIsCorrection && hasCorrectionEvidence;
+  return statusIsFixReturn && correctedFields.length > 0;
 }
 
 function isFixedByRep(rec) {
