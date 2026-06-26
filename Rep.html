@@ -3240,6 +3240,72 @@ function hasValidAssignedRep(rec) {
   );
 }
 
+
+function hasValidAssignedTerritory(rec) {
+  const territory = String(
+    rec?.manager_region ||
+    rec?.territory_name ||
+    rec?.territory ||
+    rec?.assigned_territory ||
+    rec?.owner_group_name ||
+    rec?.owner_group ||
+    ""
+  ).trim();
+
+  const normalized = territory.toLowerCase();
+
+  return Boolean(
+    territory &&
+    ![
+      "unassigned",
+      "unassigned territory",
+      "no territory",
+      "none",
+      "n/a",
+      "na",
+      "unknown",
+      "-"
+    ].includes(normalized)
+  );
+}
+
+function recordRequiresTerritoryFix(rec) {
+  const context = [
+    rec?.install_base_issue_field,
+    rec?.install_base_issue_type,
+    rec?.install_base_issue_reason,
+    rec?.install_base_issue_note,
+    rec?.install_base_action_reason,
+    rec?.axis_clarification_reason,
+    rec?.rep_action_required,
+    rec?.oem_review_reason,
+    rec?.proactive_reason,
+    rec?.manager_review_request
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    context.includes("territory") ||
+    context.includes("manager region") ||
+    context.includes("owner group")
+  );
+}
+
+function isRepRoutingComplete(rec) {
+  if (!hasValidAssignedRep(rec)) return false;
+
+  if (
+    recordRequiresTerritoryFix(rec) &&
+    !hasValidAssignedTerritory(rec)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -3247,7 +3313,7 @@ function mergeInstallBaseQueueIntoRepRecords() {
   let changed = false;
 
   queue.forEach(incoming => {
-    if (!hasValidAssignedRep(incoming)) return;
+    if (!isRepRoutingComplete(incoming)) return;
 
     const key =
       incoming.key ||
@@ -3391,7 +3457,7 @@ function mergeInstallBaseQueueIntoRepRecords() {
 
     state.records = Array.isArray(saved)
       ? saved.filter(rec =>
-          hasValidAssignedRep(rec) &&
+          isRepRoutingComplete(rec) &&
           rec.install_base_released_to !== "manager" &&
           rec.release_destination !== "manager" &&
           rec.manager_visible !== true
@@ -3401,6 +3467,14 @@ function mergeInstallBaseQueueIntoRepRecords() {
     state.records = [];
   }
   mergeInstallBaseQueueIntoRepRecords();
+
+  // Purge any stale Rep copy that was saved before the assignment gate existed.
+  const routedRecords = state.records.filter(isRepRoutingComplete);
+
+  if (routedRecords.length !== state.records.length) {
+    state.records = routedRecords;
+    saveRecords();
+  }
 
   if (
     preserveSelection &&
@@ -3442,7 +3516,7 @@ function importRepQueueRecords() {
  let changed = false;
 
 queue.forEach(item => {
-  if (!hasValidAssignedRep(item)) return;
+  if (!isRepRoutingComplete(item)) return;
   if (item.install_base_released_to !== "rep") return;
 
   if (
