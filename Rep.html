@@ -3065,14 +3065,24 @@ function normalizeOemReviewLabelForRep(rec) {
     ""
   );
 
+  const ownershipContext = lower([
+    rec.install_base_issue_field,
+    rec.install_base_issue_note,
+    rec.install_base_action_reason,
+    rec.axis_clarification_reason,
+    rec.rep_action_required,
+    rec.oem_review_reason,
+    rec.proactive_reason
+  ].filter(Boolean).join(" "));
+
+  const isRepOwnerIssue =
+    ownershipContext.includes("assigned rep") ||
+    ownershipContext.includes("rep owner") ||
+    ownershipContext.includes("rep name");
+
   const ownershipResolved =
     hasValidAssignedRep(rec) &&
-    (
-      directNormalized.includes("ownership") ||
-      raw.includes("ownership") ||
-      lower(rec.install_base_issue_field || "").includes("owner") ||
-      lower(rec.install_base_issue_field || "").includes("rep")
-    );
+    isRepOwnerIssue;
 
   if (ownershipResolved) {
     const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
