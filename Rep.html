@@ -2006,24 +2006,6 @@ tr.manager-response-flash td:last-child{
   box-shadow:0 0 16px rgba(52,211,153,.26);
 }
 
-
-/* Unified Rep Action and Manager Communication */
-.rep-action-only-card{
-  margin-bottom:0!important;
-  border-bottom-left-radius:8px!important;
-  border-bottom-right-radius:8px!important;
-}
-
-.comm-shell{
-  margin-top:-4px!important;
-  border-top-left-radius:8px!important;
-  border-top-right-radius:8px!important;
-}
-
-.comm-composer textarea{
-  min-height:96px;
-}
-
 </style>
 </head>
 
@@ -5526,6 +5508,13 @@ function renderRegularRepAction(rec) {
         />
       </div>
 
+      
+
+      <div class="btns">
+        <button type="button" class="green" onclick="confirmManualAction()">
+          Continue Rep Action
+        </button>
+      </div>
     </div>
   `;
 }
@@ -5539,33 +5528,34 @@ function renderRepManagerCommunication(rec) {
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Manager Communication</div>
-          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "Rep action communication"}</div>
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
+          <button type="button" class="${ui.composerOpen ? "green" : "secondary"}" onclick="toggleRepManagerCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : "Open Communication"}</button>
           <button type="button" class="secondary" onclick="toggleRepManagerHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
-
-      <div class="comm-composer">
-        <div class="row" style="margin-bottom:10px;">
-          <label for="repActionNotes">Rep Action Notes / Message to Manager</label>
-          <textarea
-            id="repActionNotes"
-            placeholder="Add notes for the selected rep action. These notes will be sent to Manager and saved in communication history..."
-          ></textarea>
+      ${ui.composerOpen ? `
+        <div class="comm-composer">
+          <div class="row" style="margin-bottom:10px;">
+            <label for="repManagerMessage">Message to Manager</label>
+            <textarea
+              id="repManagerMessage"
+              placeholder="Type a message to Manager..."
+            ></textarea>
+          </div>
+          <div class="btns">
+            <button
+              type="button"
+              class="green"
+              onclick="sendQuickRepManagerMessage()"
+            >
+              Send Message to Manager
+            </button>
+          </div>
         </div>
-
-        <div class="btns">
-          <button
-            type="button"
-            class="green"
-            onclick="confirmManualAction()"
-          >
-            Continue Rep Action
-          </button>
-        </div>
-      </div>
+      ` : ""}
       ${ui.historyOpen ? `
         <div class="comm-history">
           <div class="comm-history-title">Activity / Manager Communication History</div>
@@ -5806,10 +5796,6 @@ const repFollowUpDateEl = $("repFollowUpDate");
 if (repFollowUpDateEl) {
   repFollowUpDateEl.value = rec.rep_follow_up_date || rec.next_action_date || "";
 }
-  const repActionNotesEl = $("repActionNotes");
-if (repActionNotesEl) {
-  repActionNotesEl.value = rec.rep_notes || "";
-}
   const payloadPreviewEl = $("payloadPreview");
   if (payloadPreviewEl) {
     payloadPreviewEl.textContent = JSON.stringify(payloadFor(rec), null, 2);
@@ -5819,7 +5805,6 @@ if (repActionNotesEl) {
   if (continueBtn) continueBtn.disabled = completed;
 
   if ($("manualActionSelect")) $("manualActionSelect").disabled = completed;
-  if ($("repActionNotes")) $("repActionNotes").disabled = completed;
   if ($("repManagerQuickMessage")) $("repManagerQuickMessage").disabled = completed;
   if ($("repFollowUpDate")) $("repFollowUpDate").disabled = completed;
 const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
@@ -7594,7 +7579,7 @@ function showBanner(text) {
       }
 
       const action = $("repAction").value;
-      const notes = $("repActionNotes")?.value || "";
+      const notes = "";
       const followUpDate = $("repFollowUpDate").value;
 
       if (!action) {
@@ -7609,7 +7594,7 @@ function showBanner(text) {
 
       rec.rep_action = action;
       rec.rep_action_label = $("repAction").selectedOptions[0]?.textContent || action;
-      rec.rep_notes = notes;
+      rec.rep_notes = "";
       rec.rep_last_action_at = new Date().toISOString();
       rec.rep_follow_up_date = followUpDate || "";
 
@@ -7680,7 +7665,7 @@ if (!action) {
 	  completeLifecycleProject();
 	  return;
 	}
-	const notes = $("repActionNotes")?.value || "";
+	const notes = "";
 	const followUpDate = $("repFollowUpDate").value;
 
 if (!action) {
@@ -7713,30 +7698,17 @@ const now = new Date().toISOString();
 
 rec.rep_action = action;
 rec.rep_action_label = label;
-rec.rep_notes = notes;
+rec.rep_notes = "";
 rec.rep_follow_up_date = followUpDate || "";
 rec.next_action_date = action === "schedule_follow_up" ? followUpDate : "";
 rec.rep_last_action_at = now;
-
-// Rep Action Notes are also part of Rep / Manager Communication.
-rec.rep_manager_message_action = action;
-rec.rep_manager_message_label = `Rep Action: ${label}`;
-rec.rep_manager_message_notes = notes;
-rec.rep_manager_message_at = now;
-rec.rep_manager_message_by =
-  `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-  rec.assigned_rep_name ||
-  rec.rep ||
-  "Rep";
 
 rec.manager_unseen_update = true;
 rec.manager_alert_seen = false;
 rec.manager_update_seen_at = "";
 rec.manager_flash_at = now;
 rec.manager_flash_type = "rep_message";
-rec.manager_flash_text = notes
-  ? `Rep Action: ${label} — ${notes}`
-  : `Rep Action: ${label}`;
+rec.manager_flash_text = `Rep Action: ${label}`;
 
 syncFeedStatus(rec);
 render();
@@ -7849,10 +7821,7 @@ render();
     rec.assigned_rep_name ||
     "Rep";
 
-  const note =
-    $("repActionNotes")?.value?.trim() ||
-    rec.rep_notes ||
-    "Rep marked project completed.";
+  const note = "Rep marked project completed.";
 
   const updated = {
     ...rec,
