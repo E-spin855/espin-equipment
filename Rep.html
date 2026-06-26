@@ -3604,20 +3604,91 @@ function syncToManagerQueue(rec) {
     MANAGER_NAME ||
     "Default Manager";
 
-  const list = Array.isArray(managerQueue[bucketName])
-    ? managerQueue[bucketName]
-    : [];
+  // Remove every stale copy of this record from every Manager bucket.
+  // Otherwise an older duplicate can overwrite the newest Rep action/notes
+  // when the Manager page flattens and merges all queue buckets.
+  Object.keys(managerQueue).forEach(name => {
+    const list = Array.isArray(managerQueue[name])
+      ? managerQueue[name]
+      : [];
 
-  const cleaned = list.filter(item => !sameSyncRecord(item, packet));
-  cleaned.unshift(packet);
+    managerQueue[name] = list.filter(
+      item => !sameSyncRecord(item, packet)
+    );
+  });
 
-  managerQueue[bucketName] = cleaned;
+  if (!Array.isArray(managerQueue[bucketName])) {
+    managerQueue[bucketName] = [];
+  }
 
-  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+  managerQueue[bucketName].unshift({
+    ...packet,
+
+    rep_action: rec.rep_action || packet.rep_action || "",
+    rep_action_label:
+      rec.rep_action_label ||
+      rec.rep_selected_action_label ||
+      packet.rep_action_label ||
+      "",
+
+    rep_selected_action:
+      rec.rep_selected_action ||
+      packet.rep_selected_action ||
+      "",
+
+    rep_selected_action_label:
+      rec.rep_selected_action_label ||
+      rec.rep_action_label ||
+      packet.rep_selected_action_label ||
+      "",
+
+    rep_notes: rec.rep_notes || "",
+    rep_last_action_at:
+      rec.rep_last_action_at ||
+      packet.rep_last_action_at ||
+      new Date().toISOString(),
+
+    rep_manager_message_action:
+      rec.rep_manager_message_action ||
+      packet.rep_manager_message_action ||
+      "",
+
+    rep_manager_message_label:
+      rec.rep_manager_message_label ||
+      packet.rep_manager_message_label ||
+      "",
+
+    rep_manager_message_notes:
+      rec.rep_manager_message_notes ||
+      packet.rep_manager_message_notes ||
+      "",
+
+    rep_manager_message_at:
+      rec.rep_manager_message_at ||
+      packet.rep_manager_message_at ||
+      "",
+
+    manager_visible: true,
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: ""
+  });
+
+  localStorage.setItem(
+    MANAGER_QUEUE_KEY,
+    JSON.stringify(managerQueue)
+  );
+
+  const ping = String(Date.now());
+  localStorage.setItem(MANAGER_SYNC_KEY, ping);
 
   try {
-    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: MANAGER_SYNC_KEY,
+        newValue: ping
+      })
+    );
   } catch {
     window.dispatchEvent(new Event("rep_feed_update"));
   }
