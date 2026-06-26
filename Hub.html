@@ -1792,10 +1792,13 @@ function getReviewStatus(rec) {
     return { type: "completed", label: "Project Completed" };
   }
 
-  // A new human response temporarily replaces the record's normal badge.
-  // After Install Base clicks away from the record, the response is marked seen
-  // and the original badge (for example Auto-Synced) returns.
-  if (rec.install_base_response_at && rec.install_base_response_seen !== true) {
+  // Only true FIX returns temporarily replace the record's normal badge.
+  // Plain text messages stay inside the communication panel only.
+  if (
+    hasActualInstallBaseCorrection(rec) &&
+    rec.install_base_response_at &&
+    rec.install_base_response_seen !== true
+  ) {
     const responseFrom = lower(rec.install_base_response_from || "rep");
     return {
       type: "response",
@@ -3379,10 +3382,7 @@ const completionUnseen =
 
 const rowClass = [
   String(state.selectedId) === String(rec.id) ? "selected" : "",
-rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
-  ? "install-base-response-flash"
-  : "",
-correctedUnseen ? "install-base-corrected-row-frame" : "",
+correctedUnseen ? "install-base-response-flash install-base-corrected-row-frame" : "",
 completionUnseen ? "install-base-response-flash" : ""
 ].filter(Boolean).join(" ");
 
