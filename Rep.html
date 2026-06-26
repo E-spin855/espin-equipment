@@ -288,6 +288,21 @@
     0 0 42px rgba(0,207,255,.32);
 }
     button.green{background:linear-gradient(90deg,var(--green),#8effc3)}
+button.send-message-glow{
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.30),
+    0 0 22px rgba(65,255,156,.55),
+    0 0 44px rgba(65,255,156,.22)!important;
+}
+
+button.message-sent-state{
+  background:linear-gradient(90deg,#ffd84d,#fff2a6)!important;
+  color:#1d1600!important;
+  border:2px solid rgba(255,242,166,.95)!important;
+  box-shadow:
+    0 0 0 1px rgba(255,216,77,.28),
+    0 0 24px rgba(255,216,77,.62)!important;
+}
     button.red{background:linear-gradient(90deg,var(--red),#ff9c9c)}
     button.pink{background:linear-gradient(90deg,var(--pink),#ff8aef)}
     button:disabled{opacity:.55;cursor:not-allowed}
@@ -2511,6 +2526,25 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
       return clean(v).toLowerCase();
     }
 
+    function flashRepMessageSentButton(buttonId, sentText = "Message Sent") {
+      const btn = $(buttonId);
+      if (!btn) return;
+
+      if (!btn.dataset.defaultText) {
+        btn.dataset.defaultText = btn.textContent.trim();
+      }
+
+      window.clearTimeout(btn._repMessageSentTimer);
+
+      btn.textContent = sentText;
+      btn.classList.add("message-sent-state");
+
+      btn._repMessageSentTimer = window.setTimeout(() => {
+        btn.textContent = btn.dataset.defaultText || "Send Message";
+        btn.classList.remove("message-sent-state");
+      }, 1400);
+    }
+
     function money(v) {
       return "$" + Number(v || 0).toLocaleString();
     }
@@ -4607,10 +4641,26 @@ function bindIncomingCommunicationFrameDismissal() {
     }
 
     window.setTimeout(() => {
-      const rec = state.records.find(r => String(r.id || "") === selectedId);
-      if (!rec || !hasUnseenIncomingCommunication(rec)) return;
+      const hadVisibleFrame = Boolean(
+        document.querySelector(
+          "tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash"
+        )
+      );
 
-      if (markIncomingCommunicationSeen(selectedId)) {
+      const rec = state.records.find(r => String(r.id || "") === selectedId);
+      const changed = rec ? markIncomingCommunicationSeen(selectedId) : false;
+
+      if (changed || hadVisibleFrame) {
+        document
+          .querySelectorAll("tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash")
+          .forEach(row => {
+            row.classList.remove(
+              "incoming-communication-flash",
+              "manager-response-flash",
+              "rep-new-row-flash"
+            );
+          });
+
         renderTable();
         renderNewProjectsTable();
         refreshSelectedRowUI();
@@ -5578,8 +5628,10 @@ function sendInstallBaseCorrection(id) {
 
   state.installBaseCommunicationOpen = false;
 
-  render();
-  alert("Correction sent back to Install Base.");
+  flashRepMessageSentButton(`sendInstallBaseMessageBtn_${updated.id || id || ""}`, "Message Sent");
+  window.setTimeout(() => {
+    render();
+  }, 350);
 }
 function sendInstallBaseUnableToFix(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
@@ -5649,12 +5701,17 @@ function sendQuickRepManagerMessage() {
     return;
   }
 
+  flashRepMessageSentButton("sendRepManagerMessageBtn", "Message Sent");
+
   sendRepManagerMessage("custom_message", "Rep Message", notes);
 
   const activeManagerCommRec = findSelectedRecord();
   if (activeManagerCommRec) {
     const managerCommKey = String(activeManagerCommRec.id || activeManagerCommRec.key || getRecordKey(activeManagerCommRec));
-    state.managerCommunicationOpen[managerCommKey] = false;
+    window.setTimeout(() => {
+      state.managerCommunicationOpen[managerCommKey] = false;
+      renderDetail();
+    }, 350);
   }
 
   if (notesEl) notesEl.value = "";
@@ -5878,7 +5935,8 @@ function renderRepManagerCommunication(rec) {
           <div class="btns">
             <button
               type="button"
-              class="green"
+              id="sendRepManagerMessageBtn"
+              class="green send-message-glow"
               onclick="sendQuickRepManagerMessage()"
             >
               Send Message to Manager
@@ -6810,7 +6868,8 @@ function renderInstallBaseCorrectionPanel(rec) {
       <div class="btns">
         <button
           type="button"
-          class="green install-base-send-btn"
+          id="sendInstallBaseMessageBtn_${escapeHtml(rec.id)}"
+          class="green install-base-send-btn send-message-glow"
           onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
         >
           Send Message to Install Base
