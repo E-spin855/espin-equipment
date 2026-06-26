@@ -2,9 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js">
-window.setTimeout(bindHubUpdateFrameClickAway, 0);
-</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script src="assets/js/axis-utils.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ESPIN LINK Install Base Workspace</title>
@@ -225,6 +223,22 @@ button.danger{
   color:#ffd6dc;
   border:1px solid rgba(255,107,107,.28);
   box-shadow:none;
+}
+
+button.send-message-glow{
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.30),
+    0 0 22px rgba(65,255,156,.55),
+    0 0 44px rgba(65,255,156,.22)!important;
+}
+
+button.message-sent-state{
+  background:linear-gradient(90deg,#ffd84d,#fff2a6)!important;
+  color:#1d1600!important;
+  border:2px solid rgba(255,242,166,.95)!important;
+  box-shadow:
+    0 0 0 1px rgba(255,216,77,.28),
+    0 0 24px rgba(255,216,77,.62)!important;
 }
 
 .btns{
@@ -1291,6 +1305,25 @@ function clean(v) {
 
 function lower(v) {
   return clean(v).toLowerCase();
+}
+
+function flashHubMessageSentButton(buttonId, sentText = "Message Sent") {
+  const btn = $(buttonId);
+  if (!btn) return;
+
+  if (!btn.dataset.defaultText) {
+    btn.dataset.defaultText = btn.textContent.trim();
+  }
+
+  window.clearTimeout(btn._hubMessageSentTimer);
+
+  btn.textContent = sentText;
+  btn.classList.add("message-sent-state");
+
+  btn._hubMessageSentTimer = window.setTimeout(() => {
+    btn.textContent = btn.dataset.defaultText || "Send Message";
+    btn.classList.remove("message-sent-state");
+  }, 1400);
 }
 
 function isAutoSyncEligible(rec) {
@@ -3690,8 +3723,11 @@ function sendInstallBaseReplyToRep(recordId) {
   state.installBaseReplyDrafts[String(recordId || "")] = "";
   state.repCommunicationOpen[String(recordId || "")] = false;
   saveRecords();
-  render();
-  showBanner("Response sent to Rep Review.");
+  flashHubMessageSentButton(`sendInstallBaseReplyToRepBtn_${rec.id || ""}`, "Message Sent");
+  window.setTimeout(() => {
+    render();
+    showBanner("Response sent to Rep Review.");
+  }, 350);
 }
 
 function getHubRepCommunicationUi(rec) {
@@ -3807,7 +3843,12 @@ function renderRepResponseCard(rec) {
           <div class="install-base-reply-box" onclick="event.stopPropagation();">
             <label for="installBaseReplyToRep">Install Base Response to Rep</label>
             <textarea id="installBaseReplyToRep" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveInstallBaseReplyDraft('${escapeJs(rec.id || "")}', this.value)" placeholder="Enter a response, confirmation, or follow-up question for the rep.">${escapeHtml(getInstallBaseReplyDraft(rec.id || ""))}</textarea>
-            <div class="btns"><button type="button" class="green" onclick="sendInstallBaseReplyToRep('${escapeJs(rec.id || "")}')">Send Response to Rep</button></div>
+            <div class="btns"><button
+                type="button"
+                id="sendInstallBaseReplyToRepBtn_${escapeHtml(rec.id || "")}"
+                class="green send-message-glow"
+                onclick="sendInstallBaseReplyToRep('${escapeJs(rec.id || "")}')"
+              >Send Response to Rep</button></div>
           </div>
         </div>
       ` : ""}
@@ -3891,8 +3932,11 @@ function sendInstallBaseMessageToManager(recordId) {
   state.managerMessageDrafts[String(recordId||"")] = "";
   state.managerCommunicationOpen[String(recordId||"")] = false;
   saveRecords();
-  render();
-  showBanner("Message sent to Manager Review.");
+  flashHubMessageSentButton(`sendInstallBaseMessageToManagerBtn_${rec.id || ""}`, "Message Sent");
+  window.setTimeout(() => {
+    render();
+    showBanner("Message sent to Manager Review.");
+  }, 350);
 }
 function getHubManagerCommunicationUi(rec) {
   const id = String(rec?.id || "");
@@ -3957,7 +4001,12 @@ function renderManagerInstallBaseCommunication(rec) {
         <div class="comm-composer">
           <label for="installBaseMessageToManager">Message to Manager</label>
           <textarea id="installBaseMessageToManager" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveHubManagerDraft('${escapeJs(rec.id || "")}', this.value)" placeholder="Type message to Manager...">${escapeHtml(getHubManagerDraft(rec.id || ""))}</textarea>
-          <div class="btns"><button type="button" class="green" onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')">Send Message to Manager</button></div>
+          <div class="btns"><button
+                type="button"
+                id="sendInstallBaseMessageToManagerBtn_${escapeHtml(rec.id || "")}"
+                class="green send-message-glow"
+                onclick="sendInstallBaseMessageToManager('${escapeJs(rec.id || "")}')"
+              >Send Message to Manager</button></div>
         </div>
       ` : ""}
       ${ui.historyOpen ? `
