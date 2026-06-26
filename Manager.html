@@ -5223,17 +5223,111 @@ function sendManagerMessageToInstallBase() {
   render();
   showBanner("Message sent to Install Base.");
 }
+function getManagerInstallBaseIncomingSignature(rec) {
+  const history = getManagerInstallBaseConversationHistory(rec);
+  const latest = [...history].reverse().find(item => lower(item.sender) === "install_base");
+
+  if (!latest) return "";
+
+  return [
+    clean(latest.id || ""),
+    clean(latest.at || ""),
+    clean(latest.message || "")
+  ].join("|");
+}
+
+function managerHasUnseenInstallBaseMessage(rec) {
+  const history = getManagerInstallBaseConversationHistory(rec);
+  const latest = [...history].reverse().find(item => lower(item.sender) === "install_base");
+
+  if (!latest) return false;
+
+  const signature = getManagerInstallBaseIncomingSignature(rec);
+
+  return (
+    latest.seen_by_manager !== true ||
+    rec.install_base_message_to_manager_seen !== true ||
+    clean(rec.manager_install_base_ack_signature || "") !== signature
+  );
+}
+
+function markManagerInstallBaseMessageSeen(rec) {
+  if (!rec) return false;
+
+  const signature = getManagerInstallBaseIncomingSignature(rec);
+  if (!signature) return false;
+
+  const now = new Date().toISOString();
+  const recordId = String(rec.id || "");
+  const recordKey = String(rec.key || getRecordKey(rec) || "");
+
+  const updateRecord = item => {
+    const sameId = recordId && String(item.id || "") === recordId;
+    const sameKey = recordKey && String(item.key || getRecordKey(item) || "") === recordKey;
+    if (!sameId && !sameKey) return item;
+
+    const history = Array.isArray(item.manager_install_base_conversation_history)
+      ? item.manager_install_base_conversation_history.map(entry =>
+          lower(entry?.sender) === "install_base"
+            ? {
+                ...entry,
+                seen_by_manager: true,
+                seen_by_manager_at: now
+              }
+            : entry
+        )
+      : item.manager_install_base_conversation_history;
+
+    return {
+      ...item,
+      manager_install_base_conversation_history: history,
+      install_base_message_to_manager_seen: true,
+      install_base_message_to_manager_seen_at: now,
+      manager_install_base_ack_signature: signature
+    };
+  };
+
+  state.records = state.records.map(updateRecord);
+
+  const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+  Object.keys(managerQueue).forEach(owner => {
+    if (!Array.isArray(managerQueue[owner])) return;
+    managerQueue[owner] = managerQueue[owner].map(updateRecord);
+  });
+
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+  return true;
+}
+
 function getManagerInstallBaseCommunicationUi(rec) {
   const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
   const needsResponse = Boolean(latest && lower(latest.sender) === "install_base");
-  const composerOpen = Object.prototype.hasOwnProperty.call(state.installBaseCommunicationOpen, id)
+  const unseenHubMessage = managerHasUnseenInstallBaseMessage(rec);
+
+  const manualState = Object.prototype.hasOwnProperty.call(state.installBaseCommunicationOpen, id)
     ? state.installBaseCommunicationOpen[id]
-    : needsResponse;
+    : undefined;
+
+  const composerOpen = unseenHubMessage
+    ? true
+    : (manualState === undefined ? needsResponse : manualState === true);
+
   const historyOpen = state.installBaseHistoryOpen[id] === true;
   const dismissed = state.installBaseCommunicationDismissed[id] === true;
-  return { history, latest, needsResponse, composerOpen, historyOpen, dismissed };
+
+  return {
+    history,
+    latest,
+    needsResponse,
+    unseenHubMessage,
+    composerOpen,
+    historyOpen,
+    dismissed
+  };
 }
 function toggleManagerInstallBaseCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
@@ -5274,7 +5368,7 @@ function renderManagerInstallBaseCommunication(rec) {
           <div class="btns" style="margin-top:12px;"><button type="button" class="green" onclick="sendManagerMessageToInstallBase()">Send Message to Install Base</button></div>
         </div>
       ` : ""}
-      ${ui.historyOpen ? `
+      ${ui.historyOpen && ui.history.length ? `
         <div class="comm-history">
           <div class="comm-history-title">Activity / Install Base Communication History</div>
           <div class="manager-install-base-history-list">
@@ -6920,7 +7014,13 @@ if (tableBody) {
     const repKey = String(rec.id || rec.key || getRecordKey(rec));
     let changed = false;
 
-    if (state.installBaseCommunicationOpen[installBaseKey] === true) {
+    const installBaseUi = getManagerInstallBaseCommunicationUi(rec);
+
+    if (
+      state.installBaseCommunicationOpen[installBaseKey] === true ||
+      installBaseUi.composerOpen
+    ) {
+      markManagerInstallBaseMessageSeen(rec);
       state.installBaseCommunicationOpen[installBaseKey] = false;
       state.installBaseCommunicationDismissed[installBaseKey] = true;
       changed = true;

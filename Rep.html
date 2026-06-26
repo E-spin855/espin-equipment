@@ -490,7 +490,8 @@ th{
     .pill.submitted{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
     .pill.local{background:linear-gradient(90deg,#145f34,#22a35b,#54f0a0);color:#061b10;border-color:rgba(84,240,160,.40)}
 tr.rep-new-row-flash,
-tr.manager-response-flash{
+tr.manager-response-flash,
+tr.incoming-communication-flash{
   position:relative;
   outline:3px solid rgba(65,255,156,.98)!important;
   outline-offset:-3px;
@@ -504,19 +505,22 @@ tr.manager-response-flash{
 }
 
 tr.rep-new-row-flash td,
-tr.manager-response-flash td{
+tr.manager-response-flash td,
+tr.incoming-communication-flash td{
   background:transparent!important;
   border-top:1px solid rgba(65,255,156,.45)!important;
   border-bottom:1px solid rgba(65,255,156,.72)!important;
 }
 
 tr.rep-new-row-flash td:first-child,
-tr.manager-response-flash td:first-child{
+tr.manager-response-flash td:first-child,
+tr.incoming-communication-flash td:first-child{
   border-left:2px solid rgba(65,255,156,.95)!important;
 }
 
 tr.rep-new-row-flash td:last-child,
-tr.manager-response-flash td:last-child{
+tr.manager-response-flash td:last-child,
+tr.incoming-communication-flash td:last-child{
   border-right:2px solid rgba(65,255,156,.95)!important;
 }
 .rep-fix-badge{
@@ -4447,6 +4451,151 @@ function isCompletedRepRecord(rec) {
     lower(rec.install_base_response_status) === "project_completed_by_rep"
   );
 }
+
+function getLatestIncomingManagerCommunication(rec) {
+  const history = getRepManagerCommunicationHistory(rec);
+  return [...history].reverse().find(item => lower(item.sender) === "manager") || null;
+}
+
+function hasUnseenManagerCommunication(rec) {
+  const latest = getLatestIncomingManagerCommunication(rec);
+  if (!latest) return false;
+
+  const signature = [
+    clean(latest.sender),
+    clean(latest.at),
+    clean(latest.message)
+  ].join("|");
+
+  return (
+    rec.rep_manager_ack_signature !== signature ||
+    rec.manager_response_seen_by_rep !== true
+  );
+}
+
+function getLatestIncomingInstallBaseCommunication(rec) {
+  const history = getInstallBaseConversationHistory(rec);
+  const latest = [...history]
+    .reverse()
+    .find(item => lower(item.sender) === "install_base");
+
+  if (latest) return latest;
+
+  const directMessage = clean(rec.install_base_reply_to_rep || "");
+  if (!directMessage) return null;
+
+  return {
+    sender: "install_base",
+    at: rec.install_base_reply_to_rep_at || "",
+    message: directMessage,
+    seen_by_rep: rec.install_base_reply_to_rep_seen === true
+  };
+}
+
+function hasUnseenInstallBaseCommunication(rec) {
+  const latest = getLatestIncomingInstallBaseCommunication(rec);
+  if (!latest) return false;
+
+  if (latest.seen_by_rep !== true) return true;
+
+  return rec.install_base_reply_to_rep_seen !== true &&
+    clean(rec.install_base_reply_to_rep || "") === clean(latest.message || "");
+}
+
+function hasUnseenIncomingCommunication(rec) {
+  return (
+    hasUnseenManagerCommunication(rec) ||
+    hasUnseenInstallBaseCommunication(rec)
+  );
+}
+
+function markIncomingCommunicationSeen(id) {
+  const selectedId = String(id || "");
+  const rec = state.records.find(r => String(r.id || "") === selectedId);
+  if (!rec || !hasUnseenIncomingCommunication(rec)) return false;
+
+  const now = new Date().toISOString();
+  const latestManager = getLatestIncomingManagerCommunication(rec);
+  const managerSignature = latestManager
+    ? [
+        clean(latestManager.sender),
+        clean(latestManager.at),
+        clean(latestManager.message)
+      ].join("|")
+    : rec.rep_manager_ack_signature || "";
+
+  const updateRecord = r => {
+    const sameId = String(r.id || "") === selectedId;
+    const sameKey = rec.key && String(r.key || "") === String(rec.key || "");
+    if (!sameId && !sameKey) return r;
+
+    const conversation = Array.isArray(r.install_base_conversation_history)
+      ? r.install_base_conversation_history.map(item =>
+          lower(item?.sender) === "install_base"
+            ? { ...item, seen_by_rep: true, seen_by_rep_at: now }
+            : item
+        )
+      : r.install_base_conversation_history;
+
+    return {
+      ...r,
+      install_base_conversation_history: conversation,
+      install_base_reply_to_rep_seen: true,
+      install_base_reply_to_rep_seen_at: now,
+      manager_response_seen_by_rep: true,
+      manager_response_seen_at: now,
+      rep_manager_ack_signature: managerSignature
+    };
+  };
+
+  state.records = state.records.map(updateRecord);
+  saveRecords();
+
+  let queue = [];
+  try {
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  queue = queue.map(updateRecord);
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(queue));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+  return true;
+}
+
+function bindIncomingCommunicationFrameDismissal() {
+  if (document.body.dataset.incomingCommFrameDismissBound === "true") return;
+  document.body.dataset.incomingCommFrameDismissBound = "true";
+
+  document.addEventListener("click", event => {
+    const selectedId = String(state.selectedId || "");
+    if (!selectedId) return;
+
+    const selectedRow = event.target.closest(
+      "#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]"
+    );
+
+    if (
+      selectedRow &&
+      String(selectedRow.dataset.recordId || "") === selectedId
+    ) {
+      return;
+    }
+
+    const rec = state.records.find(r => String(r.id || "") === selectedId);
+    if (!rec || !hasUnseenIncomingCommunication(rec)) return;
+
+    if (markIncomingCommunicationSeen(selectedId)) {
+      renderTable();
+      renderNewProjectsTable();
+      refreshSelectedRowUI();
+      renderDetail();
+    }
+  });
+}
+
    function renderTable() {
   const tbody = $("tableBody");
 
@@ -4483,10 +4632,10 @@ function isCompletedRepRecord(rec) {
 
   tbody.innerHTML = sorted.map(rec => {
     const hasUnseenManagerResponse =
-      rec.manager_response_action && !rec.manager_response_seen_by_rep;
+      hasUnseenManagerCommunication(rec);
 
-    const hasUnseenHubRelease =
-      rec.install_base_release_new && !rec.install_base_release_seen;
+    const hasUnseenHubCommunication =
+      hasUnseenInstallBaseCommunication(rec);
 
     const sentBackToInstallBase =
   rec.install_base_correction_status === "corrected_by_rep" ||
@@ -4503,7 +4652,9 @@ const hasUnseenInstallBaseUpdate =
 
 const selectedClass = [
   rec.id === state.selectedId ? "selected" : "",
-  hasUnseenManagerResponse ? "manager-response-flash" : "",
+  hasUnseenManagerResponse || hasUnseenHubCommunication
+    ? "incoming-communication-flash"
+    : "",
   hasUnseenInstallBaseUpdate || hasUnseenFixedData
     ? "rep-new-row-flash"
     : ""
@@ -6585,7 +6736,13 @@ function renderInstallBaseCorrectionPanel(rec) {
     String(state.installBaseCommunicationDismissedId || "") === String(rec.id || "") &&
     String(state.installBaseCommunicationDismissedSignature || "") === String(incomingSignature || "");
 
-  if (needsResponse && String(state.selectedId) === String(rec.id) && !hiddenForThisMessage) {
+  const hasUnseenHubMessage = hasUnseenInstallBaseCommunication(rec);
+
+  if (
+    hasUnseenHubMessage &&
+    String(state.selectedId) === String(rec.id) &&
+    !hiddenForThisMessage
+  ) {
     state.installBaseCommunicationOpen = true;
   }
 
@@ -9677,7 +9834,6 @@ function refreshSelectedRowUI() {
     .forEach(row => {
       if (String(row.dataset.recordId || "") === String(state.selectedId)) {
         row.classList.add("selected");
-        row.classList.remove("manager-response-flash", "rep-new-row-flash");
       }
     });
 }
@@ -9855,7 +10011,12 @@ function handleRepRowClick(id) {
 
   state.detailUpdateFlash = getDetailUpdateFlashState(recBeforeSeen);
 
-  const seenStateChanged = markRepRowUpdateSeen(selectedId);
+  const hasIncomingCommunication =
+    hasUnseenIncomingCommunication(recBeforeSeen);
+
+  const seenStateChanged = hasIncomingCommunication
+    ? false
+    : markRepRowUpdateSeen(selectedId);
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
 
@@ -9866,7 +10027,11 @@ function handleRepRowClick(id) {
       recordChanged = true;
     }
 
-    if (rec.manager_response_action && !rec.manager_response_seen_by_rep) {
+    if (
+      !hasIncomingCommunication &&
+      rec.manager_response_action &&
+      !rec.manager_response_seen_by_rep
+    ) {
       rec.manager_response_seen_by_rep = true;
       rec.manager_response_seen_at = new Date().toISOString();
       recordChanged = true;
@@ -9971,6 +10136,7 @@ function scheduleRepSyncRender() {
   bindRepRowDelegation($("tableBody"), handleRepRowClick);
   bindRepRowDelegation($("newProjectsTableBody"), selectRow);
   bindDetailUpdateFrameDismissal();
+  bindIncomingCommunicationFrameDismissal();
 
   window.addEventListener("storage", (e) => {
     if (
