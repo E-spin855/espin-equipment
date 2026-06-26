@@ -6556,19 +6556,20 @@ function renderInstallBaseCorrectionPanel(rec) {
     ""
   );
 
+  const reviewActionRequired = getInstallBaseRepActionRequired(rec);
   const hasConversation = getInstallBaseConversationHistory(rec).length > 0 || Boolean(clean(
     rec.install_base_reply_to_rep ||
     rec.install_base_response_message ||
     rec.install_base_response_note ||
     rec.rep_response_message ||
-    rec.install_base_correction_note ||
     ""
   ));
+  const hasCommunicationPurpose = hasExplicitInstallBaseRepRequest(rec) || issues.length > 0 || hasConversation;
 
-  // This area is for actual typed communication only.
-  // Generated review reasons, alert reasons, FIX routing, and field issues
-  // must not create or populate Rep / Install Base communication.
-  if (!hasConversation) return "";
+  // Informational Install Base reviews such as Equipment Age, Service Coverage,
+  // Utilization, Capital Planning, and Asset Status belong in the normal Rep
+  // Action workflow. They must not open the Install Base communication composer.
+  if (!hasCommunicationPurpose) return "";
 
   const needsResponse = installBaseCommunicationNeedsResponse(rec);
   const latestItem = getLatestInstallBaseCommunicationItem(rec);
@@ -6595,10 +6596,26 @@ function renderInstallBaseCorrectionPanel(rec) {
     ? (lower(latestItem.sender) === "install_base" ? "Install Base" : "Rep")
     : "Install Base";
 
-  const latestText = latestItem?.message || "";
+  const latestText = latestItem?.message || reviewActionRequired;
   const latestAt = latestItem?.at
     ? new Date(latestItem.at).toLocaleString()
     : "";
+
+  const requestHtml = `
+    <div style="margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.58);background:rgba(255,216,77,.10);">
+      <div style="font-size:11px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#ffd84d;margin-bottom:6px;">
+        Install Base Request
+      </div>
+      <div style="font-size:15px;font-weight:900;line-height:1.45;color:#fff4cc;">
+        ${escapeHtml(reviewActionRequired)}
+      </div>
+      ${reviewReason ? `
+        <div class="mini" style="margin-top:9px;line-height:1.45;">
+          <strong>Review context:</strong> ${escapeHtml(formatReviewText(reviewReason))}
+        </div>
+      ` : ""}
+    </div>
+  `;
 
   const responseFieldHtml = `
     <div style="margin-top:12px;display:grid;gap:9px;">
@@ -6617,9 +6634,32 @@ function renderInstallBaseCorrectionPanel(rec) {
         >
           Send Message to Install Base
         </button>
+
+        ${issues.length ? `
+          <button
+            type="button"
+            class="secondary"
+            onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
+          >
+            Correct Record Fields
+          </button>
+        ` : ""}
       </div>
     </div>
   `;
+
+  const correctionFieldsHtml = issues.length && state.installBaseActiveFixField ? `
+    <div style="display:grid;gap:10px;margin-top:12px;">
+      ${issues.map(([field,label]) => `
+        <label>${escapeHtml(label)}</label>
+        <input
+          id="fix_${field}"
+          value="${escapeHtml(rec[field] || "")}"
+          placeholder="Enter ${escapeHtml(label)}"
+        />
+      `).join("")}
+    </div>
+  ` : "";
 
   const historyHtml = `
     <div class="rep-action-history ${historyOpen ? "" : "rep-install-base-history-collapsed"}">
@@ -6645,6 +6685,7 @@ function renderInstallBaseCorrectionPanel(rec) {
       ${isOpen ? `
         <div class="comm-composer">
           ${renderInstallBaseReplyCard(rec)}
+          ${correctionFieldsHtml}
           ${responseFieldHtml}
         </div>
       ` : ""}
