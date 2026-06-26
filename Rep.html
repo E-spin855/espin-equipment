@@ -4728,6 +4728,16 @@ function bindIncomingCommunicationFrameDismissal() {
     const selectedId = String(state.selectedId || "");
     if (!selectedId) return;
 
+    // Do not re-render while the Rep is typing or clicking inside a communication panel.
+    // Re-rendering here was replacing the FIX input and preventing typing.
+    if (
+      event.target.closest(
+        ".comm-shell, .comm-composer, .install-base-comm-open, input, textarea, select, button"
+      )
+    ) {
+      return;
+    }
+
     const selectedRow = event.target.closest(
       "#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]"
     );
@@ -5904,8 +5914,11 @@ function bindDetailUpdateFrameDismissal() {
     const selectedRowClick =
       event.target.closest("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]");
 
-    // Keep the frame visible for the row click that opened the detail.
-    if (selectedRowClick) return;
+    const formInteraction =
+      event.target.closest(".comm-shell, .comm-composer, input, textarea, select, button");
+
+    // Keep frames visible while opening the detail or typing/responding inside communication.
+    if (selectedRowClick || formInteraction) return;
 
     clearDetailUpdateFrames();
   });
