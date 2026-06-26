@@ -3242,13 +3242,14 @@ function hasValidAssignedRep(rec) {
 
 
 function hasValidAssignedTerritory(rec) {
+  // Only a real territory/region value satisfies this requirement.
+  // Manager name, owner group, or assigned rep must not be used as substitutes.
   const territory = String(
     rec?.manager_region ||
     rec?.territory_name ||
     rec?.territory ||
     rec?.assigned_territory ||
-    rec?.owner_group_name ||
-    rec?.owner_group ||
+    rec?.sales_territory ||
     ""
   ).trim();
 
@@ -3469,11 +3470,23 @@ function mergeInstallBaseQueueIntoRepRecords() {
   mergeInstallBaseQueueIntoRepRecords();
 
   // Purge any stale Rep copy that was saved before the assignment gate existed.
-  const routedRecords = state.records.filter(isRepRoutingComplete);
+  const routedRecords = state.records.filter(rec => {
+    const complete = isRepRoutingComplete(rec);
+
+    if (!complete && String(rec.id) === String(state.selectedId)) {
+      state.selectedId = null;
+    }
+
+    return complete;
+  });
 
   if (routedRecords.length !== state.records.length) {
     state.records = routedRecords;
     saveRecords();
+    localStorage.setItem(
+      "axis_rep_sync_ping_v1",
+      String(Date.now())
+    );
   }
 
   if (
