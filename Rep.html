@@ -1742,6 +1742,29 @@ tr.incoming-communication-flash td:last-child{
 }
 
 /* Detail-card update frames: flash only around the section that changed */
+.install-base-fix-field-frame{
+  border:2px solid rgba(65,255,156,.95)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.28),
+    0 0 20px rgba(65,255,156,.44)!important;
+  animation:installBaseFixFieldPulse 1.05s ease-in-out infinite!important;
+}
+
+@keyframes installBaseFixFieldPulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.68);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.24),
+      0 0 12px rgba(65,255,156,.26);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.52),
+      0 0 26px rgba(65,255,156,.76);
+  }
+}
+
 .detail-update-frame{
   position:relative;
   border:2px solid rgba(65,255,156,.98)!important;
@@ -4588,6 +4611,34 @@ function hasUnseenIncomingCommunication(rec) {
   );
 }
 
+function hasDirectIncomingInstallBaseTarget(rec) {
+  if (!rec) return false;
+
+  // A row should flash only for its own direct incoming Hub/Install Base update.
+  // This prevents a FIX sent to one record from lighting another row that only
+  // shares older status fields or a loose record key.
+  return (
+    rec.install_base_release_new === true ||
+    rec.install_base_release_seen !== true ||
+    rec.rep_unseen_update === true ||
+    rec.install_base_reply_to_rep_seen === false ||
+    rec.rep_flash_type === "install_base_update" ||
+    rec.rep_flash_type === "install_base_message"
+  );
+}
+
+function hasDirectIncomingManagerTarget(rec) {
+  if (!rec) return false;
+
+  return (
+    rec.manager_response_seen_by_rep !== true ||
+    rec.manager_unseen_update === true ||
+    rec.manager_alert_seen === false ||
+    rec.manager_flash_type === "manager_response" ||
+    rec.manager_flash_type === "manager_message"
+  );
+}
+
 function getCommunicationFrameClass(rec, type) {
   if (!rec) return "";
 
@@ -4754,10 +4805,12 @@ function bindIncomingCommunicationFrameDismissal() {
 
   tbody.innerHTML = sorted.map(rec => {
     const hasUnseenManagerResponse =
-      hasUnseenManagerCommunication(rec);
+      hasUnseenManagerCommunication(rec) &&
+      hasDirectIncomingManagerTarget(rec);
 
     const hasUnseenHubCommunication =
-      hasUnseenInstallBaseCommunication(rec);
+      hasUnseenInstallBaseCommunication(rec) &&
+      hasDirectIncomingInstallBaseTarget(rec);
 
     const sentBackToInstallBase =
   rec.install_base_correction_status === "corrected_by_rep" ||
@@ -4766,11 +4819,12 @@ function bindIncomingCommunicationFrameDismissal() {
 
 const hasUnseenFixedData =
   sentBackToInstallBase &&
-  rec.install_base_fixed_seen_by_rep !== true;
+  rec.install_base_fixed_seen_by_rep !== true &&
+  hasDirectIncomingInstallBaseTarget(rec);
 
 const hasUnseenInstallBaseUpdate =
-  rec.install_base_release_new &&
-  !rec.install_base_release_seen;
+  rec.install_base_release_new === true &&
+  rec.install_base_release_seen !== true;
 
 const selectedClass = [
   rec.id === state.selectedId ? "selected" : "",
@@ -5673,6 +5727,10 @@ function sendInstallBaseCorrection(id) {
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
   syncToManagerQueue(updated);
+
+  document
+    .querySelectorAll(".install-base-fix-field-frame")
+    .forEach(el => el.classList.remove("install-base-fix-field-frame"));
 
   state.installBaseCommunicationOpen = false;
 
@@ -6934,6 +6992,7 @@ function renderInstallBaseCorrectionPanel(rec) {
         <label>${escapeHtml(label)}</label>
         <input
           id="fix_${field}"
+          class="install-base-fix-field-frame"
           value="${escapeHtml(rec[field] || "")}"
           placeholder="Enter ${escapeHtml(label)}"
         />
