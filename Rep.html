@@ -1883,6 +1883,32 @@ tr.incoming-communication-flash td:last-child{
   background:linear-gradient(135deg,rgba(0,229,255,.055),rgba(8,18,35,.92))!important;
   box-shadow:0 0 22px rgba(0,229,255,.10)!important;
 }
+
+.comm-shell.communication-update-frame{
+  border:2px solid rgba(65,255,156,.98)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.34),
+    0 0 24px rgba(65,255,156,.56),
+    0 0 42px rgba(65,255,156,.22)!important;
+  animation:communicationUpdateFramePulse 1.05s ease-in-out infinite!important;
+}
+
+@keyframes communicationUpdateFramePulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.70);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.26),
+      0 0 14px rgba(65,255,156,.30),
+      0 0 26px rgba(65,255,156,.14);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.56),
+      0 0 30px rgba(65,255,156,.84),
+      0 0 54px rgba(65,255,156,.30);
+  }
+}
 .comm-toolbar{
   display:flex;
   align-items:center;
@@ -4562,6 +4588,28 @@ function hasUnseenIncomingCommunication(rec) {
   );
 }
 
+function getCommunicationFrameClass(rec, type) {
+  if (!rec) return "";
+
+  if (
+    type === "manager" &&
+    state.managerCommunicationFrameActive === true &&
+    hasUnseenManagerCommunication(rec)
+  ) {
+    return "communication-update-frame";
+  }
+
+  if (
+    type === "install_base" &&
+    state.installBaseCommunicationFrameActive === true &&
+    hasUnseenInstallBaseCommunication(rec)
+  ) {
+    return "communication-update-frame";
+  }
+
+  return "";
+}
+
 function markIncomingCommunicationSeen(id) {
   const selectedId = String(id || "");
   const rec = state.records.find(r => String(r.id || "") === selectedId);
@@ -5844,18 +5892,16 @@ function toggleRepManagerCommunication(recordId) {
   const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
   state.managerCommunicationOpen[key] = willOpen;
 
-  // Hiding communication marks the latest incoming message as read. A reply is optional.
+  // Closing communication marks the latest incoming message as read and clears the green frame.
   if (!willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
-    const signature = [clean(ui.latest.sender), clean(ui.latest.at), clean(ui.latest.message)].join("|");
-    state.records = state.records.map(r =>
-      String(r.id || r.key || getRecordKey(r)) === key
-        ? { ...r, rep_manager_ack_signature: signature, manager_response_seen_by_rep: true }
-        : r
-    );
-    saveRecords();
+    markIncomingCommunicationSeen(rec.id || recordId);
+    state.managerCommunicationFrameActive = false;
   }
 
-  render();
+  renderTable();
+  renderNewProjectsTable();
+  refreshSelectedRowUI();
+  renderDetail();
 }
 function toggleRepManagerHistory(recordId) {
   const key = String(recordId || "");
@@ -5911,7 +5957,7 @@ function renderRepManagerCommunication(rec) {
   const recordId = String(rec.id || rec.key || getRecordKey(rec));
   const latestText = ui.latest ? `${lower(ui.latest.sender) === "manager" ? "Manager" : "Rep"}: ${ui.latest.message}` : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${ui.needsResponse ? "detail-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${getCommunicationFrameClass(rec, "manager")} ${ui.needsResponse ? "detail-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Manager Communication</div>
@@ -6427,22 +6473,16 @@ function toggleInstallBaseCommunication(id = "") {
     state.installBaseCommunicationDismissedId = String(state.selectedId || "");
     state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
 
-    // Hiding communication marks the latest incoming request/message as read. A reply is optional.
-    const signature = getInstallBaseIncomingSignature(rec);
-    if (rec && signature) {
-      state.records = state.records.map(r =>
-        String(r.id || "") === String(rec.id || "")
-          ? {
-              ...r,
-              rep_install_base_ack_signature: signature,
-              install_base_reply_to_rep_seen: true
-            }
-          : r
-      );
-      saveRecords();
+    // Closing communication marks the latest incoming request/message as read and clears the green frame.
+    if (rec) {
+      markIncomingCommunicationSeen(rec.id || state.selectedId);
+      state.installBaseCommunicationFrameActive = false;
     }
   }
 
+  renderTable();
+  renderNewProjectsTable();
+  refreshSelectedRowUI();
   renderDetail();
 }
 function toggleInstallBaseHistory() {
@@ -6909,7 +6949,7 @@ function renderInstallBaseCorrectionPanel(rec) {
   `;
 
   return `
-    <div class="detail-card full comm-shell ${needsResponse ? "needs-rep-input" : ""}">
+    <div class="detail-card full comm-shell ${getCommunicationFrameClass(rec, "install_base")} ${needsResponse ? "needs-rep-input" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Install Base Communication</div>
@@ -10097,12 +10137,16 @@ function handleRepRowClick(id) {
   const hasIncomingCommunication =
     hasUnseenIncomingCommunication(recBeforeSeen);
 
-  const incomingCommunicationSeenChanged = hasIncomingCommunication
-    ? markIncomingCommunicationSeen(selectedId)
-    : false;
+  const hasIncomingManagerCommunication =
+    hasUnseenManagerCommunication(recBeforeSeen);
+
+  const hasIncomingInstallBaseCommunication =
+    hasUnseenInstallBaseCommunication(recBeforeSeen);
+
+  const incomingCommunicationSeenChanged = false;
 
   const seenStateChanged = hasIncomingCommunication
-    ? incomingCommunicationSeenChanged
+    ? false
     : markRepRowUpdateSeen(selectedId);
 
   if (hasIncomingCommunication) {
@@ -10115,6 +10159,17 @@ function handleRepRowClick(id) {
           "rep-new-row-flash"
         );
       });
+
+    if (hasIncomingManagerCommunication) {
+      const managerCommKey = String(selectedId);
+      state.managerCommunicationOpen[managerCommKey] = true;
+      state.managerCommunicationFrameActive = true;
+    }
+
+    if (hasIncomingInstallBaseCommunication) {
+      state.installBaseCommunicationOpen = true;
+      state.installBaseCommunicationFrameActive = true;
+    }
   }
 
   const rec = state.records.find(r => String(r.id || "") === selectedId);
