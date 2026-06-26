@@ -5509,10 +5509,10 @@ function renderRegularRepAction(rec) {
       </div>
 
       <div class="row" style="margin-bottom:10px;">
-        <label for="repActionNotes">Rep Action Notes</label>
+        <label for="repActionNotes">Rep Action Notes / Message to Manager</label>
         <textarea
           id="repActionNotes"
-          placeholder="Add notes for this rep action..."
+          placeholder="Add notes for this rep action. These notes will also appear in Rep / Manager Communication..."
         ></textarea>
       </div>
 
@@ -7705,18 +7705,37 @@ rec.rep_selected_action_at = new Date().toISOString();
     ? "follow_up_scheduled"
     : action;
 
+const now = new Date().toISOString();
+
 rec.rep_action = action;
 rec.rep_action_label = label;
 rec.rep_notes = notes;
 rec.rep_follow_up_date = followUpDate || "";
 rec.next_action_date = action === "schedule_follow_up" ? followUpDate : "";
-rec.rep_last_action_at = new Date().toISOString();
-      rec.manager_unseen_update = true;
-      rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "rep_action";
-rec.manager_flash_text = `Rep selected: ${label}`;
-      syncFeedStatus(rec);
-      render();
+rec.rep_last_action_at = now;
+
+// Rep Action Notes are also part of Rep / Manager Communication.
+rec.rep_manager_message_action = action;
+rec.rep_manager_message_label = `Rep Action: ${label}`;
+rec.rep_manager_message_notes = notes;
+rec.rep_manager_message_at = now;
+rec.rep_manager_message_by =
+  `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+  rec.assigned_rep_name ||
+  rec.rep ||
+  "Rep";
+
+rec.manager_unseen_update = true;
+rec.manager_alert_seen = false;
+rec.manager_update_seen_at = "";
+rec.manager_flash_at = now;
+rec.manager_flash_type = "rep_message";
+rec.manager_flash_text = notes
+  ? `Rep Action: ${label} — ${notes}`
+  : `Rep Action: ${label}`;
+
+syncFeedStatus(rec);
+render();
 
       if (action === "quote_review") {
         openQuoteModal();
