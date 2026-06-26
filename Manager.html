@@ -2962,11 +2962,15 @@ const normalSeen = isFreshRepUpdate
     const baseFlashAt = repFixSeen ? "" : (rec.manager_flash_at || existing.manager_flash_at || "");
 
     const repFixUnseen = repFixRecord && !repFixSeen && (
-      rec.manager_unseen_update === true ||
-      rec.manager_flash_type === "rep_update" ||
-      rec.install_base_response_status === "rep_correction_sent" ||
-      rec.install_base_correction_status === "corrected_by_rep" ||
-      rec.install_base_fix_status === "rep_reviewed"
+      (
+        hasActualInstallBaseCorrection(rec) &&
+        (
+          rec.manager_unseen_update === true ||
+          rec.manager_flash_type === "rep_update" ||
+          rec.install_base_response_status === "rep_correction_sent" ||
+          rec.install_base_correction_status === "corrected_by_rep"
+        )
+      )
     );
 
     const releaseIsUnseen =
@@ -3609,6 +3613,38 @@ function getRepActionLabel(action) {
   return map[action] || String(action || "").replace(/_/g, " ");
 }
 
+
+function hasActualInstallBaseCorrection(rec) {
+  if (!rec) return false;
+
+  const statusIsFixReturn =
+    lower(rec.install_base_correction_status) === "corrected_by_rep" ||
+    lower(rec.install_base_correction_status) === "corrected_by_manager" ||
+    lower(rec.install_base_response_status) === "rep_correction_sent" ||
+    lower(rec.install_base_response_status) === "manager_correction_sent";
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    ""
+  )
+    .split(",")
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
+
+  const wasManualFixRequest =
+    rec.install_base_manual_route === true &&
+    Boolean(clean(
+      rec.install_base_issue_field ||
+      rec.install_base_fix_field ||
+      rec.install_base_corrected_fields ||
+      rec.corrected_fields ||
+      ""
+    ));
+
+  return statusIsFixReturn && wasManualFixRequest && correctedFields.length > 0;
+}
+
 function renderRepStatus(rec) {
   if (!rec) {
     return `<span class="pill normal">Open</span>`;
@@ -3657,20 +3693,26 @@ function renderRepStatus(rec) {
 
   /*
     2. Install Base correction activity
+    Only real FIX returns should show correction badges.
+    Text-message replies must stay normal communication.
   */
 
   if (
-    correctionStatus === "corrected_by_rep" ||
-    installBaseResponseStatus === "rep_correction_sent" ||
-    fixStatus === "rep_reviewed"
+    hasActualInstallBaseCorrection(rec) &&
+    (
+      correctionStatus === "corrected_by_rep" ||
+      installBaseResponseStatus === "rep_correction_sent"
+    )
   ) {
     return `<span class="pill submitted">Corrected by Rep</span>`;
   }
 
   if (
-    correctionStatus === "corrected_by_manager" ||
-    installBaseResponseStatus === "manager_correction_sent" ||
-    fixStatus === "manager_reviewed"
+    hasActualInstallBaseCorrection(rec) &&
+    (
+      correctionStatus === "corrected_by_manager" ||
+      installBaseResponseStatus === "manager_correction_sent"
+    )
   ) {
     return `<span class="pill submitted">Corrected by Manager</span>`;
   }
