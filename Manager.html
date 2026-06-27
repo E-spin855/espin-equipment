@@ -5644,7 +5644,7 @@ function renderManagerRepCommunication(rec) {
     ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${ui.needsResponse && !ui.dismissed ? "communication-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || state.repCommunicationRowClickFrame?.[recordId] === true ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Rep Communication</div>
@@ -6672,8 +6672,25 @@ state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 let openedRepCommunicationFromRowClick = false;
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
 if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
-  const repCommKey = String(rec.id || rec.key || getRecordKey(rec));
-  state.repCommunicationOpen[repCommKey] = true;
+  const repCommKeys = [
+    selectedId,
+    rec.id,
+    rec.key,
+    getRecordKey(rec)
+  ]
+    .map(v => String(v || ""))
+    .filter(Boolean);
+
+  if (!state.repCommunicationRowClickFrame) {
+    state.repCommunicationRowClickFrame = {};
+  }
+
+  repCommKeys.forEach(key => {
+    state.repCommunicationOpen[key] = true;
+    state.repCommunicationDismissed[key] = "";
+    state.repCommunicationRowClickFrame[key] = true;
+  });
+
   openedRepCommunicationFromRowClick = true;
 }
 
@@ -6709,6 +6726,27 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   }
 
 state.selectedId = updated.id;
+
+if (openedRepCommunicationFromRowClick) {
+  const finalizedRepCommKeys = [
+    state.selectedId,
+    updated.id,
+    updated.key,
+    getRecordKey(updated)
+  ]
+    .map(v => String(v || ""))
+    .filter(Boolean);
+
+  if (!state.repCommunicationRowClickFrame) {
+    state.repCommunicationRowClickFrame = {};
+  }
+
+  finalizedRepCommKeys.forEach(key => {
+    state.repCommunicationOpen[key] = true;
+    state.repCommunicationDismissed[key] = "";
+    state.repCommunicationRowClickFrame[key] = true;
+  });
+}
 
 renderTable();
 managerStorageSignature = getManagerStorageSignature();
@@ -7258,6 +7296,9 @@ if (tableBody) {
     ) {
       state.repCommunicationOpen[repKey] = false;
       state.repCommunicationDismissed[repKey] = repUi.incomingSignature || true;
+      if (state.repCommunicationRowClickFrame) {
+        state.repCommunicationRowClickFrame[repKey] = false;
+      }
       changed = true;
     }
 
