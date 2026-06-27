@@ -5604,29 +5604,23 @@ function getManagerRepCommunicationUi(rec) {
       (key && String(state.repCommunicationDismissed[key] || "") === String(incomingSignature))
     );
 
-  const rowClickForcedOpen = Boolean(
-    state.repCommunicationRowClickOpen &&
-    (
-      state.repCommunicationRowClickOpen[id] === true ||
-      (key && state.repCommunicationRowClickOpen[key] === true)
-    )
-  );
+  const selectedMatches =
+    String(state.selectedId || "") === String(rec.id || "") ||
+    String(state.selectedId || "") === String(rec.key || "") ||
+    String(state.selectedId || "") === String(getRecordKey(rec) || "");
 
-  const rowClickFrame = Boolean(
-    state.repCommunicationRowClickFrame &&
-    (
-      state.repCommunicationRowClickFrame[id] === true ||
-      (key && state.repCommunicationRowClickFrame[key] === true)
-    )
-  );
+  const selectedRepTextOpen =
+    selectedMatches &&
+    history.some(item => lower(item.sender) === "rep");
 
-  // A Rep text should open when the Manager clicks that row, even if the
-  // response status has already been acknowledged elsewhere.
+  const selectedRepTextFrame =
+    selectedRepTextOpen &&
+    state.managerRepCommunicationFrameActive === true;
+
   const needsResponse = Boolean(
     latestRep &&
     (
-      rowClickForcedOpen ||
-      rowClickFrame ||
+      selectedRepTextOpen ||
       (repTime >= managerTime && !dismissed)
     )
   );
@@ -5642,11 +5636,11 @@ function getManagerRepCommunicationUi(rec) {
     history,
     latest,
     needsResponse,
-    composerOpen: rowClickForcedOpen || (manualOpen === undefined ? needsResponse : manualOpen === true),
+    composerOpen: selectedRepTextOpen || (manualOpen === undefined ? needsResponse : manualOpen === true),
     historyOpen: state.repHistoryOpen[id] === true || (key && state.repHistoryOpen[key] === true),
     dismissed,
     incomingSignature,
-    rowClickFrame
+    selectedRepTextFrame
   };
 }
 function toggleManagerRepCommunication(recordId) {
@@ -5672,7 +5666,7 @@ function renderManagerRepCommunication(rec) {
     ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || ui.rowClickFrame ? "communication-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || ui.selectedRepTextFrame ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Rep Communication</div>
@@ -6534,6 +6528,7 @@ function saveManagerResponse() {
 
   const managerRepCommKey = String(updated.id || updated.key || getRecordKey(updated));
   state.repCommunicationOpen[managerRepCommKey] = false;
+  state.managerRepCommunicationFrameActive = false;
 
   state.selectedId = updated.id || updated.key || getRecordKey(updated);
 
@@ -6695,8 +6690,10 @@ state.correctedFieldHighlightId =
 state.timelineHighlight = getTimelineHighlightForRecord(rec);
 state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 
-// If the selected row has an associated Rep text message, open the
-// Manager / Rep communication field immediately when Manager clicks the row.
+// Same behavior as Rep side: clicking the row tied to a Rep text opens
+// the Manager / Rep communication field and shows the green frame.
+state.selectedId = rec.id || selectedId;
+
 let openedRepCommunicationFromRowClick = false;
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
 if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
@@ -6709,16 +6706,12 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
     .map(v => String(v || ""))
     .filter(Boolean);
 
-  if (!state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen = {};
-  if (!state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame = {};
-
   repCommKeys.forEach(key => {
     state.repCommunicationOpen[key] = true;
     state.repCommunicationDismissed[key] = "";
-    state.repCommunicationRowClickOpen[key] = true;
-    state.repCommunicationRowClickFrame[key] = true;
   });
 
+  state.managerRepCommunicationFrameActive = true;
   openedRepCommunicationFromRowClick = true;
 }
 
@@ -6765,15 +6758,12 @@ if (openedRepCommunicationFromRowClick) {
     .map(v => String(v || ""))
     .filter(Boolean);
 
-  if (!state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen = {};
-  if (!state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame = {};
-
   finalizedRepCommKeys.forEach(key => {
     state.repCommunicationOpen[key] = true;
     state.repCommunicationDismissed[key] = "";
-    state.repCommunicationRowClickOpen[key] = true;
-    state.repCommunicationRowClickFrame[key] = true;
   });
+
+  state.managerRepCommunicationFrameActive = true;
 }
 
 renderTable();
@@ -7334,10 +7324,9 @@ if (tableBody) {
       repKeysToClear.forEach(key => {
         state.repCommunicationOpen[key] = false;
         state.repCommunicationDismissed[key] = repUi.incomingSignature || true;
-        if (state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen[key] = false;
-        if (state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame[key] = false;
       });
 
+      state.managerRepCommunicationFrameActive = false;
       changed = true;
     }
 
