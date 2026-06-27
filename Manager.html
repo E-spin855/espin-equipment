@@ -2702,9 +2702,11 @@ const state = {
   showCompleted: true,
   installBaseCommunicationOpen: {},
   installBaseHistoryOpen: {},
+  installBaseMessageDrafts: {},
   installBaseCommunicationDismissed: {},
   repCommunicationOpen: {},
   repHistoryOpen: {},
+  repMessageDrafts: {},
   repCommunicationDismissed: {}
 };
 
@@ -5326,6 +5328,15 @@ function getManagerInstallBaseConversationHistory(rec) {
     : [];
   return [...history].sort((a,b) => (new Date(a.at||0).getTime()||0) - (new Date(b.at||0).getTime()||0));
 }
+
+function saveManagerInstallBaseDraft(recordId, value) {
+  state.installBaseMessageDrafts[String(recordId || "")] = String(value || "");
+}
+
+function getManagerInstallBaseDraft(recordId) {
+  return state.installBaseMessageDrafts[String(recordId || "")] || "";
+}
+
 function sendManagerMessageToInstallBase() {
   const rec = findSelectedRecord();
   if (!rec) return;
@@ -5372,6 +5383,7 @@ function sendManagerMessageToInstallBase() {
   localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
   input.value="";
   state.installBaseCommunicationOpen[String(rec.id || "")] = false;
+  state.installBaseMessageDrafts[String(rec.id || "")] = "";
   flashManagerMessageSentButton("sendManagerInstallBaseMessageBtn", "Message Sent");
   window.setTimeout(() => {
     render();
@@ -5525,7 +5537,7 @@ function renderManagerInstallBaseCommunication(rec) {
       ${ui.composerOpen ? `
         <div class="comm-composer">
           <label for="managerMessageToInstallBase">Message to Install Base</label>
-          <textarea id="managerMessageToInstallBase" placeholder="Type message to Install Base..."></textarea>
+          <textarea id="managerMessageToInstallBase" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveManagerInstallBaseDraft('${escapeJs(rec.id || "")}', this.value)" placeholder="Type message to Install Base...">${escapeHtml(getManagerInstallBaseDraft(rec.id || ""))}</textarea>
           <div class="btns" style="margin-top:12px;"><button
             type="button"
             id="sendManagerInstallBaseMessageBtn"
@@ -5534,7 +5546,7 @@ function renderManagerInstallBaseCommunication(rec) {
           >Send Message to Install Base</button></div>
         </div>
       ` : ""}
-      ${ui.historyOpen && ui.history.length ? `
+      ${ui.historyOpen ? `
         <div class="comm-history">
           <div class="comm-history-title">Activity / Install Base Communication History</div>
           <div class="manager-install-base-history-list">
@@ -5637,6 +5649,20 @@ function toggleManagerRepHistory(recordId) {
   state.repHistoryOpen[key] = state.repHistoryOpen[key] !== true;
   render();
 }
+
+function saveManagerRepDraftField(recordId, field, value) {
+  const key = String(recordId || "");
+  state.repMessageDrafts[key] = {
+    ...(state.repMessageDrafts[key] || {}),
+    [field]: String(value || "")
+  };
+}
+
+function getManagerRepDraftField(recordId, field) {
+  const key = String(recordId || "");
+  return (state.repMessageDrafts[key] || {})[field] || "";
+}
+
 function renderManagerRepCommunication(rec) {
   const ui = getManagerRepCommunicationUi(rec);
   const recordId = String(rec.id || rec.key || getRecordKey(rec));
@@ -5662,25 +5688,25 @@ function renderManagerRepCommunication(rec) {
           <div class="manager-response-grid" style="grid-template-columns:minmax(220px,1fr) 180px;">
             <div>
               <label for="managerResponseAction">Message to Rep</label>
-              <select id="managerResponseAction">
+              <select id="managerResponseAction" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" onchange="saveManagerRepDraftField('${escapeJs(recordId)}', 'action', this.value)">
                 <option value="">Select message</option>
-                <option value="manager_reviewed">Reviewed</option>
-                <option value="needs_follow_up">Needs Follow-Up</option>
-                <option value="needs_rep_update">Needs Rep Update</option>
-                <option value="quote_review_needed">Quote Review Needed</option>
-                <option value="tradein_review_needed">Trade-In Review Needed</option>
-                <option value="project_review_needed">Project Review Needed</option>
-                <option value="close_out">Close Out</option>
+                <option value="manager_reviewed" ${getManagerRepDraftField(recordId, "action") === "manager_reviewed" ? "selected" : ""}>Reviewed</option>
+                <option value="needs_follow_up" ${getManagerRepDraftField(recordId, "action") === "needs_follow_up" ? "selected" : ""}>Needs Follow-Up</option>
+                <option value="needs_rep_update" ${getManagerRepDraftField(recordId, "action") === "needs_rep_update" ? "selected" : ""}>Needs Rep Update</option>
+                <option value="quote_review_needed" ${getManagerRepDraftField(recordId, "action") === "quote_review_needed" ? "selected" : ""}>Quote Review Needed</option>
+                <option value="tradein_review_needed" ${getManagerRepDraftField(recordId, "action") === "tradein_review_needed" ? "selected" : ""}>Trade-In Review Needed</option>
+                <option value="project_review_needed" ${getManagerRepDraftField(recordId, "action") === "project_review_needed" ? "selected" : ""}>Project Review Needed</option>
+                <option value="close_out" ${getManagerRepDraftField(recordId, "action") === "close_out" ? "selected" : ""}>Close Out</option>
               </select>
             </div>
             <div>
               <label for="managerResponseDate">Follow-Up Date</label>
-              <input id="managerResponseDate" type="date" />
+              <input id="managerResponseDate" type="date" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveManagerRepDraftField('${escapeJs(recordId)}', 'date', this.value)" value="${escapeHtml(getManagerRepDraftField(recordId, "date"))}" />
             </div>
           </div>
           <div style="margin-top:12px;">
             <label for="managerResponseNotes">Notes / Message to Rep</label>
-            <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
+            <textarea id="managerResponseNotes" onclick="event.stopPropagation();" onmousedown="event.stopPropagation();" oninput="saveManagerRepDraftField('${escapeJs(recordId)}', 'notes', this.value)" placeholder="Type notes or message to Rep...">${escapeHtml(getManagerRepDraftField(recordId, "notes"))}</textarea>
           </div>
           <div class="btns" style="margin-top:12px;"><button
             type="button"
@@ -6506,6 +6532,7 @@ function saveManagerResponse() {
 
   const managerRepCommKey = String(updated.id || updated.key || getRecordKey(updated));
   state.repCommunicationOpen[managerRepCommKey] = false;
+  state.repMessageDrafts[managerRepCommKey] = {};
 
   state.selectedId = updated.id || updated.key || getRecordKey(updated);
 
