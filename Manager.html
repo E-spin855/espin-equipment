@@ -5510,7 +5510,7 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${ui.composerOpen && ui.needsResponse ? "communication-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${ui.needsResponse && !ui.dismissed ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Install Base Communication</div>
@@ -5607,7 +5607,7 @@ function renderManagerRepCommunication(rec) {
     ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${ui.composerOpen && ui.needsResponse ? "communication-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${ui.needsResponse && !ui.dismissed ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Rep Communication</div>
@@ -7190,10 +7190,12 @@ if (tableBody) {
     let changed = false;
 
     const installBaseUi = getManagerInstallBaseCommunicationUi(rec);
+    const repUi = getManagerRepCommunicationUi(rec);
 
     if (
       state.installBaseCommunicationOpen[installBaseKey] === true ||
-      installBaseUi.composerOpen
+      installBaseUi.composerOpen ||
+      (installBaseUi.needsResponse && !installBaseUi.dismissed)
     ) {
       markManagerInstallBaseMessageSeen(rec);
       state.installBaseCommunicationOpen[installBaseKey] = false;
@@ -7201,8 +7203,11 @@ if (tableBody) {
       changed = true;
     }
 
-    if (state.repCommunicationOpen[repKey] === true ||
-        (state.repCommunicationOpen[repKey] === undefined && getManagerRepCommunicationUi(rec).composerOpen)) {
+    if (
+      state.repCommunicationOpen[repKey] === true ||
+      (state.repCommunicationOpen[repKey] === undefined && repUi.composerOpen) ||
+      (repUi.needsResponse && !repUi.dismissed)
+    ) {
       state.repCommunicationOpen[repKey] = false;
       state.repCommunicationDismissed[repKey] = true;
       changed = true;
