@@ -5586,6 +5586,7 @@ function getManagerRepIncomingSignature(rec) {
 
 function getManagerRepCommunicationUi(rec) {
   const id = String(rec.id || rec.key || getRecordKey(rec));
+  const key = String(rec.key || getRecordKey(rec) || "");
   const history = getManagerRepCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
 
@@ -5598,27 +5599,54 @@ function getManagerRepCommunicationUi(rec) {
   const incomingSignature = getManagerRepIncomingSignature(rec);
   const dismissed =
     Boolean(incomingSignature) &&
-    String(state.repCommunicationDismissed[id] || "") === String(incomingSignature);
+    (
+      String(state.repCommunicationDismissed[id] || "") === String(incomingSignature) ||
+      (key && String(state.repCommunicationDismissed[key] || "") === String(incomingSignature))
+    );
 
-  // A Rep text needs the green frame until the Manager clicks away or sends a response.
-  // This does not depend only on the last sorted item, because some records carry
-  // older manager_response_* fields that can otherwise hide a newer Rep text.
-  const needsResponse = Boolean(
-    latestRep &&
-    repTime >= managerTime &&
-    !dismissed
+  const rowClickForcedOpen = Boolean(
+    state.repCommunicationRowClickOpen &&
+    (
+      state.repCommunicationRowClickOpen[id] === true ||
+      (key && state.repCommunicationRowClickOpen[key] === true)
+    )
   );
 
-  const manualOpen = state.repCommunicationOpen[id];
+  const rowClickFrame = Boolean(
+    state.repCommunicationRowClickFrame &&
+    (
+      state.repCommunicationRowClickFrame[id] === true ||
+      (key && state.repCommunicationRowClickFrame[key] === true)
+    )
+  );
+
+  // A Rep text should open when the Manager clicks that row, even if the
+  // response status has already been acknowledged elsewhere.
+  const needsResponse = Boolean(
+    latestRep &&
+    (
+      rowClickForcedOpen ||
+      rowClickFrame ||
+      (repTime >= managerTime && !dismissed)
+    )
+  );
+
+  const manualOpen =
+    Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, id)
+      ? state.repCommunicationOpen[id]
+      : key && Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, key)
+      ? state.repCommunicationOpen[key]
+      : undefined;
 
   return {
     history,
     latest,
     needsResponse,
-    composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true,
-    historyOpen: state.repHistoryOpen[id] === true,
+    composerOpen: rowClickForcedOpen || (manualOpen === undefined ? needsResponse : manualOpen === true),
+    historyOpen: state.repHistoryOpen[id] === true || (key && state.repHistoryOpen[key] === true),
     dismissed,
-    incomingSignature
+    incomingSignature,
+    rowClickFrame
   };
 }
 function toggleManagerRepCommunication(recordId) {
@@ -5644,7 +5672,7 @@ function renderManagerRepCommunication(rec) {
     ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || state.repCommunicationRowClickFrame?.[recordId] === true ? "communication-update-frame" : ""}">
+    <div class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || ui.rowClickFrame ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Rep Communication</div>
@@ -6681,13 +6709,13 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
     .map(v => String(v || ""))
     .filter(Boolean);
 
-  if (!state.repCommunicationRowClickFrame) {
-    state.repCommunicationRowClickFrame = {};
-  }
+  if (!state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen = {};
+  if (!state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame = {};
 
   repCommKeys.forEach(key => {
     state.repCommunicationOpen[key] = true;
     state.repCommunicationDismissed[key] = "";
+    state.repCommunicationRowClickOpen[key] = true;
     state.repCommunicationRowClickFrame[key] = true;
   });
 
@@ -6737,13 +6765,13 @@ if (openedRepCommunicationFromRowClick) {
     .map(v => String(v || ""))
     .filter(Boolean);
 
-  if (!state.repCommunicationRowClickFrame) {
-    state.repCommunicationRowClickFrame = {};
-  }
+  if (!state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen = {};
+  if (!state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame = {};
 
   finalizedRepCommKeys.forEach(key => {
     state.repCommunicationOpen[key] = true;
     state.repCommunicationDismissed[key] = "";
+    state.repCommunicationRowClickOpen[key] = true;
     state.repCommunicationRowClickFrame[key] = true;
   });
 }
@@ -7294,11 +7322,22 @@ if (tableBody) {
       (state.repCommunicationOpen[repKey] === undefined && repUi.composerOpen) ||
       (repUi.needsResponse && !repUi.dismissed)
     ) {
-      state.repCommunicationOpen[repKey] = false;
-      state.repCommunicationDismissed[repKey] = repUi.incomingSignature || true;
-      if (state.repCommunicationRowClickFrame) {
-        state.repCommunicationRowClickFrame[repKey] = false;
-      }
+      const repKeysToClear = [
+        repKey,
+        rec.id,
+        rec.key,
+        getRecordKey(rec)
+      ]
+        .map(v => String(v || ""))
+        .filter(Boolean);
+
+      repKeysToClear.forEach(key => {
+        state.repCommunicationOpen[key] = false;
+        state.repCommunicationDismissed[key] = repUi.incomingSignature || true;
+        if (state.repCommunicationRowClickOpen) state.repCommunicationRowClickOpen[key] = false;
+        if (state.repCommunicationRowClickFrame) state.repCommunicationRowClickFrame[key] = false;
+      });
+
       changed = true;
     }
 
