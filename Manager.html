@@ -6669,10 +6669,12 @@ state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 
 // If the selected row has an associated Rep text message, open the
 // Manager / Rep communication field immediately when Manager clicks the row.
+let openedRepCommunicationFromRowClick = false;
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
 if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   const repCommKey = String(rec.id || rec.key || getRecordKey(rec));
   state.repCommunicationOpen[repCommKey] = true;
+  openedRepCommunicationFromRowClick = true;
 }
 
   const updated = {
@@ -6711,7 +6713,7 @@ state.selectedId = updated.id;
 renderTable();
 managerStorageSignature = getManagerStorageSignature();
 
-if (selectionChanged) {
+if (selectionChanged || openedRepCommunicationFromRowClick) {
   renderDetail();
 }
 }
@@ -7226,6 +7228,7 @@ if (tableBody) {
 
   document.addEventListener("click", function(e) {
     if (e.target.closest(".comm-shell")) return;
+    if (e.target.closest("#tableBody")) return;
 
     const rec = findSelectedRecord();
     if (!rec) return;
