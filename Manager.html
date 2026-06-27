@@ -5588,14 +5588,24 @@ function getManagerRepCommunicationUi(rec) {
   const id = String(rec.id || rec.key || getRecordKey(rec));
   const history = getManagerRepCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
+
+  const latestRep = [...history].reverse().find(item => lower(item.sender) === "rep") || null;
+  const latestManager = [...history].reverse().find(item => lower(item.sender) === "manager") || null;
+
+  const repTime = latestRep ? (new Date(latestRep.at || 0).getTime() || 0) : 0;
+  const managerTime = latestManager ? (new Date(latestManager.at || 0).getTime() || 0) : 0;
+
   const incomingSignature = getManagerRepIncomingSignature(rec);
   const dismissed =
     Boolean(incomingSignature) &&
     String(state.repCommunicationDismissed[id] || "") === String(incomingSignature);
 
+  // A Rep text needs the green frame until the Manager clicks away or sends a response.
+  // This does not depend only on the last sorted item, because some records carry
+  // older manager_response_* fields that can otherwise hide a newer Rep text.
   const needsResponse = Boolean(
-    latest &&
-    lower(latest.sender) === "rep" &&
+    latestRep &&
+    repTime >= managerTime &&
     !dismissed
   );
 
