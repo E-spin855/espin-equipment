@@ -5347,8 +5347,15 @@ function getManagerInstallBaseCommunicationUi(rec) {
   const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const needsResponse = Boolean(latest && lower(latest.sender) === "install_base");
-  const unseenHubMessage = managerHasUnseenInstallBaseMessage(rec);
+  const dismissed = state.installBaseCommunicationDismissed[id] === true;
+  const needsResponse = Boolean(
+    latest &&
+    lower(latest.sender) === "install_base" &&
+    !dismissed
+  );
+  const unseenHubMessage =
+    !dismissed &&
+    managerHasUnseenInstallBaseMessage(rec);
 
   const manualState = Object.prototype.hasOwnProperty.call(state.installBaseCommunicationOpen, id)
     ? state.installBaseCommunicationOpen[id]
@@ -5359,7 +5366,6 @@ function getManagerInstallBaseCommunicationUi(rec) {
     : (manualState === undefined ? needsResponse : manualState === true);
 
   const historyOpen = state.installBaseHistoryOpen[id] === true;
-  const dismissed = state.installBaseCommunicationDismissed[id] === true;
 
   return {
     history,
