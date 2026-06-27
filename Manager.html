@@ -5636,7 +5636,6 @@ function getManagerRepCommunicationUi(rec) {
     history,
     latest,
     needsResponse,
-    // Manual Hide Communication must override the row-click auto-open state.
     composerOpen: manualOpen === undefined ? (selectedRepTextOpen || needsResponse) : manualOpen === true,
     historyOpen: state.repHistoryOpen[id] === true || (key && state.repHistoryOpen[key] === true),
     dismissed,
@@ -5647,35 +5646,13 @@ function getManagerRepCommunicationUi(rec) {
 function toggleManagerRepCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
-
   const ui = getManagerRepCommunicationUi(rec);
-  const willOpen = !ui.composerOpen;
-
-  const keys = [
-    recordId,
-    rec.id,
-    rec.key,
-    getRecordKey(rec)
-  ]
-    .map(v => String(v || ""))
-    .filter(Boolean);
-
-  keys.forEach(key => {
-    state.repCommunicationOpen[key] = willOpen;
-
-    if (!willOpen) {
-      state.repCommunicationDismissed[key] = ui.incomingSignature || true;
-    } else {
-      state.repCommunicationDismissed[key] = "";
-    }
-  });
-
-  if (!willOpen) {
+  const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
+  state.repCommunicationOpen[key] = !ui.composerOpen;
+  if (ui.composerOpen) {
+    state.repCommunicationDismissed[key] = ui.incomingSignature || true;
     state.managerRepCommunicationFrameActive = false;
-  } else {
-    state.managerRepCommunicationFrameActive = true;
   }
-
   render();
 }
 function toggleManagerRepHistory(recordId) {
