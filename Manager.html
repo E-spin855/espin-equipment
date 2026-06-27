@@ -2920,6 +2920,8 @@ const previouslySeenAt = clean(
   ""
 );
 
+const hubRepOnlyTextExchange = isHubRepOnlyTextExchange(rec);
+
 const repUpdateTypes = [
   "rep_message",
   "rep_action",
@@ -2932,6 +2934,7 @@ const repUpdateTypes = [
 ];
 
 const isFreshRepUpdate =
+  !hubRepOnlyTextExchange &&
   rec.manager_unseen_update === true &&
   repUpdateTypes.includes(lower(rec.manager_flash_type)) &&
   (
@@ -2957,9 +2960,9 @@ const normalSeen = isFreshRepUpdate
       rec.manager_alert_seen === true
     );
 
-    const baseFlashType = repFixSeen ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
-    const baseFlashText = repFixSeen ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
-    const baseFlashAt = repFixSeen ? "" : (rec.manager_flash_at || existing.manager_flash_at || "");
+    const baseFlashType = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
+    const baseFlashText = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
+    const baseFlashAt = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_at || existing.manager_flash_at || "");
 
     const repFixUnseen = repFixRecord && !repFixSeen && (
       (
@@ -2974,12 +2977,14 @@ const normalSeen = isFreshRepUpdate
     );
 
     const releaseIsUnseen =
+      !hubRepOnlyTextExchange &&
       !repFixSeen &&
       finalReleaseId &&
       finalReleaseId !== finalSeenReleaseId &&
       baseFlashType !== "manager_response";
 
     const legacyUnseen =
+      !hubRepOnlyTextExchange &&
       !repFixSeen &&
       !finalReleaseId &&
       (rec.manager_unseen_update === true || existing.manager_unseen_update === true) &&
@@ -4039,9 +4044,51 @@ function hasUnseenManagerRelease(rec) {
 
   return false;
 }
+function isHubRepOnlyTextExchange(rec) {
+  if (!rec) return false;
+
+  // Hub <-> Rep text communication must stay out of Manager alerts.
+  // Rep -> Manager messages still use rep_manager_message_* and are allowed.
+  const hasRepManagerMessage = Boolean(clean(
+    rec.rep_manager_message_at ||
+    rec.rep_manager_message_notes ||
+    rec.rep_manager_message_label ||
+    rec.rep_manager_message_action ||
+    ""
+  ));
+
+  if (hasRepManagerMessage) return false;
+  if (hasActualInstallBaseCorrection(rec)) return false;
+
+  const installBaseHistory = Array.isArray(rec.install_base_conversation_history)
+    ? rec.install_base_conversation_history
+    : [];
+
+  const hasHubRepConversation = installBaseHistory.some(item => {
+    const sender = lower(item?.sender || "");
+    return sender === "rep" || sender === "install_base" || sender === "hub";
+  });
+
+  const responseIsForInstallBase =
+    lower(rec.install_base_response_to) === "install_base" ||
+    lower(rec.install_base_response_from) === "rep" ||
+    Boolean(clean(
+      rec.install_base_response_message ||
+      rec.install_base_response_note ||
+      rec.rep_response_message ||
+      rec.rep_response_note ||
+      rec.install_base_reply_to_rep ||
+      ""
+    ));
+
+  return hasHubRepConversation || responseIsForInstallBase;
+}
+
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
   if (String(rec.id) === String(state.selectedId)) return false;
+
+  if (isHubRepOnlyTextExchange(rec)) return false;
 
   const flashType = lower(rec.manager_flash_type || "");
 
