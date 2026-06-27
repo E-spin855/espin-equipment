@@ -5571,19 +5571,44 @@ function getManagerRepCommunicationHistory(rec) {
   }
   return items.filter(item => item.message).sort((a,b) => new Date(a.at || 0) - new Date(b.at || 0));
 }
+function getManagerRepIncomingSignature(rec) {
+  const history = getManagerRepCommunicationHistory(rec);
+  const latestRep = [...history].reverse().find(item => lower(item.sender) === "rep");
+
+  if (!latestRep) return "";
+
+  return [
+    clean(latestRep.sender || "rep"),
+    clean(latestRep.at || ""),
+    clean(latestRep.message || "")
+  ].join("|");
+}
+
 function getManagerRepCommunicationUi(rec) {
   const id = String(rec.id || rec.key || getRecordKey(rec));
   const history = getManagerRepCommunicationHistory(rec);
   const latest = history[history.length - 1] || null;
-  const needsResponse = Boolean(latest && lower(latest.sender) === "rep");
+  const incomingSignature = getManagerRepIncomingSignature(rec);
+  const dismissed =
+    Boolean(incomingSignature) &&
+    String(state.repCommunicationDismissed[id] || "") === String(incomingSignature);
+
+  const needsResponse = Boolean(
+    latest &&
+    lower(latest.sender) === "rep" &&
+    !dismissed
+  );
+
   const manualOpen = state.repCommunicationOpen[id];
+
   return {
     history,
     latest,
     needsResponse,
     composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true,
     historyOpen: state.repHistoryOpen[id] === true,
-    dismissed: state.repCommunicationDismissed[id] === true
+    dismissed,
+    incomingSignature
   };
 }
 function toggleManagerRepCommunication(recordId) {
@@ -5592,7 +5617,9 @@ function toggleManagerRepCommunication(recordId) {
   const ui = getManagerRepCommunicationUi(rec);
   const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
   state.repCommunicationOpen[key] = !ui.composerOpen;
-  if (ui.composerOpen) state.repCommunicationDismissed[key] = true;
+  if (ui.composerOpen) {
+    state.repCommunicationDismissed[key] = ui.incomingSignature || true;
+  }
   render();
 }
 function toggleManagerRepHistory(recordId) {
@@ -7209,7 +7236,7 @@ if (tableBody) {
       (repUi.needsResponse && !repUi.dismissed)
     ) {
       state.repCommunicationOpen[repKey] = false;
-      state.repCommunicationDismissed[repKey] = true;
+      state.repCommunicationDismissed[repKey] = repUi.incomingSignature || true;
       changed = true;
     }
 
