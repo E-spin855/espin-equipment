@@ -2469,6 +2469,50 @@ td:nth-child(12) .manager-waiting-badge{
   box-shadow:0 0 16px rgba(52,211,153,.26);
 }
 
+
+/* Unified communication behavior: same frame + same send-button feedback */
+.comm-shell.communication-update-frame{
+  border:2px solid rgba(65,255,156,.98)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.34),
+    0 0 24px rgba(65,255,156,.56),
+    0 0 42px rgba(65,255,156,.22)!important;
+  animation:communicationUpdateFramePulse 1.05s ease-in-out infinite!important;
+}
+
+@keyframes communicationUpdateFramePulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.70);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.26),
+      0 0 14px rgba(65,255,156,.30),
+      0 0 26px rgba(65,255,156,.14);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.56),
+      0 0 30px rgba(65,255,156,.84),
+      0 0 54px rgba(65,255,156,.30);
+  }
+}
+
+button.send-message-glow{
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.30),
+    0 0 22px rgba(65,255,156,.55),
+    0 0 44px rgba(65,255,156,.22)!important;
+}
+
+button.message-sent-state{
+  background:linear-gradient(90deg,#ffd84d,#fff2a6)!important;
+  color:#1d1600!important;
+  border:2px solid rgba(255,242,166,.95)!important;
+  box-shadow:
+    0 0 0 1px rgba(255,216,77,.28),
+    0 0 24px rgba(255,216,77,.62)!important;
+}
+
 </style>
 </head>
 
@@ -2707,6 +2751,25 @@ function clean(v) {
 
 function lower(v) {
   return clean(v).toLowerCase();
+}
+
+function flashManagerMessageSentButton(buttonId, sentText = "Message Sent") {
+  const btn = $(buttonId);
+  if (!btn) return;
+
+  if (!btn.dataset.defaultText) {
+    btn.dataset.defaultText = btn.textContent.trim();
+  }
+
+  window.clearTimeout(btn._managerMessageSentTimer);
+
+  btn.textContent = sentText;
+  btn.classList.add("message-sent-state");
+
+  btn._managerMessageSentTimer = window.setTimeout(() => {
+    btn.textContent = btn.dataset.defaultText || "Send Message";
+    btn.classList.remove("message-sent-state");
+  }, 1400);
 }
 
 function money(v) {
@@ -5309,8 +5372,11 @@ function sendManagerMessageToInstallBase() {
   localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
   input.value="";
   state.installBaseCommunicationOpen[String(rec.id || "")] = false;
-  render();
-  showBanner("Message sent to Install Base.");
+  flashManagerMessageSentButton("sendManagerInstallBaseMessageBtn", "Message Sent");
+  window.setTimeout(() => {
+    render();
+    showBanner("Message sent to Install Base.");
+  }, 350);
 }
 function getManagerInstallBaseIncomingSignature(rec) {
   const history = getManagerInstallBaseConversationHistory(rec);
@@ -5444,7 +5510,7 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell">
+    <div class="detail-card full comm-shell ${ui.composerOpen && ui.needsResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Install Base Communication</div>
@@ -5452,7 +5518,7 @@ function renderManagerInstallBaseCommunication(rec) {
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse && !ui.dismissed ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="${ui.composerOpen ? "green" : "secondary"}" onclick="toggleManagerInstallBaseCommunication('${escapeJs(rec.id || "")}')">${ui.composerOpen ? "Hide Communication" : "Open Communication"}</button>
           <button type="button" class="secondary" onclick="toggleManagerInstallBaseHistory('${escapeJs(rec.id || "")}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
@@ -5460,7 +5526,12 @@ function renderManagerInstallBaseCommunication(rec) {
         <div class="comm-composer">
           <label for="managerMessageToInstallBase">Message to Install Base</label>
           <textarea id="managerMessageToInstallBase" placeholder="Type message to Install Base..."></textarea>
-          <div class="btns" style="margin-top:12px;"><button type="button" class="green" onclick="sendManagerMessageToInstallBase()">Send Message to Install Base</button></div>
+          <div class="btns" style="margin-top:12px;"><button
+            type="button"
+            id="sendManagerInstallBaseMessageBtn"
+            class="green send-message-glow"
+            onclick="sendManagerMessageToInstallBase()"
+          >Send Message to Install Base</button></div>
         </div>
       ` : ""}
       ${ui.historyOpen && ui.history.length ? `
@@ -5536,7 +5607,7 @@ function renderManagerRepCommunication(rec) {
     ? `${lower(ui.latest.sender) === "rep" ? "Rep" : "Manager"}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card full comm-shell">
+    <div class="detail-card full comm-shell ${ui.composerOpen && ui.needsResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Manager / Rep Communication</div>
@@ -5544,7 +5615,7 @@ function renderManagerRepCommunication(rec) {
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${ui.needsResponse ? "green" : "secondary"}" onclick="toggleManagerRepCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : (ui.needsResponse && !ui.dismissed ? "Respond" : "Open Communication")}</button>
+          <button type="button" class="${ui.composerOpen ? "green" : "secondary"}" onclick="toggleManagerRepCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : "Open Communication"}</button>
           <button type="button" class="secondary" onclick="toggleManagerRepHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
@@ -5574,7 +5645,12 @@ function renderManagerRepCommunication(rec) {
             <label for="managerResponseNotes">Notes / Message to Rep</label>
             <textarea id="managerResponseNotes" placeholder="Type notes or message to Rep..."></textarea>
           </div>
-          <div class="btns" style="margin-top:12px;"><button type="button" class="green" onclick="saveManagerResponse()">Send Message to Rep</button></div>
+          <div class="btns" style="margin-top:12px;"><button
+            type="button"
+            id="sendManagerRepMessageBtn"
+            class="green send-message-glow"
+            onclick="saveManagerResponse()"
+          >Send Message to Rep</button></div>
         </div>
       ` : ""}
       ${ui.historyOpen ? `
@@ -6418,7 +6494,11 @@ function saveManagerResponse() {
     }, 2500);
   }
 
-  render();
+  flashManagerMessageSentButton("sendManagerRepMessageBtn", "Message Sent");
+
+  window.setTimeout(() => {
+    render();
+  }, 350);
 }
 
 function refreshManagerSelectedRowUI() {
