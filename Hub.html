@@ -3532,7 +3532,15 @@ function selectRecord(id) {
   state.selectedId = id;
 
   const rec = state.records.find(r => String(r.id || "") === String(id || ""));
-  const repUi = rec ? getHubRepCommunicationUi(rec) : null;
+
+  // When a FIX arrives from Rep, clicking that row clears the Hub green alert
+  // immediately. Text-message communication behavior remains unchanged.
+  if (rec && hasActualInstallBaseCorrection(rec)) {
+    markInstallBaseCorrectedFieldsSeen(rec);
+  }
+
+  const updatedRec = state.records.find(r => String(r.id || "") === String(id || ""));
+  const repUi = updatedRec ? getHubRepCommunicationUi(updatedRec) : null;
 
   // If a new text message arrived from Rep, clicking that row opens the
   // Rep communication field immediately. The green frame remains until
