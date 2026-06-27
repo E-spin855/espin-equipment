@@ -5644,39 +5644,14 @@ function getManagerRepCommunicationUi(rec) {
   };
 }
 function toggleManagerRepCommunication(recordId) {
-  const rec =
-    state.records.find(r =>
-      String(r.id || r.key || getRecordKey(r)) === String(recordId || "")
-    ) || findSelectedRecord();
-
+  const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
-
   const ui = getManagerRepCommunicationUi(rec);
-  const willOpen = !ui.composerOpen;
-
-  const keys = [
-    recordId,
-    rec.id,
-    rec.key,
-    getRecordKey(rec)
-  ]
-    .map(v => String(v || ""))
-    .filter(Boolean);
-
-  keys.forEach(key => {
-    state.repCommunicationOpen[key] = willOpen;
-
-    if (!willOpen) {
-      state.repCommunicationDismissed[key] = ui.incomingSignature || true;
-    } else {
-      state.repCommunicationDismissed[key] = "";
-    }
-  });
-
-  if (!willOpen) {
-    state.managerRepCommunicationFrameActive = false;
+  const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
+  state.repCommunicationOpen[key] = !ui.composerOpen;
+  if (ui.composerOpen) {
+    state.repCommunicationDismissed[key] = ui.incomingSignature || true;
   }
-
   render();
 }
 function toggleManagerRepHistory(recordId) {
@@ -6720,12 +6695,7 @@ state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 state.selectedId = rec.id || selectedId;
 
 let openedRepCommunicationFromRowClick = false;
-
-// REQUIRED: set selectedId before checking communication UI
-state.selectedId = rec.id || selectedId;
-
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
-
 if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   const repCommKeys = [
     selectedId,
@@ -6744,6 +6714,7 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   state.managerRepCommunicationFrameActive = true;
   openedRepCommunicationFromRowClick = true;
 }
+
   const updated = {
     ...rec,
     id: rec.id || selectedId,
