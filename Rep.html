@@ -3239,13 +3239,69 @@ if (normalized.includes("service")) {
 
   return `<span class="pill local">${escapeHtml(String(label).replace(/_/g, " "))}</span>`;
 }
-function getRepVisibleInstallBaseReviewReason(rec) {
-  const originalReason = clean(
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    rec.proactive_reason ||
+function getRepCurrentSerialNumber(rec){
+  return clean(
+    rec.serial_number ||
+    rec.serial ||
+    rec.Serial ||
+    rec["Serial Number"] ||
+    rec.system_serial ||
+    rec.corrected_serial_number ||
+    rec.corrected_serial ||
+    rec.corrected_value ||
+    rec.install_base_corrected_serial ||
+    rec.install_base_serial_number ||
     ""
   );
+}
+
+function getRepOriginalInstallBaseReviewReason(rec){
+  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing/i;
+
+  const candidates = [
+    rec.original_oem_review_reason,
+    rec.original_install_base_review_reason,
+    rec.oem_review_reason_original,
+    rec.install_base_review_reason_original,
+    rec.original_review_reason,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason
+  ];
+
+  const valid = candidates
+    .map(v => clean(v))
+    .filter(Boolean)
+    .find(v => !badFixText.test(v));
+
+  return valid || "";
+}
+
+function getRepVisibleInstallBaseReviewReason(rec) {
+  const serialNow = getRepCurrentSerialNumber(rec);
+
+  const serialFixText = lower([
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_issue_note,
+    rec.install_base_action_reason,
+    rec.axis_clarification_reason,
+    rec.manager_review_request,
+    rec.rep_fix_required,
+    rec.fix_reason
+  ].filter(Boolean).join(" "));
+
+  const wasSerialFix =
+    serialFixText.includes("serial");
+
+  // Show missing serial only while serial is actually still missing.
+  if (wasSerialFix && !serialNow) {
+    return "Serial number is missing from the Install Base record.";
+  }
+
+  const originalReason = getRepOriginalInstallBaseReviewReason(rec);
 
   const routingText = lower([
     rec.install_base_issue_field,
@@ -3300,7 +3356,6 @@ function getRepVisibleInstallBaseReviewReason(rec) {
 
   return originalReason || primaryReason || "No OEM review reason was provided for this record.";
 }
-
 function normalizeOemReviewLabelForRep(rec) {
   const directLabel = clean(rec.oem_review_label || rec.review_label || "");
   const directNormalized = lower(directLabel);
@@ -5551,10 +5606,18 @@ function sendInstallBaseCorrection(id) {
   }
 
   const message = typedMessage || fixedValues;
+const now = new Date().toISOString();
+const key = rec.key || getRecordKey(rec);
 
-  const now = new Date().toISOString();
-  const key = rec.key || getRecordKey(rec);
-  const existingConversationHistory = getInstallBaseConversationHistory(rec);
+const originalReviewReason =
+  rec.original_oem_review_reason ||
+  rec.original_install_base_review_reason ||
+  rec.oem_review_reason ||
+  rec.review_reason ||
+  rec.proactive_reason ||
+  "";
+
+const existingConversationHistory = getInstallBaseConversationHistory(rec);
   const repConversationItem = {
     id: "rep_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
     sender: "rep",
@@ -5658,7 +5721,7 @@ function sendInstallBaseCorrection(id) {
   const updated = {
     ...rec,
     key,
-
+original_oem_review_reason: originalReviewReason,
     install_base_response_status: "rep_correction_sent",
     install_base_response_message: message,
     install_base_response_note: message,
