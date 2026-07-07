@@ -3118,11 +3118,42 @@ const normalSeen = isFreshRepUpdate
   repFixUnseen ||
   releaseIsUnseen ||
   legacyUnseen;
+const incomingCorrectedFields =
+  rec.corrected_fields && typeof rec.corrected_fields === "object" && Object.keys(rec.corrected_fields).length
+    ? rec.corrected_fields
+    : null;
 
+const existingCorrectedFields =
+  existing.corrected_fields && typeof existing.corrected_fields === "object" && Object.keys(existing.corrected_fields).length
+    ? existing.corrected_fields
+    : null;
     map.set(key, {
       ...existing,
       ...rec,
       key,
+
+      install_base_corrected_fields:
+        rec.install_base_corrected_fields ||
+        existing.install_base_corrected_fields ||
+        "",
+      corrected_fields:
+        incomingCorrectedFields ||
+        existingCorrectedFields ||
+        rec.corrected_fields ||
+        existing.corrected_fields ||
+        {},
+      install_base_corrected_values:
+        rec.install_base_corrected_values ||
+        existing.install_base_corrected_values ||
+        {},
+      corrected_values:
+        rec.corrected_values ||
+        existing.corrected_values ||
+        {},
+      original_install_base_manager_message:
+        rec.original_install_base_manager_message ||
+        existing.original_install_base_manager_message ||
+        "",
 
       quote_seen: existing.quote_seen === true || rec.quote_seen === true,
 
@@ -4358,25 +4389,6 @@ function managerCorrectedFieldsList(rec) {
 function wasManagerFieldCorrected(rec, fieldName) {
   if (!isManagerRecordFixed(rec)) return false;
 
-  const recordId = String(
-    rec.id ||
-    rec.key ||
-    getRecordKey(rec) ||
-    ""
-  );
-
-  const correctionIsUnseen =
-    rec.manager_alert_seen !== true &&
-    !hasManagerSeenFix(rec);
-
-  const correctionIsCurrentlyOpen =
-    recordId &&
-    recordId === String(state.correctedFieldHighlightId || "");
-
-  if (!correctionIsUnseen && !correctionIsCurrentlyOpen) {
-    return false;
-  }
-
   const fixedFields = managerCorrectedFieldsList(rec);
 
   const aliases = {
@@ -4387,21 +4399,8 @@ function wasManagerFieldCorrected(rec, fieldName) {
     serial: ["serial", "serial_number", "system_serial"],
     dom: ["dom", "year", "manufacture_year"],
     age: ["dom", "year", "manufacture_year"],
-    site: [
-      "site",
-      "facility",
-      "hospital",
-      "hospital_name",
-      "customer",
-      "location"
-    ],
-    owner: [
-      "owner",
-      "manager",
-      "manager_name",
-      "owner_group",
-      "owner_group_name"
-    ],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
     rep: ["rep", "assigned_rep", "assigned_rep_name"]
   }[fieldName] || [fieldName];
 
@@ -4991,6 +4990,15 @@ function sendManagerInstallBaseCorrection(id) {
     ""
   );
 
+  const originalInstallBaseMessage = clean(
+    rec.original_install_base_manager_message ||
+    rec.install_base_manager_message ||
+    rec.manager_message_from_install_base ||
+    rec.install_base_message_to_manager ||
+    rec.manager_message ||
+    ""
+  );
+
   const existingConversationHistory = getManagerInstallBaseConversationHistory(rec);
   const managerConversationItem = {
     id: "manager_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
@@ -5102,6 +5110,7 @@ function sendManagerInstallBaseCorrection(id) {
     original_oem_review_reason: originalReviewReason,
     original_install_base_review_reason:
       rec.original_install_base_review_reason || originalReviewReason,
+    original_install_base_manager_message: originalInstallBaseMessage,
 
     install_base_response_status: "manager_correction_sent",
     install_base_response_message: message,
@@ -5182,6 +5191,8 @@ function sendManagerInstallBaseCorrection(id) {
     acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
     return acc;
   }, {});
+  updated.install_base_corrected_values = updated.corrected_fields;
+  updated.corrected_values = updated.corrected_fields;
 
   // Manager fix now behaves like Rep fix: once corrected info is sent,
   // the active Install Base FIX request is closed on Manager side.
@@ -5355,6 +5366,7 @@ function getInstallBaseManagerMessage(rec) {
 
   return clean(
     rec.install_base_manager_message ||
+    rec.original_install_base_manager_message ||
     rec.manager_message_from_install_base ||
     rec.install_base_message_to_manager ||
     (!isRepMessage ? rec.manager_message : "") ||
