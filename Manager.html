@@ -5359,27 +5359,65 @@ function sendManagerInstallBaseCorrection(id) {
   const sameSyncRecord = (a, b) => {
     if (!a || !b) return false;
 
-    const aId = String(a.id || "");
-    const bId = String(b.id || "");
-    if (aId && bId && aId === bId) return true;
+    const idsFor = item => [
+      item.id,
+      item.key,
+      item.original_key,
+      item.manager_sync_key,
+      item.axis_sync_key,
+      item.install_base_release_id,
+      item.manager_release_id,
+      item.release_id,
+      getRecordKey(item)
+    ]
+      .map(value => clean(value))
+      .filter(Boolean);
 
-    const aKey = String(a.key || getRecordKey(a) || "");
-    const bKey = String(b.key || getRecordKey(b) || "");
-    if (aKey && bKey && aKey === bKey) return true;
+    const aIds = idsFor(a);
+    const bIds = idsFor(b);
 
-    const aProject = String(a.oem_project_id || a.project_id || a.asset_id || "");
-    const bProject = String(b.oem_project_id || b.project_id || b.asset_id || "");
-    const aSerial = String(a.serial_number || a.serial || "");
-    const bSerial = String(b.serial_number || b.serial || "");
+    if (aIds.some(value => bIds.includes(value))) return true;
 
-    return Boolean(
-      aProject &&
-      bProject &&
-      aSerial &&
-      bSerial &&
-      aProject === bProject &&
-      aSerial === bSerial
-    ) || sameRecord(a, b);
+    const projectFor = item => clean(
+      item.oem_project_id ||
+      item.project_id ||
+      item.asset_id ||
+      item.equipment_id ||
+      item.project ||
+      ""
+    );
+
+    const serialFor = item => clean(
+      item.serial_number ||
+      item.serial ||
+      item.system_serial ||
+      item.equipment_serial ||
+      ""
+    );
+
+    const siteFor = item => clean(
+      item.site ||
+      item.facility ||
+      item.hospital ||
+      item.hospital_name ||
+      item.customer ||
+      item.customer_name ||
+      item.location ||
+      ""
+    );
+
+    const aProject = projectFor(a);
+    const bProject = projectFor(b);
+    const aSerial = serialFor(a);
+    const bSerial = serialFor(b);
+    const aSite = siteFor(a);
+    const bSite = siteFor(b);
+
+    if (aProject && bProject && aProject === bProject) return true;
+    if (aSerial && bSerial && aSerial === bSerial) return true;
+    if (aSite && bSite && aSite === bSite && (aProject || bProject || aSerial || bSerial)) return true;
+
+    return sameRecord(a, b);
   };
 
   const cleanAndPrepend = (records, replacement) => {
