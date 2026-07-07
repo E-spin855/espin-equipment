@@ -3132,29 +3132,6 @@ const existingCorrectedFields =
       ...rec,
       key,
 
-      install_base_corrected_fields:
-        rec.install_base_corrected_fields ||
-        existing.install_base_corrected_fields ||
-        "",
-      corrected_fields:
-        incomingCorrectedFields ||
-        existingCorrectedFields ||
-        rec.corrected_fields ||
-        existing.corrected_fields ||
-        {},
-      install_base_corrected_values:
-        rec.install_base_corrected_values ||
-        existing.install_base_corrected_values ||
-        {},
-      corrected_values:
-        rec.corrected_values ||
-        existing.corrected_values ||
-        {},
-      original_install_base_manager_message:
-        rec.original_install_base_manager_message ||
-        existing.original_install_base_manager_message ||
-        "",
-
       quote_seen: existing.quote_seen === true || rec.quote_seen === true,
 
       manager_response_seen_by_rep:
@@ -3248,6 +3225,11 @@ function getRepName(rec) {
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
     rec.assigned_rep_name ||
+    rec.rep ||
+    rec.sales_rep_name ||
+    rec.sales_rep ||
+    rec.rep_owner ||
+    rec.rep_name ||
     "Unassigned"
   );
 }
@@ -4433,6 +4415,11 @@ function renderManagerRepOwnerCell(rec) {
     rec.assigned_rep_name ||
     rec.rep ||
     rec.sales_rep_name ||
+    rec.sales_rep ||
+    rec.rep_owner ||
+    rec.rep_name ||
+    rec.corrected_assigned_rep_name ||
+    rec.install_base_corrected_rep_owner ||
     ""
   ).trim();
 
@@ -4808,8 +4795,26 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 }
 
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
-  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
+  if (key === "manager_name") {
+    return rec.manager_name ||
+      rec.owner_group_name ||
+      rec.owner_group ||
+      rec.manager_region ||
+      rec.territory_name ||
+      rec.territory ||
+      "";
+  }
+
+  if (key === "assigned_rep_name") {
+    return rec.assigned_rep_name ||
+      rec.rep ||
+      rec.sales_rep_name ||
+      rec.sales_rep ||
+      rec.rep_owner ||
+      rec.rep_name ||
+      "";
+  }
+
   return rec[key] || "";
 }
 
@@ -4990,15 +4995,6 @@ function sendManagerInstallBaseCorrection(id) {
     ""
   );
 
-  const originalInstallBaseMessage = clean(
-    rec.original_install_base_manager_message ||
-    rec.install_base_manager_message ||
-    rec.manager_message_from_install_base ||
-    rec.install_base_message_to_manager ||
-    rec.manager_message ||
-    ""
-  );
-
   const existingConversationHistory = getManagerInstallBaseConversationHistory(rec);
   const managerConversationItem = {
     id: "manager_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
@@ -5110,7 +5106,6 @@ function sendManagerInstallBaseCorrection(id) {
     original_oem_review_reason: originalReviewReason,
     original_install_base_review_reason:
       rec.original_install_base_review_reason || originalReviewReason,
-    original_install_base_manager_message: originalInstallBaseMessage,
 
     install_base_response_status: "manager_correction_sent",
     install_base_response_message: message,
@@ -5183,7 +5178,91 @@ function sendManagerInstallBaseCorrection(id) {
     }
   });
 
-  updated.rep_visible = Boolean(updated.assigned_rep_name || updated.rep || updated.sales_rep_name);
+  // Force Manager assignment corrections into every owner field used by
+  // Manager, Hub, and Rep. This mirrors Rep-side fix behavior: corrected
+  // input becomes actual record data, not just a response note.
+  const forcedRepOwner = clean(
+    $("mgr_fix_assigned_rep_name")?.value ||
+    $("mgr_fix_rep")?.value ||
+    $("mgr_fix_sales_rep_name")?.value ||
+    $("mgr_fix_sales_rep")?.value ||
+    $("mgr_fix_rep_owner")?.value ||
+    $("mgr_fix_rep_name")?.value ||
+    updated.assigned_rep_name ||
+    updated.rep ||
+    updated.sales_rep_name ||
+    updated.sales_rep ||
+    updated.rep_owner ||
+    updated.rep_name ||
+    rec.assigned_rep_name ||
+    rec.rep ||
+    rec.sales_rep_name ||
+    rec.sales_rep ||
+    rec.rep_owner ||
+    rec.rep_name ||
+    ""
+  );
+
+  const forcedManagerOwner = clean(
+    $("mgr_fix_manager_name")?.value ||
+    $("mgr_fix_owner_group_name")?.value ||
+    $("mgr_fix_owner_group")?.value ||
+    $("mgr_fix_manager_region")?.value ||
+    $("mgr_fix_territory_name")?.value ||
+    $("mgr_fix_territory")?.value ||
+    updated.manager_name ||
+    updated.owner_group_name ||
+    updated.owner_group ||
+    updated.manager_region ||
+    updated.territory_name ||
+    updated.territory ||
+    rec.manager_name ||
+    rec.owner_group_name ||
+    rec.owner_group ||
+    rec.manager_region ||
+    rec.territory_name ||
+    rec.territory ||
+    ""
+  );
+
+  if (forcedRepOwner) {
+    updated.assigned_rep_name = forcedRepOwner;
+    updated.rep = forcedRepOwner;
+    updated.sales_rep_name = forcedRepOwner;
+    updated.sales_rep = forcedRepOwner;
+    updated.rep_owner = forcedRepOwner;
+    updated.rep_name = forcedRepOwner;
+
+    updated.corrected_assigned_rep_name = forcedRepOwner;
+    updated.install_base_corrected_rep_owner = forcedRepOwner;
+
+    if (!correctedFields.includes("rep")) correctedFields.push("rep");
+  }
+
+  if (forcedManagerOwner) {
+    updated.manager_name = forcedManagerOwner;
+    updated.owner_group_name = forcedManagerOwner;
+    updated.owner_group = forcedManagerOwner;
+    updated.manager_region = forcedManagerOwner;
+    updated.territory_name = forcedManagerOwner;
+    updated.territory = forcedManagerOwner;
+    updated.assigned_territory = forcedManagerOwner;
+    updated.sales_territory = forcedManagerOwner;
+
+    updated.corrected_manager_name = forcedManagerOwner;
+    updated.install_base_corrected_owner_group = forcedManagerOwner;
+
+    if (!correctedFields.includes("manager")) correctedFields.push("manager");
+  }
+
+  updated.rep_visible = Boolean(
+    updated.assigned_rep_name ||
+    updated.rep ||
+    updated.sales_rep_name ||
+    updated.sales_rep ||
+    updated.rep_owner ||
+    updated.rep_name
+  );
   updated.rep_assignment_required = !updated.rep_visible;
 
   updated.install_base_corrected_fields = correctedFields.join(",");
@@ -5191,8 +5270,6 @@ function sendManagerInstallBaseCorrection(id) {
     acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
     return acc;
   }, {});
-  updated.install_base_corrected_values = updated.corrected_fields;
-  updated.corrected_values = updated.corrected_fields;
 
   // Manager fix now behaves like Rep fix: once corrected info is sent,
   // the active Install Base FIX request is closed on Manager side.
@@ -5366,7 +5443,6 @@ function getInstallBaseManagerMessage(rec) {
 
   return clean(
     rec.install_base_manager_message ||
-    rec.original_install_base_manager_message ||
     rec.manager_message_from_install_base ||
     rec.install_base_message_to_manager ||
     (!isRepMessage ? rec.manager_message : "") ||
