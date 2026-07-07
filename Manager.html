@@ -5229,8 +5229,12 @@ function getCurrentManagerSerialNumber(rec){
     rec.serial ||
     rec.Serial ||
     rec["Serial Number"] ||
+    rec.system_serial ||
     rec.corrected_serial_number ||
     rec.corrected_serial ||
+    rec.corrected_value ||
+    rec.install_base_corrected_serial ||
+    rec.install_base_serial_number ||
     ""
   );
 }
@@ -5252,20 +5256,27 @@ function wasManagerSerialFixRequest(rec){
 }
 
 function getOriginalInstallBaseReviewReasonForManager(rec){
-  return clean(
-    rec.original_oem_review_reason ||
-    rec.original_install_base_review_reason ||
-    rec.oem_review_reason_original ||
-    rec.install_base_review_reason_original ||
-    rec.original_review_reason ||
-    rec.conflict_notes ||
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    rec.proactive_reason ||
-    "Install Base review context is attached to this record."
-  );
-}
+  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing/i;
 
+  const candidates = [
+    rec.original_oem_review_reason,
+    rec.original_install_base_review_reason,
+    rec.oem_review_reason_original,
+    rec.install_base_review_reason_original,
+    rec.original_review_reason,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason,
+    rec.conflict_notes
+  ];
+
+  const valid = candidates
+    .map(v => clean(v))
+    .filter(Boolean)
+    .find(v => !badFixText.test(v));
+
+  return valid || "Install Base review context is attached to this record.";
+}
 function getInstallBaseReviewReasonForManager(rec) {
   const serialNow = getCurrentManagerSerialNumber(rec);
 
