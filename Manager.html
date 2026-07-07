@@ -4866,91 +4866,136 @@ function sendManagerInstallBaseCorrection(id) {
   const correctedFields = {};
   const correctedValues = {};
 
+  const setCorrectedValue = (field, value) => {
+    const cleanValue = clean(value);
+    if (!cleanValue) return;
+
+    correctedValues[field] = cleanValue;
+
+    const canonicalKey = window.AxisUtils?.canonicalFieldName?.(field) || field;
+    correctedFields[canonicalKey] = cleanValue;
+  };
+
   issues.forEach(issue => {
     const input = $("mgr_fix_" + issue.key);
     if (!input) return;
 
-    const value = input.value.trim();
-    const previousValue = String(rec[issue.key] || "").trim();
+    const value = clean(input.value);
+    const previousValue = clean(rec[issue.key]);
 
     if (value && value !== previousValue) {
-      const canonicalKey = window.AxisUtils?.canonicalFieldName?.(issue.key) || issue.key;
-      correctedValues[issue.key] = value;
-      correctedFields[canonicalKey] = value;
+      setCorrectedValue(issue.key, value);
     }
   });
 
-  // Assignment fields are always shown in the Manager correction panel.
-  // Read them directly so Rep Owner is saved even when the request text / issue map missed it.
-  const correctedManagerName = clean($("mgr_fix_manager_name")?.value || rec.manager_name || rec.owner_group_name || "");
-  const correctedRepName = clean($("mgr_fix_assigned_rep_name")?.value || rec.assigned_rep_name || rec.rep || rec.sales_rep_name || "");
+  // Force-read the assignment fields that are always shown in the Manager correction card.
+  // This is the critical fix: the Rep Owner input must become the actual owner fields,
+  // not just a temporary Install Base response note.
+  const correctedRepOwner = clean(
+    $("mgr_fix_assigned_rep_name")?.value ||
+    correctedValues.assigned_rep_name ||
+    rec.assigned_rep_name ||
+    rec.rep ||
+    rec.sales_rep_name ||
+    ""
+  );
 
-  if (correctedManagerName) {
-    correctedValues.manager_name = correctedManagerName;
-    correctedValues.owner_group_name = correctedManagerName;
-    correctedFields.manager_name = correctedManagerName;
+  const correctedManagerOwner = clean(
+    $("mgr_fix_manager_name")?.value ||
+    correctedValues.manager_name ||
+    rec.manager_name ||
+    rec.owner_group_name ||
+    ""
+  );
+
+  const correctedSerial = clean(
+    $("mgr_fix_serial_number")?.value ||
+    correctedValues.serial_number ||
+    rec.serial_number ||
+    rec.serial ||
+    ""
+  );
+
+  if (correctedRepOwner) {
+    setCorrectedValue("assigned_rep_name", correctedRepOwner);
+    setCorrectedValue("rep", correctedRepOwner);
+    setCorrectedValue("sales_rep_name", correctedRepOwner);
   }
 
-  if (correctedRepName) {
-    correctedValues.assigned_rep_name = correctedRepName;
-    correctedValues.rep = correctedRepName;
-    correctedValues.sales_rep_name = correctedRepName;
-    correctedFields.assigned_rep_name = correctedRepName;
-    correctedFields.rep = correctedRepName;
-    correctedFields.sales_rep_name = correctedRepName;
+  if (correctedManagerOwner) {
+    setCorrectedValue("manager_name", correctedManagerOwner);
+    setCorrectedValue("owner_group_name", correctedManagerOwner);
+  }
+
+  if (correctedSerial) {
+    setCorrectedValue("serial_number", correctedSerial);
+    setCorrectedValue("serial", correctedSerial);
   }
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
 
-  const originalReviewReason = clean(
-    rec.original_oem_review_reason ||
-    rec.original_install_base_review_reason ||
-    rec.oem_review_reason_original ||
-    rec.install_base_review_reason_original ||
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    rec.proactive_reason ||
-    ""
-  );
-
-  const repIsNowAssigned = hasValidAssignedRep({
+  const originalReviewReason = getOriginalInstallBaseReviewReasonForManager(rec);
+  const hasAssignedRepAfterCorrection = hasValidAssignedRep({
     ...rec,
     ...correctedValues,
-    assigned_rep_name: correctedRepName || correctedValues.assigned_rep_name || rec.assigned_rep_name || "",
-    rep: correctedRepName || correctedValues.rep || rec.rep || "",
-    sales_rep_name: correctedRepName || correctedValues.sales_rep_name || rec.sales_rep_name || ""
+    assigned_rep_name: correctedRepOwner || correctedValues.assigned_rep_name || rec.assigned_rep_name || "",
+    rep: correctedRepOwner || correctedValues.rep || rec.rep || "",
+    sales_rep_name: correctedRepOwner || correctedValues.sales_rep_name || rec.sales_rep_name || ""
   });
+
+  // These fields are only the temporary Install Base FIX request.
+  // After Manager clicks Send Correction to Install Base, the corrected values should
+  // show on Hub, Rep, and Manager, and the stale request message should disappear.
+  const resolvedInstallBaseRequestFields = {
+    install_base_manager_request: false,
+    install_base_manual_route: false,
+    install_base_fix_request: false,
+    install_base_fix_request_field: "",
+    install_base_issue_field: "",
+    install_base_issue_type: "",
+    install_base_issue_reason: "",
+    install_base_issue_note: "",
+    install_base_action_label: "",
+    install_base_action_reason: "",
+    install_base_rep_action_required: "",
+    rep_fix_required: "",
+    release_destination: "",
+    install_base_released_to: "",
+    install_base_release_status: "corrected_by_manager"
+  };
 
   const updated = {
     ...rec,
     ...correctedValues,
+    ...resolvedInstallBaseRequestFields,
     key,
+
     id: rec.id || id,
-
-    original_oem_review_reason: originalReviewReason,
-    original_install_base_review_reason:
-      rec.original_install_base_review_reason || originalReviewReason,
-
-    // Normalize assignment fields used by Manager table, Rep table, and sync filters.
-    assigned_rep_name: correctedRepName || rec.assigned_rep_name || rec.rep || rec.sales_rep_name || "",
-    rep: correctedRepName || rec.rep || rec.assigned_rep_name || rec.sales_rep_name || "",
-    sales_rep_name: correctedRepName || rec.sales_rep_name || rec.assigned_rep_name || rec.rep || "",
-    assigned_rep_email: rec.assigned_rep_email || rec.sales_rep_email || "",
-    sales_rep_first: rec.sales_rep_first || "",
-    sales_rep_last: rec.sales_rep_last || "",
-    sales_rep_email: rec.sales_rep_email || rec.assigned_rep_email || "",
-    sales_rep_phone: rec.sales_rep_phone || "",
-
-    manager_name: correctedManagerName || rec.manager_name || rec.owner_group_name || "",
-    owner_group_name: correctedManagerName || rec.owner_group_name || rec.manager_name || "",
-    owner_group_id: rec.owner_group_id || "",
-
-    // Preserve source identifiers used to match the original release.
     oem_project_id: rec.oem_project_id || "",
     project_id: rec.project_id || "",
-    serial_number: correctedValues.serial_number ?? rec.serial_number ?? "",
-    serial: correctedValues.serial ?? rec.serial ?? "",
+
+    original_oem_review_reason: originalReviewReason,
+    oem_review_reason: originalReviewReason,
+    review_reason: originalReviewReason,
+
+    assigned_rep_name: correctedRepOwner || correctedValues.assigned_rep_name || rec.assigned_rep_name || "",
+    rep: correctedRepOwner || correctedValues.rep || rec.rep || "",
+    sales_rep_name: correctedRepOwner || correctedValues.sales_rep_name || rec.sales_rep_name || "",
+    assigned_rep_email: correctedValues.assigned_rep_email || rec.assigned_rep_email || "",
+    sales_rep_first: rec.sales_rep_first || "",
+    sales_rep_last: rec.sales_rep_last || "",
+    sales_rep_email: rec.sales_rep_email || "",
+    sales_rep_phone: rec.sales_rep_phone || "",
+
+    manager_name: correctedManagerOwner || correctedValues.manager_name || rec.manager_name || "",
+    owner_group_name: correctedManagerOwner || correctedValues.owner_group_name || rec.owner_group_name || "",
+    owner_group_id: rec.owner_group_id || "",
+
+    serial_number: correctedSerial || correctedValues.serial_number || rec.serial_number || "",
+    serial: correctedSerial || correctedValues.serial || rec.serial || "",
+    corrected_serial_number: correctedSerial || correctedValues.serial_number || rec.corrected_serial_number || "",
+
     manager_release_id: rec.manager_release_id || "",
     install_base_release_id: rec.install_base_release_id || "",
     release_id: rec.release_id || "",
@@ -4965,31 +5010,11 @@ function sendManagerInstallBaseCorrection(id) {
     install_base_response_by: MANAGER_NAME,
     install_base_response_note: $("managerInstallBaseCorrectionNote")?.value || "",
     install_base_response_seen: false,
-
-    // This was a Manager-side Install Base fix. After saving it, stop treating it
-    // as an active Install Base review request in the Manager detail panel.
-    install_base_manager_request: false,
-    install_base_manual_route: false,
-    install_base_fix_request: false,
-    install_base_fix_request_field: "",
-    release_destination: repIsNowAssigned ? "" : "manager",
-    install_base_released_to: repIsNowAssigned ? "" : "manager",
-    install_base_release_status: repIsNowAssigned ? "" : rec.install_base_release_status,
-
-    // Clear the temporary ownership/assignment request text from Manager display.
-    // The original review reason is preserved above.
-    install_base_issue_field: "",
-    install_base_issue_type: "",
-    install_base_issue_reason: "",
-    install_base_issue_note: "",
-    install_base_action_label: "",
-    install_base_action_reason: "",
-    install_base_rep_action_required: "",
-    rep_fix_required: "",
+    install_base_sync_type: "manager_correction_sent",
 
     manager_visible: true,
-    rep_visible: repIsNowAssigned,
-    rep_assignment_required: !repIsNowAssigned,
+    rep_visible: hasAssignedRepAfterCorrection,
+    rep_assignment_required: !hasAssignedRepAfterCorrection,
     manager_unseen_update: false,
     manager_alert_seen: true,
 
@@ -4997,145 +5022,90 @@ function sendManagerInstallBaseCorrection(id) {
     install_base_corrected_fields: Object.keys(correctedFields).join(",")
   };
 
-  const upsertRecord = (records) => {
+  const repSyncRecord = {
+    ...updated,
+    manager_visible: false,
+    rep_visible: hasAssignedRepAfterCorrection,
+    rep_assignment_required: !hasAssignedRepAfterCorrection,
+    install_base_sync_type: "manager_correction_to_rep",
+    rep_new_update: true,
+    rep_new_update_at: now,
+    rep_new_update_type: "manager_install_base_correction",
+    rep_flash_at: now,
+    rep_flash_type: "manager_install_base_correction",
+    rep_flash_text: "Corrected Install Base data received"
+  };
+
+  const hubResponseRecord = {
+    ...updated,
+    install_base_sync_type: "manager_correction_to_hub",
+    hub_update_type: "manager_correction",
+    hub_unseen_update: true,
+    hub_update_at: now
+  };
+
+  const upsertBySameRecord = (records, replacement) => {
     let found = false;
-
     const next = (Array.isArray(records) ? records : []).map(item => {
-      if (!sameRecord(item, rec) && !sameRecord(item, updated)) return item;
+      if (!sameRecord(item, rec) && !sameRecord(item, replacement)) return item;
       found = true;
-      return { ...item, ...updated, key };
+      return { ...item, ...replacement, key };
     });
-
-    if (!found) next.unshift(updated);
+    if (!found) next.unshift({ ...replacement, key });
     return next;
   };
 
+  // Hub / Install Base side: response queue + direct Install Base record update.
   writeArrayKey(
     INSTALL_BASE_RESPONSE_KEY,
-    upsertRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY))
+    upsertBySameRecord(readArrayKey(INSTALL_BASE_RESPONSE_KEY), hubResponseRecord)
   );
 
-  // Save the corrected record back into normal Manager/Main storage immediately.
-  syncRecordEverywhere(updated);
+  writeArrayKey(
+    INSTALL_BASE_KEY,
+    upsertBySameRecord(readArrayKey(INSTALL_BASE_KEY), hubResponseRecord)
+  );
 
-  if (repIsNowAssigned) {
-    const repSyncRecord = {
-      ...updated,
-      manager_visible: false,
-      rep_visible: true,
-      rep_assignment_required: false,
-      release_destination: "",
-      install_base_released_to: "",
-      install_base_release_status: "",
-      install_base_manager_request: false,
-      install_base_manual_route: false,
-      install_base_fix_request: false,
-      install_base_fix_request_field: "",
-      install_base_sync_type: "manager_assignment_correction_to_rep",
+  // Manager side.
+  writeArrayKey(
+    STORAGE_KEY,
+    upsertBySameRecord(readArrayKey(STORAGE_KEY), updated)
+  );
 
-      install_base_issue_field: "",
-      install_base_issue_type: "",
-      install_base_issue_reason: "",
-      install_base_issue_note: "",
-      install_base_action_label: "",
-      install_base_action_reason: "",
-      install_base_rep_action_required: "",
-      rep_fix_required: "",
+  writeManagerQueueRecord(updated);
 
-      install_base_manager_message: "",
-      manager_message_from_install_base: "",
-      manager_message_from_install_base_at: "",
-      install_base_rep_message: "",
-      rep_message_from_install_base: "",
-      rep_message_from_install_base_at: "",
-      install_base_reply_to_rep: "",
-      install_base_reply_to_rep_at: "",
-      install_base_reply_to_rep_by: "",
-
-      manager_response_action: "",
-      manager_response_action_label: "",
-      manager_response_notes: "",
-      manager_response_date: "",
-      manager_response_at: "",
-      manager_response_by: "",
-      manager_response_seen_by_rep: true,
-      manager_response_seen_at: now,
-
-      rep_new_update: true,
-      rep_new_update_at: now,
-      rep_new_update_type: "manager_assignment_correction"
-    };
-
-    const upsertRepRecord = (records) => {
-      let found = false;
-
-      const next = (Array.isArray(records) ? records : []).map(item => {
-        if (!sameRecord(item, rec) && !sameRecord(item, repSyncRecord)) return item;
-        found = true;
-        return { ...item, ...repSyncRecord, key };
-      });
-
-      if (!found) next.unshift(repSyncRecord);
-      return next;
-    };
-
-    writeArrayKey(STORAGE_KEY, upsertRepRecord(readArrayKey(STORAGE_KEY)));
-    writeArrayKey(REP_QUEUE_KEY, upsertRepRecord(readArrayKey(REP_QUEUE_KEY)));
-  } else {
+  // Rep side. Only show on Rep after Manager has inserted a valid Rep Owner.
+  if (hasAssignedRepAfterCorrection) {
     writeArrayKey(
       STORAGE_KEY,
-      readArrayKey(STORAGE_KEY).filter(item => !sameRecord(item, updated))
+      upsertBySameRecord(readArrayKey(STORAGE_KEY), repSyncRecord)
     );
+
+    writeArrayKey(
+      REP_QUEUE_KEY,
+      upsertBySameRecord(readArrayKey(REP_QUEUE_KEY), repSyncRecord)
+    );
+  } else {
     writeArrayKey(
       REP_QUEUE_KEY,
       readArrayKey(REP_QUEUE_KEY).filter(item => !sameRecord(item, updated))
     );
   }
 
-  // Update every Manager queue bucket and insert the corrected record if no bucket matched.
-  let managerQueue = {};
-
-  try {
-    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-  } catch {
-    managerQueue = {};
-  }
-
-  let managerQueueFound = false;
-
-  if (Array.isArray(managerQueue)) {
-    managerQueue = managerQueue.map(item => {
-      if (!sameRecord(item, rec) && !sameRecord(item, updated)) return item;
-      managerQueueFound = true;
-      return { ...item, ...updated, key };
-    });
-    if (!managerQueueFound) managerQueue.unshift({ ...updated, key });
-  } else {
-    if (!managerQueue || typeof managerQueue !== "object") managerQueue = {};
-
-    Object.keys(managerQueue).forEach(bucket => {
-      if (!Array.isArray(managerQueue[bucket])) return;
-
-      managerQueue[bucket] = managerQueue[bucket].map(item => {
-        if (!sameRecord(item, rec) && !sameRecord(item, updated)) return item;
-        managerQueueFound = true;
-        return { ...item, ...updated, key };
-      });
-    });
-
-    if (!managerQueueFound) {
-      const bucketName = updated.manager_name || updated.owner_group_name || MANAGER_NAME || "Default Manager";
-      managerQueue[bucketName] = Array.isArray(managerQueue[bucketName]) ? managerQueue[bucketName] : [];
-      managerQueue[bucketName].unshift({ ...updated, key });
-    }
-  }
-
-  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
-  state.records = mergeRecordsByKey(readArrayKey(STORAGE_KEY), readManagerQueueRecords());
+  state.records = state.records.map(item =>
+    sameRecord(item, rec) || sameRecord(item, updated)
+      ? { ...item, ...updated, key }
+      : item
+  );
+
+  if (!state.records.some(item => sameRecord(item, updated))) {
+    state.records.unshift(updated);
+  }
+
   state.selectedId = updated.id;
 
   alert("Correction sent back to Install Base.");
@@ -5145,7 +5115,6 @@ function sendManagerInstallBaseCorrection(id) {
   renderDetail();
   managerStorageSignature = getManagerStorageSignature();
 }
-
 function sendManagerUnableToVerify(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -5309,7 +5278,7 @@ function wasManagerSerialFixRequest(rec){
 }
 
 function getOriginalInstallBaseReviewReasonForManager(rec){
-  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing|assigned\s+rep|rep\s+owner|rep\s+name|territory|owner\s+group/i;
+  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing|rep\s+owner|assigned\s+rep|rep\s+name|territory|owner\s+group|assignment/i;
 
   const candidates = [
     rec.original_oem_review_reason,
@@ -5317,9 +5286,9 @@ function getOriginalInstallBaseReviewReasonForManager(rec){
     rec.oem_review_reason_original,
     rec.install_base_review_reason_original,
     rec.original_review_reason,
+    rec.proactive_reason,
     rec.oem_review_reason,
     rec.review_reason,
-    rec.proactive_reason,
     rec.conflict_notes
   ];
 
