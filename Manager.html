@@ -3099,11 +3099,17 @@ const normalSeen = isFreshRepUpdate
     // any older Manager queue / Hub release copy must not keep the row in FIX state.
     const managerInstallBaseCorrectionResolved = Boolean(
       rec.install_base_response_status === "manager_correction_sent" ||
+      rec.install_base_response_status === "rep_correction_sent" ||
       rec.install_base_correction_status === "corrected_by_manager" ||
+      rec.install_base_correction_status === "corrected_by_rep" ||
       rec.install_base_fix_status === "manager_reviewed" ||
+      rec.install_base_fix_status === "rep_reviewed" ||
       existing.install_base_response_status === "manager_correction_sent" ||
+      existing.install_base_response_status === "rep_correction_sent" ||
       existing.install_base_correction_status === "corrected_by_manager" ||
-      existing.install_base_fix_status === "manager_reviewed"
+      existing.install_base_correction_status === "corrected_by_rep" ||
+      existing.install_base_fix_status === "manager_reviewed" ||
+      existing.install_base_fix_status === "rep_reviewed"
     );
 
     const legacyUnseen =
@@ -3255,7 +3261,9 @@ manager_flash_text: isFreshRepUpdate
 function getRepName(rec) {
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+    getManagerCorrectedFieldValue(rec, "rep") ||
     rec.assigned_rep_name ||
+    rec.assigned_rep ||
     "Unassigned"
   );
 }
@@ -4407,7 +4415,13 @@ function managerCorrectedFieldAliases(fieldName) {
     facility: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
     owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
     manager: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
-    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep_name", "rep_owner"]
+    manager_name: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    owner_group_name: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
+    assigned_rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
+    assigned_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
+    rep_owner: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
+    sales_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"]
   }[fieldName] || [fieldName];
 }
 
@@ -4436,6 +4450,32 @@ function getManagerCorrectedFieldValue(rec, fieldName) {
   }
 
   return "";
+}
+
+function applyManagerCorrectedTopLevelValues(rec) {
+  if (!rec || typeof rec !== "object") return rec;
+
+  const next = { ...rec };
+  const correctedRepOwner = getManagerCorrectedFieldValue(next, "rep");
+
+  if (correctedRepOwner) {
+    next.assigned_rep_name = correctedRepOwner;
+    next.assigned_rep = correctedRepOwner;
+    next.rep = correctedRepOwner;
+    next.rep_owner = correctedRepOwner;
+    next.sales_rep = correctedRepOwner;
+    next.sales_rep_name = correctedRepOwner;
+  }
+
+  const correctedManagerOwner = getManagerCorrectedFieldValue(next, "manager");
+
+  if (correctedManagerOwner) {
+    next.manager_name = correctedManagerOwner;
+    next.owner_group_name = correctedManagerOwner;
+    next.owner_group = correctedManagerOwner;
+  }
+
+  return next;
 }
 
 function wasManagerFieldCorrected(rec, fieldName) {
@@ -4475,9 +4515,13 @@ function isCompletedManagerRecord(rec) {
 }
 function renderManagerRepOwnerCell(rec) {
   const repOwner = String(
+    getManagerCorrectedFieldValue(rec, "rep") ||
     rec.assigned_rep_name ||
+    rec.assigned_rep ||
     rec.rep ||
+    rec.rep_owner ||
     rec.sales_rep_name ||
+    rec.sales_rep ||
     ""
   ).trim();
 
@@ -5060,9 +5104,6 @@ function sendManagerInstallBaseCorrection(id) {
       .replace(/^mgr_fix_/, "")
       .trim();
 
-    const shared = window.AxisUtils?.canonicalFieldName?.(k);
-    if (shared) return shared;
-
     if (["serial", "serial_number", "system_serial"].includes(k)) return "serial";
     if (["dom", "year", "manufacture_year"].includes(k)) return "dom";
     if (["site", "facility", "hospital", "hospital_name", "customer", "location"].includes(k)) return "site";
@@ -5070,8 +5111,11 @@ function sendManagerInstallBaseCorrection(id) {
     if (["model"].includes(k)) return "model";
     if (["modality"].includes(k)) return "modality";
     if (["project", "project_id", "oem_project_id", "asset_id"].includes(k)) return "project";
-    if (["assigned_rep_name", "rep", "rep_owner", "sales_rep", "sales_rep_name"].includes(k)) return "rep";
+    if (["assigned_rep", "assigned_rep_name", "rep", "rep_owner", "sales_rep", "sales_rep_name"].includes(k)) return "rep";
     if (["manager_name", "owner_group_name", "owner_group", "manager"].includes(k)) return "manager";
+
+    const shared = window.AxisUtils?.canonicalFieldName?.(k);
+    if (shared) return shared;
 
     return k;
   };
@@ -5128,8 +5172,9 @@ function sendManagerInstallBaseCorrection(id) {
       return;
     }
 
-    if (correctedField === "rep") {
+    if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name"].includes(correctedField)) {
       target.assigned_rep_name = cleanValue;
+      target.assigned_rep = cleanValue;
       target.rep = cleanValue;
       target.rep_owner = cleanValue;
       target.sales_rep = cleanValue;
@@ -5137,7 +5182,7 @@ function sendManagerInstallBaseCorrection(id) {
       return;
     }
 
-    if (correctedField === "manager") {
+    if (["manager", "manager_name", "owner_group_name", "owner_group"].includes(correctedField)) {
       target.manager_name = cleanValue;
       target.owner_group_name = cleanValue;
       target.owner_group = cleanValue;
@@ -5272,6 +5317,23 @@ function sendManagerInstallBaseCorrection(id) {
   updated.corrected_values = updated.corrected_fields;
   updated.install_base_corrected_field_values = updated.corrected_fields;
   updated.corrected_field_values = updated.corrected_fields;
+
+  const correctedRepOwner = getManagerCorrectedFieldValue(updated, "rep");
+  if (correctedRepOwner) {
+    updated.assigned_rep_name = correctedRepOwner;
+    updated.assigned_rep = correctedRepOwner;
+    updated.rep = correctedRepOwner;
+    updated.rep_owner = correctedRepOwner;
+    updated.sales_rep = correctedRepOwner;
+    updated.sales_rep_name = correctedRepOwner;
+  }
+
+  const correctedManagerOwner = getManagerCorrectedFieldValue(updated, "manager");
+  if (correctedManagerOwner) {
+    updated.manager_name = correctedManagerOwner;
+    updated.owner_group_name = correctedManagerOwner;
+    updated.owner_group = correctedManagerOwner;
+  }
 
   // Manager fix now behaves like Rep fix: once corrected info is sent,
   // the active Install Base FIX request is closed on Manager side.
@@ -6842,7 +6904,8 @@ function syncRecordEverywhere(updatedRec) {
   writeArrayKey(STORAGE_KEY, main);
   writeManagerQueueRecord(rec);
 
-  state.records = mergeRecordsByKey(main, readManagerQueueRecords());
+  state.records = mergeRecordsByKey(main, readManagerQueueRecords())
+    .map(applyManagerCorrectedTopLevelValues);
   pingLifecycleSync();
 }
 
@@ -7166,7 +7229,7 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
     state.records = mergeRecordsByKey(
       readArrayKey(STORAGE_KEY),
       readManagerQueueRecords()
-    );
+    ).map(applyManagerCorrectedTopLevelValues);
   }
 
 state.selectedId = updated.id;
@@ -7415,7 +7478,8 @@ function handleCSVUpload(file) {
     });
 
     const existing = readArrayKey(STORAGE_KEY);
-    const merged = mergeRecordsByKey(existing, records);
+    const merged = mergeRecordsByKey(existing, records)
+      .map(applyManagerCorrectedTopLevelValues);
 
     writeArrayKey(STORAGE_KEY, merged);
     state.selectedId = null;
@@ -7681,7 +7745,7 @@ function render() {
     installBaseRecords,
     installBaseResponses,
     installBaseFinalSync
-  );
+  ).map(applyManagerCorrectedTopLevelValues);
 
   if (
     state.selectedId &&
@@ -7814,7 +7878,7 @@ if (tableBody) {
         state.records = mergeRecordsByKey(
           readArrayKey(STORAGE_KEY),
           readManagerQueueRecords()
-        );
+        ).map(applyManagerCorrectedTopLevelValues);
       }
     }
 
