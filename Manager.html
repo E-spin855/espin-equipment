@@ -3132,6 +3132,37 @@ const existingCorrectedFields =
       ...rec,
       key,
 
+      install_base_corrected_fields:
+        rec.install_base_corrected_fields ||
+        existing.install_base_corrected_fields ||
+        "",
+      corrected_fields:
+        incomingCorrectedFields ||
+        existingCorrectedFields ||
+        rec.corrected_fields ||
+        existing.corrected_fields ||
+        {},
+      install_base_corrected_values:
+        rec.install_base_corrected_values ||
+        existing.install_base_corrected_values ||
+        {},
+      corrected_values:
+        rec.corrected_values ||
+        existing.corrected_values ||
+        {},
+      install_base_corrected_field_values:
+        rec.install_base_corrected_field_values ||
+        existing.install_base_corrected_field_values ||
+        {},
+      corrected_field_values:
+        rec.corrected_field_values ||
+        existing.corrected_field_values ||
+        {},
+      original_install_base_manager_message:
+        rec.original_install_base_manager_message ||
+        existing.original_install_base_manager_message ||
+        "",
+
       quote_seen: existing.quote_seen === true || rec.quote_seen === true,
 
       manager_response_seen_by_rep:
@@ -3225,11 +3256,6 @@ function getRepName(rec) {
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
     rec.assigned_rep_name ||
-    rec.rep ||
-    rec.sales_rep_name ||
-    rec.sales_rep ||
-    rec.rep_owner ||
-    rec.rep_name ||
     "Unassigned"
   );
 }
@@ -4368,12 +4394,8 @@ function managerCorrectedFieldsList(rec) {
   return Array.from(new Set([...fromString, ...fromObject]));
 }
 
-function wasManagerFieldCorrected(rec, fieldName) {
-  if (!isManagerRecordFixed(rec)) return false;
-
-  const fixedFields = managerCorrectedFieldsList(rec);
-
-  const aliases = {
+function managerCorrectedFieldAliases(fieldName) {
+  return {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
     make: ["make", "manufacturer"],
     model: ["model"],
@@ -4382,18 +4404,59 @@ function wasManagerFieldCorrected(rec, fieldName) {
     dom: ["dom", "year", "manufacture_year"],
     age: ["dom", "year", "manufacture_year"],
     site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    facility: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
     owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
-    rep: ["rep", "assigned_rep", "assigned_rep_name"]
+    manager: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep_name", "rep_owner"]
   }[fieldName] || [fieldName];
+}
+
+function getManagerCorrectedFieldValue(rec, fieldName) {
+  if (!rec) return "";
+
+  const aliases = managerCorrectedFieldAliases(fieldName);
+  const sources = [
+    rec.corrected_fields,
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values
+  ].filter(source => source && typeof source === "object");
+
+  for (const source of sources) {
+    for (const alias of aliases) {
+      const value = clean(source[alias]);
+      if (value) return value;
+    }
+  }
+
+  for (const alias of aliases) {
+    const value = clean(rec[alias]);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function wasManagerFieldCorrected(rec, fieldName) {
+  if (!isManagerRecordFixed(rec)) return false;
+
+  const fixedFields = managerCorrectedFieldsList(rec);
+  const aliases = managerCorrectedFieldAliases(fieldName);
 
   return fixedFields.some(field => aliases.includes(field));
 }
 function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
 
+  const correctedValue = getManagerCorrectedFieldValue(rec, fieldName);
+  const displayHtml = correctedValue
+    ? escapeHtml(correctedValue)
+    : normalHtml;
+
   return `
     <span class="manager-corrected-value">
-      ${normalHtml}
+      ${displayHtml}
     </span>
   `;
 }
@@ -4415,11 +4478,6 @@ function renderManagerRepOwnerCell(rec) {
     rec.assigned_rep_name ||
     rec.rep ||
     rec.sales_rep_name ||
-    rec.sales_rep ||
-    rec.rep_owner ||
-    rec.rep_name ||
-    rec.corrected_assigned_rep_name ||
-    rec.install_base_corrected_rep_owner ||
     ""
   ).trim();
 
@@ -4795,26 +4853,8 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 }
 
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") {
-    return rec.manager_name ||
-      rec.owner_group_name ||
-      rec.owner_group ||
-      rec.manager_region ||
-      rec.territory_name ||
-      rec.territory ||
-      "";
-  }
-
-  if (key === "assigned_rep_name") {
-    return rec.assigned_rep_name ||
-      rec.rep ||
-      rec.sales_rep_name ||
-      rec.sales_rep ||
-      rec.rep_owner ||
-      rec.rep_name ||
-      "";
-  }
-
+  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
+  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
   return rec[key] || "";
 }
 
@@ -4995,6 +5035,15 @@ function sendManagerInstallBaseCorrection(id) {
     ""
   );
 
+  const originalInstallBaseMessage = clean(
+    rec.original_install_base_manager_message ||
+    rec.install_base_manager_message ||
+    rec.manager_message_from_install_base ||
+    rec.install_base_message_to_manager ||
+    rec.manager_message ||
+    ""
+  );
+
   const existingConversationHistory = getManagerInstallBaseConversationHistory(rec);
   const managerConversationItem = {
     id: "manager_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
@@ -5106,6 +5155,7 @@ function sendManagerInstallBaseCorrection(id) {
     original_oem_review_reason: originalReviewReason,
     original_install_base_review_reason:
       rec.original_install_base_review_reason || originalReviewReason,
+    original_install_base_manager_message: originalInstallBaseMessage,
 
     install_base_response_status: "manager_correction_sent",
     install_base_response_message: message,
@@ -5178,98 +5228,31 @@ function sendManagerInstallBaseCorrection(id) {
     }
   });
 
-  // Force Manager assignment corrections into every owner field used by
-  // Manager, Hub, and Rep. This mirrors Rep-side fix behavior: corrected
-  // input becomes actual record data, not just a response note.
-  const forcedRepOwner = clean(
-    $("mgr_fix_assigned_rep_name")?.value ||
-    $("mgr_fix_rep")?.value ||
-    $("mgr_fix_sales_rep_name")?.value ||
-    $("mgr_fix_sales_rep")?.value ||
-    $("mgr_fix_rep_owner")?.value ||
-    $("mgr_fix_rep_name")?.value ||
-    updated.assigned_rep_name ||
-    updated.rep ||
-    updated.sales_rep_name ||
-    updated.sales_rep ||
-    updated.rep_owner ||
-    updated.rep_name ||
-    rec.assigned_rep_name ||
-    rec.rep ||
-    rec.sales_rep_name ||
-    rec.sales_rep ||
-    rec.rep_owner ||
-    rec.rep_name ||
-    ""
-  );
-
-  const forcedManagerOwner = clean(
-    $("mgr_fix_manager_name")?.value ||
-    $("mgr_fix_owner_group_name")?.value ||
-    $("mgr_fix_owner_group")?.value ||
-    $("mgr_fix_manager_region")?.value ||
-    $("mgr_fix_territory_name")?.value ||
-    $("mgr_fix_territory")?.value ||
-    updated.manager_name ||
-    updated.owner_group_name ||
-    updated.owner_group ||
-    updated.manager_region ||
-    updated.territory_name ||
-    updated.territory ||
-    rec.manager_name ||
-    rec.owner_group_name ||
-    rec.owner_group ||
-    rec.manager_region ||
-    rec.territory_name ||
-    rec.territory ||
-    ""
-  );
-
-  if (forcedRepOwner) {
-    updated.assigned_rep_name = forcedRepOwner;
-    updated.rep = forcedRepOwner;
-    updated.sales_rep_name = forcedRepOwner;
-    updated.sales_rep = forcedRepOwner;
-    updated.rep_owner = forcedRepOwner;
-    updated.rep_name = forcedRepOwner;
-
-    updated.corrected_assigned_rep_name = forcedRepOwner;
-    updated.install_base_corrected_rep_owner = forcedRepOwner;
-
-    if (!correctedFields.includes("rep")) correctedFields.push("rep");
-  }
-
-  if (forcedManagerOwner) {
-    updated.manager_name = forcedManagerOwner;
-    updated.owner_group_name = forcedManagerOwner;
-    updated.owner_group = forcedManagerOwner;
-    updated.manager_region = forcedManagerOwner;
-    updated.territory_name = forcedManagerOwner;
-    updated.territory = forcedManagerOwner;
-    updated.assigned_territory = forcedManagerOwner;
-    updated.sales_territory = forcedManagerOwner;
-
-    updated.corrected_manager_name = forcedManagerOwner;
-    updated.install_base_corrected_owner_group = forcedManagerOwner;
-
-    if (!correctedFields.includes("manager")) correctedFields.push("manager");
-  }
-
-  updated.rep_visible = Boolean(
-    updated.assigned_rep_name ||
-    updated.rep ||
-    updated.sales_rep_name ||
-    updated.sales_rep ||
-    updated.rep_owner ||
-    updated.rep_name
-  );
+  updated.rep_visible = Boolean(updated.assigned_rep_name || updated.rep || updated.sales_rep_name);
   updated.rep_assignment_required = !updated.rep_visible;
 
   updated.install_base_corrected_fields = correctedFields.join(",");
   updated.corrected_fields = correctedFields.reduce((acc, field) => {
-    acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
+    const aliases = managerCorrectedFieldAliases(field);
+    const correctedValue =
+      window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) ||
+      aliases.map(alias => clean(updated[alias])).find(Boolean) ||
+      clean(updated[field]) ||
+      "";
+
+    acc[field] = correctedValue;
+
+    aliases.forEach(alias => {
+      const aliasValue = clean(updated[alias]) || correctedValue;
+      if (aliasValue) acc[alias] = aliasValue;
+    });
+
     return acc;
   }, {});
+  updated.install_base_corrected_values = updated.corrected_fields;
+  updated.corrected_values = updated.corrected_fields;
+  updated.install_base_corrected_field_values = updated.corrected_fields;
+  updated.corrected_field_values = updated.corrected_fields;
 
   // Manager fix now behaves like Rep fix: once corrected info is sent,
   // the active Install Base FIX request is closed on Manager side.
@@ -5331,13 +5314,35 @@ function sendManagerInstallBaseCorrection(id) {
 
   const repSyncRecord = {
     ...updated,
+    manager_install_base_response_status: updated.install_base_response_status,
+    manager_install_base_correction_status: updated.install_base_correction_status,
+    manager_install_base_fix_status: updated.install_base_fix_status,
+    manager_install_base_corrected_by: updated.install_base_corrected_by,
+
+    // Rep.html only renders fixed-field values for the rep-side fixed statuses.
+    // Keep the manager correction fields above, but send a rep-compatible copy
+    // into the rep queue so assigned reps see the corrected values immediately.
+    install_base_response_status: "rep_correction_sent",
+    install_base_correction_status: "corrected_by_rep",
+    install_base_fix_status: "rep_reviewed",
+    rep_status: "install_base_data_fixed",
+    rep_action: "install_base_data_fixed",
+    rep_action_label: "Updated",
+
     manager_visible: false,
     rep_visible: updated.rep_visible,
     rep_assignment_required: !updated.rep_visible,
     install_base_sync_type: "manager_correction_to_rep",
     rep_new_update: true,
     rep_new_update_at: now,
-    rep_new_update_type: "install_base_manager_correction"
+    rep_new_update_type: "install_base_manager_correction",
+    rep_flash_at: now,
+    rep_flash_type: "install_base_update",
+    rep_flash_text: "Manager corrected Install Base data",
+    install_base_fixed_seen_by_rep: false,
+    install_base_fixed_seen_at: "",
+    source: "Manager Review Page",
+    hub_source: updated.hub_source || "Manager Review Page"
   };
 
   state.records = cleanAndPrepend(state.records, updated);
@@ -5345,7 +5350,7 @@ function sendManagerInstallBaseCorrection(id) {
   writeCorrectedArrayRecord(INSTALL_BASE_RESPONSE_KEY, updated);
   writeCorrectedArrayRecord(INSTALL_BASE_KEY, updated);
   writeCorrectedArrayRecord(INSTALL_BASE_FINAL_SYNC_KEY, updated);
-  writeCorrectedArrayRecord(STORAGE_KEY, updated.rep_visible ? repSyncRecord : updated);
+  writeCorrectedArrayRecord(STORAGE_KEY, updated);
 
   if (updated.rep_visible) {
     writeCorrectedArrayRecord(REP_QUEUE_KEY, repSyncRecord);
@@ -5443,6 +5448,7 @@ function getInstallBaseManagerMessage(rec) {
 
   return clean(
     rec.install_base_manager_message ||
+    rec.original_install_base_manager_message ||
     rec.manager_message_from_install_base ||
     rec.install_base_message_to_manager ||
     (!isRepMessage ? rec.manager_message : "") ||
@@ -6424,7 +6430,7 @@ function renderDetail() {
       <div class="summary-card">
         <div class="summary-title">Facility</div>
         <div class="summary-main">
-          ${escapeHtml(getFacility(rec))}
+          ${renderManagerCorrectedValue(rec, "site", escapeHtml(getFacility(rec)))}
         </div>
         <div class="summary-sub">
           ${escapeHtml(
@@ -6443,16 +6449,19 @@ function renderDetail() {
       <div class="summary-card">
         <div class="summary-title">Equipment / Project</div>
         <div class="summary-main">
-          ${escapeHtml(
-            `${rec.make || ""} ${rec.model || ""}`.trim() || "-"
-          )}
+          ${
+            [
+              renderManagerCorrectedValue(rec, "make", escapeHtml(rec.make || "")),
+              renderManagerCorrectedValue(rec, "model", escapeHtml(rec.model || ""))
+            ].filter(Boolean).join(" ") || "-"
+          }
         </div>
         <div class="summary-sub">
-          ${escapeHtml(rec.modality || "-")}
+          ${renderManagerCorrectedValue(rec, "modality", escapeHtml(rec.modality || "-"))}
           • Serial:
-          ${escapeHtml(rec.serial_number || rec.serial || "-")}
+          ${renderManagerCorrectedValue(rec, "serial", escapeHtml(rec.serial_number || rec.serial || "-"))}
           • DOM:
-          ${escapeHtml(rec.dom || "-")}
+          ${renderManagerCorrectedValue(rec, "dom", escapeHtml(rec.dom || "-"))}
         </div>
       </div>
 
@@ -6460,7 +6469,7 @@ function renderDetail() {
   <div class="summary-title">Assigned Rep</div>
 
   <div class="summary-main">
-    ${escapeHtml(getRepName(rec))}
+    ${renderManagerCorrectedValue(rec, "rep", escapeHtml(getRepName(rec)))}
   </div>
 
   <div class="summary-contact-links">
