@@ -4880,12 +4880,21 @@ function sendManagerInstallBaseCorrection(id) {
     }
   });
 
-  const now = new Date().toISOString();
-  const key = getRecordKey(rec);
-  const updated = {
-    ...rec,
-    ...correctedValues,
-    key,
+ const now = new Date().toISOString();
+const key = getRecordKey(rec);
+
+const originalReviewReason =
+  rec.original_oem_review_reason ||
+  rec.oem_review_reason ||
+  rec.review_reason ||
+  rec.proactive_reason ||
+  "";
+
+const updated = {
+  ...rec,
+  ...correctedValues,
+  key,
+  original_oem_review_reason: originalReviewReason,
 
     // Preserve assignment and ownership from the released record.
     assigned_rep_name: correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "",
@@ -5214,18 +5223,57 @@ function getInstallBaseRequestText(rec) {
     "No install-base action requested"
   );
 }
-function getInstallBaseReviewReasonForManager(rec) {
+function getCurrentManagerSerialNumber(rec){
   return clean(
-    rec.install_base_clarification_reason ||
+    rec.serial_number ||
+    rec.serial ||
+    rec.Serial ||
+    rec["Serial Number"] ||
+    rec.corrected_serial_number ||
+    rec.corrected_serial ||
+    ""
+  );
+}
+
+function wasManagerSerialFixRequest(rec){
+  const text = lower(
+    rec.install_base_fix_request_field ||
+    rec.install_base_issue_type ||
     rec.install_base_issue_reason ||
     rec.install_base_action_reason ||
     rec.install_base_issue_note ||
+    rec.install_base_clarification_reason ||
+    rec.rep_fix_required ||
+    rec.fix_reason ||
+    ""
+  );
+
+  return text.includes("serial");
+}
+
+function getOriginalInstallBaseReviewReasonForManager(rec){
+  return clean(
+    rec.original_oem_review_reason ||
+    rec.original_install_base_review_reason ||
+    rec.oem_review_reason_original ||
+    rec.install_base_review_reason_original ||
+    rec.original_review_reason ||
     rec.conflict_notes ||
     rec.oem_review_reason ||
     rec.review_reason ||
     rec.proactive_reason ||
     "Install Base review context is attached to this record."
   );
+}
+
+function getInstallBaseReviewReasonForManager(rec) {
+  const serialNow = getCurrentManagerSerialNumber(rec);
+
+  if (wasManagerSerialFixRequest(rec) && !serialNow) {
+    return "Serial number is missing from the Install Base record.";
+  }
+
+  return getOriginalInstallBaseReviewReasonForManager(rec);
 }
 function arrangeManagerWorkflowLayout() {
   const grid = $("detailGrid");
@@ -6196,25 +6244,15 @@ function renderDetail() {
       </span>
     </div>
 
-    <div
-      class="mini"
-      style="
-        font-size:14px;
-        line-height:1.55;
-      "
-    >
-      ${escapeHtml(
-        rec.install_base_clarification_reason ||
-        rec.install_base_issue_reason ||
-        rec.install_base_action_reason ||
-        rec.install_base_issue_note ||
-        rec.conflict_notes ||
-        rec.oem_review_reason ||
-        rec.review_reason ||
-        rec.proactive_reason ||
-        "Install Base review context is attached to this record."
-      )}
-    </div>
+   <div
+  class="mini"
+  style="
+    font-size:14px;
+    line-height:1.55;
+  "
+>
+  ${escapeHtml(getInstallBaseReviewReasonForManager(rec))}
+</div>
 
     ${renderInstallBaseManagerMessage(rec)}
   </div>
