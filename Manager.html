@@ -2904,69 +2904,95 @@ function writeManagerQueueRecord(rec) {
 
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(data));
 }
-function isVolatileManagerGeneratedId(value) {
-  return /^AXIS-\d{10,}-[a-z0-9]+$/i.test(clean(value));
-}
-
 function getRecordKey(rec) {
   if (!rec) return "";
 
-  const explicitStable = clean(
-    rec.manager_sync_key ||
-    rec.axis_sync_key ||
-    rec.original_key ||
+  // Use the real equipment identity first. Do NOT let a temporary row id/key
+  // become the sync key, otherwise corrected records and stale Hub records
+  // are treated as different records and the FIX badge comes back.
+  const project = clean(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    rec.equipment_id ||
+    rec.project ||
     ""
   );
-  if (explicitStable && !isVolatileManagerGeneratedId(explicitStable)) {
-    return explicitStable;
-  }
 
-  if (rec.project_type === "new_sales_project" || rec.project_type === "new_project_record") {
-    return `new_project_${clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.id || "")}`;
-  }
+  const serial = clean(
+    rec.serial_number ||
+    rec.serial ||
+    rec.system_serial ||
+    rec.equipment_serial ||
+    ""
+  );
 
-  const project = clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || "");
-  const serial = clean(rec.serial_number || rec.serial || rec.system_serial || "");
-  const site = clean(rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location || "");
+  const site = clean(
+    rec.site ||
+    rec.facility ||
+    rec.hospital ||
+    rec.hospital_name ||
+    rec.customer ||
+    rec.customer_name ||
+    rec.location ||
+    ""
+  );
 
-  // Use the actual equipment identity first. Do not let a temporary table id
-  // become the sync key, otherwise corrected records and stale Hub records
-  // merge as two different records and FIX comes back.
   if (project && serial) return `${project}_${serial}`;
   if (project && site) return `${project}_${site}`;
   if (serial && site) return `${serial}_${site}`;
-  if (project || serial || site) return `${project || "no_project"}_${serial || "no_serial"}_${site || "no_site"}`;
-
-  const storedKey = clean(rec.key || "");
-  if (storedKey && !isVolatileManagerGeneratedId(storedKey)) return storedKey;
-
-  const id = clean(rec.id || "");
-  if (id && !isVolatileManagerGeneratedId(id)) return id;
 
   const sharedKey = window.AxisUtils?.getCanonicalRecordKey?.(rec);
-  if (sharedKey && !isVolatileManagerGeneratedId(sharedKey)) return sharedKey;
+  if (sharedKey) return sharedKey;
 
-  return "";
+  const durable = clean(
+    rec.manager_sync_key ||
+    rec.axis_sync_key ||
+    rec.original_key ||
+    rec.install_base_release_id ||
+    rec.manager_release_id ||
+    rec.release_id ||
+    ""
+  );
+  if (durable) return durable;
+
+  if (project || serial || site) {
+    return `${project || "no_project"}_${serial || "no_serial"}_${site || "no_site"}`;
+  }
+
+  if (rec.project_type === "new_sales_project" || rec.project_type === "new_project_record") {
+    return `new_project_${clean(rec.id || "")}`;
+  }
+
+  return clean(rec.key || rec.id || "");
 }
 
 function sameRecord(a, b) {
   if (!a || !b) return false;
 
-  const aStable = getRecordKey(a);
-  const bStable = getRecordKey(b);
-  if (aStable && bStable && aStable === bStable) return true;
-
-  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id || a.equipment_id || "");
-  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id || b.equipment_id || "");
-  const aSerial = clean(a.serial_number || a.serial || a.system_serial || "");
-  const bSerial = clean(b.serial_number || b.serial || b.system_serial || "");
-
-  if (aProject && bProject && aSerial && bSerial && aProject === bProject && aSerial === bSerial) return true;
-
+  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id || a.equipment_id || a.project || "");
+  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id || b.equipment_id || b.project || "");
+  const aSerial = clean(a.serial_number || a.serial || a.system_serial || a.equipment_serial || "");
+  const bSerial = clean(b.serial_number || b.serial || b.system_serial || b.equipment_serial || "");
   const aSite = clean(a.site || a.facility || a.hospital || a.hospital_name || a.customer || a.customer_name || a.location || "");
   const bSite = clean(b.site || b.facility || b.hospital || b.hospital_name || b.customer || b.customer_name || b.location || "");
 
-  return Boolean(aProject && bProject && aSite && bSite && aProject === bProject && aSite === bSite);
+  if (aProject && bProject && aProject === bProject) {
+    if (aSerial && bSerial && aSerial === bSerial) return true;
+    if (aSite && bSite && aSite === bSite) return true;
+  }
+
+  if (aSerial && bSerial && aSite && bSite && aSerial === bSerial && aSite === bSite) return true;
+
+  const aKey = getRecordKey(a);
+  const bKey = getRecordKey(b);
+  if (aKey && bKey && aKey === bKey) return true;
+
+  const aDurable = clean(a.manager_sync_key || a.axis_sync_key || a.original_key || a.install_base_release_id || a.manager_release_id || a.release_id || "");
+  const bDurable = clean(b.manager_sync_key || b.axis_sync_key || b.original_key || b.install_base_release_id || b.manager_release_id || b.release_id || "");
+  if (aDurable && bDurable && aDurable === bDurable) return true;
+
+  return false;
 }
 
 function mergeRecordsByKey(...groups) {
@@ -4431,7 +4457,14 @@ function renderManagerRepOwnerCell(rec) {
     );
   }
 
-  const id = rec.id || "";
+  // Only show FIX while this is an unresolved Install Base request.
+  // After Manager sends correction back, do not let a stale empty owner copy
+  // keep showing the yellow FIX button.
+  if (!isManagerInstallBaseRequest(rec)) {
+    return `<span class="mini">-</span>`;
+  }
+
+  const id = rec.id || getRecordKey(rec) || "";
 
   return `
     <button
@@ -4474,9 +4507,9 @@ function renderTable() {
   }
 
   tbody.innerHTML = records.map(rec => {
-    const id = clean(getRecordKey(rec) || rec.id || uuid());
+    const id = clean(rec.id || getRecordKey(rec) || uuid());
     rec.id = id;
-    rec.key = rec.key || id;
+    rec.key = getRecordKey(rec) || rec.key || id;
 
     const selectedClass = [
       String(rec.id) === String(state.selectedId) ? "selected" : "",
@@ -4591,7 +4624,9 @@ function findSelectedRecord() {
   if (!state.selectedId) return null;
 
   return state.records.find(rec =>
-    String(rec.id || "") === String(state.selectedId)
+    String(rec.id || "") === String(state.selectedId) ||
+    String(rec.key || "") === String(state.selectedId) ||
+    String(getRecordKey(rec) || "") === String(state.selectedId)
   ) || null;
 }
 
@@ -4941,7 +4976,7 @@ function sendManagerInstallBaseCorrection(id) {
   });
 
   const now = new Date().toISOString();
-  const key = getRecordKey(rec) || rec.key || rec.id || id;
+  const key = getRecordKey(rec) || rec.key || id;
 
   const correctedRepOwner = clean(
     $("mgr_fix_assigned_rep_name")?.value ||
@@ -4993,7 +5028,7 @@ function sendManagerInstallBaseCorrection(id) {
     ...correctedValues,
     key,
 
-    id: key,
+    id: rec.id || id,
 
     original_oem_review_reason: originalReviewReason,
     original_install_base_review_reason:
@@ -5061,34 +5096,21 @@ function sendManagerInstallBaseCorrection(id) {
   };
 
   const upsertArrayRecord = (records, replacement) => {
-    let inserted = false;
     const replacementKey = getRecordKey(replacement) || replacement.key || replacement.id || "";
 
-    const next = [];
-
-    (Array.isArray(records) ? records : []).forEach(item => {
+    const cleaned = (Array.isArray(records) ? records : []).filter(item => {
       const itemKey = getRecordKey(item) || item.key || item.id || "";
-      const same =
+      return !(
         sameRecord(item, rec) ||
         sameRecord(item, replacement) ||
-        (replacementKey && itemKey && replacementKey === itemKey) ||
-        String(item.id || "") === String(replacement.id || "") ||
-        String(item.key || "") === String(replacement.key || "");
-
-      if (!same) {
-        next.push(item);
-        return;
-      }
-
-      if (!inserted) {
-        inserted = true;
-        next.push({ ...item, ...replacement, key: replacementKey || replacement.key, id: replacementKey || replacement.id });
-      }
-      // Drop any additional stale duplicates for this same equipment record.
+        (replacementKey && itemKey && String(itemKey) === String(replacementKey)) ||
+        (replacement.id && String(item.id || "") === String(replacement.id)) ||
+        (replacement.key && String(item.key || "") === String(replacement.key))
+      );
     });
 
-    if (!inserted) next.unshift({ ...replacement, key: replacementKey || replacement.key, id: replacementKey || replacement.id });
-    return next;
+    cleaned.unshift({ ...replacement, key: replacementKey || replacement.key || key });
+    return cleaned;
   };
 
   const upsertManagerQueue = (queueData, replacement) => {
@@ -5174,8 +5196,14 @@ function sendManagerInstallBaseCorrection(id) {
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
+  // Last-resort stale cleanup: remove old duplicate manager/hub copies that still carry the unresolved FIX route.
+  [INSTALL_BASE_KEY, INSTALL_BASE_RESPONSE_KEY, INSTALL_BASE_FINAL_SYNC_KEY, STORAGE_KEY, REP_QUEUE_KEY].forEach(storeKey => {
+    const cleaned = upsertArrayRecord(readArrayKey(storeKey), storeKey === REP_QUEUE_KEY && correctedRepOwner ? repSyncRecord : updated);
+    writeArrayKey(storeKey, cleaned);
+  });
+
   state.records = upsertArrayRecord(state.records, updated);
-  state.selectedId = updated.id || key;
+  state.selectedId = updated.id || getRecordKey(updated) || key;
 
   alert("Correction sent back to Install Base.");
   renderStats();
