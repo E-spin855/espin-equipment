@@ -5152,12 +5152,23 @@ function sendManagerInstallBaseCorrection(id) {
   const updated = {
     ...rec,
     key,
+    id: rec.id || key,
+    original_key: rec.original_key || rec.key || key,
+    manager_sync_key: rec.manager_sync_key || key,
+    axis_sync_key: rec.axis_sync_key || key,
     original_oem_review_reason: originalReviewReason,
     original_install_base_review_reason:
       rec.original_install_base_review_reason || originalReviewReason,
     original_install_base_manager_message: originalInstallBaseMessage,
 
-    install_base_response_status: "manager_correction_sent",
+    manager_install_base_response_status: "manager_correction_sent",
+    manager_install_base_correction_status: "corrected_by_manager",
+    manager_install_base_fix_status: "manager_reviewed",
+    manager_install_base_corrected_by: MANAGER_NAME || rec.manager_name || "Manager",
+
+    // Use the same fixed statuses as Rep.html so Hub, Rep, and Manager all
+    // recognize the corrected-field packet without special-case manager logic.
+    install_base_response_status: "rep_correction_sent",
     install_base_response_message: message,
     install_base_response_note: message,
     manager_response_message: message,
@@ -5177,11 +5188,15 @@ function sendManagerInstallBaseCorrection(id) {
       managerConversationItem
     ],
 
-    install_base_correction_status: "corrected_by_manager",
+    install_base_correction_status: "corrected_by_rep",
     install_base_correction_note: message,
     install_base_correction_at: now,
-    install_base_fix_status: "manager_reviewed",
+    install_base_fix_status: "rep_reviewed",
     install_base_corrected_by: MANAGER_NAME || rec.manager_name || "Manager",
+    install_base_corrected_source: "manager",
+
+    oem_review_reason: originalReviewReason || originalInstallBaseMessage || message,
+    review_reason: originalReviewReason || originalInstallBaseMessage || message,
 
     install_base_release_seen: true,
     install_base_release_new: false,
@@ -5196,6 +5211,10 @@ function sendManagerInstallBaseCorrection(id) {
     manager_flash_text: "",
     manager_unseen_update: false,
     manager_alert_seen: true,
+
+    rep_status: "install_base_data_fixed",
+    rep_action: "install_base_data_fixed",
+    rep_action_label: "Updated",
 
     install_base_fixed_seen_by_manager: false,
     install_base_fixed_seen_at: "",
@@ -5272,7 +5291,7 @@ function sendManagerInstallBaseCorrection(id) {
   updated.install_base_rep_action_required = "";
   updated.rep_fix_required = "";
 
-  const managerKey = getRecordKey(updated) || updated.key || key;
+  const managerKey = key;
   updated.key = managerKey;
 
   const sameSyncRecord = (a, b) => {
@@ -5314,14 +5333,12 @@ function sendManagerInstallBaseCorrection(id) {
 
   const repSyncRecord = {
     ...updated,
-    manager_install_base_response_status: updated.install_base_response_status,
-    manager_install_base_correction_status: updated.install_base_correction_status,
-    manager_install_base_fix_status: updated.install_base_fix_status,
+    manager_install_base_response_status: "manager_correction_sent",
+    manager_install_base_correction_status: "corrected_by_manager",
+    manager_install_base_fix_status: "manager_reviewed",
     manager_install_base_corrected_by: updated.install_base_corrected_by,
 
-    // Rep.html only renders fixed-field values for the rep-side fixed statuses.
-    // Keep the manager correction fields above, but send a rep-compatible copy
-    // into the rep queue so assigned reps see the corrected values immediately.
+    // Rep.html renders fixed-field values for these fixed statuses.
     install_base_response_status: "rep_correction_sent",
     install_base_correction_status: "corrected_by_rep",
     install_base_fix_status: "rep_reviewed",
