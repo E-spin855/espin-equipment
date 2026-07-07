@@ -1,4 +1,4 @@
-Check: <!-- FILE: Manager.html -->
+<!-- FILE: Manager.html -->
 <!-- PATH: /Manager.html -->
 
 <!DOCTYPE html>
@@ -399,6 +399,7 @@ tbody tr.selected{
   background:rgba(16,38,76,.78);
 }
 
+
 /* Project ID */
 
 th:nth-child(1),
@@ -406,6 +407,7 @@ td:nth-child(1){
   width:110px;
   white-space:nowrap;
 }
+
 
 /* Make */
 
@@ -415,12 +417,14 @@ td:nth-child(2){
   text-align:left;
 }
 
+
 /* Model */
 
 th:nth-child(3),
 td:nth-child(3){
   width:165px;
 }
+
 
 /* Modality */
 
@@ -431,6 +435,7 @@ td:nth-child(4){
   white-space:nowrap;
 }
 
+
 /* Serial */
 
 th:nth-child(5),
@@ -438,6 +443,7 @@ td:nth-child(5){
   width:130px;
   white-space:nowrap;
 }
+
 
 /* DOM */
 
@@ -448,6 +454,7 @@ td:nth-child(6){
   white-space:nowrap;
 }
 
+
 /* Age */
 
 th:nth-child(7),
@@ -456,6 +463,7 @@ td:nth-child(7){
   text-align:center;
   white-space:nowrap;
 }
+
 
 /* Trade-In Ref */
 
@@ -467,12 +475,14 @@ td:nth-child(8){
   font-variant-numeric:tabular-nums;
 }
 
+
 /* Facility */
 
 th:nth-child(9),
 td:nth-child(9){
   width:215px;
 }
+
 
 /* Install Base Review */
 
@@ -482,6 +492,7 @@ td:nth-child(10){
   text-align:center;
 }
 
+
 /* Record Status */
 
 th:nth-child(11),
@@ -489,6 +500,7 @@ td:nth-child(11){
   width:150px;
   text-align:center;
 }
+
 
 /* Source */
 
@@ -500,6 +512,7 @@ td:nth-child(12){
   word-break:normal;
 }
 
+
 /* Open */
 
 th:nth-child(13),
@@ -510,6 +523,7 @@ td:nth-child(13){
   white-space:nowrap;
   overflow:visible;
 }
+
 
 /* =========================================================
    REVIEW BADGES
@@ -682,6 +696,7 @@ td:nth-child(10) .alert-badge{
   box-shadow:0 0 12px rgba(148,163,184,.16);
 }
 
+
 /* =========================================================
    STATUS PILLS
    ========================================================= */
@@ -797,6 +812,7 @@ td:nth-child(11) .pill{
   filter:none!important;
 }
 
+
 /* Waiting badge inside Make or Record Status */
 
 .manager-waiting-badge{
@@ -838,6 +854,7 @@ td:nth-child(11) .manager-waiting-badge{
   max-width:132px;
   margin:0 auto;
 }
+
 
 /* =========================================================
    OPEN AND FIX BUTTONS
@@ -1375,6 +1392,7 @@ td:nth-child(11) .manager-waiting-badge{
     box-shadow:0 0 18px rgba(65,255,156,.18);
   }
 
+
 .manager-install-base-communication-card{
   grid-column:1 / -1;
   padding:18px!important;
@@ -1440,6 +1458,7 @@ td:nth-child(11) .manager-waiting-badge{
 @media(max-width:1000px){
   .manager-install-base-layout{grid-template-columns:1fr;}
 }
+
 
 .manager-comm-toolbar{
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
@@ -2261,6 +2280,7 @@ td:nth-child(9) .manager-fix-badge{
   min-width:86px;
 }
 
+
 /* Manager Source badge matched to Rep workspace */
 .manager-source-pill{
   display:inline-flex;
@@ -2285,6 +2305,7 @@ td:nth-child(9) .manager-fix-badge{
 
   box-shadow:0 0 14px rgba(67,176,255,.14);
 }
+
 
 /* Manager queue fit: keep all columns visible without initial horizontal scrolling */
 html,
@@ -2391,6 +2412,7 @@ td:nth-child(12) .manager-waiting-badge{
   }
 }
 
+
 /* Unique colors for each Install Base review badge */
 .alert-upgrade-review{
   border:1px solid rgba(251,146,60,.78);
@@ -2446,6 +2468,7 @@ td:nth-child(12) .manager-waiting-badge{
   color:#022c22;
   box-shadow:0 0 16px rgba(52,211,153,.26);
 }
+
 
 /* Unified communication behavior: same frame + same send-button feedback */
 .comm-shell.communication-update-frame{
@@ -3659,6 +3682,7 @@ function getRepActionLabel(action) {
   return map[action] || String(action || "").replace(/_/g, " ");
 }
 
+
 function hasActualInstallBaseCorrection(rec) {
   if (!rec) return false;
 
@@ -4808,6 +4832,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   `;
 }
 
+
 function hasValidAssignedRep(rec) {
   const name = String(
     rec?.assigned_rep_name ||
@@ -4855,12 +4880,21 @@ function sendManagerInstallBaseCorrection(id) {
     }
   });
 
-  const now = new Date().toISOString();
-  const key = getRecordKey(rec);
-  const updated = {
-    ...rec,
-    ...correctedValues,
-    key,
+ const now = new Date().toISOString();
+const key = getRecordKey(rec);
+
+const originalReviewReason =
+  rec.original_oem_review_reason ||
+  rec.oem_review_reason ||
+  rec.review_reason ||
+  rec.proactive_reason ||
+  "";
+
+const updated = {
+  ...rec,
+  ...correctedValues,
+  key,
+  original_oem_review_reason: originalReviewReason,
 
     // Preserve assignment and ownership from the released record.
     assigned_rep_name: correctedValues.assigned_rep_name ?? rec.assigned_rep_name ?? "",
@@ -5189,18 +5223,68 @@ function getInstallBaseRequestText(rec) {
     "No install-base action requested"
   );
 }
-function getInstallBaseReviewReasonForManager(rec) {
+function getCurrentManagerSerialNumber(rec){
   return clean(
-    rec.install_base_clarification_reason ||
+    rec.serial_number ||
+    rec.serial ||
+    rec.Serial ||
+    rec["Serial Number"] ||
+    rec.system_serial ||
+    rec.corrected_serial_number ||
+    rec.corrected_serial ||
+    rec.corrected_value ||
+    rec.install_base_corrected_serial ||
+    rec.install_base_serial_number ||
+    ""
+  );
+}
+
+function wasManagerSerialFixRequest(rec){
+  const text = lower(
+    rec.install_base_fix_request_field ||
+    rec.install_base_issue_type ||
     rec.install_base_issue_reason ||
     rec.install_base_action_reason ||
     rec.install_base_issue_note ||
-    rec.conflict_notes ||
-    rec.oem_review_reason ||
-    rec.review_reason ||
-    rec.proactive_reason ||
-    "Install Base review context is attached to this record."
+    rec.install_base_clarification_reason ||
+    rec.rep_fix_required ||
+    rec.fix_reason ||
+    ""
   );
+
+  return text.includes("serial");
+}
+
+function getOriginalInstallBaseReviewReasonForManager(rec){
+  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing/i;
+
+  const candidates = [
+    rec.original_oem_review_reason,
+    rec.original_install_base_review_reason,
+    rec.oem_review_reason_original,
+    rec.install_base_review_reason_original,
+    rec.original_review_reason,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason,
+    rec.conflict_notes
+  ];
+
+  const valid = candidates
+    .map(v => clean(v))
+    .filter(Boolean)
+    .find(v => !badFixText.test(v));
+
+  return valid || "Install Base review context is attached to this record.";
+}
+function getInstallBaseReviewReasonForManager(rec) {
+  const serialNow = getCurrentManagerSerialNumber(rec);
+
+  if (wasManagerSerialFixRequest(rec) && !serialNow) {
+    return "Serial number is missing from the Install Base record.";
+  }
+
+  return getOriginalInstallBaseReviewReasonForManager(rec);
 }
 function arrangeManagerWorkflowLayout() {
   const grid = $("detailGrid");
@@ -5456,15 +5540,15 @@ function getManagerInstallBaseCommunicationUi(rec) {
 
   const historyOpen = state.installBaseHistoryOpen[id] === true;
 
- return {
-  history,
-  latest,
-  needsResponse,
-  unseenHubMessage,
-  composerOpen,
-  historyOpen,
-  dismissed
-};
+  return {
+    history,
+    latest,
+    needsResponse,
+    unseenHubMessage,
+    composerOpen,
+    historyOpen,
+    dismissed
+  };
 }
 function toggleManagerInstallBaseCommunication(recordId) {
   const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
@@ -5527,6 +5611,7 @@ function renderManagerInstallBaseCommunication(rec) {
     </div>
   `;
 }
+
 
 function getManagerRepCommunicationHistory(rec) {
   const items = [];
@@ -5613,7 +5698,7 @@ const manuallyHidden =
     history,
     latest,
     needsResponse,
-    composerOpen: manualOpen === undefined ? (selectedRepTextOpen || needsResponse) : manualOpen === true,
+    composerOpen: manuallyHidden ? false : (selectedRepTextOpen || (manualOpen === undefined ? needsResponse : manualOpen === true)),
     historyOpen: state.repHistoryOpen[id] === true || (key && state.repHistoryOpen[key] === true),
     dismissed,
     incomingSignature,
@@ -5734,6 +5819,8 @@ function renderManagerRepCommunication(rec) {
     </div>
   `;
 }
+
+
 
 function getManagerFinancialSignature(rec) {
   if (!rec) return "";
@@ -6168,25 +6255,15 @@ function renderDetail() {
       </span>
     </div>
 
-    <div
-      class="mini"
-      style="
-        font-size:14px;
-        line-height:1.55;
-      "
-    >
-      ${escapeHtml(
-        rec.install_base_clarification_reason ||
-        rec.install_base_issue_reason ||
-        rec.install_base_action_reason ||
-        rec.install_base_issue_note ||
-        rec.conflict_notes ||
-        rec.oem_review_reason ||
-        rec.review_reason ||
-        rec.proactive_reason ||
-        "Install Base review context is attached to this record."
-      )}
-    </div>
+   <div
+  class="mini"
+  style="
+    font-size:14px;
+    line-height:1.55;
+  "
+>
+  ${escapeHtml(getInstallBaseReviewReasonForManager(rec))}
+</div>
 
     ${renderInstallBaseManagerMessage(rec)}
   </div>
@@ -6762,11 +6839,12 @@ if (openedRepCommunicationFromRowClick) {
     .map(v => String(v || ""))
     .filter(Boolean);
 
-  finalizedRepCommKeys.forEach(key => {
+ finalizedRepCommKeys.forEach(key => {
   state.repCommunicationOpen[key] = true;
   state.repCommunicationDismissed[key] = "";
   state.repCommunicationManuallyHidden[key] = false;
 });
+
   state.managerRepCommunicationFrameActive = true;
 }
 
