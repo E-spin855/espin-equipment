@@ -3138,6 +3138,88 @@ const existingCorrectedFields =
       ...rec,
       key,
 
+      assigned_rep_name:
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        clean(rec.assigned_rep) ||
+        clean(existing.assigned_rep) ||
+        clean(rec.rep) ||
+        clean(existing.rep) ||
+        clean(rec.rep_owner) ||
+        clean(existing.rep_owner) ||
+        clean(rec.rep_name) ||
+        clean(existing.rep_name) ||
+        clean(rec.sales_rep_name) ||
+        clean(existing.sales_rep_name) ||
+        clean(rec.sales_rep) ||
+        clean(existing.sales_rep) ||
+        clean(rec.corrected_assigned_rep_name) ||
+        clean(existing.corrected_assigned_rep_name) ||
+        clean(rec.corrected_rep_owner) ||
+        clean(existing.corrected_rep_owner) ||
+        clean(rec.install_base_corrected_rep_owner) ||
+        clean(existing.install_base_corrected_rep_owner) ||
+        "",
+
+      rep:
+        clean(rec.rep) ||
+        clean(existing.rep) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        clean(rec.rep_owner) ||
+        clean(existing.rep_owner) ||
+        clean(rec.sales_rep_name) ||
+        clean(existing.sales_rep_name) ||
+        "",
+
+      sales_rep_name:
+        clean(rec.sales_rep_name) ||
+        clean(existing.sales_rep_name) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        clean(rec.rep) ||
+        clean(existing.rep) ||
+        "",
+
+      rep_owner:
+        clean(rec.rep_owner) ||
+        clean(existing.rep_owner) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        clean(rec.rep) ||
+        clean(existing.rep) ||
+        "",
+
+      rep_name:
+        clean(rec.rep_name) ||
+        clean(existing.rep_name) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        clean(rec.rep) ||
+        clean(existing.rep) ||
+        "",
+
+      corrected_assigned_rep_name:
+        clean(rec.corrected_assigned_rep_name) ||
+        clean(existing.corrected_assigned_rep_name) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        "",
+
+      corrected_rep_owner:
+        clean(rec.corrected_rep_owner) ||
+        clean(existing.corrected_rep_owner) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        "",
+
+      install_base_corrected_rep_owner:
+        clean(rec.install_base_corrected_rep_owner) ||
+        clean(existing.install_base_corrected_rep_owner) ||
+        clean(rec.assigned_rep_name) ||
+        clean(existing.assigned_rep_name) ||
+        "",
+
       install_base_corrected_fields:
         rec.install_base_corrected_fields ||
         existing.install_base_corrected_fields ||
@@ -4417,11 +4499,11 @@ function managerCorrectedFieldAliases(fieldName) {
     manager: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
     manager_name: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
     owner_group_name: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
-    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
-    assigned_rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
-    assigned_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
-    rep_owner: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"],
-    sales_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner"]
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner", "rep_name", "corrected_rep", "corrected_rep_owner", "corrected_assigned_rep_name", "install_base_corrected_rep_owner"],
+    assigned_rep: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner", "rep_name", "corrected_rep", "corrected_rep_owner", "corrected_assigned_rep_name", "install_base_corrected_rep_owner"],
+    assigned_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner", "rep_name", "corrected_rep", "corrected_rep_owner", "corrected_assigned_rep_name", "install_base_corrected_rep_owner"],
+    rep_owner: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner", "rep_name", "corrected_rep", "corrected_rep_owner", "corrected_assigned_rep_name", "install_base_corrected_rep_owner"],
+    sales_rep_name: ["rep", "assigned_rep", "assigned_rep_name", "sales_rep", "sales_rep_name", "rep_owner", "rep_name", "corrected_rep", "corrected_rep_owner", "corrected_assigned_rep_name", "install_base_corrected_rep_owner"]
   }[fieldName] || [fieldName];
 }
 
@@ -4520,8 +4602,12 @@ function renderManagerRepOwnerCell(rec) {
     rec.assigned_rep ||
     rec.rep ||
     rec.rep_owner ||
+    rec.rep_name ||
     rec.sales_rep_name ||
     rec.sales_rep ||
+    rec.corrected_assigned_rep_name ||
+    rec.corrected_rep_owner ||
+    rec.install_base_corrected_rep_owner ||
     ""
   ).trim();
 
@@ -4897,8 +4983,29 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 }
 
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
-  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
+  if (key === "manager_name") {
+    return rec.manager_name ||
+      rec.owner_group_name ||
+      rec.owner_group ||
+      rec.manager ||
+      "";
+  }
+
+  if (key === "assigned_rep_name") {
+    return getManagerCorrectedFieldValue(rec, "rep") ||
+      rec.assigned_rep_name ||
+      rec.assigned_rep ||
+      rec.rep ||
+      rec.rep_owner ||
+      rec.rep_name ||
+      rec.sales_rep_name ||
+      rec.sales_rep ||
+      rec.corrected_assigned_rep_name ||
+      rec.corrected_rep_owner ||
+      rec.install_base_corrected_rep_owner ||
+      "";
+  }
+
   return rec[key] || "";
 }
 
@@ -5013,8 +5120,15 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 function hasValidAssignedRep(rec) {
   const name = String(
     rec?.assigned_rep_name ||
+    rec?.assigned_rep ||
     rec?.rep ||
+    rec?.rep_owner ||
+    rec?.rep_name ||
     rec?.sales_rep_name ||
+    rec?.sales_rep ||
+    rec?.corrected_assigned_rep_name ||
+    rec?.corrected_rep_owner ||
+    rec?.install_base_corrected_rep_owner ||
     ""
   ).trim();
 
@@ -5292,7 +5406,58 @@ function sendManagerInstallBaseCorrection(id) {
     }
   });
 
-  updated.rep_visible = Boolean(updated.assigned_rep_name || updated.rep || updated.sales_rep_name);
+  const readManagerFixInputValue = (...keys) => {
+    for (const keyName of keys) {
+      const el = $("mgr_fix_" + keyName);
+      const value = clean(el?.value || "");
+      if (value && !["-", "unassigned", "unassigned rep", "no rep", "none", "n/a", "na", "unknown"].includes(value.toLowerCase())) {
+        return value;
+      }
+    }
+    return "";
+  };
+
+  // Force assignment fields from the visible Manager FIX form before status/render logic runs.
+  // This mirrors the Rep-side fix behavior: corrected values become actual top-level record fields.
+  const explicitRepOwner = readManagerFixInputValue(
+    "assigned_rep_name",
+    "assigned_rep",
+    "rep",
+    "rep_owner",
+    "rep_name",
+    "sales_rep_name",
+    "sales_rep"
+  );
+
+  const explicitManagerOwner = readManagerFixInputValue(
+    "manager_name",
+    "owner_group_name",
+    "owner_group",
+    "manager"
+  );
+
+  if (explicitRepOwner) {
+    applyCorrectedFieldValue(updated, "rep", "assigned_rep_name", explicitRepOwner);
+    if (!correctedFields.includes("rep")) correctedFields.push("rep");
+  }
+
+  if (explicitManagerOwner) {
+    applyCorrectedFieldValue(updated, "manager", "manager_name", explicitManagerOwner);
+    if (!correctedFields.includes("manager")) correctedFields.push("manager");
+  }
+
+  updated.rep_visible = Boolean(
+    updated.assigned_rep_name ||
+    updated.assigned_rep ||
+    updated.rep ||
+    updated.rep_owner ||
+    updated.rep_name ||
+    updated.sales_rep_name ||
+    updated.sales_rep ||
+    updated.corrected_assigned_rep_name ||
+    updated.corrected_rep_owner ||
+    updated.install_base_corrected_rep_owner
+  );
   updated.rep_assignment_required = !updated.rep_visible;
 
   updated.install_base_corrected_fields = correctedFields.join(",");
@@ -5318,17 +5483,39 @@ function sendManagerInstallBaseCorrection(id) {
   updated.install_base_corrected_field_values = updated.corrected_fields;
   updated.corrected_field_values = updated.corrected_fields;
 
-  const correctedRepOwner = getManagerCorrectedFieldValue(updated, "rep");
+  const correctedRepOwner = getManagerCorrectedFieldValue(updated, "rep") || explicitRepOwner;
   if (correctedRepOwner) {
     updated.assigned_rep_name = correctedRepOwner;
     updated.assigned_rep = correctedRepOwner;
     updated.rep = correctedRepOwner;
     updated.rep_owner = correctedRepOwner;
+    updated.rep_name = correctedRepOwner;
     updated.sales_rep = correctedRepOwner;
     updated.sales_rep_name = correctedRepOwner;
+    updated.corrected_assigned_rep_name = correctedRepOwner;
+    updated.corrected_rep_owner = correctedRepOwner;
+    updated.install_base_corrected_rep_owner = correctedRepOwner;
+
+    updated.corrected_fields = {
+      ...(updated.corrected_fields && typeof updated.corrected_fields === "object" ? updated.corrected_fields : {}),
+      rep: correctedRepOwner,
+      assigned_rep_name: correctedRepOwner,
+      assigned_rep: correctedRepOwner,
+      rep_owner: correctedRepOwner,
+      rep_name: correctedRepOwner,
+      sales_rep_name: correctedRepOwner,
+      sales_rep: correctedRepOwner,
+      corrected_assigned_rep_name: correctedRepOwner,
+      corrected_rep_owner: correctedRepOwner,
+      install_base_corrected_rep_owner: correctedRepOwner
+    };
+    updated.install_base_corrected_values = updated.corrected_fields;
+    updated.corrected_values = updated.corrected_fields;
+    updated.install_base_corrected_field_values = updated.corrected_fields;
+    updated.corrected_field_values = updated.corrected_fields;
   }
 
-  const correctedManagerOwner = getManagerCorrectedFieldValue(updated, "manager");
+  const correctedManagerOwner = getManagerCorrectedFieldValue(updated, "manager") || explicitManagerOwner;
   if (correctedManagerOwner) {
     updated.manager_name = correctedManagerOwner;
     updated.owner_group_name = correctedManagerOwner;
@@ -5472,8 +5659,12 @@ function sendManagerInstallBaseCorrection(id) {
       next.assigned_rep = correctedRepOwner;
       next.rep = correctedRepOwner;
       next.rep_owner = correctedRepOwner;
+      next.rep_name = correctedRepOwner;
       next.sales_rep = correctedRepOwner;
       next.sales_rep_name = correctedRepOwner;
+      next.corrected_assigned_rep_name = correctedRepOwner;
+      next.corrected_rep_owner = correctedRepOwner;
+      next.install_base_corrected_rep_owner = correctedRepOwner;
       next.rep_visible = true;
       next.rep_assignment_required = false;
     }
