@@ -2685,10 +2685,10 @@ const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const MANAGER_FINANCIAL_SEEN_KEY = "axis_manager_financial_seen_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
-const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
-const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const MANAGER_SEEN_FIX_KEY = "axis_manager_seen_install_base_fixes_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
+const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
+const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
@@ -3049,6 +3049,17 @@ const normalSeen = isFreshRepUpdate
       finalReleaseId !== finalSeenReleaseId &&
       baseFlashType !== "manager_response";
 
+    // Critical: once Manager sends a correction back to Install Base,
+    // any older Manager queue / Hub release copy must not keep the row in FIX state.
+    const managerInstallBaseCorrectionResolved = Boolean(
+      rec.install_base_response_status === "manager_correction_sent" ||
+      rec.install_base_correction_status === "corrected_by_manager" ||
+      rec.install_base_fix_status === "manager_reviewed" ||
+      existing.install_base_response_status === "manager_correction_sent" ||
+      existing.install_base_correction_status === "corrected_by_manager" ||
+      existing.install_base_fix_status === "manager_reviewed"
+    );
+
     const legacyUnseen =
       !hubRepOnlyTextExchange &&
       !repFixSeen &&
@@ -3122,15 +3133,35 @@ manager_flash_text: isFreshRepUpdate
   ? "Rep corrected install-base data"
   : baseFlashText,
 
-      install_base_manager_request:
-        rec.install_base_manager_request === true ||
-        existing.install_base_manager_request === true ||
-        rec.install_base_release_status === "released_to_manager" ||
-        rec.install_base_released_to === "manager" ||
-        rec.release_destination === "manager" ||
-        existing.install_base_release_status === "released_to_manager" ||
-        existing.install_base_released_to === "manager" ||
-        existing.release_destination === "manager"
+      // Do not let stale Hub / Manager queue copies recreate the FIX button
+      // after Manager has already sent the correction.
+      install_base_manager_request: managerInstallBaseCorrectionResolved
+        ? false
+        : (
+            rec.install_base_manager_request === true ||
+            existing.install_base_manager_request === true ||
+            rec.install_base_release_status === "released_to_manager" ||
+            rec.install_base_released_to === "manager" ||
+            rec.release_destination === "manager" ||
+            existing.install_base_release_status === "released_to_manager" ||
+            existing.install_base_released_to === "manager" ||
+            existing.release_destination === "manager"
+          ),
+
+      install_base_manual_route: managerInstallBaseCorrectionResolved ? false : (rec.install_base_manual_route ?? existing.install_base_manual_route),
+      install_base_fix_request: managerInstallBaseCorrectionResolved ? false : (rec.install_base_fix_request ?? existing.install_base_fix_request),
+      install_base_fix_request_field: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_fix_request_field || existing.install_base_fix_request_field || ""),
+      install_base_released_to: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_released_to || existing.install_base_released_to || ""),
+      release_destination: managerInstallBaseCorrectionResolved ? "" : (rec.release_destination || existing.release_destination || ""),
+      install_base_release_status: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_release_status || existing.install_base_release_status || ""),
+      install_base_action_label: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_action_label || existing.install_base_action_label || ""),
+      install_base_action_reason: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_action_reason || existing.install_base_action_reason || ""),
+      install_base_issue_field: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_field || existing.install_base_issue_field || ""),
+      install_base_issue_type: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_type || existing.install_base_issue_type || ""),
+      install_base_issue_reason: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_reason || existing.install_base_issue_reason || ""),
+      install_base_issue_note: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_note || existing.install_base_issue_note || ""),
+      install_base_rep_action_required: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_rep_action_required || existing.install_base_rep_action_required || ""),
+      rep_fix_required: managerInstallBaseCorrectionResolved ? "" : (rec.rep_fix_required || existing.rep_fix_required || "")
     });
   });
 
@@ -5034,15 +5065,26 @@ function sendManagerInstallBaseCorrection(id) {
         ? { ...queueData }
         : {};
 
+    // Remove stale copies from every bucket first. Otherwise an old Hub release
+    // can be flattened later and recreate the FIX badge after correction.
     Object.keys(next).forEach(bucket => {
-      if (Array.isArray(next[bucket])) {
-        next[bucket] = upsertArrayRecord(next[bucket], replacement);
-      }
+      const list = Array.isArray(next[bucket]) ? next[bucket] : [];
+      next[bucket] = list.filter(item =>
+        !sameRecord(item, rec) &&
+        !sameRecord(item, replacement) &&
+        String(item.id || "") !== String(replacement.id || "") &&
+        String(item.key || "") !== String(replacement.key || "")
+      );
     });
 
-    if (!Object.keys(next).length) {
-      next[MANAGER_NAME || "Default Manager"] = [replacement];
-    }
+    const bucketName =
+      replacement.manager_name ||
+      replacement.owner_group_name ||
+      MANAGER_NAME ||
+      "Default Manager";
+
+    if (!Array.isArray(next[bucketName])) next[bucketName] = [];
+    next[bucketName].unshift(replacement);
 
     return next;
   };
@@ -5059,12 +5101,7 @@ function sendManagerInstallBaseCorrection(id) {
 
   writeArrayKey(
     INSTALL_BASE_FINAL_SYNC_KEY,
-    upsertArrayRecord(readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY), {
-      ...updated,
-      source: "Manager Response",
-      source_system: "Manager Review Page",
-      install_base_response_seen: false
-    })
+    upsertArrayRecord(readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY), updated)
   );
 
   writeArrayKey(
@@ -7346,8 +7383,18 @@ function showCompletedManagerProjects() {
 function render() {
   const main = readArrayKey(STORAGE_KEY);
   const managerQueue = readManagerQueueRecords();
+  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY);
+  const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
+  const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
 
-  state.records = mergeRecordsByKey(main, managerQueue);
+  // Merge final correction channels last so corrected values override older Hub/Manager release copies.
+  state.records = mergeRecordsByKey(
+    main,
+    managerQueue,
+    installBaseRecords,
+    installBaseResponses,
+    installBaseFinalSync
+  );
 
   if (
     state.selectedId &&
@@ -7511,6 +7558,8 @@ if (tableBody) {
       localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
       localStorage.removeItem(INSTALL_BASE_RESPONSE_KEY);
       localStorage.removeItem(INSTALL_BASE_RESPONSE_PING_KEY);
+      localStorage.removeItem(INSTALL_BASE_FINAL_SYNC_KEY);
+      localStorage.removeItem(INSTALL_BASE_FINAL_SYNC_PING_KEY);
       localStorage.removeItem(MANAGER_SEEN_FIX_KEY);
       localStorage.removeItem(MANAGER_FINANCIAL_SEEN_KEY);
 
