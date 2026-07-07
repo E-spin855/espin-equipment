@@ -5424,6 +5424,45 @@ function sendManagerInstallBaseCorrection(id) {
     hub_source: updated.hub_source || "Manager Review Page"
   };
 
+  const applyOwnerCorrection = (target) => {
+    if (!target || typeof target !== "object") return target;
+
+    const next = { ...target };
+
+    if (correctedRepOwner) {
+      next.assigned_rep_name = correctedRepOwner;
+      next.assigned_rep = correctedRepOwner;
+      next.rep = correctedRepOwner;
+      next.rep_owner = correctedRepOwner;
+      next.sales_rep = correctedRepOwner;
+      next.sales_rep_name = correctedRepOwner;
+      next.rep_visible = true;
+      next.rep_assignment_required = false;
+    }
+
+    if (correctedManagerOwner) {
+      next.manager_name = correctedManagerOwner;
+      next.owner_group_name = correctedManagerOwner;
+      next.owner_group = correctedManagerOwner;
+      next.manager_visible = true;
+    }
+
+    next.install_base_corrected_fields = updated.install_base_corrected_fields;
+    next.corrected_fields = {
+      ...(next.corrected_fields && typeof next.corrected_fields === "object" ? next.corrected_fields : {}),
+      ...updated.corrected_fields
+    };
+    next.install_base_corrected_values = next.corrected_fields;
+    next.corrected_values = next.corrected_fields;
+    next.install_base_corrected_field_values = next.corrected_fields;
+    next.corrected_field_values = next.corrected_fields;
+
+    return next;
+  };
+
+  Object.assign(updated, applyOwnerCorrection(updated));
+  Object.assign(repSyncRecord, applyOwnerCorrection(repSyncRecord));
+
   state.records = cleanAndPrepend(state.records, updated);
 
   writeCorrectedArrayRecord(INSTALL_BASE_RESPONSE_KEY, updated);
@@ -5466,6 +5505,69 @@ function sendManagerInstallBaseCorrection(id) {
   managerQueue[bucketName].unshift(updated);
 
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+
+  const forceApplyOwnerCorrectionToStores = () => {
+    const arrayKeys = [
+      INSTALL_BASE_RESPONSE_KEY,
+      INSTALL_BASE_KEY,
+      INSTALL_BASE_FINAL_SYNC_KEY,
+      STORAGE_KEY,
+      REP_QUEUE_KEY
+    ];
+
+    arrayKeys.forEach(storeKey => {
+      const records = readArrayKey(storeKey);
+      const preferred = storeKey === REP_QUEUE_KEY && updated.rep_visible
+        ? repSyncRecord
+        : updated;
+
+      let matched = false;
+      const next = records.map(item => {
+        if (!sameSyncRecord(item, preferred) && !sameSyncRecord(item, updated)) {
+          return item;
+        }
+        matched = true;
+        return applyOwnerCorrection({ ...item, ...preferred });
+      });
+
+      if (!matched) next.unshift(applyOwnerCorrection(preferred));
+      writeArrayKey(storeKey, next);
+    });
+
+    let queueData = {};
+    try {
+      queueData = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+      if (!queueData || typeof queueData !== "object" || Array.isArray(queueData)) {
+        queueData = {};
+      }
+    } catch {
+      queueData = {};
+    }
+
+    Object.keys(queueData).forEach(name => {
+      const list = Array.isArray(queueData[name]) ? queueData[name] : [];
+      queueData[name] = list.map(item => {
+        if (!sameSyncRecord(item, updated)) return item;
+        return applyOwnerCorrection({ ...item, ...updated });
+      });
+    });
+
+    if (!Object.values(queueData).some(list =>
+      Array.isArray(list) && list.some(item => sameSyncRecord(item, updated))
+    )) {
+      const queueBucket =
+        updated.manager_name ||
+        updated.owner_group_name ||
+        MANAGER_NAME ||
+        "Default Manager";
+      if (!Array.isArray(queueData[queueBucket])) queueData[queueBucket] = [];
+      queueData[queueBucket].unshift(applyOwnerCorrection(updated));
+    }
+
+    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(queueData));
+  };
+
+  forceApplyOwnerCorrectionToStores();
 
   const ping = String(Date.now());
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, ping);
