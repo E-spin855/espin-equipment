@@ -1761,12 +1761,58 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
   return fixedFields.map(canonicalInstallBaseFieldName).some(f => aliases.includes(f));
 }
 
+function getHubCorrectedFieldAliases(fieldName) {
+  return {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    equipment: ["equipment", "make", "manufacturer", "model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    territory: ["territory", "manager_region", "manager_territory", "region"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name"]
+  }[fieldName] || [fieldName];
+}
+
+function getHubCorrectedFieldValue(rec, fieldName) {
+  if (!rec) return "";
+
+  const aliases = getHubCorrectedFieldAliases(fieldName);
+  const sources = [
+    rec.corrected_fields,
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values
+  ].filter(source => source && typeof source === "object");
+
+  for (const source of sources) {
+    for (const alias of aliases) {
+      const value = clean(source[alias]);
+      if (value) return value;
+    }
+  }
+
+  for (const alias of aliases) {
+    const value = clean(rec[alias]);
+    if (value) return value;
+  }
+
+  return "";
+}
+
 function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasInstallBaseFieldCorrected(rec, fieldName)) return normalHtml;
 
+  const correctedValue = getHubCorrectedFieldValue(rec, fieldName);
+  const displayHtml = correctedValue ? escapeHtml(correctedValue) : normalHtml;
+
   return `
     <div class="corrected-field-value">
-      ${normalHtml}
+      ${displayHtml}
     </div>
   `;
 }
@@ -2190,13 +2236,24 @@ function mergeRepResponsesIntoRecords() {
         .map(canonicalInstallBaseFieldName)
         .filter(Boolean)
         .forEach(field => {
+          const aliases = getHubCorrectedFieldAliases(field);
           const value =
             window.AxisUtils?.getInstallBaseFieldValue?.(resp, field) ||
             resp[field] ||
+            aliases.map(alias => clean(resp[alias])).find(Boolean) ||
+            getHubCorrectedFieldValue(resp, field) ||
             resp[field === "serial" ? "serial_number" : field === "project" ? "oem_project_id" : field === "rep" ? "assigned_rep_name" : field === "manager" ? "manager_name" : field];
 
           if (value) {
             window.AxisUtils?.setInstallBaseFieldValue?.(canonicalMerged, field, value);
+            if (field === "rep") {
+              canonicalMerged.assigned_rep_name = value;
+              canonicalMerged.assigned_rep = value;
+              canonicalMerged.rep = value;
+              canonicalMerged.rep_owner = value;
+              canonicalMerged.sales_rep = value;
+              canonicalMerged.sales_rep_name = value;
+            }
           }
         });
 
