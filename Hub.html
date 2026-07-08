@@ -1574,6 +1574,128 @@ function getSharedInstallBaseFieldValue(rec, field) {
   return window.AxisUtils?.getInstallBaseFieldValue?.(rec, field) || "";
 }
 
+function getHubCorrectedFieldAliases(fieldName) {
+  const key = canonicalInstallBaseFieldName(fieldName);
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    equipment: ["equipment", "make", "manufacturer", "model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    manager: ["manager", "manager_name", "owner_group", "owner_group_name"],
+    territory: ["territory", "manager_region", "manager_territory", "region"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"],
+    assigned_rep_name: ["assigned_rep_name", "assigned_rep", "rep", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"]
+  };
+
+  return aliases[key] || aliases[fieldName] || [fieldName];
+}
+
+function isRealHubCorrectedValue(value) {
+  const text = clean(value);
+  const normalized = lower(text);
+
+  return Boolean(
+    text &&
+    ![
+      "-",
+      "n/a",
+      "na",
+      "none",
+      "null",
+      "unknown",
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "no owner",
+      "unassigned owner group",
+      "unassigned territory"
+    ].includes(normalized)
+  );
+}
+
+function getHubCorrectedFieldValue(rec, fieldName) {
+  if (!rec) return "";
+
+  const aliases = getHubCorrectedFieldAliases(fieldName);
+  const sources = [
+    rec.corrected_fields,
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values
+  ].filter(source => source && typeof source === "object" && !Array.isArray(source));
+
+  for (const source of sources) {
+    for (const alias of aliases) {
+      const value = clean(source[alias]);
+      if (isRealHubCorrectedValue(value)) return value;
+    }
+  }
+
+  for (const alias of aliases) {
+    const value = clean(rec[alias]);
+    if (isRealHubCorrectedValue(value)) return value;
+  }
+
+  return "";
+}
+
+function getHubRepOwnerValue(rec) {
+  return getHubCorrectedFieldValue(rec, "rep");
+}
+
+function setHubInstallBaseFieldValue(target, fieldName, value) {
+  if (!target || typeof target !== "object") return;
+
+  const cleanValue = clean(value);
+  if (!isRealHubCorrectedValue(cleanValue)) return;
+
+  const canonical = canonicalInstallBaseFieldName(fieldName);
+
+  if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name", "owner_name"].includes(canonical)) {
+    target.assigned_rep_name = cleanValue;
+    target.assigned_rep = cleanValue;
+    target.rep = cleanValue;
+    target.rep_owner = cleanValue;
+    target.owner_name = cleanValue;
+    target.sales_rep = cleanValue;
+    target.sales_rep_name = cleanValue;
+    target.rep_visible = true;
+    target.rep_assignment_required = false;
+    return;
+  }
+
+  if (["manager", "manager_name", "owner", "owner_group", "owner_group_name"].includes(canonical)) {
+    target.manager_name = cleanValue;
+    target.owner_group_name = cleanValue;
+    target.owner_group = cleanValue;
+    target.manager_visible = true;
+    return;
+  }
+
+  if (canonical === "serial") {
+    target.serial_number = cleanValue;
+    target.serial = cleanValue;
+    return;
+  }
+
+  if (canonical === "project") {
+    target.oem_project_id = cleanValue;
+    target.project_id = cleanValue;
+    target.asset_id = cleanValue;
+    return;
+  }
+
+  window.AxisUtils?.setInstallBaseFieldValue?.(target, canonical, cleanValue);
+  target[canonical] = cleanValue;
+}
+
 function getDemoOwner(seed, stateValue) {
   const stateCode = String(stateValue || "").toUpperCase().trim();
 
@@ -1597,43 +1719,6 @@ function getOwnerName(rec) {
 
 function getOwnerTerritory(rec) {
   return rec.manager_region || rec.manager_territory || rec.territory || "Unassigned Territory";
-}
-
-function getHubRepOwnerValue(rec) {
-  return clean(
-    rec?.assigned_rep_name ||
-    rec?.assigned_rep ||
-    rec?.rep_owner ||
-    rec?.rep ||
-    rec?.owner_name ||
-    rec?.sales_rep_name ||
-    rec?.sales_rep ||
-    window.AxisUtils?.getInstallBaseFieldValue?.(rec, "rep") ||
-    ""
-  );
-}
-
-function getHubCorrectedFieldList(rec) {
-  const direct = [];
-
-  const add = value => {
-    const cleaned = canonicalInstallBaseFieldName(value);
-    if (cleaned && !direct.includes(cleaned)) direct.push(cleaned);
-  };
-
-  String(rec?.install_base_corrected_fields || rec?.install_base_issue_field || "")
-    .split(",")
-    .forEach(add);
-
-  if (rec?.corrected_fields && typeof rec.corrected_fields === "object") {
-    Object.keys(rec.corrected_fields).forEach(add);
-  } else {
-    String(rec?.corrected_fields || "")
-      .split(",")
-      .forEach(add);
-  }
-
-  return direct;
 }
 
 function isDuplicateAsset(rec) {
@@ -1685,7 +1770,7 @@ function getDataExceptions(rec) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
-  if (!getHubRepOwnerValue(rec) || lower(getHubRepOwnerValue(rec)) === "unassigned") {
+  if (!getHubRepOwnerValue(rec)) {
     issues.push({ type: "owner", label: "Missing Rep Owner" });
   }
 
@@ -1714,31 +1799,33 @@ function getDataExceptions(rec) {
 function hasActualInstallBaseCorrection(rec) {
   if (!rec) return false;
 
-  // A real returned FIX can come from Rep or Manager. Do not require the
-  // original manual-route flag to remain true, because Manager clears route
-  // fields after sending the corrected value back.
+  // Show "Install Base Data Fixed" only when a real FIX was returned.
+  // A normal text message may still carry old response status values,
+  // so this must require both FIX routing and corrected field data.
   const statusIsFixReturn =
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "rep_correction_sent" ||
-    rec.install_base_response_status === "manager_correction_sent" ||
-    rec.install_base_fix_status === "rep_reviewed" ||
-    rec.install_base_fix_status === "manager_reviewed";
-
-  const correctedFields = getHubCorrectedFieldList(rec);
+    rec.install_base_response_status === "manager_correction_sent";
 
   const wasManualFixRequest =
-    rec.install_base_manual_route === true ||
-    rec.install_base_response_from === "manager" ||
-    rec.install_base_response_from === "rep" ||
-    rec.install_base_fix_status === "manager_reviewed" ||
-    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.install_base_manual_route === true &&
     Boolean(clean(
+      rec.install_base_corrected_fields ||
+      rec.corrected_fields ||
       rec.install_base_issue_field ||
       rec.install_base_fix_field ||
-      rec.install_base_fix_request_field ||
       ""
     ));
+
+  const correctedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    ""
+  )
+    .split(",")
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
 
   return statusIsFixReturn && wasManualFixRequest && correctedFields.length > 0;
 }
@@ -1766,7 +1853,15 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
   if (rec.install_base_fixed_seen_by_install_base === true) return false;
 
-  const fixedFields = getHubCorrectedFieldList(rec);
+  const fixedFields = String(
+    rec.install_base_corrected_fields ||
+    rec.install_base_issue_field ||
+    ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => v.trim())
+    .filter(Boolean);
 
   const fieldAliases = {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
@@ -1779,7 +1874,7 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
     site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
     owner: ["owner", "manager", "manager_name", "owner_group"],
     territory: ["territory", "manager_region", "manager_territory", "region"],
-    rep: ["rep", "assigned_rep", "assigned_rep_name"]
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"]
   };
 
   const aliases = (fieldAliases[fieldName] || [fieldName]).map(canonicalInstallBaseFieldName);
@@ -1790,9 +1885,12 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
 function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasInstallBaseFieldCorrected(rec, fieldName)) return normalHtml;
 
+  const correctedValue = getHubCorrectedFieldValue(rec, fieldName);
+  const displayHtml = correctedValue ? escapeHtml(correctedValue) : normalHtml;
+
   return `
     <div class="corrected-field-value">
-      ${normalHtml}
+      ${displayHtml}
     </div>
   `;
 }
@@ -2211,27 +2309,32 @@ function mergeRepResponsesIntoRecords() {
         key: getRecordKey(rec)
       };
 
-      getHubCorrectedFieldList(resp).forEach(field => {
+      String(resp.install_base_corrected_fields || "")
+        .split(",")
+        .map(canonicalInstallBaseFieldName)
+        .filter(Boolean)
+        .forEach(field => {
           const value =
             window.AxisUtils?.getInstallBaseFieldValue?.(resp, field) ||
             resp[field] ||
             resp[field === "serial" ? "serial_number" : field === "project" ? "oem_project_id" : field === "rep" ? "assigned_rep_name" : field === "manager" ? "manager_name" : field];
 
-          if (value) {
-            window.AxisUtils?.setInstallBaseFieldValue?.(canonicalMerged, field, value);
-          }
+          setHubInstallBaseFieldValue(canonicalMerged, field, value);
         });
 
-      const mergedRepOwner = getHubRepOwnerValue(resp);
-      if (mergedRepOwner) {
-        canonicalMerged.assigned_rep_name = mergedRepOwner;
-        canonicalMerged.assigned_rep = mergedRepOwner;
-        canonicalMerged.rep = mergedRepOwner;
-        canonicalMerged.rep_owner = mergedRepOwner;
-        canonicalMerged.owner_name = mergedRepOwner;
-        canonicalMerged.sales_rep = mergedRepOwner;
-        canonicalMerged.sales_rep_name = mergedRepOwner;
-      }
+      [
+        resp.corrected_fields,
+        resp.corrected_values,
+        resp.install_base_corrected_values,
+        resp.corrected_field_values,
+        resp.install_base_corrected_field_values
+      ]
+        .filter(source => source && typeof source === "object" && !Array.isArray(source))
+        .forEach(source => {
+          Object.keys(source).forEach(field => {
+            setHubInstallBaseFieldValue(canonicalMerged, field, source[field]);
+          });
+        });
 
 	     return {
 	  ...canonicalMerged,
@@ -2383,7 +2486,7 @@ install_base_clarification_reason: exactInstallBaseReason,
     state: rec.state || "",
     zip_code: rec.zip_code || "",
 
-    assigned_rep_name: getHubRepOwnerValue(rec) || "",
+    assigned_rep_name: rec.assigned_rep_name || "",
     assigned_rep_email: rec.assigned_rep_email || "",
     assigned_rep_phone: rec.assigned_rep_phone || "",
 
@@ -2690,7 +2793,7 @@ function getRoutingBlockingFields(rec) {
 }
 
 function hasValidAssignedRep(rec) {
-  const name = getHubRepOwnerValue(rec);
+  const name = clean(getHubRepOwnerValue(rec));
 
   const normalized = lower(name);
 
@@ -3295,7 +3398,7 @@ function matchesSearch(rec) {
     rec.asset_id,
     rec.manager_name,
     rec.manager_region,
-    getHubRepOwnerValue(rec),
+    rec.assigned_rep_name,
     rec.site,
     rec.modality,
     rec.make,
@@ -3489,7 +3592,7 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
 
-	      <td>${renderHubFieldValue(rec, "rep", rec.assigned_rep_name)}</td>
+	      <td>${renderHubFieldValue(rec, "rep", getHubRepOwnerValue(rec))}</td>
 
 	      <td>${renderHubFieldValue(rec, "site", rec.site)}</td>
 
