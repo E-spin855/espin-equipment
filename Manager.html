@@ -5457,37 +5457,120 @@ function wasManagerSerialFixRequest(rec){
   return text.includes("serial");
 }
 
-function getOriginalInstallBaseReviewReasonForManager(rec){
-  const badFixText = /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing|assigned\s+rep|rep\s+owner|rep\s+name|owner\s+group|territory/i;
+function looksLikeTemporaryManagerFixReason(text) {
+  const value = lower(text || "");
 
+  return (
+    value.includes(" is missing") ||
+    value.includes(" missing from the install base") ||
+    value.includes("missing manufacturer") ||
+    value.includes("missing brand") ||
+    value.includes("missing make") ||
+    value.includes("missing model") ||
+    value.includes("missing serial") ||
+    value.includes("missing dom") ||
+    value.includes("missing date") ||
+    value.includes("missing territory") ||
+    value.includes("missing assigned rep") ||
+    value.includes("missing rep owner") ||
+    value.includes("rep owner") ||
+    value.includes("rep name") ||
+    value.includes("owner group") ||
+    value.includes("fix data") ||
+    value.includes("correction requested")
+  );
+}
+
+function isManagerInstallBaseFixCompleted(rec) {
+  return (
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.rep_status === "install_base_data_fixed" ||
+    rec.rep_action === "install_base_data_fixed"
+  );
+}
+
+function getComputedManagerInstallBaseReviewReason(rec) {
+  const visibleLabel = normalizeOemReviewLabelForManager(rec);
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
+
+  if (visibleLabel === "Equipment Age") {
+    if (dom && age !== null && age !== undefined && age !== "") {
+      return `Equipment age review based on DOM ${dom} (${age} years).`;
+    }
+
+    if (dom) {
+      return `Equipment age review based on DOM ${dom}.`;
+    }
+
+    return "Equipment age review.";
+  }
+
+  if (visibleLabel && visibleLabel !== "Install Base Review") {
+    return `${visibleLabel} review.`;
+  }
+
+  return "Install Base review context is attached to this record.";
+}
+
+function getOriginalInstallBaseReviewReasonForManager(rec) {
   const candidates = [
     rec.original_oem_review_reason,
     rec.original_install_base_review_reason,
     rec.oem_review_reason_original,
     rec.install_base_review_reason_original,
+    rec.install_base_review_reason,
     rec.original_review_reason,
-    rec.oem_review_reason,
-    rec.review_reason,
     rec.proactive_reason,
-    rec.conflict_notes
+    rec.conflict_notes,
+    rec.review_reason,
+    rec.oem_review_reason
   ];
 
   const valid = candidates
     .map(v => clean(v))
     .filter(Boolean)
-    .find(v => !badFixText.test(v));
+    .find(v => !looksLikeTemporaryManagerFixReason(v));
 
-  return valid || "Install Base review context is attached to this record.";
+  return valid || getComputedManagerInstallBaseReviewReason(rec);
 }
-function getInstallBaseReviewReasonForManager(rec) {
-  const serialNow = getCurrentManagerSerialNumber(rec);
 
-  if (wasManagerSerialFixRequest(rec) && !serialNow) {
-    return "Serial number is missing from the Install Base record.";
+function getInstallBaseReviewReasonForManager(rec) {
+  const fixCompleted = isManagerInstallBaseFixCompleted(rec);
+
+  const fixReason = clean(
+    rec.fix_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.axis_clarification_reason ||
+    rec.manager_review_request ||
+    rec.rep_fix_required ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
+
+  const fixIsStillOpen =
+    !fixCompleted &&
+    (
+      rec.rep_status === "clarification_needed" ||
+      rec.rep_action === "fix_install_base_data" ||
+      rec.install_base_sync_type === "manual_clarification" ||
+      rec.install_base_has_open_issue === true ||
+      rec.install_base_correction_status === "needs_rep_correction" ||
+      rec.install_base_release_status === "released_to_rep"
+    );
+
+  if (fixIsStillOpen && fixReason) {
+    return fixReason;
   }
 
   return getOriginalInstallBaseReviewReasonForManager(rec);
 }
+
 function arrangeManagerWorkflowLayout() {
   const grid = $("detailGrid");
   if (!grid) return;
