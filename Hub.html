@@ -1599,6 +1599,27 @@ function getOwnerTerritory(rec) {
   return rec.manager_region || rec.manager_territory || rec.territory || "Unassigned Territory";
 }
 
+function getHubRepOwnerValue(rec) {
+  if (!rec) return "";
+
+  const correctedValue =
+    getHubCorrectedFieldValue(rec, "rep") ||
+    getHubCorrectedFieldValue(rec, "assigned_rep_name") ||
+    "";
+
+  const directValue = clean(
+    rec.assigned_rep_name ||
+    rec.assigned_rep ||
+    rec.rep ||
+    rec.rep_owner ||
+    rec.sales_rep ||
+    rec.sales_rep_name ||
+    ""
+  );
+
+  return correctedValue || directValue;
+}
+
 function isDuplicateAsset(rec) {
   const key = [
     lower(rec.oem_project_id || rec.asset_id),
@@ -1648,7 +1669,7 @@ function getDataExceptions(rec) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
-  if (!clean(rec.assigned_rep_name) || rec.assigned_rep_name === "Unassigned") {
+  if (!isRealHubCorrectedValue(getHubRepOwnerValue(rec))) {
     issues.push({ type: "owner", label: "Missing Rep Owner" });
   }
 
@@ -1906,12 +1927,22 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   return getMissingFieldFixHtml(rec, fieldName);
 }
 function getMissingHubFields(rec) {
+  let missing = [];
+
   if (window.AxisUtils?.getMissingInstallBaseFields) {
-    return window.AxisUtils.getMissingInstallBaseFields(rec);
+    missing = window.AxisUtils.getMissingInstallBaseFields(rec);
+  } else {
+    missing = ["project", "make", "model", "modality", "serial", "dom", "site", "rep", "manager"]
+      .filter(field => isBlankHubField(getSharedInstallBaseFieldValue(rec, field), field));
   }
 
-  return ["project", "make", "model", "modality", "serial", "dom", "site", "rep", "manager"]
-    .filter(field => isBlankHubField(getSharedInstallBaseFieldValue(rec, field), field));
+  // Manager ownership fixes can arrive under rep/rep_owner/sales_rep or corrected_fields.rep.
+  // Do not keep treating Rep Owner as missing when any corrected owner alias exists.
+  if (isRealHubCorrectedValue(getHubRepOwnerValue(rec))) {
+    missing = missing.filter(field => canonicalInstallBaseFieldName(field) !== "rep");
+  }
+
+  return missing;
 }
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
@@ -2253,11 +2284,26 @@ function mergeRepResponsesIntoRecords() {
         key: getRecordKey(rec)
       };
 
-      String(resp.install_base_corrected_fields || "")
+      const responseCorrectedFields = String(
+        resp.install_base_corrected_fields ||
+        (
+          resp.corrected_fields && typeof resp.corrected_fields === "object"
+            ? Object.keys(resp.corrected_fields).join(",")
+            : resp.corrected_fields || ""
+        )
+      )
         .split(",")
         .map(canonicalInstallBaseFieldName)
-        .filter(Boolean)
-        .forEach(field => {
+        .filter(Boolean);
+
+      if (
+        getHubCorrectedFieldValue(resp, "rep") &&
+        !responseCorrectedFields.includes("rep")
+      ) {
+        responseCorrectedFields.push("rep");
+      }
+
+      responseCorrectedFields.forEach(field => {
           const aliases = getHubCorrectedFieldAliases(field);
           const value =
             getHubCorrectedFieldValue(resp, field) ||
@@ -3542,7 +3588,7 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
 
-	      <td>${renderHubFieldValue(rec, "rep", rec.assigned_rep_name)}</td>
+	      <td>${renderHubFieldValue(rec, "rep", getHubRepOwnerValue(rec))}</td>
 
 	      <td>${renderHubFieldValue(rec, "site", rec.site)}</td>
 
@@ -3697,7 +3743,7 @@ function renderFixedDataCard(rec) {
       <div class="k">Install Base Data Fixed</div>
       <div class="v">${escapeHtml(fixedByLabel)}</div>
       <div class="mini" style="margin-top:8px;line-height:1.55;">
-        Fixed by: <strong>${escapeHtml(rec.install_base_response_by || rec.assigned_rep_name || "-")}</strong><br>
+        Fixed by: <strong>${escapeHtml(rec.install_base_response_by || getHubRepOwnerValue(rec) || "-")}</strong><br>
         Fixed at: <strong>${escapeHtml(rec.install_base_correction_at || rec.install_base_response_at || "-")}</strong><br>
         Note: ${escapeHtml(msg)}
       </div>
@@ -4264,7 +4310,7 @@ function renderDetail() {
 
     <div class="detail-card">
       <div class="k">Rep Owner</div>
-      <div class="v">${escapeHtml(rec.assigned_rep_name || "-")}</div>
+      <div class="v">${escapeHtml(getHubRepOwnerValue(rec) || "-")}</div>
       <div class="mini">${escapeHtml(rec.assigned_rep_email || "")}</div>
     </div>
 
