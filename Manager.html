@@ -2995,117 +2995,6 @@ function sameRecord(a, b) {
   return false;
 }
 
-
-function isRealManagerOwnerValue(value) {
-  const text = clean(value);
-  const normalized = lower(text);
-  return Boolean(
-    text &&
-    ![
-      "-",
-      "n/a",
-      "na",
-      "none",
-      "null",
-      "unknown",
-      "unassigned",
-      "unassigned rep",
-      "no rep",
-      "no owner"
-    ].includes(normalized)
-  );
-}
-
-function getManagerRepOwnerValue(rec) {
-  if (!rec) return "";
-
-  const sources = [
-    rec.corrected_fields,
-    rec.corrected_values,
-    rec.install_base_corrected_values,
-    rec.corrected_field_values,
-    rec.install_base_corrected_field_values,
-    rec
-  ].filter(source => source && typeof source === "object" && !Array.isArray(source));
-
-  const aliases = [
-    "assigned_rep_name",
-    "assigned_rep",
-    "rep",
-    "rep_owner",
-    "owner_name",
-    "sales_rep",
-    "sales_rep_name"
-  ];
-
-  for (const source of sources) {
-    for (const alias of aliases) {
-      const value = clean(source[alias]);
-      if (isRealManagerOwnerValue(value)) return value;
-    }
-  }
-
-  return "";
-}
-
-function getManagerOwnerGroupValue(rec) {
-  if (!rec) return "";
-
-  const sources = [
-    rec.corrected_fields,
-    rec.corrected_values,
-    rec.install_base_corrected_values,
-    rec.corrected_field_values,
-    rec.install_base_corrected_field_values,
-    rec
-  ].filter(source => source && typeof source === "object" && !Array.isArray(source));
-
-  const aliases = ["manager_name", "owner_group_name", "owner_group", "manager", "owner"];
-
-  for (const source of sources) {
-    for (const alias of aliases) {
-      const value = clean(source[alias]);
-      if (isRealManagerOwnerValue(value)) return value;
-    }
-  }
-
-  return "";
-}
-
-function applyManagerOwnerAliases(target, repOwner, managerOwner) {
-  if (!target || typeof target !== "object") return target;
-
-  const rep = clean(repOwner);
-  if (isRealManagerOwnerValue(rep)) {
-    target.assigned_rep_name = rep;
-    target.assigned_rep = rep;
-    target.rep = rep;
-    target.rep_owner = rep;
-    target.owner_name = rep;
-    target.sales_rep = rep;
-    target.sales_rep_name = rep;
-    target.rep_visible = true;
-    target.rep_assignment_required = false;
-  }
-
-  const manager = clean(managerOwner);
-  if (isRealManagerOwnerValue(manager)) {
-    target.manager_name = manager;
-    target.owner_group_name = manager;
-    target.owner_group = manager;
-    target.manager_visible = true;
-  }
-
-  return target;
-}
-
-function mergeManagerCorrectedFieldObjects(existing, rec) {
-  return {
-    ...(existing.corrected_fields && typeof existing.corrected_fields === "object" ? existing.corrected_fields : {}),
-    ...(rec.corrected_fields && typeof rec.corrected_fields === "object" ? rec.corrected_fields : {})
-  };
-}
-
 function mergeRecordsByKey(...groups) {
   const map = new Map();
 
@@ -3230,11 +3119,7 @@ const normalSeen = isFreshRepUpdate
   releaseIsUnseen ||
   legacyUnseen;
 
-    const mergedRepOwner = getManagerRepOwnerValue(rec) || getManagerRepOwnerValue(existing);
-    const mergedManagerOwner = getManagerOwnerGroupValue(rec) || getManagerOwnerGroupValue(existing);
-    const mergedCorrectedFields = mergeManagerCorrectedFieldObjects(existing, rec);
-
-    map.set(key, applyManagerOwnerAliases({
+    map.set(key, {
       ...existing,
       ...rec,
       key,
@@ -3322,18 +3207,8 @@ manager_flash_text: isFreshRepUpdate
       install_base_issue_reason: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_reason || existing.install_base_issue_reason || ""),
       install_base_issue_note: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_note || existing.install_base_issue_note || ""),
       install_base_rep_action_required: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_rep_action_required || existing.install_base_rep_action_required || ""),
-      rep_fix_required: managerInstallBaseCorrectionResolved ? "" : (rec.rep_fix_required || existing.rep_fix_required || ""),
-
-      corrected_fields: mergedCorrectedFields,
-      corrected_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.corrected_values || existing.corrected_values),
-      install_base_corrected_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.install_base_corrected_values || existing.install_base_corrected_values),
-      corrected_field_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.corrected_field_values || existing.corrected_field_values),
-      install_base_corrected_field_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.install_base_corrected_field_values || existing.install_base_corrected_field_values),
-      install_base_corrected_fields:
-        rec.install_base_corrected_fields ||
-        existing.install_base_corrected_fields ||
-        Object.keys(mergedCorrectedFields).join(",")
-    }, mergedRepOwner, mergedManagerOwner));
+      rep_fix_required: managerInstallBaseCorrectionResolved ? "" : (rec.rep_fix_required || existing.rep_fix_required || "")
+    });
   });
 
   return Array.from(map.values());
@@ -4934,8 +4809,8 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 }
 
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return getManagerOwnerGroupValue(rec) || "";
-  if (key === "assigned_rep_name") return getManagerRepOwnerValue(rec) || "";
+  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
+  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
   return rec[key] || "";
 }
 
@@ -5030,8 +4905,8 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
       </div>
       ` : ""}
 
-      <label style="margin-top:14px;">Manager Note to Install Base</label>
-      <textarea id="managerInstallBaseCorrectionNote" placeholder="Explain correction, confirmation, or why it could not be verified."></textarea>
+      <label style="margin-top:14px;">Manager FIX Response to Install Base</label>
+      <textarea id="managerInstallBaseCorrectionNote" placeholder="Type the corrected value requested by Install Base. Example: if Rep Owner is missing, type the rep name here."></textarea>
 
       <div class="btns" style="margin-top:12px;">
         <button type="button" class="green" onclick="sendManagerInstallBaseCorrection('${escapeJs(rec.id)}')">
@@ -5048,7 +4923,28 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
 
 function hasValidAssignedRep(rec) {
-  return Boolean(getManagerRepOwnerValue(rec));
+  const name = String(
+    rec?.assigned_rep_name ||
+    rec?.rep ||
+    rec?.sales_rep_name ||
+    ""
+  ).trim();
+
+  const normalized = name.toLowerCase();
+
+  return Boolean(
+    name &&
+    ![
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "none",
+      "n/a",
+      "na",
+      "unknown",
+      "-"
+    ].includes(normalized)
+  );
 }
 
 function sendManagerInstallBaseCorrection(id) {
@@ -5060,33 +4956,87 @@ function sendManagerInstallBaseCorrection(id) {
   if (!rec) return;
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
+  const requestedCorrectionIssues = getManagerInstallBaseIssueFields(rec);
   const correctedFields = {};
   const correctedValues = {};
+
+  const managerFixText = clean($('managerInstallBaseCorrectionNote')?.value || "");
+
+  const setCorrectedFieldValue = (fieldKey, value) => {
+    const cleanValue = clean(value);
+    if (!fieldKey || !cleanValue) return;
+
+    const canonicalKey =
+      window.AxisUtils?.canonicalFieldName?.(fieldKey) || fieldKey;
+
+    correctedValues[fieldKey] = cleanValue;
+    correctedFields[canonicalKey] = cleanValue;
+
+    // Rep Owner is a routing field, so write every alias Hub/Rep/Manager may read.
+    if (["assigned_rep_name", "assigned_rep", "rep", "rep_owner", "sales_rep", "sales_rep_name", "owner_name"].includes(canonicalKey)) {
+      [
+        "assigned_rep_name",
+        "assigned_rep",
+        "rep",
+        "rep_owner",
+        "owner_name",
+        "sales_rep",
+        "sales_rep_name"
+      ].forEach(alias => {
+        correctedValues[alias] = cleanValue;
+        correctedFields[alias] = cleanValue;
+      });
+    }
+
+    // Owner Group / Manager is separate from Rep Owner.
+    if (["manager_name", "owner_group", "owner_group_name"].includes(canonicalKey)) {
+      ["manager_name", "owner_group", "owner_group_name"].forEach(alias => {
+        correctedValues[alias] = cleanValue;
+        correctedFields[alias] = cleanValue;
+      });
+    }
+  };
 
   issues.forEach(issue => {
     const input = $("mgr_fix_" + issue.key);
     if (!input) return;
 
-    const value = input.value.trim();
-    const previousValue = String(rec[issue.key] || "").trim();
+    const value = clean(input.value);
+    const previousValue = clean(rec[issue.key] || "");
 
     if (value && value !== previousValue) {
-      const canonicalKey =
-        window.AxisUtils?.canonicalFieldName?.(issue.key) || issue.key;
-
-      correctedValues[issue.key] = value;
-      correctedFields[canonicalKey] = value;
+      setCorrectedFieldValue(issue.key, value);
     }
   });
+
+  /*
+    The Manager Note box is the Manager's FIX response field.
+    When Hub requests a specific missing field, whatever the manager types
+    here must be applied to that requested field, not saved as note-only.
+  */
+  if (managerFixText && requestedCorrectionIssues.length) {
+    const primaryIssue = requestedCorrectionIssues[0];
+    setCorrectedFieldValue(primaryIssue.key, managerFixText);
+  }
 
   const now = new Date().toISOString();
   const key = getRecordKey(rec) || rec.key || id;
 
   const correctedRepOwner = clean(
-    $("mgr_fix_assigned_rep_name")?.value ||
     correctedValues.assigned_rep_name ||
+    correctedValues.assigned_rep ||
+    correctedValues.rep ||
+    correctedValues.rep_owner ||
+    correctedValues.owner_name ||
+    correctedValues.sales_rep ||
+    correctedValues.sales_rep_name ||
+    $("mgr_fix_assigned_rep_name")?.value ||
     rec.assigned_rep_name ||
+    rec.assigned_rep ||
     rec.rep ||
+    rec.rep_owner ||
+    rec.owner_name ||
+    rec.sales_rep ||
     rec.sales_rep_name ||
     ""
   );
@@ -5100,21 +5050,18 @@ function sendManagerInstallBaseCorrection(id) {
   );
 
   if (correctedRepOwner) {
-    correctedValues.assigned_rep_name = correctedRepOwner;
-    correctedValues.assigned_rep = correctedRepOwner;
-    correctedValues.rep = correctedRepOwner;
-    correctedValues.rep_owner = correctedRepOwner;
-    correctedValues.owner_name = correctedRepOwner;
-    correctedValues.sales_rep = correctedRepOwner;
-    correctedValues.sales_rep_name = correctedRepOwner;
-
-    correctedFields.assigned_rep_name = correctedRepOwner;
-    correctedFields.assigned_rep = correctedRepOwner;
-    correctedFields.rep = correctedRepOwner;
-    correctedFields.rep_owner = correctedRepOwner;
-    correctedFields.owner_name = correctedRepOwner;
-    correctedFields.sales_rep = correctedRepOwner;
-    correctedFields.sales_rep_name = correctedRepOwner;
+    [
+      "assigned_rep_name",
+      "assigned_rep",
+      "rep",
+      "rep_owner",
+      "owner_name",
+      "sales_rep",
+      "sales_rep_name"
+    ].forEach(alias => {
+      correctedValues[alias] = correctedRepOwner;
+      correctedFields[alias] = correctedRepOwner;
+    });
   }
 
   if (correctedManagerOwner) {
@@ -5175,14 +5122,10 @@ function sendManagerInstallBaseCorrection(id) {
 
     install_base_corrected_fields: Object.keys(correctedFields).join(","),
     corrected_fields: correctedFields,
-    corrected_values: correctedFields,
-    install_base_corrected_values: correctedFields,
-    corrected_field_values: correctedFields,
-    install_base_corrected_field_values: correctedFields,
 
     // Clear temporary Install Base request fields after Manager correction.
     install_base_manager_request: false,
-    install_base_manual_route: true,
+    install_base_manual_route: false,
     install_base_fix_request: false,
     install_base_fix_request_field: "",
     install_base_released_to: "",
