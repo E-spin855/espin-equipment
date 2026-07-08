@@ -5072,6 +5072,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
+  const requestedCorrectionIssues = getManagerInstallBaseIssueFields(rec);
   const assignmentIssues = [
     { key: "manager_name", label: "Owner Group / Manager" },
     { key: "assigned_rep_name", label: "Rep Owner" }
@@ -5430,6 +5431,20 @@ function sendManagerInstallBaseCorrection(id) {
       }
     }
   });
+
+  if (isRealManagerCorrectedValue(typedMessage)) {
+    requestedCorrectionIssues.forEach(issue => {
+      const correctedField = normalizeCorrectedFieldName(issue.key);
+      if (!correctedField) return;
+      if (getManagerCorrectedFieldValue(updated, correctedField)) return;
+
+      applyCorrectedFieldValue(updated, correctedField, issue.key, typedMessage);
+
+      if (!correctedFields.includes(correctedField)) {
+        correctedFields.push(correctedField);
+      }
+    });
+  }
 
   updated.rep_visible = Boolean(updated.assigned_rep_name || updated.rep || updated.sales_rep_name);
   updated.rep_assignment_required = !updated.rep_visible;
