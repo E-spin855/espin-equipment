@@ -1842,6 +1842,59 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
 
   return getMissingFieldFixHtml(rec, fieldName);
 }
+
+function wasHubOwnerGroupSpecificallyRequested(rec) {
+  if (!rec) return false;
+
+  const requestText = [
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_corrected_fields,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_action_label,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.conflict_notes
+  ].join(" ").toLowerCase();
+
+  const repOwnerRequest =
+    requestText.includes("assigned rep") ||
+    requestText.includes("rep owner") ||
+    requestText.includes("rep name") ||
+    requestText.includes("sales rep") ||
+    requestText.includes("missing rep");
+
+  const ownerGroupRequest =
+    requestText.includes("owner group") ||
+    requestText.includes("manager assignment") ||
+    requestText.includes("manager owner") ||
+    requestText.includes("missing owner group");
+
+  // If the Hub asked Manager to fix Rep Owner, do not turn Owner Group green
+  // just because Manager's name is present in the returned record.
+  if (repOwnerRequest && !ownerGroupRequest) return false;
+
+  return ownerGroupRequest;
+}
+
+function renderHubOwnerGroupCell(rec) {
+  const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
+
+  if (wasHubOwnerGroupSpecificallyRequested(rec)) {
+    return renderHubFieldValue(rec, "owner", ownerValue);
+  }
+
+  if (isBlankHubField(ownerValue, "owner")) {
+    if (isFixedByRep(rec)) return escapeHtml("-");
+    return getMissingFieldFixHtml(rec, "owner");
+  }
+
+  return escapeHtml(ownerValue);
+}
 function getMissingHubFields(rec) {
   if (window.AxisUtils?.getMissingInstallBaseFields) {
     return window.AxisUtils.getMissingInstallBaseFields(rec);
@@ -3631,7 +3684,7 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubFieldValue(rec, "make", rec.make)}</td>
 
-	      <td>${renderHubFieldValue(rec, "owner", rec.manager_name || rec.owner_group_name)}</td>
+	      <td>${renderHubOwnerGroupCell(rec)}</td>
 
 	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
 
