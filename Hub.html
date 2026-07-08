@@ -2247,17 +2247,31 @@ function getReviewStatus(rec) {
   // Only true FIX returns temporarily replace the record's normal badge.
   // Plain text messages stay inside the communication panel only.
   if (
-    hasActualInstallBaseCorrection(rec) &&
-    rec.install_base_response_at &&
-    rec.install_base_response_seen !== true
+  hasActualInstallBaseCorrection(rec) &&
+  rec.install_base_response_at &&
+  rec.install_base_response_seen !== true
+) {
+  const responseFrom = lower(rec.install_base_response_from || "rep");
+  const assignedRep = getHubRepOwnerValue(rec);
+
+  if (
+    responseFrom === "manager" &&
+    assignedRep &&
+    (
+      rec.install_base_correction_status === "corrected_by_manager" ||
+      rec.install_base_response_status === "manager_correction_sent" ||
+      rec.install_base_fix_status === "manager_reviewed" ||
+      isFixedByManager(rec)
+    )
   ) {
-    const responseFrom = lower(rec.install_base_response_from || "rep");
-    return {
-      type: "response",
-      label: responseFrom === "manager" ? "Manager Response" : "Rep Response"
-    };
+    return { type: "source", label: "Fixed → Synced to Rep" };
   }
 
+  return {
+    type: "response",
+    label: responseFrom === "manager" ? "Manager Response" : "Rep Response"
+  };
+}
  if (
   !isAutoSyncEligible(rec) &&
   rec.install_base_release_status !== "released_to_rep" &&
