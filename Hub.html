@@ -3018,9 +3018,39 @@ function releaseSelected(destination, fixFieldName = "") {
     ? normalizedFixField.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
     : "";
  const isFixRequest = Boolean(normalizedFixField);
-const exactInstallBaseReason =
-  formatMergedInstallBaseClarificationReason(rec);
 
+function getHubFixRequestReason(fieldName) {
+  const field = canonicalInstallBaseFieldName(fieldName);
+
+  if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name"].includes(field)) {
+    return "Assigned rep name is missing.";
+  }
+
+  if (["territory", "manager_region", "manager_territory", "region"].includes(field)) {
+    return "Territory name is missing.";
+  }
+
+  if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(field)) {
+    return "Owner group is missing.";
+  }
+
+  if (field === "make") return "Manufacturer is missing from the Install Base record.";
+  if (field === "model") return "Model is missing from the Install Base record.";
+  if (field === "serial") return "Serial number is missing from the Install Base record.";
+  if (field === "dom") return "Date of manufacture is missing from the Install Base record.";
+  if (field === "modality") return "Modality is missing from the Install Base record.";
+  if (field === "site") return "Site is missing from the Install Base record.";
+
+  const label = fieldName
+    ? String(fieldName).replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+    : "data";
+
+  return `${label} is missing from the Install Base record.`;
+}
+
+const exactInstallBaseReason = isFixRequest
+  ? getHubFixRequestReason(normalizedFixField)
+  : formatMergedInstallBaseClarificationReason(rec);
   const managerReleaseId =
     "mgr_release_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 
@@ -3077,8 +3107,8 @@ rep_fix_required: isFixRequest
 
 install_base_issue_note: exactInstallBaseReason,
 install_base_issue_reason: exactInstallBaseReason,
-   oem_review_type: formatInstallBaseReviewLabel(rec),
-oem_review_label: formatInstallBaseReviewLabel(rec),
+   oem_review_type: isFixRequest ? "Manual Clarification" : formatInstallBaseReviewLabel(rec),
+oem_review_label: isFixRequest ? "Manual Clarification" : formatInstallBaseReviewLabel(rec),
     oem_review_reason: exactInstallBaseReason,
     rep_action_required:
       rec.rep_action_required ||
