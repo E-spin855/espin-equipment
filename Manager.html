@@ -5175,6 +5175,151 @@ function hasValidAssignedRep(rec) {
   );
 }
 
+
+/* =========================================================
+   MANAGER INSTALL BASE FIX PIPELINE
+   Shared field-based correction path for Manager-owned FIX items.
+   Manager is not locked to Rep Owner; any requested field can use this.
+   ========================================================= */
+function normalizeManagerInstallBaseFixField(rawKey) {
+  const k = String(rawKey || "")
+    .toLowerCase()
+    .replace(/^mgr_fix_/, "")
+    .trim();
+
+  if (["serial", "serial_number", "system_serial", "equipment_serial"].includes(k)) return "serial";
+  if (["dom", "year", "manufacture_year", "date_of_manufacture", "manufacture_date"].includes(k)) return "dom";
+  if (["site", "facility", "hospital", "hospital_name", "customer", "customer_name", "location"].includes(k)) return "site";
+  if (["make", "manufacturer", "brand"].includes(k)) return "make";
+  if (["model", "equipment_model"].includes(k)) return "model";
+  if (["modality", "equipment_type"].includes(k)) return "modality";
+  if (["project", "project_id", "oem_project_id", "asset_id", "equipment_id"].includes(k)) return "project";
+  if (["assigned_rep", "assigned_rep_name", "rep", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(k)) return "rep";
+  if (["manager", "manager_name", "owner_group_name", "owner_group"].includes(k)) return "manager";
+  if (["site_address", "address", "street_address"].includes(k)) return "site_address";
+  if (["city"].includes(k)) return "city";
+  if (["state"].includes(k)) return "state";
+  if (["zip", "zip_code", "postal", "postal_code"].includes(k)) return "zip_code";
+  if (["asset_status", "status", "equipment_status"].includes(k)) return "asset_status";
+  if (["source", "record_source", "install_base_source"].includes(k)) return "source";
+
+  const shared = window.AxisUtils?.canonicalFieldName?.(k);
+  if (shared) return shared;
+
+  return k;
+}
+
+function getManagerInstallBaseFixAliases(fieldKey) {
+  const field = normalizeManagerInstallBaseFixField(fieldKey);
+
+  const aliases = {
+    project: ["oem_project_id", "project_id", "asset_id", "equipment_id", "project"],
+    serial: ["serial_number", "serial", "system_serial", "equipment_serial"],
+    dom: ["dom", "year", "manufacture_year", "date_of_manufacture", "manufacture_date"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "customer_name", "location"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model", "equipment_model"],
+    modality: ["modality", "equipment_type"],
+    rep: ["assigned_rep_name", "assigned_rep", "rep", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"],
+    manager: ["manager_name", "owner_group_name", "owner_group", "manager"],
+    site_address: ["site_address", "address", "street_address"],
+    city: ["city"],
+    state: ["state"],
+    zip_code: ["zip_code", "zip", "postal_code", "postal"],
+    asset_status: ["asset_status", "status", "equipment_status"],
+    source: ["source", "record_source", "install_base_source", "hub_source"]
+  };
+
+  const mapped = aliases[field] || [field];
+  return [...new Set([field, ...mapped].filter(Boolean))];
+}
+
+function applyManagerInstallBaseFixField(target, rawField, rawValue) {
+  if (!target || typeof target !== "object") return target;
+
+  const value = String(rawValue || "").trim();
+  if (!isRealManagerCorrectedValue(value)) return target;
+
+  const field = normalizeManagerInstallBaseFixField(rawField);
+  const aliases = getManagerInstallBaseFixAliases(field);
+
+  if (window.AxisUtils?.setInstallBaseFieldValue) {
+    try {
+      window.AxisUtils.setInstallBaseFieldValue(target, field, value);
+    } catch {}
+  }
+
+  aliases.forEach(alias => {
+    target[alias] = value;
+  });
+
+  target.corrected_fields =
+    target.corrected_fields && typeof target.corrected_fields === "object" && !Array.isArray(target.corrected_fields)
+      ? target.corrected_fields
+      : {};
+
+  target.corrected_fields[field] = value;
+  aliases.forEach(alias => {
+    target.corrected_fields[alias] = value;
+  });
+
+  target.install_base_corrected_values = target.corrected_fields;
+  target.corrected_values = target.corrected_fields;
+  target.install_base_corrected_field_values = target.corrected_fields;
+  target.corrected_field_values = target.corrected_fields;
+
+  if (field === "rep") {
+    target.rep_visible = true;
+    target.rep_assignment_required = false;
+  }
+
+  if (field === "manager") {
+    target.manager_visible = true;
+  }
+
+  return target;
+}
+
+function applyManagerInstallBaseFixPayload(target, correctedPayload) {
+  if (!target || typeof target !== "object") return target;
+
+  const next = { ...target };
+  const payload =
+    correctedPayload && typeof correctedPayload === "object" && !Array.isArray(correctedPayload)
+      ? correctedPayload
+      : {};
+
+  Object.keys(payload).forEach(field => {
+    applyManagerInstallBaseFixField(next, field, payload[field]);
+  });
+
+  return next;
+}
+
+function getManagerInstallBaseFixPayloadFromRecord(rec) {
+  if (!rec || typeof rec !== "object") return {};
+
+  const sources = [
+    rec.corrected_fields,
+    rec.install_base_corrected_values,
+    rec.corrected_values,
+    rec.install_base_corrected_field_values,
+    rec.corrected_field_values
+  ];
+
+  return sources.reduce((acc, src) => {
+    if (!src || typeof src !== "object" || Array.isArray(src)) return acc;
+    Object.keys(src).forEach(field => {
+      const value = String(src[field] || "").trim();
+      if (isRealManagerCorrectedValue(value)) {
+        acc[normalizeManagerInstallBaseFixField(field)] = value;
+      }
+    });
+    return acc;
+  }, {});
+}
+
+
 function sendManagerInstallBaseCorrection(id) {
   const rec = state.records.find(r =>
     String(r.id || "") === String(id) ||
@@ -5447,6 +5592,39 @@ function sendManagerInstallBaseCorrection(id) {
     });
   }
 
+  const managerInstallBaseCorrectionPayload = {};
+
+  fixedInputs.forEach(input => {
+    const rawKey = input.id.replace(/^mgr_fix_/, "");
+    const value = String(input.value || "").trim();
+    if (!isRealManagerCorrectedValue(value)) return;
+
+    const field = normalizeManagerInstallBaseFixField(rawKey);
+    managerInstallBaseCorrectionPayload[field] = value;
+  });
+
+  issues.forEach(issue => {
+    const input = $("mgr_fix_" + issue.key);
+    if (!input || !isRealManagerCorrectedValue(input.value)) return;
+
+    const field = normalizeManagerInstallBaseFixField(issue.key);
+    managerInstallBaseCorrectionPayload[field] = String(input.value || "").trim();
+  });
+
+  if (isRealManagerCorrectedValue(typedMessage)) {
+    requestedCorrectionIssues.forEach(issue => {
+      const field = normalizeManagerInstallBaseFixField(issue.key);
+      if (!field || managerInstallBaseCorrectionPayload[field]) return;
+      managerInstallBaseCorrectionPayload[field] = typedMessage;
+    });
+  }
+
+  Object.keys(managerInstallBaseCorrectionPayload).forEach(field => {
+    applyManagerInstallBaseFixField(updated, field, managerInstallBaseCorrectionPayload[field]);
+    const canonical = normalizeManagerInstallBaseFixField(field);
+    if (canonical && !correctedFields.includes(canonical)) correctedFields.push(canonical);
+  });
+
   updated.rep_visible = Boolean(updated.assigned_rep_name || updated.rep || updated.sales_rep_name);
   updated.rep_assignment_required = !updated.rep_visible;
 
@@ -5617,47 +5795,40 @@ function sendManagerInstallBaseCorrection(id) {
     hub_source: updated.hub_source || "Manager Review Page"
   };
 
-  const applyOwnerCorrection = (target) => {
+  const applyManagerCorrectionPayload = (target) => {
     if (!target || typeof target !== "object") return target;
 
-    const next = { ...target };
-
-    if (correctedRepOwner) {
-      next.assigned_rep_name = correctedRepOwner;
-      next.assigned_rep = correctedRepOwner;
-      next.rep = correctedRepOwner;
-      next.rep_owner = correctedRepOwner;
-      next.sales_rep = correctedRepOwner;
-      next.sales_rep_name = correctedRepOwner;
-      next.rep_visible = true;
-      next.rep_assignment_required = false;
-    }
-
-    if (correctedManagerOwner) {
-      next.manager_name = correctedManagerOwner;
-      next.owner_group_name = correctedManagerOwner;
-      next.owner_group = correctedManagerOwner;
-      next.manager_visible = true;
-    }
+    const correctionPayload = getManagerInstallBaseFixPayloadFromRecord(updated);
+    const next = applyManagerInstallBaseFixPayload(
+      {
+        ...target,
+        corrected_fields: {
+          ...(target.corrected_fields && typeof target.corrected_fields === "object" ? target.corrected_fields : {}),
+          ...(updated.corrected_fields && typeof updated.corrected_fields === "object" ? updated.corrected_fields : {})
+        }
+      },
+      correctionPayload
+    );
 
     next.install_base_corrected_fields = updated.install_base_corrected_fields;
-    next.corrected_fields = {
-      ...(next.corrected_fields && typeof next.corrected_fields === "object" ? next.corrected_fields : {}),
-      ...updated.corrected_fields
-    };
     next.install_base_corrected_values = next.corrected_fields;
     next.corrected_values = next.corrected_fields;
     next.install_base_corrected_field_values = next.corrected_fields;
     next.corrected_field_values = next.corrected_fields;
 
+    if (clean(next.assigned_rep_name || next.rep || next.rep_owner || next.sales_rep_name || next.sales_rep)) {
+      next.rep_visible = true;
+      next.rep_assignment_required = false;
+    }
+
     return next;
   };
 
-  Object.assign(updated, applyOwnerCorrection(updated));
-  Object.assign(repSyncRecord, applyOwnerCorrection(repSyncRecord));
+  Object.assign(updated, applyManagerCorrectionPayload(updated));
+  Object.assign(repSyncRecord, applyManagerCorrectionPayload(repSyncRecord));
 
   const correctedFieldList = updated.install_base_corrected_fields || "rep";
-  const hubCorrectionRecord = applyOwnerCorrection({
+  const hubCorrectionRecord = applyManagerCorrectionPayload({
     ...updated,
 
     // Hub must see this as a returned manager FIX, with the original route
@@ -5748,10 +5919,10 @@ function sendManagerInstallBaseCorrection(id) {
           return item;
         }
         matched = true;
-        return applyOwnerCorrection({ ...item, ...preferred });
+        return applyManagerCorrectionPayload({ ...item, ...preferred });
       });
 
-      if (!matched) next.unshift(applyOwnerCorrection(preferred));
+      if (!matched) next.unshift(applyManagerCorrectionPayload(preferred));
       writeArrayKey(storeKey, next);
     });
 
@@ -5769,7 +5940,7 @@ function sendManagerInstallBaseCorrection(id) {
       const list = Array.isArray(queueData[name]) ? queueData[name] : [];
       queueData[name] = list.map(item => {
         if (!sameSyncRecord(item, updated)) return item;
-        return applyOwnerCorrection({ ...item, ...updated });
+        return applyManagerCorrectionPayload({ ...item, ...updated });
       });
     });
 
@@ -5782,7 +5953,7 @@ function sendManagerInstallBaseCorrection(id) {
         MANAGER_NAME ||
         "Default Manager";
       if (!Array.isArray(queueData[queueBucket])) queueData[queueBucket] = [];
-      queueData[queueBucket].unshift(applyOwnerCorrection(updated));
+      queueData[queueBucket].unshift(applyManagerCorrectionPayload(updated));
     }
 
     localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(queueData));
