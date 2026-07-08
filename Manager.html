@@ -3504,7 +3504,78 @@ function formatReviewText(value) {
     .replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function isManagerOwnershipReviewResolved(rec) {
+  const directLabel = lower(rec.oem_review_label || rec.review_label || "");
+
+  const context = lower([
+    rec.install_base_issue_field,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_issue_note,
+    rec.install_base_action_reason,
+    rec.axis_clarification_reason,
+    rec.rep_action_required,
+    rec.manager_review_request,
+    rec.oem_review_reason,
+    rec.proactive_reason,
+    rec.oem_review_type,
+    rec.review_type,
+    rec.alert_override
+  ].filter(Boolean).join(" "));
+
+  const isOwnershipIssue =
+    directLabel.includes("ownership") ||
+    context.includes("ownership") ||
+    context.includes("assigned rep") ||
+    context.includes("rep owner") ||
+    context.includes("rep name") ||
+    context.includes("owner group") ||
+    context.includes("territory");
+
+  return isOwnershipIssue && hasValidAssignedRep(rec);
+}
+
+function getResolvedManagerInstallBaseLabel(rec) {
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
+
+  if (dom || (age !== null && age !== undefined && age !== "")) {
+    return "Equipment Age";
+  }
+
+  const raw = lower(
+    rec.original_oem_review_type ||
+    rec.original_review_type ||
+    rec.install_base_review_type ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    rec.proactive_signal ||
+    rec.original_oem_review_label ||
+    rec.original_install_base_review_label ||
+    rec.install_base_review_label ||
+    ""
+  );
+
+  if (raw.includes("service")) return "Service Coverage";
+  if (raw.includes("utilization")) return "Utilization";
+  if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
+  if (raw.includes("age") || raw.includes("replacement")) return "Equipment Age";
+  if (raw.includes("conflict")) return "Source Mismatch";
+  if (raw.includes("data")) return "Data Check";
+  if (raw.includes("project")) return "Project / Asset";
+  if (raw.includes("site")) return "Site / Account";
+  if (raw.includes("status")) return "Asset Status";
+
+  return "Asset Status";
+}
+
 function normalizeOemReviewLabelForManager(rec) {
+  if (isManagerOwnershipReviewResolved(rec)) {
+    return getResolvedManagerInstallBaseLabel(rec);
+  }
+
   const directLabel = clean(rec.oem_review_label || rec.review_label || "");
 
   if (directLabel) return directLabel;
@@ -5529,12 +5600,25 @@ function getOriginalInstallBaseReviewReasonForManager(rec) {
     rec.oem_review_reason
   ];
 
-  const valid = candidates
-    .map(v => clean(v))
-    .filter(Boolean)
-    .find(v => !looksLikeTemporaryManagerFixReason(v));
+ const ownershipResolved = isManagerOwnershipReviewResolved(rec);
 
-  return valid || getComputedManagerInstallBaseReviewReason(rec);
+const valid = candidates
+  .map(v => clean(v))
+  .filter(Boolean)
+  .find(v => {
+    if (looksLikeTemporaryManagerFixReason(v)) return false;
+
+    if (
+      ownershipResolved &&
+      lower(v).includes("ownership")
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+return valid || getComputedManagerInstallBaseReviewReason(rec);
 }
 
 function getInstallBaseReviewReasonForManager(rec) {

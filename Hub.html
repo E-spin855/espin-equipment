@@ -1516,8 +1516,111 @@ function formatMergedInstallBaseClarificationReason(rec) {
 function shouldShowInstallBaseReviewLabel(rec) {
   return !hasSourceConflict(rec);
 }
+function isHubOwnershipReviewResolved(rec) {
+  const directLabel = lower(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.install_base_action_label ||
+    rec.install_base_issue_type ||
+    ""
+  );
 
+  const context = lower([
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_corrected_fields,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_action_label,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.conflict_notes
+  ].filter(Boolean).join(" "));
+
+  const isOwnershipIssue =
+    directLabel.includes("ownership") ||
+    context.includes("ownership") ||
+    context.includes("assigned rep") ||
+    context.includes("rep owner") ||
+    context.includes("rep name") ||
+    context.includes("owner group") ||
+    context.includes("territory");
+
+  if (!isOwnershipIssue) return false;
+
+  const needsRep =
+    context.includes("assigned rep") ||
+    context.includes("rep owner") ||
+    context.includes("rep name") ||
+    context.includes("missing rep");
+
+  const needsOwnerGroup =
+    context.includes("owner group") ||
+    context.includes("manager assignment") ||
+    context.includes("manager owner");
+
+  const needsTerritory =
+    context.includes("territory");
+
+  const repResolved = Boolean(getHubRepOwnerValue(rec));
+  const ownerResolved = !isBlankHubField(
+    rec.manager_name || rec.owner_group_name || rec.owner_group,
+    "owner"
+  );
+  const territoryResolved = !isBlankHubField(
+    rec.manager_region || rec.manager_territory || rec.territory,
+    "territory"
+  );
+
+  if (needsRep && !repResolved) return false;
+  if (needsOwnerGroup && !ownerResolved) return false;
+  if (needsTerritory && !territoryResolved) return false;
+
+  return repResolved || ownerResolved || territoryResolved;
+}
+
+function getResolvedHubInstallBaseReviewLabel(rec) {
+  const raw = lower(
+    rec.original_oem_review_type ||
+    rec.original_review_type ||
+    rec.install_base_review_type ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    rec.alert_override ||
+    rec.proactive_type ||
+    rec.proactive_signal ||
+    rec.original_oem_review_label ||
+    rec.original_install_base_review_label ||
+    rec.install_base_review_label ||
+    ""
+  );
+
+  if (raw.includes("service")) return "Service Coverage";
+  if (raw.includes("utilization")) return "Utilization";
+  if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
+  if (raw.includes("age") || raw.includes("replacement")) return "Equipment Age";
+  if (raw.includes("conflict")) return "Source Mismatch";
+  if (raw.includes("data")) return "Data Check";
+  if (raw.includes("project")) return "Project / Asset";
+  if (raw.includes("site")) return "Site / Account";
+  if (raw.includes("status")) return "Asset Status";
+
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+
+  if (dom || ageFromDom(dom)) {
+    return "Equipment Age";
+  }
+
+  return "Asset Status";
+}
 function formatInstallBaseReviewLabel(rec) {
+  if (isHubOwnershipReviewResolved(rec)) {
+    return getResolvedHubInstallBaseReviewLabel(rec);
+  }
+
   const label = clean(
     rec.oem_review_label ||
     rec.review_label ||
@@ -2622,8 +2725,8 @@ rep_fix_required: isFixRequest
 
 install_base_issue_note: exactInstallBaseReason,
 install_base_issue_reason: exactInstallBaseReason,
-    oem_review_type: rec.oem_review_type || rec.review_type || rec.alert_override || "",
-    oem_review_label: rec.oem_review_label || rec.review_label || rec.proactive_reason || "",
+   oem_review_type: formatInstallBaseReviewLabel(rec),
+oem_review_label: formatInstallBaseReviewLabel(rec),
     oem_review_reason: exactInstallBaseReason,
     rep_action_required:
       rec.rep_action_required ||
