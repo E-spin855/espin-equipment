@@ -752,6 +752,49 @@ tbody tr.selected{
 
 /* KEEP FIX BUTTON GOLD */
 
+
+.hub-fix-cell{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-width:120px;
+}
+
+.hub-fix-label{
+  color:#fff2b3;
+  font-size:12px;
+  font-weight:950;
+  line-height:1.1;
+  text-align:center;
+}
+
+.hub-fix-row{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+
+.hub-fix-type-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:28px;
+  padding:5px 9px;
+  border-radius:999px;
+  border:1px solid rgba(255,216,77,.65);
+  background:rgba(255,216,77,.12);
+  color:#fff4cc;
+  font-size:10px;
+  font-weight:950;
+  line-height:1;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
 .fix-data-badge{
   display:inline-flex;
   align-items:center;
@@ -1803,74 +1846,87 @@ function getDataExceptions(rec) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
- const requestText = [
-  rec.axis_clarification_reason,
-  rec.install_base_original_issue_field,
-  rec.install_base_fix_request_field,
-  rec.install_base_issue_field,
-  rec.install_base_corrected_fields,
-  rec.install_base_issue_type,
-  rec.install_base_issue_reason,
-  rec.install_base_action_label,
-  rec.install_base_action_reason,
-  rec.install_base_issue_note,
-  rec.oem_review_reason,
-  rec.review_reason,
-  rec.proactive_reason,
-  rec.rep_action_required,
-  rec.conflict_notes
-].join(" ").toLowerCase();
+  const requestText = [
+    rec.axis_clarification_reason,
+    rec.install_base_clarification_reason,
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_corrected_fields,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_action_label,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason,
+    rec.rep_action_required,
+    rec.conflict_notes
+  ].join(" ").toLowerCase();
 
-const repOwnerRequested =
-  requestText.includes("assigned rep") ||
-  requestText.includes("rep owner") ||
-  requestText.includes("rep name") ||
-  requestText.includes("missing rep");
+  const repOwnerRequested =
+    requestText.includes("assigned rep") ||
+    requestText.includes("rep owner") ||
+    requestText.includes("rep name") ||
+    requestText.includes("sales rep") ||
+    requestText.includes("missing rep");
 
-const ownerGroupRequested =
-  requestText.includes("owner group") ||
-  requestText.includes("manager assignment") ||
-  requestText.includes("manager owner") ||
-  requestText.includes("missing owner group");
+  const ownerGroupRequested =
+    requestText.includes("owner group") ||
+    requestText.includes("manager assignment") ||
+    requestText.includes("manager owner") ||
+    requestText.includes("missing owner group");
 
-const territoryRequested =
-  requestText.includes("territory") ||
-  requestText.includes("manager_region") ||
-  requestText.includes("manager territory") ||
-  requestText.includes("assigned territory");
+  const territoryRequested =
+    requestText.includes("territory") ||
+    requestText.includes("manager_region") ||
+    requestText.includes("manager territory") ||
+    requestText.includes("assigned territory");
 
-if (repOwnerRequested && !getHubRepOwnerValue(rec)) {
-  issues.push({ type: "owner", label: "Missing Rep Owner" });
-} else if (!repOwnerRequested && !getHubRepOwnerValue(rec)) {
-  issues.push({ type: "owner", label: "Missing Rep Owner" });
-}
+  const repOwnerWasCorrected = wasHubFieldCorrectionReturned(rec, "rep");
+  const ownerGroupWasCorrected = wasHubFieldCorrectionReturned(rec, "owner");
+  const territoryWasCorrected = wasHubFieldCorrectionReturned(rec, "territory");
 
-const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
+  if (repOwnerRequested && !repOwnerWasCorrected) {
+    issues.push({ type: "owner", label: "Missing Rep Owner" });
+  } else if (!repOwnerRequested && !getHubRepOwnerValue(rec)) {
+    issues.push({ type: "owner", label: "Missing Rep Owner" });
+  }
 
-if (ownerGroupRequested && isBlankHubField(ownerValue, "owner")) {
-  issues.push({ type: "owner", label: "Missing Owner Group" });
-} else if (!ownerGroupRequested && (!ownerValue || ownerValue === "Unassigned Owner Group")) {
-  issues.push({ type: "owner", label: "Missing Owner Group" });
-}
+  const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
 
-const actualTerritoryValue = clean(
-  rec.manager_region ||
-  rec.manager_territory ||
-  rec.territory ||
-  ""
-);
+  if (ownerGroupRequested && !ownerGroupWasCorrected) {
+    issues.push({ type: "owner", label: "Missing Owner Group" });
+  } else if (
+    !ownerGroupRequested &&
+    (
+      !ownerValue ||
+      isBlankHubField(ownerValue, "owner")
+    )
+  ) {
+    issues.push({ type: "owner", label: "Missing Owner Group" });
+  }
 
-if (territoryRequested && isBlankHubField(actualTerritoryValue, "territory")) {
-  issues.push({ type: "owner", label: "Missing Territory" });
-} else if (
-  !territoryRequested &&
-  (
-    !actualTerritoryValue ||
-    getOwnerTerritory(rec) === "Unassigned Territory"
-  )
-) {
-  issues.push({ type: "owner", label: "Missing Territory" });
-}
+  const actualTerritoryValue = clean(
+    rec.manager_region ||
+    rec.manager_territory ||
+    rec.territory ||
+    ""
+  );
+
+  if (territoryRequested && !territoryWasCorrected) {
+    issues.push({ type: "owner", label: "Missing Territory" });
+  } else if (
+    !territoryRequested &&
+    (
+      !actualTerritoryValue ||
+      isBlankHubField(actualTerritoryValue, "territory") ||
+      getOwnerTerritory(rec) === "Unassigned Territory"
+    )
+  ) {
+    issues.push({ type: "owner", label: "Missing Territory" });
+  }
 
   if (
     lower(rec.source_conflict) === "yes" ||
@@ -2015,6 +2071,90 @@ function isBlankHubField(value, fieldName = "") {
   return false;
 }
 
+function getHubFixDisplayLabel(fieldName) {
+  const field = canonicalInstallBaseFieldName(fieldName);
+
+  if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name"].includes(field)) {
+    return "Rep Owner";
+  }
+
+  if (["territory", "manager_region", "manager_territory", "region"].includes(field)) {
+    return "Territory";
+  }
+
+  if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(field)) {
+    return "Owner Group";
+  }
+
+  if (field === "make") return "Brand";
+  if (field === "serial") return "Serial";
+  if (field === "dom") return "DOM";
+  if (field === "site") return "Site";
+  if (field === "model") return "Model";
+  if (field === "modality") return "Modality";
+  if (field === "project") return "Project / Asset ID";
+
+  return String(fieldName || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getHubMissingFixCellHtml(rec, fieldName) {
+  const label = getHubFixDisplayLabel(fieldName);
+
+  return `
+    <div class="hub-fix-cell">
+      <div class="hub-fix-label">Missing ${escapeHtml(label)}</div>
+      <div class="hub-fix-row">
+        ${getMissingFieldFixHtml(rec, fieldName)}
+        <span class="hub-fix-type-badge">${escapeHtml(label)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function wasHubFieldCorrectionReturned(rec, fieldName) {
+  if (!rec) return false;
+
+  const field = canonicalInstallBaseFieldName(fieldName);
+
+  const aliasMap = {
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    territory: ["territory", "manager_region", "manager_territory", "region"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    modality: ["modality"]
+  };
+
+  const aliases = (aliasMap[field] || [field]).map(canonicalInstallBaseFieldName);
+
+  const correctedText = String(
+    rec.install_base_corrected_fields ||
+    rec.corrected_fields ||
+    rec.install_base_issue_field ||
+    rec.install_base_fix_field ||
+    ""
+  ).toLowerCase();
+
+  if (aliases.some(alias => correctedText.includes(alias))) return true;
+
+  const correctedSources = [
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values,
+    rec.corrected_fields
+  ].filter(obj => obj && typeof obj === "object" && !Array.isArray(obj));
+
+  return correctedSources.some(source =>
+    aliases.some(alias => isRealHubOwnerValue(source[alias]))
+  );
+}
+
 function getMissingFieldFixHtml(rec, fieldName) {
   // "Fix Sent" is shown only after a user manually sends a FIX request
   // from Hub. Automatic routing to Manager does not count as a FIX request.
@@ -2052,7 +2192,7 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   if (isFixedByRep(rec)) return normalHtml;
   if (!fieldIsBlank) return normalHtml;
 
-  return getMissingFieldFixHtml(rec, fieldName);
+  return getHubMissingFixCellHtml(rec, fieldName);
 }
 function wasHubTerritorySpecificallyRequested(rec) {
   if (!rec) return false;
@@ -2090,6 +2230,13 @@ function renderHubTerritoryCell(rec) {
     rec.territory ||
     ""
   );
+
+  if (
+    wasHubTerritorySpecificallyRequested(rec) &&
+    !wasHubFieldCorrectionReturned(rec, "territory")
+  ) {
+    return getHubMissingFixCellHtml(rec, "territory");
+  }
 
   if (wasHubTerritorySpecificallyRequested(rec)) {
     return renderHubFieldValue(rec, "territory", territoryValue);
@@ -2138,13 +2285,20 @@ function wasHubOwnerGroupSpecificallyRequested(rec) {
 function renderHubOwnerGroupCell(rec) {
   const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
 
+  if (
+    wasHubOwnerGroupSpecificallyRequested(rec) &&
+    !wasHubFieldCorrectionReturned(rec, "owner")
+  ) {
+    return getHubMissingFixCellHtml(rec, "owner");
+  }
+
   if (wasHubOwnerGroupSpecificallyRequested(rec)) {
     return renderHubFieldValue(rec, "owner", ownerValue);
   }
 
   if (isBlankHubField(ownerValue, "owner")) {
     if (isFixedByRep(rec)) return escapeHtml("-");
-    return getMissingFieldFixHtml(rec, "owner");
+    return getHubMissingFixCellHtml(rec, "owner");
   }
 
   return escapeHtml(ownerValue);
@@ -2343,103 +2497,108 @@ function getReviewStatus(rec) {
     return { type: "completed", label: "Project Completed" };
   }
 
-  // Only true FIX returns temporarily replace the record's normal badge.
-  // Plain text messages stay inside the communication panel only.
-  if (
-  hasActualInstallBaseCorrection(rec) &&
-  rec.install_base_response_at &&
-  rec.install_base_response_seen !== true
-) {
-  const responseFrom = lower(rec.install_base_response_from || "rep");
-  const assignedRep = getHubRepOwnerValue(rec);
-
-  if (
-    responseFrom === "manager" &&
-    assignedRep &&
-    (
-      rec.install_base_correction_status === "corrected_by_manager" ||
-      rec.install_base_response_status === "manager_correction_sent" ||
-      rec.install_base_fix_status === "manager_reviewed" ||
-      isFixedByManager(rec)
-    )
-  ) {
-    return { type: "source", label: "Fixed → Synced to Rep" };
-  }
-
-  return {
-    type: "response",
-    label: responseFrom === "manager" ? "Manager Response" : "Rep Response"
-  };
-}
- if (
-  !isAutoSyncEligible(rec) &&
-  rec.install_base_release_status !== "released_to_rep" &&
-  rec.install_base_release_status !== "released_to_manager"
-) {
+  const exceptions = getDataExceptions(rec);
   const assignedRep = getHubRepOwnerValue(rec);
   const target = getManualRouteTarget(rec);
-  const exceptions = getDataExceptions(rec);
+
+  // If a correction came back from Manager and created/confirmed a Rep Owner,
+  // the Hub status should describe the completed path, not stay on "Manager Response."
+  if (
+    hasActualInstallBaseCorrection(rec) &&
+    rec.install_base_response_at &&
+    rec.install_base_response_seen !== true
+  ) {
+    const responseFrom = lower(rec.install_base_response_from || "rep");
+
+    if (
+      responseFrom === "manager" &&
+      assignedRep &&
+      (
+        rec.install_base_correction_status === "corrected_by_manager" ||
+        rec.install_base_response_status === "manager_correction_sent" ||
+        rec.install_base_fix_status === "manager_reviewed" ||
+        isFixedByManager(rec)
+      )
+    ) {
+      return { type: "source", label: "Fixed → Synced to Rep" };
+    }
+
+    return {
+      type: "response",
+      label: responseFrom === "manager" ? "Manager Response" : "Rep Response"
+    };
+  }
+
+  // Field-level exceptions must win over route labels.
+  // Example: if Excel says territory/rep owner is missing, do not show "Sent to Manager"
+  // just because a demo owner group or demo territory is visible.
+  if (exceptions.length) {
+    return exceptions[0];
+  }
 
   if (
-    assignedRep &&
-    (
-      rec.install_base_correction_status === "corrected_by_manager" ||
-      rec.install_base_response_status === "manager_correction_sent" ||
-      rec.install_base_fix_status === "manager_reviewed" ||
-      isFixedByManager(rec)
-    )
+    !isAutoSyncEligible(rec) &&
+    rec.install_base_release_status !== "released_to_rep" &&
+    rec.install_base_release_status !== "released_to_manager"
   ) {
-    return { type: "source", label: "Fixed → Synced to Rep" };
+    if (
+      assignedRep &&
+      (
+        rec.install_base_correction_status === "corrected_by_manager" ||
+        rec.install_base_response_status === "manager_correction_sent" ||
+        rec.install_base_fix_status === "manager_reviewed" ||
+        isFixedByManager(rec)
+      )
+    ) {
+      return { type: "source", label: "Fixed → Synced to Rep" };
+    }
+
+    if (target === "manager") {
+      return { type: "source", label: "Sent to Manager" };
+    }
+
+    if (target === "rep") {
+      return { type: "source", label: "Sent to Rep" };
+    }
+
+    return { type: "source", label: "Sync Hold" };
+  }
+
+  if (rec.install_base_release_status === "auto_synced") {
+    return { type: "released", label: "Auto-Synced" };
+  }
+
+  if (isFixedByRep(rec)) {
+    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
+  }
+
+  if (rec.install_base_release_status === "released_to_manager") {
+    return {
+      type: "released",
+      label: rec.install_base_manual_route === true
+        ? "Sent to Manager"
+        : "Auto-Synced to Manager"
+    };
+  }
+
+  if (rec.install_base_release_status === "released_to_rep") {
+    return {
+      type: "released",
+      label: rec.install_base_manual_route === true
+        ? "Sent to Rep"
+        : "Auto-Synced to Rep"
+    };
+  }
+
+  if (rec.install_base_staged === true) {
+    return { type: "staged", label: "Staged Only" };
   }
 
   if (exceptions.length) {
     return exceptions[0];
   }
 
-  if (target === "manager") {
-    return { type: "source", label: "Sent to Manager" };
-  }
-
-  if (target === "rep") {
-    return { type: "source", label: "Sent to Rep" };
-  }
-
-  return { type: "source", label: "Sync Hold" };
-}
-
-if (rec.install_base_release_status === "auto_synced") {
-  return { type: "released", label: "Auto-Synced" };
-}
-
-if (isFixedByRep(rec)) {
-  return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
-}
-  const exceptions = getDataExceptions(rec);
-
- if (rec.install_base_release_status === "released_to_manager") {
-  const exceptions = getDataExceptions(rec);
-
-  if (exceptions.length) {
-    return exceptions[0];
-  }
-
-  return { type: "released", label: "Sent to Manager" };
-}
-
-if (rec.install_base_release_status === "released_to_rep") {
-  const exceptions = getDataExceptions(rec);
-
-  if (exceptions.length) {
-    return exceptions[0];
-  }
-
-  return { type: "released", label: "Sent to Rep" };
-}
-  if (exceptions.length) {
-    return exceptions[0];
-  }
-
-  return { type: "ok", label: "Ready for Review" };
+  return { type: "ok", label: "Ready" };
 }
 
 function getRepLifecycleLabelForInstallBaseRecord(rec) {
