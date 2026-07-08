@@ -1803,17 +1803,74 @@ function getDataExceptions(rec) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
-  if (!getHubRepOwnerValue(rec)) {
-    issues.push({ type: "owner", label: "Missing Rep Owner" });
-  }
+ const requestText = [
+  rec.axis_clarification_reason,
+  rec.install_base_original_issue_field,
+  rec.install_base_fix_request_field,
+  rec.install_base_issue_field,
+  rec.install_base_corrected_fields,
+  rec.install_base_issue_type,
+  rec.install_base_issue_reason,
+  rec.install_base_action_label,
+  rec.install_base_action_reason,
+  rec.install_base_issue_note,
+  rec.oem_review_reason,
+  rec.review_reason,
+  rec.proactive_reason,
+  rec.rep_action_required,
+  rec.conflict_notes
+].join(" ").toLowerCase();
 
-  if (!clean(rec.manager_name) || rec.manager_name === "Unassigned Owner Group") {
-    issues.push({ type: "owner", label: "Missing Owner Group" });
-  }
+const repOwnerRequested =
+  requestText.includes("assigned rep") ||
+  requestText.includes("rep owner") ||
+  requestText.includes("rep name") ||
+  requestText.includes("missing rep");
 
-  if (!clean(rec.manager_region || rec.manager_territory || rec.territory) || getOwnerTerritory(rec) === "Unassigned Territory") {
-    issues.push({ type: "owner", label: "Missing Territory" });
-  }
+const ownerGroupRequested =
+  requestText.includes("owner group") ||
+  requestText.includes("manager assignment") ||
+  requestText.includes("manager owner") ||
+  requestText.includes("missing owner group");
+
+const territoryRequested =
+  requestText.includes("territory") ||
+  requestText.includes("manager_region") ||
+  requestText.includes("manager territory") ||
+  requestText.includes("assigned territory");
+
+if (repOwnerRequested && !getHubRepOwnerValue(rec)) {
+  issues.push({ type: "owner", label: "Missing Rep Owner" });
+} else if (!repOwnerRequested && !getHubRepOwnerValue(rec)) {
+  issues.push({ type: "owner", label: "Missing Rep Owner" });
+}
+
+const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
+
+if (ownerGroupRequested && isBlankHubField(ownerValue, "owner")) {
+  issues.push({ type: "owner", label: "Missing Owner Group" });
+} else if (!ownerGroupRequested && (!ownerValue || ownerValue === "Unassigned Owner Group")) {
+  issues.push({ type: "owner", label: "Missing Owner Group" });
+}
+
+const actualTerritoryValue = clean(
+  rec.manager_region ||
+  rec.manager_territory ||
+  rec.territory ||
+  ""
+);
+
+if (territoryRequested && isBlankHubField(actualTerritoryValue, "territory")) {
+  issues.push({ type: "owner", label: "Missing Territory" });
+} else if (
+  !territoryRequested &&
+  (
+    !actualTerritoryValue ||
+    getOwnerTerritory(rec) === "Unassigned Territory"
+  )
+) {
+  issues.push({ type: "owner", label: "Missing Territory" });
+}
 
   if (
     lower(rec.source_conflict) === "yes" ||
