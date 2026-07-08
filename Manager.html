@@ -5618,11 +5618,33 @@ function sendManagerInstallBaseCorrection(id) {
   Object.assign(updated, applyOwnerCorrection(updated));
   Object.assign(repSyncRecord, applyOwnerCorrection(repSyncRecord));
 
+  const correctedFieldList = updated.install_base_corrected_fields || "rep";
+  const hubCorrectionRecord = applyOwnerCorrection({
+    ...updated,
+
+    // Hub must see this as a returned manager FIX, with the original route
+    // context preserved long enough for hasActualInstallBaseCorrection().
+    install_base_response_status: "manager_correction_sent",
+    install_base_correction_status: "corrected_by_manager",
+    install_base_fix_status: "manager_reviewed",
+    install_base_manual_route: true,
+    install_base_fix_request: true,
+    install_base_fix_request_field: correctedFieldList,
+    install_base_issue_field: correctedFieldList,
+    install_base_corrected_fields: correctedFieldList,
+
+    manager_visible: true,
+    install_base_visible: true,
+    install_base_response_from: "manager",
+    install_base_response_to: "install_base",
+    install_base_corrected_source: "manager"
+  });
+
   state.records = cleanAndPrepend(state.records, updated);
 
-  writeCorrectedArrayRecord(INSTALL_BASE_RESPONSE_KEY, updated);
-  writeCorrectedArrayRecord(INSTALL_BASE_KEY, updated);
-  writeCorrectedArrayRecord(INSTALL_BASE_FINAL_SYNC_KEY, updated);
+  writeCorrectedArrayRecord(INSTALL_BASE_RESPONSE_KEY, hubCorrectionRecord);
+  writeCorrectedArrayRecord(INSTALL_BASE_KEY, hubCorrectionRecord);
+  writeCorrectedArrayRecord(INSTALL_BASE_FINAL_SYNC_KEY, hubCorrectionRecord);
   writeCorrectedArrayRecord(STORAGE_KEY, updated);
 
   if (updated.rep_visible) {
@@ -5674,6 +5696,12 @@ function sendManagerInstallBaseCorrection(id) {
       const records = readArrayKey(storeKey);
       const preferred = storeKey === REP_QUEUE_KEY && updated.rep_visible
         ? repSyncRecord
+        : (
+            storeKey === INSTALL_BASE_RESPONSE_KEY ||
+            storeKey === INSTALL_BASE_KEY ||
+            storeKey === INSTALL_BASE_FINAL_SYNC_KEY
+          )
+        ? hubCorrectionRecord
         : updated;
 
       let matched = false;
