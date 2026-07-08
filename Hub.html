@@ -2321,6 +2321,7 @@ function getReviewStatus(rec) {
 ) {
   const assignedRep = getHubRepOwnerValue(rec);
   const target = getManualRouteTarget(rec);
+  const exceptions = getDataExceptions(rec);
 
   if (
     assignedRep &&
@@ -2332,6 +2333,10 @@ function getReviewStatus(rec) {
     )
   ) {
     return { type: "source", label: "Fixed → Synced to Rep" };
+  }
+
+  if (exceptions.length) {
+    return exceptions[0];
   }
 
   if (target === "manager") {
@@ -2354,14 +2359,25 @@ if (isFixedByRep(rec)) {
 }
   const exceptions = getDataExceptions(rec);
 
-  if (rec.install_base_release_status === "released_to_manager") {
-    return { type: "released", label: "Released to Manager" };
+ if (rec.install_base_release_status === "released_to_manager") {
+  const exceptions = getDataExceptions(rec);
+
+  if (exceptions.length) {
+    return exceptions[0];
   }
 
-  if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Sent to Rep" };
+  return { type: "released", label: "Sent to Manager" };
+}
+
+if (rec.install_base_release_status === "released_to_rep") {
+  const exceptions = getDataExceptions(rec);
+
+  if (exceptions.length) {
+    return exceptions[0];
   }
 
+  return { type: "released", label: "Sent to Rep" };
+}
   if (exceptions.length) {
     return exceptions[0];
   }
