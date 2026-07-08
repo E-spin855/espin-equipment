@@ -2995,6 +2995,117 @@ function sameRecord(a, b) {
   return false;
 }
 
+
+function isRealManagerOwnerValue(value) {
+  const text = clean(value);
+  const normalized = lower(text);
+  return Boolean(
+    text &&
+    ![
+      "-",
+      "n/a",
+      "na",
+      "none",
+      "null",
+      "unknown",
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "no owner"
+    ].includes(normalized)
+  );
+}
+
+function getManagerRepOwnerValue(rec) {
+  if (!rec) return "";
+
+  const sources = [
+    rec.corrected_fields,
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values,
+    rec
+  ].filter(source => source && typeof source === "object" && !Array.isArray(source));
+
+  const aliases = [
+    "assigned_rep_name",
+    "assigned_rep",
+    "rep",
+    "rep_owner",
+    "owner_name",
+    "sales_rep",
+    "sales_rep_name"
+  ];
+
+  for (const source of sources) {
+    for (const alias of aliases) {
+      const value = clean(source[alias]);
+      if (isRealManagerOwnerValue(value)) return value;
+    }
+  }
+
+  return "";
+}
+
+function getManagerOwnerGroupValue(rec) {
+  if (!rec) return "";
+
+  const sources = [
+    rec.corrected_fields,
+    rec.corrected_values,
+    rec.install_base_corrected_values,
+    rec.corrected_field_values,
+    rec.install_base_corrected_field_values,
+    rec
+  ].filter(source => source && typeof source === "object" && !Array.isArray(source));
+
+  const aliases = ["manager_name", "owner_group_name", "owner_group", "manager", "owner"];
+
+  for (const source of sources) {
+    for (const alias of aliases) {
+      const value = clean(source[alias]);
+      if (isRealManagerOwnerValue(value)) return value;
+    }
+  }
+
+  return "";
+}
+
+function applyManagerOwnerAliases(target, repOwner, managerOwner) {
+  if (!target || typeof target !== "object") return target;
+
+  const rep = clean(repOwner);
+  if (isRealManagerOwnerValue(rep)) {
+    target.assigned_rep_name = rep;
+    target.assigned_rep = rep;
+    target.rep = rep;
+    target.rep_owner = rep;
+    target.owner_name = rep;
+    target.sales_rep = rep;
+    target.sales_rep_name = rep;
+    target.rep_visible = true;
+    target.rep_assignment_required = false;
+  }
+
+  const manager = clean(managerOwner);
+  if (isRealManagerOwnerValue(manager)) {
+    target.manager_name = manager;
+    target.owner_group_name = manager;
+    target.owner_group = manager;
+    target.manager_visible = true;
+  }
+
+  return target;
+}
+
+function mergeManagerCorrectedFieldObjects(existing, rec) {
+  return {
+    ...(existing.corrected_fields && typeof existing.corrected_fields === "object" ? existing.corrected_fields : {}),
+    ...(rec.corrected_fields && typeof rec.corrected_fields === "object" ? rec.corrected_fields : {})
+  };
+}
+
 function mergeRecordsByKey(...groups) {
   const map = new Map();
 
@@ -3119,7 +3230,11 @@ const normalSeen = isFreshRepUpdate
   releaseIsUnseen ||
   legacyUnseen;
 
-    map.set(key, {
+    const mergedRepOwner = getManagerRepOwnerValue(rec) || getManagerRepOwnerValue(existing);
+    const mergedManagerOwner = getManagerOwnerGroupValue(rec) || getManagerOwnerGroupValue(existing);
+    const mergedCorrectedFields = mergeManagerCorrectedFieldObjects(existing, rec);
+
+    map.set(key, applyManagerOwnerAliases({
       ...existing,
       ...rec,
       key,
@@ -3207,8 +3322,18 @@ manager_flash_text: isFreshRepUpdate
       install_base_issue_reason: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_reason || existing.install_base_issue_reason || ""),
       install_base_issue_note: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_issue_note || existing.install_base_issue_note || ""),
       install_base_rep_action_required: managerInstallBaseCorrectionResolved ? "" : (rec.install_base_rep_action_required || existing.install_base_rep_action_required || ""),
-      rep_fix_required: managerInstallBaseCorrectionResolved ? "" : (rec.rep_fix_required || existing.rep_fix_required || "")
-    });
+      rep_fix_required: managerInstallBaseCorrectionResolved ? "" : (rec.rep_fix_required || existing.rep_fix_required || ""),
+
+      corrected_fields: mergedCorrectedFields,
+      corrected_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.corrected_values || existing.corrected_values),
+      install_base_corrected_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.install_base_corrected_values || existing.install_base_corrected_values),
+      corrected_field_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.corrected_field_values || existing.corrected_field_values),
+      install_base_corrected_field_values: Object.keys(mergedCorrectedFields).length ? mergedCorrectedFields : (rec.install_base_corrected_field_values || existing.install_base_corrected_field_values),
+      install_base_corrected_fields:
+        rec.install_base_corrected_fields ||
+        existing.install_base_corrected_fields ||
+        Object.keys(mergedCorrectedFields).join(",")
+    }, mergedRepOwner, mergedManagerOwner));
   });
 
   return Array.from(map.values());
@@ -4809,8 +4934,8 @@ function getManagerInstallBaseFieldsForEdit(rec) {
 }
 
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
-  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
+  if (key === "manager_name") return getManagerOwnerGroupValue(rec) || "";
+  if (key === "assigned_rep_name") return getManagerRepOwnerValue(rec) || "";
   return rec[key] || "";
 }
 
@@ -4923,28 +5048,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
 
 function hasValidAssignedRep(rec) {
-  const name = String(
-    rec?.assigned_rep_name ||
-    rec?.rep ||
-    rec?.sales_rep_name ||
-    ""
-  ).trim();
-
-  const normalized = name.toLowerCase();
-
-  return Boolean(
-    name &&
-    ![
-      "unassigned",
-      "unassigned rep",
-      "no rep",
-      "none",
-      "n/a",
-      "na",
-      "unknown",
-      "-"
-    ].includes(normalized)
-  );
+  return Boolean(getManagerRepOwnerValue(rec));
 }
 
 function sendManagerInstallBaseCorrection(id) {
@@ -5071,20 +5175,23 @@ function sendManagerInstallBaseCorrection(id) {
 
     install_base_corrected_fields: Object.keys(correctedFields).join(","),
     corrected_fields: correctedFields,
+    corrected_values: correctedFields,
+    install_base_corrected_values: correctedFields,
+    corrected_field_values: correctedFields,
+    install_base_corrected_field_values: correctedFields,
 
-    // Keep the returned record recognizable as a completed Hub FIX return.
-    // Hub clears the open request UI after it merges the corrected values.
+    // Clear temporary Install Base request fields after Manager correction.
     install_base_manager_request: false,
     install_base_manual_route: true,
-    install_base_fix_request: true,
-    install_base_fix_request_field: Object.keys(correctedFields).join(","),
-    install_base_released_to: "manager",
-    release_destination: "manager",
-    install_base_release_status: "manager_correction_sent",
+    install_base_fix_request: false,
+    install_base_fix_request_field: "",
+    install_base_released_to: "",
+    release_destination: "",
+    install_base_release_status: "",
     install_base_action_label: "",
     install_base_action_reason: "",
-    install_base_issue_field: Object.keys(correctedFields).join(","),
-    install_base_issue_type: "corrected_field",
+    install_base_issue_field: "",
+    install_base_issue_type: "",
     install_base_issue_reason: "",
     install_base_issue_note: "",
     install_base_rep_action_required: "",
