@@ -2258,22 +2258,44 @@ function getReviewStatus(rec) {
     };
   }
 
+ if (
+  !isAutoSyncEligible(rec) &&
+  rec.install_base_release_status !== "released_to_rep" &&
+  rec.install_base_release_status !== "released_to_manager"
+) {
+  const assignedRep = getHubRepOwnerValue(rec);
+  const target = getManualRouteTarget(rec);
+
   if (
-    !isAutoSyncEligible(rec) &&
-    rec.install_base_release_status !== "released_to_rep" &&
-    rec.install_base_release_status !== "released_to_manager"
+    assignedRep &&
+    (
+      rec.install_base_correction_status === "corrected_by_manager" ||
+      rec.install_base_response_status === "manager_correction_sent" ||
+      rec.install_base_fix_status === "manager_reviewed" ||
+      isFixedByManager(rec)
+    )
   ) {
-    return { type: "source", label: "Sync Hold" };
+    return { type: "source", label: "Fixed → Synced to Rep" };
   }
 
-  if (rec.install_base_release_status === "auto_synced") {
-    return { type: "released", label: "Auto-Synced" };
+  if (target === "manager") {
+    return { type: "source", label: "Sent to Manager" };
   }
 
-  if (isFixedByRep(rec)) {
-    return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
+  if (target === "rep") {
+    return { type: "source", label: "Sent to Rep" };
   }
 
+  return { type: "source", label: "Sync Hold" };
+}
+
+if (rec.install_base_release_status === "auto_synced") {
+  return { type: "released", label: "Auto-Synced" };
+}
+
+if (isFixedByRep(rec)) {
+  return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
+}
   const exceptions = getDataExceptions(rec);
 
   if (rec.install_base_release_status === "released_to_manager") {
