@@ -1777,6 +1777,28 @@ function getHubCorrectedFieldAliases(fieldName) {
   }[fieldName] || [fieldName];
 }
 
+function isRealHubCorrectedValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  return Boolean(
+    normalized &&
+    ![
+      "-",
+      "n/a",
+      "na",
+      "none",
+      "null",
+      "unknown",
+      "unassigned",
+      "unassigned rep",
+      "no rep",
+      "no owner",
+      "unassigned owner group",
+      "unassigned territory"
+    ].includes(normalized)
+  );
+}
+
 function getHubCorrectedFieldValue(rec, fieldName) {
   if (!rec) return "";
 
@@ -1792,13 +1814,13 @@ function getHubCorrectedFieldValue(rec, fieldName) {
   for (const source of sources) {
     for (const alias of aliases) {
       const value = clean(source[alias]);
-      if (value) return value;
+      if (isRealHubCorrectedValue(value)) return value;
     }
   }
 
   for (const alias of aliases) {
     const value = clean(rec[alias]);
-    if (value) return value;
+    if (isRealHubCorrectedValue(value)) return value;
   }
 
   return "";
@@ -2238,13 +2260,15 @@ function mergeRepResponsesIntoRecords() {
         .forEach(field => {
           const aliases = getHubCorrectedFieldAliases(field);
           const value =
-            window.AxisUtils?.getInstallBaseFieldValue?.(resp, field) ||
-            resp[field] ||
-            aliases.map(alias => clean(resp[alias])).find(Boolean) ||
             getHubCorrectedFieldValue(resp, field) ||
+            (isRealHubCorrectedValue(window.AxisUtils?.getInstallBaseFieldValue?.(resp, field))
+              ? window.AxisUtils.getInstallBaseFieldValue(resp, field)
+              : "") ||
+            (isRealHubCorrectedValue(resp[field]) ? resp[field] : "") ||
+            aliases.map(alias => clean(resp[alias])).find(isRealHubCorrectedValue) ||
             resp[field === "serial" ? "serial_number" : field === "project" ? "oem_project_id" : field === "rep" ? "assigned_rep_name" : field === "manager" ? "manager_name" : field];
 
-          if (value) {
+          if (isRealHubCorrectedValue(value)) {
             window.AxisUtils?.setInstallBaseFieldValue?.(canonicalMerged, field, value);
             if (field === "rep") {
               canonicalMerged.assigned_rep_name = value;
