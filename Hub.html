@@ -1426,7 +1426,59 @@ function formatManualRouteTarget(value) {
 
   return "Manual Review";
 }
+function getHubInstallBaseReviewReason(rec) {
+  const label = formatInstallBaseReviewLabel(rec);
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
 
+  const oldReason = clean(
+    rec.axis_clarification_reason ||
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
+
+  const oldReasonLower = lower(oldReason);
+
+  const oldReasonIsAssignmentFix =
+    oldReasonLower.includes("assigned rep") ||
+    oldReasonLower.includes("rep name") ||
+    oldReasonLower.includes("rep owner") ||
+    oldReasonLower.includes("owner group") ||
+    oldReasonLower.includes("territory") ||
+    oldReasonLower.includes("missing");
+
+  if (label === "Equipment Age" && oldReasonIsAssignmentFix) {
+    if (dom && age !== null && age !== undefined && age !== "") {
+      return `Equipment age review based on DOM ${dom} (${age} years).`;
+    }
+
+    if (dom) {
+      return `Equipment age review based on DOM ${dom}.`;
+    }
+
+    return "Equipment age review.";
+  }
+
+  if (oldReason) return oldReason;
+
+  if (label === "Equipment Age") {
+    if (dom && age !== null && age !== undefined && age !== "") {
+      return `Equipment age review based on DOM ${dom} (${age} years).`;
+    }
+
+    if (dom) return `Equipment age review based on DOM ${dom}.`;
+
+    return "Equipment age review.";
+  }
+
+  return `${label} review.`;
+}
 function formatInstallBaseClarificationReason(rec) {
   if (hasSourceConflict(rec)) {
     const conflictReason = getSourceConflictReason(rec);
@@ -4494,7 +4546,7 @@ function renderDetail() {
         <div style="padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.42);background:rgba(8,18,35,.72);">
           <div class="k" style="margin-bottom:6px;">Reason</div>
           <div class="v" style="font-size:16px;line-height:1.45;">
-            ${escapeHtml(formatMergedInstallBaseClarificationReason(rec))}
+            ${escapeHtml(getHubInstallBaseReviewReason(rec))}
           </div>
         </div>
       </div>
