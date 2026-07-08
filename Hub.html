@@ -1997,7 +1997,49 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
 
   return getMissingFieldFixHtml(rec, fieldName);
 }
+function wasHubTerritorySpecificallyRequested(rec) {
+  if (!rec) return false;
 
+  const requestText = [
+    rec.axis_clarification_reason,
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_corrected_fields,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_action_label,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason,
+    rec.rep_action_required,
+    rec.conflict_notes
+  ].join(" ").toLowerCase();
+
+  return (
+    requestText.includes("territory") ||
+    requestText.includes("manager_region") ||
+    requestText.includes("manager territory") ||
+    requestText.includes("assigned territory")
+  );
+}
+
+function renderHubTerritoryCell(rec) {
+  const territoryValue = clean(
+    rec.manager_region ||
+    rec.manager_territory ||
+    rec.territory ||
+    ""
+  );
+
+  if (wasHubTerritorySpecificallyRequested(rec)) {
+    return renderHubFieldValue(rec, "territory", territoryValue);
+  }
+
+  return renderHubFieldValue(rec, "territory", getOwnerTerritory(rec));
+}
 function wasHubOwnerGroupSpecificallyRequested(rec) {
   if (!rec) return false;
 
@@ -3877,7 +3919,7 @@ completionUnseen ? "install-base-response-flash" : ""
 
 	      <td>${renderHubOwnerGroupCell(rec)}</td>
 
-	      <td>${renderHubFieldValue(rec, "territory", getOwnerTerritory(rec))}</td>
+	      <td>${renderHubTerritoryCell(rec)}</td>
 
 	      <td>${renderHubFieldValue(rec, "rep", getHubRepOwnerValue(rec))}</td>
 
