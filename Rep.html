@@ -4393,7 +4393,7 @@ queue.forEach(item => {
     if (workspaceRecord.key) byKey.set(String(workspaceRecord.key), workspaceRecord);
     if (workspaceRecord.oem_project_id || workspaceRecord.serial_number) {
       byProjectSerial.set(
-        `${String(workspaceRecord.oem_project_id || "")} ${String(workspaceRecord.serial_number || "")}`,
+        `${String(workspaceRecord.oem_project_id || "")}\0${String(workspaceRecord.serial_number || "")}`,
         workspaceRecord
       );
     }
@@ -4538,7 +4538,12 @@ const REP_OWNED_MERGE_FIELDS = [
   "rep_added_install_base",
   "rep_added_at",
   "rep_hidden",
-  "rep_deleted"
+  "rep_deleted",
+  "territory",
+  "manager_territory",
+  "manager_region",
+  "owner_group",
+  "owner_group_name"
 ];
 
 function hasMergeValue(v) {
@@ -4789,6 +4794,115 @@ function syncToManagerQueue(rec) {
   }
 }
 
+
+function isRepOwnedInstallBaseRecord(rec) {
+  if (!rec) return false;
+
+  const sourceText = lower([
+    rec.source,
+    rec.hub_source,
+    rec.record_origin,
+    rec.install_base_sync_direction,
+    rec.install_base_release_status
+  ].filter(Boolean).join(" "));
+
+  return Boolean(
+    rec.rep_added_install_base === true ||
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    sourceText.includes("csv") ||
+    sourceText.includes("rep added") ||
+    sourceText.includes("rep uploaded") ||
+    sourceText.includes("rep owned") ||
+    sourceText.includes("rep_to_install_base") ||
+    sourceText.includes("rep_local_record")
+  );
+}
+
+function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
+  const now = new Date().toISOString();
+  const key = rec.key || getRecordKey(rec);
+  const repName =
+    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+    rec.assigned_rep_name ||
+    rec.rep_owner ||
+    rec.rep_name ||
+    "Rep";
+
+  return {
+    ...rec,
+    key,
+    id: rec.id || key,
+
+    source: rec.source || "Rep Uploaded Install Base",
+    hub_source: "Rep Review Page",
+    record_origin: rec.record_origin || "rep_uploaded_install_base",
+    install_base_sync_direction: "rep_to_install_base",
+    install_base_sync_reason: reason,
+
+    rep_owned_install_base: true,
+    rep_loaded_from_upload: rec.rep_loaded_from_upload === true,
+    rep_added_install_base: rec.rep_added_install_base === true || rec.rep_loaded_from_upload === true,
+
+    rep_visible: true,
+    install_base_visible: true,
+    install_base_received_from_rep: true,
+    install_base_received_from_rep_at: rec.install_base_received_from_rep_at || now,
+    install_base_last_rep_update_at: now,
+    install_base_last_rep_update_by: repName,
+
+    install_base_response_status:
+      reason === "rep_upload" ? "rep_uploaded_record" : "rep_record_updated",
+    install_base_response_message:
+      rec.rep_notes ||
+      rec.rep_action_label ||
+      rec.rep_selected_action_label ||
+      rec.oem_review_reason ||
+      "Rep-owned install-base record updated.",
+    install_base_response_note:
+      rec.rep_notes || rec.oem_review_reason || rec.install_base_review_reason || "",
+    install_base_response_by: repName,
+    install_base_response_at: now,
+    install_base_response_seen: false,
+
+    territory: rec.territory || rec.manager_territory || rec.manager_region || rec.region || "",
+    manager_territory: rec.manager_territory || rec.territory || rec.region || "",
+    manager_region: rec.manager_region || rec.territory || rec.region || "",
+
+    manager_visible: rec.manager_visible === true
+  };
+}
+
+function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
+  if (!isRepOwnedInstallBaseRecord(rec)) return;
+
+  const packet = buildRepOwnedInstallBasePacket(rec, reason);
+
+  let installBaseRecords = readArrayKey(INSTALL_BASE_KEY);
+  installBaseRecords = installBaseRecords.filter(item => !sameWorkspaceEquipmentRecord(item, packet));
+  installBaseRecords.unshift(packet);
+  writeArrayKey(INSTALL_BASE_KEY, installBaseRecords);
+
+  let responseQueue = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
+  responseQueue = responseQueue.filter(item => !sameWorkspaceEquipmentRecord(item, packet));
+  responseQueue.unshift(packet);
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
+
+  const ping = String(Date.now());
+  localStorage.setItem("axis_install_base_records_ping_v1", ping);
+  localStorage.setItem("axis_install_base_sync_ping_v1", ping);
+  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, ping);
+
+  try {
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "axis_install_base_records_ping_v1",
+      newValue: ping
+    }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
+}
+
 function buildRepLocalPacket(rec) {
   if (!rec) return rec;
 
@@ -4862,6 +4976,7 @@ function syncFeedStatus(rec) {
   saveRecords();
 
   syncToManagerQueue(managerPacket);
+  syncRepOwnedRecordToInstallBase(rec, "rep_update");
 
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
@@ -4871,6 +4986,12 @@ function syncFeedStatus(rec) {
     window.dispatchEvent(new Event("rep_feed_update"));
   }
 }
+function syncRecordEverywhere(rec) {
+  if (!rec) return;
+  syncFeedStatus(rec);
+  syncRepOwnedRecordToInstallBase(rec, "rep_update");
+}
+
 function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
   if (!rec || !outcome) return;
 
@@ -9090,7 +9211,52 @@ function render() {
         }
 
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+
+        // Flexible upload parsing:
+        // If a demo workbook has title/instruction rows above the real headers,
+        // detect the actual header row instead of treating the title as a field name.
+        const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+        const knownUploadHeaders = new Set([
+          "oem_project_id","project_id","make","model","modality","serial_number","serial","dom","year",
+          "site","hospital","hospital_name","facility","site_name","customer_name","account",
+          "site_address","street_address","address","street","city","state","zip_code","zip","postal_code","territory","manager_territory","manager_region","region","owner_group","owner_group_name",
+          "sales_rep_first","sales_rep_last","sales_rep_company","sales_rep_phone","sales_rep_email",
+          "contact_name","contact_title","contact_phone","contact_email",
+          "next_action_date","threshold_years","alert_override","alert_enabled",
+          "proactive_signal","proactive_type","proactive_date","proactive_reason","proactive_enabled",
+          "oem_review_type","oem_review_label","oem_review_reason","rep_action_required",
+          "oem_review_action_required","manager_review_request","oem_review_level",
+          "utilization","condition","service_cost_trend"
+        ]);
+
+        let headerRowIndex = 0;
+        let bestHeaderScore = -1;
+        matrix.slice(0, 12).forEach((row, idx) => {
+          const score = (row || []).reduce((sum, cell) => {
+            const key = normalizeKey(String(cell || ""));
+            return sum + (knownUploadHeaders.has(key) ? 1 : 0);
+          }, 0);
+          if (score > bestHeaderScore) {
+            bestHeaderScore = score;
+            headerRowIndex = idx;
+          }
+        });
+
+        let raw = [];
+        if (bestHeaderScore >= 2) {
+          const headers = (matrix[headerRowIndex] || []).map(h => String(h || ""));
+          raw = matrix.slice(headerRowIndex + 1)
+            .filter(row => Array.isArray(row) && row.some(cell => String(cell || "").trim()))
+            .map(row => {
+              const obj = {};
+              headers.forEach((header, idx) => {
+                if (String(header || "").trim()) obj[header] = row[idx] || "";
+              });
+              return obj;
+            });
+        } else {
+          raw = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+        }
 
         const records = raw.map(row => {
           const obj = {};
@@ -9102,7 +9268,16 @@ function render() {
 
           return {
             id: uuid(),
-            source: "CSV",
+            source: "Rep Uploaded Install Base",
+            hub_source: "Rep Review Page",
+            record_origin: "rep_uploaded_install_base",
+            install_base_sync_direction: "rep_to_install_base",
+            rep_loaded_from_upload: true,
+            rep_owned_install_base: true,
+            rep_added_install_base: true,
+            install_base_visible: true,
+            install_base_received_from_rep: true,
+            install_base_received_from_rep_at: new Date().toISOString(),
             _pushed_to_feed: false,
 
             oem_project_id: obj.oem_project_id || obj.project_id || "",
@@ -9126,6 +9301,11 @@ function render() {
             city: obj.city || obj.town || "",
             state: obj.state || obj.province || "",
             zip_code: obj.zip_code || obj.zip || obj.postal_code || obj.postal || "",
+            territory: obj.territory || obj.manager_territory || obj.manager_region || obj.region || "",
+            manager_territory: obj.manager_territory || obj.territory || obj.region || "",
+            manager_region: obj.manager_region || obj.territory || obj.region || "",
+            owner_group: obj.owner_group || obj.owner_group_name || "",
+            owner_group_name: obj.owner_group_name || obj.owner_group || "",
 
             sales_rep_first: obj.sales_rep_first || "",
             sales_rep_last: obj.sales_rep_last || "",
@@ -9224,7 +9404,8 @@ function render() {
             rep_visible: true,
             manager_visible: false
           });
-          upsertRepWorkspaceRecord(prepared, { append: true });
+          const upsertResult = upsertRepWorkspaceRecord(prepared, { append: true });
+          syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_upload");
         });
 
         saveRecords();
@@ -9315,10 +9496,17 @@ function render() {
         install_base_released_to: "rep",
         release_destination: "rep",
         rep_visible: true,
-        manager_visible: false
+        install_base_visible: true,
+        install_base_received_from_rep: true,
+        install_base_received_from_rep_at: now,
+        manager_visible: false,
+        territory: state.selectedRepTerritory || "",
+        manager_territory: state.selectedRepTerritory || "",
+        manager_region: state.selectedRepTerritory || ""
       });
 
       const upsertResult = upsertRepWorkspaceRecord(rec);
+      syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_added_install_base");
       state.selectedId = upsertResult.record.id;
       saveRecords();
       closeOwnInstallBaseModal();
