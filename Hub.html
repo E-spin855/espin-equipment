@@ -3524,21 +3524,37 @@ function getVisibleHubFixFields(rec) {
   if (!rec || hasActualInstallBaseCorrection(rec)) return [];
 
   const checks = [
-    ["project", rec.oem_project_id || rec.asset_id],
-    ["make", rec.make],
+    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id],
+    ["make", rec.make || rec.manufacturer || rec.brand],
     ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "")],
-    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || "")],
+    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || rec.region || "")],
     ["rep", getHubRepOwnerValue(rec)],
-    ["site", rec.site],
-    ["modality", rec.modality],
-    ["model", rec.model],
-    ["serial", rec.serial_number || rec.serial],
-    ["dom", rec.dom]
+    ["site", clean(
+      rec.site ||
+      rec.site_name ||
+      rec.facility ||
+      rec.facility_name ||
+      rec.hospital_name ||
+      rec.customer_name ||
+      rec.account_name ||
+      rec.location ||
+      ""
+    )],
+    ["modality", rec.modality || rec.equipment_modality],
+    ["model", rec.model || rec.equipment_model],
+    ["serial", rec.serial_number || rec.serial || rec.system_serial],
+    ["dom", rec.dom || rec.manufacture_year || rec.year]
   ];
 
   return checks
     .filter(([field, value]) => {
+      // Match the actual cell renderer:
+      // 1) an unresolved Hub FIX request shows a FIX button even when a value exists;
+      // 2) a blank/placeholder value shows a FIX button until corrected.
+      if (isHubUnresolvedFixField(rec, field)) return true;
+
       if (!isBlankHubField(value, field)) return false;
+
       const corrected = getHubCorrectedDisplayValue(rec, field);
       return isBlankHubField(corrected, field);
     })
