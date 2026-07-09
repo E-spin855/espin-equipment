@@ -1660,6 +1660,10 @@ function isHubOwnershipReviewResolved(rec) {
   const needsTerritory =
     context.includes("territory");
 
+  if (needsRep && !wasHubFieldCorrectionReturned(rec, "rep")) return false;
+  if (needsOwnerGroup && !wasHubFieldCorrectionReturned(rec, "owner")) return false;
+  if (needsTerritory && !wasHubFieldCorrectionReturned(rec, "territory")) return false;
+
   const repResolved = Boolean(getHubRepOwnerValue(rec));
   const ownerResolved = !isBlankHubField(
     rec.manager_name || rec.owner_group_name || rec.owner_group,
@@ -2124,9 +2128,7 @@ function wasHubFieldCorrectionReturned(rec, fieldName) {
 
   const correctedText = String(
     rec.install_base_corrected_fields ||
-    rec.corrected_fields ||
-    rec.install_base_issue_field ||
-    rec.install_base_fix_field ||
+    (rec.corrected_fields && typeof rec.corrected_fields !== "object" ? rec.corrected_fields : "") ||
     ""
   ).toLowerCase();
 
@@ -2142,6 +2144,88 @@ function wasHubFieldCorrectionReturned(rec, fieldName) {
 
   return correctedSources.some(source =>
     aliases.some(alias => isRealHubOwnerValue(source[alias]))
+  );
+}
+
+function isHubFieldFixRequested(rec, fieldName) {
+  if (!rec) return false;
+
+  const field = canonicalInstallBaseFieldName(fieldName);
+  const requestText = [
+    rec.axis_clarification_reason,
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_issue_field,
+    rec.install_base_issue_type,
+    rec.install_base_issue_reason,
+    rec.install_base_action_label,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.proactive_reason,
+    rec.rep_action_required,
+    rec.rep_fix_required,
+    rec.conflict_notes
+  ].join(" ").toLowerCase();
+
+  const aliases = {
+    rep: [
+      "rep",
+      "assigned rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep owner",
+      "rep_owner",
+      "sales rep",
+      "sales_rep",
+      "sales_rep_name",
+      "rep name"
+    ],
+    owner: [
+      "owner",
+      "owner group",
+      "owner_group",
+      "owner_group_name",
+      "manager",
+      "manager_name",
+      "manager owner",
+      "manager assignment"
+    ],
+    manager: [
+      "owner",
+      "owner group",
+      "owner_group",
+      "owner_group_name",
+      "manager",
+      "manager_name",
+      "manager owner",
+      "manager assignment"
+    ],
+    territory: [
+      "territory",
+      "manager territory",
+      "manager_region",
+      "manager_territory",
+      "assigned territory",
+      "region"
+    ],
+    serial: ["serial", "serial number", "serial_number", "system_serial"],
+    project: ["project", "project id", "asset", "asset id", "oem_project_id", "project_id", "asset_id"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    modality: ["modality"],
+    dom: ["dom", "year", "manufacture year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "location"]
+  }[field] || [field, String(fieldName || "").toLowerCase()];
+
+  return aliases.some(alias => requestText.includes(alias));
+}
+
+function isHubUnresolvedFixField(rec, fieldName) {
+  return (
+    isHubFieldFixRequested(rec, fieldName) &&
+    !wasHubFieldCorrectionReturned(rec, fieldName)
   );
 }
 
@@ -2179,6 +2263,7 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   const correctedHtml = renderInstallBaseCorrectedValue(rec, fieldName, normalHtml);
 
   if (correctedHtml !== normalHtml) return correctedHtml;
+  if (isHubUnresolvedFixField(rec, fieldName)) return getHubMissingFixCellHtml(rec, fieldName);
   if (isFixedByRep(rec)) return normalHtml;
   if (!fieldIsBlank) return normalHtml;
 
