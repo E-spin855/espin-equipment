@@ -2743,10 +2743,10 @@ const AxisFallback = {
   }
 };
 
-const todayISO = (window.AxisUtils && window.AxisUtils.todayISO) || AxisFallback.todayISO;
-const uuid = (window.AxisUtils && window.AxisUtils.uuid) || AxisFallback.uuid;
-const normalizeModality = (window.AxisUtils && window.AxisUtils.normalizeModality) || AxisFallback.normalizeModality;
-const ageFromDom = (window.AxisUtils && (window.AxisUtils.ageFromDom || window.AxisUtils.ageFromDomEmpty)) || AxisFallback.ageFromDom;
+const todayISO = window.AxisUtils?.todayISO || AxisFallback.todayISO;
+const uuid = window.AxisUtils?.uuid || AxisFallback.uuid;
+const normalizeModality = window.AxisUtils?.normalizeModality || AxisFallback.normalizeModality;
+const ageFromDom = window.AxisUtils?.ageFromDom || window.AxisUtils?.ageFromDomEmpty || AxisFallback.ageFromDom;
 
 function clean(v) {
   return String(v || "").trim();
@@ -2942,7 +2942,7 @@ function getRecordKey(rec) {
   if (project && site) return `${project}_${site}`;
   if (serial && site) return `${serial}_${site}`;
 
-  const sharedKey = (window.AxisUtils && window.AxisUtils.getCanonicalRecordKey) ? window.AxisUtils.getCanonicalRecordKey(rec) : "";
+  const sharedKey = window.AxisUtils?.getCanonicalRecordKey?.(rec);
   if (sharedKey) return sharedKey;
 
   const durable = clean(
@@ -4564,6 +4564,65 @@ function renderManagerRepOwnerCell(rec) {
   `;
 }
 
+function renderRepStatus(rec) {
+  const status = lower(
+    rec.rep_status ||
+    rec.rep_action ||
+    rec.rep_response_status ||
+    rec.install_base_response_status ||
+    ""
+  );
+
+  if (isCompletedManagerRecord(rec)) {
+    return `<span class="pill completed-pill">Completed</span>`;
+  }
+
+  if (
+    status === "follow_up_scheduled" ||
+    rec.follow_up_date ||
+    rec.next_follow_up_date
+  ) {
+    return `<span class="pill pending">Follow Up</span>`;
+  }
+
+  if (
+    status === "manager_assignment_correction" ||
+    status === "manager_correction_sent" ||
+    rec.rep_new_update === true ||
+    rec.rep_visible === true
+  ) {
+    return `<span class="alert-badge manager-flash-pill">Sent to Rep</span>`;
+  }
+
+  if (
+    status === "rep_correction_sent" ||
+    status === "install_base_data_fixed" ||
+    status === "corrected_by_rep"
+  ) {
+    return `<span class="pill submitted">Rep Fixed</span>`;
+  }
+
+  const repOwner = clean(
+    rec.assigned_rep_name ||
+    rec.assigned_rep ||
+    rec.rep ||
+    rec.rep_owner ||
+    rec.sales_rep_name ||
+    rec.sales_rep ||
+    ""
+  );
+
+  if (repOwner) {
+    return `<span class="pill submitted">Assigned</span>`;
+  }
+
+  if (isManagerInstallBaseRequest(rec) || rec.rep_assignment_required) {
+    return `<span class="pill pending">Needs Rep</span>`;
+  }
+
+  return `<span class="mini">-</span>`;
+}
+
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -4812,7 +4871,7 @@ manager_territory: { key: "manager_region", label: "Territory" }
 
   const requestedFields = String(rec.install_base_issue_field || "")
     .split(",")
-    .map(field => (window.AxisUtils && window.AxisUtils.canonicalFieldName) ? window.AxisUtils.canonicalFieldName(field) : String(field || "").toLowerCase().trim())
+    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
     .filter(Boolean);
 
   const requestText = [
@@ -5028,9 +5087,9 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
 function hasValidAssignedRep(rec) {
   const name = String(
-    (rec && rec.assigned_rep_name) ||
-    (rec && rec.rep) ||
-    (rec && rec.sales_rep_name) ||
+    rec?.assigned_rep_name ||
+    rec?.rep ||
+    rec?.sales_rep_name ||
     ""
   ).trim();
 
@@ -5064,15 +5123,14 @@ function sendManagerInstallBaseCorrection(id) {
   const correctedFields = {};
   const correctedValues = {};
 
-  const managerFixEl = $('managerInstallBaseCorrectionNote');
-  const managerFixText = clean((managerFixEl && managerFixEl.value) || "");
+  const managerFixText = clean($('managerInstallBaseCorrectionNote')?.value || "");
 
   const setCorrectedFieldValue = (fieldKey, value) => {
     const cleanValue = clean(value);
     if (!fieldKey || !cleanValue) return;
 
     const canonicalKey =
-      (window.AxisUtils && window.AxisUtils.canonicalFieldName) ? window.AxisUtils.canonicalFieldName(fieldKey) : fieldKey;
+      window.AxisUtils?.canonicalFieldName?.(fieldKey) || fieldKey;
 
     correctedValues[fieldKey] = cleanValue;
     correctedFields[canonicalKey] = cleanValue;
@@ -5143,7 +5201,7 @@ issues.forEach(issue => {
     correctedValues.owner_name ||
     correctedValues.sales_rep ||
     correctedValues.sales_rep_name ||
-    (($("mgr_fix_assigned_rep_name") && $("mgr_fix_assigned_rep_name").value) || "") ||
+    $("mgr_fix_assigned_rep_name")?.value ||
     rec.assigned_rep_name ||
     rec.assigned_rep ||
     rec.rep ||
@@ -5155,7 +5213,7 @@ issues.forEach(issue => {
   );
 
   const correctedManagerOwner = clean(
-    (($("mgr_fix_manager_name") && $("mgr_fix_manager_name").value) || "") ||
+    $("mgr_fix_manager_name")?.value ||
     correctedValues.manager_name ||
     rec.manager_name ||
     rec.owner_group_name ||
@@ -5230,7 +5288,7 @@ issues.forEach(issue => {
     install_base_response_at: now,
     install_base_corrected_by: MANAGER_NAME,
     install_base_response_by: MANAGER_NAME,
-    install_base_response_note: (($("managerInstallBaseCorrectionNote") && $("managerInstallBaseCorrectionNote").value) || ""),
+    install_base_response_note: $("managerInstallBaseCorrectionNote")?.value || "",
     install_base_response_seen: false,
 
     install_base_corrected_fields: Object.keys(correctedFields).join(","),
@@ -5395,7 +5453,7 @@ function sendManagerUnableToVerify(id) {
   const updated = {
     ...rec,
     install_base_response_status: "manager_unable_to_verify",
-    install_base_response_note: (($("managerInstallBaseCorrectionNote") && $("managerInstallBaseCorrectionNote").value) || ""),
+    install_base_response_note: $("managerInstallBaseCorrectionNote")?.value || "",
     install_base_response_by: "Manager",
     install_base_response_at: new Date().toISOString(),
     install_base_response_seen: false
@@ -5720,7 +5778,7 @@ function arrangeManagerWorkflowLayout() {
       .includes("financial review")
   );
 
-  const actionCard = (actionTitle && actionTitle.nextElementSibling) || null;
+  const actionCard = actionTitle?.nextElementSibling || null;
 
   if (
     !reviewRow ||
@@ -5792,7 +5850,7 @@ const secondaryItems = [
 }
 
 function getManagerInstallBaseConversationHistory(rec) {
-  const history = Array.isArray(rec && rec.manager_install_base_conversation_history)
+  const history = Array.isArray(rec?.manager_install_base_conversation_history)
     ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
     : [];
   return [...history].sort((a,b) => (new Date(a.at||0).getTime()||0) - (new Date(b.at||0).getTime()||0));
@@ -5801,7 +5859,7 @@ function sendManagerMessageToInstallBase() {
   const rec = findSelectedRecord();
   if (!rec) return;
   const input = $("managerMessageToInstallBase");
-  const message = clean((input && input.value) || "");
+  const message = clean(input?.value);
   if (!message) {
     alert("Enter a message to Install Base before sending.");
     return;
@@ -5894,7 +5952,7 @@ function markManagerInstallBaseMessageSeen(rec) {
 
     const history = Array.isArray(item.manager_install_base_conversation_history)
       ? item.manager_install_base_conversation_history.map(entry =>
-          lower((entry && entry.sender) || "") === "install_base"
+          lower(entry?.sender) === "install_base"
             ? {
                 ...entry,
                 seen_by_manager: true,
@@ -5928,7 +5986,7 @@ function markManagerInstallBaseMessageSeen(rec) {
 }
 
 function getManagerInstallBaseCommunicationUi(rec) {
-  const id = String((rec && rec.id) || "");
+  const id = String(rec?.id || "");
   const history = getManagerInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
   const dismissed = state.installBaseCommunicationDismissed[id] === true;
@@ -6648,7 +6706,7 @@ function renderDetail() {
                 rec.oem_review_type ||
                 rec.review_type ||
                 rec.alert_override ||
-                (alert && alert.displayType) ||
+                alert?.displayType ||
                 "Review"
               )
         )}
@@ -6973,9 +7031,9 @@ function saveManagerResponse() {
     return;
   }
 
-  const responseAction = (($("managerResponseAction") && $("managerResponseAction").value) || "");
-  const responseDate = (($("managerResponseDate") && $("managerResponseDate").value) || "");
-  const responseNotes = (($("managerResponseNotes") && $("managerResponseNotes").value) || "");
+  const responseAction = $("managerResponseAction")?.value || "";
+  const responseDate = $("managerResponseDate")?.value || "";
+  const responseNotes = $("managerResponseNotes")?.value || "";
 
   if (!responseAction && !responseNotes.trim()) {
     alert("Select a message or type a note to Rep");
@@ -7187,7 +7245,7 @@ state.selectedId = rec.id || selectedId;
 
 let openedRepCommunicationFromRowClick = false;
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
-if (repCommunicationUi && Array.isArray(repCommunicationUi.history) && repCommunicationUi.history.some(item => lower(item.sender) === "rep")) {
+if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   const repCommKeys = [
     selectedId,
     rec.id,
@@ -7860,13 +7918,13 @@ if (tableBody) {
 
     const rec = findSelectedRecord();
     const wasQuoteUpdate =
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_update" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_created" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_sent" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_submitted" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_approved" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "quote_approval" ||
-      (state.managerUpdateHighlight && state.managerUpdateHighlight.type) === "financial_update";
+      state.managerUpdateHighlight?.type === "quote_update" ||
+      state.managerUpdateHighlight?.type === "quote_created" ||
+      state.managerUpdateHighlight?.type === "quote_sent" ||
+      state.managerUpdateHighlight?.type === "quote_submitted" ||
+      state.managerUpdateHighlight?.type === "quote_approved" ||
+      state.managerUpdateHighlight?.type === "quote_approval" ||
+      state.managerUpdateHighlight?.type === "financial_update";
 
     if (rec && wasQuoteUpdate) {
       markManagerFinancialSeen(rec);
@@ -7895,7 +7953,7 @@ if (tableBody) {
 	  const csvInput = $("csvInput");
   if (csvInput) {
     csvInput.addEventListener("change", (e) => {
-      const file = (e.target.files && e.target.files[0]);
+      const file = e.target.files?.[0];
       if (!file) return;
       if (!window.XLSX) {
         alert("Excel reader did not load. Check internet/CDN access.");
