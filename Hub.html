@@ -2006,15 +2006,20 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
   if (rec.install_base_fixed_seen_by_install_base === true) return false;
 
-  const fixedFields = String(
-    rec.install_base_corrected_fields ||
-    rec.install_base_issue_field ||
-    ""
-  )
-    .toLowerCase()
-    .split(",")
-    .map(v => v.trim())
-    .filter(Boolean);
+	  const fixedFields = String(
+	    rec.install_base_corrected_fields ||
+	    (rec.corrected_fields && typeof rec.corrected_fields !== "object" ? rec.corrected_fields : "") ||
+	    ""
+	  )
+	    .toLowerCase()
+	    .split(",")
+	    .map(v => v.trim())
+	    .filter(Boolean);
+
+	  const correctedObjectFields =
+	    rec.corrected_fields && typeof rec.corrected_fields === "object" && !Array.isArray(rec.corrected_fields)
+	      ? Object.keys(rec.corrected_fields).map(v => v.toLowerCase().trim()).filter(Boolean)
+	      : [];
 
   const fieldAliases = {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
@@ -2032,8 +2037,10 @@ function wasInstallBaseFieldCorrected(rec, fieldName) {
 
   const aliases = (fieldAliases[fieldName] || [fieldName]).map(canonicalInstallBaseFieldName);
 
-  return fixedFields.map(canonicalInstallBaseFieldName).some(f => aliases.includes(f));
-}
+	  return [...fixedFields, ...correctedObjectFields]
+	    .map(canonicalInstallBaseFieldName)
+	    .some(f => aliases.includes(f));
+	}
 
 function renderInstallBaseCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasInstallBaseFieldCorrected(rec, fieldName)) return normalHtml;
