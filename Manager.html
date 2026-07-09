@@ -4376,7 +4376,13 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
   const requestedFields = getManagerInstallBaseIssueFields(rec).map(issue => issue.key);
   if (!requestedFields.length) return false;
 
-  const aliases = {
+  const aliases = getManagerInstallBaseFieldAliases(fieldName);
+
+  return requestedFields.some(field => aliases.includes(field));
+}
+
+function getManagerInstallBaseFieldAliases(fieldName) {
+  return {
     project: ["project", "project_id", "oem_project_id", "asset_id"],
     make: ["make", "manufacturer"],
     model: ["model"],
@@ -4398,8 +4404,6 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
       "sales_rep_name"
     ]
   }[fieldName] || [fieldName];
-
-  return requestedFields.some(field => aliases.includes(field));
 }
 
 function renderManagerFixButton(rec, label) {
@@ -4417,6 +4421,39 @@ function renderManagerFixButton(rec, label) {
   `;
 }
 
+function getManagerFixBadgeLabel(rec, fieldName) {
+  const labelMap = {
+    project: "Project ID",
+    make: "Make",
+    model: "Model",
+    modality: "Modality",
+    serial: "Serial",
+    dom: "DOM",
+    site: "Site",
+    facility: "Facility",
+    territory: "Territory",
+    manager_region: "Territory",
+    owner: "Owner Group",
+    manager: "Owner Group",
+    manager_name: "Owner Group",
+    rep: "Rep Owner",
+    assigned_rep_name: "Rep Owner"
+  };
+
+  const aliases = getManagerInstallBaseFieldAliases(fieldName);
+  const requestedIssue = getManagerInstallBaseIssueFields(rec).find(issue =>
+    aliases.includes(issue.key)
+  );
+
+  const label =
+    requestedIssue?.label ||
+    labelMap[fieldName] ||
+    getManagerInstallBaseIssueFields(rec)[0]?.label ||
+    "Data";
+
+  return `FIX ${label}`;
+}
+
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   const textValue = String(normalHtml || "").replace(/<[^>]*>/g, "").trim();
 
@@ -4424,22 +4461,8 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
   }
 
-  const labelMap = {
-    project: "Fix Project ID",
-    make: "Fix Make",
-    model: "Fix Model",
-    modality: "Fix Modality",
-    serial: "Fix Serial",
-    dom: "Fix DOM",
-    site: "Fix Site",
-    facility: "Fix Facility",
-    territory: "Fix Territory",
-    manager_region: "Fix Territory",
-    rep: "Fix Rep Owner"
-  };
-
   if (isManagerInstallBaseFieldRequested(rec, fieldName)) {
-    return renderManagerFixButton(rec, labelMap[fieldName] || "FIX");
+    return renderManagerFixButton(rec, getManagerFixBadgeLabel(rec, fieldName));
   }
 
   if (!textValue || textValue === "-") {
@@ -4447,7 +4470,7 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
       return "-";
     }
 
-    const fixLabel = labelMap[fieldName] || "Fix Data";
+    const fixLabel = getManagerFixBadgeLabel(rec, fieldName);
 
     if (isManagerInstallBaseRequest(rec)) {
       return renderManagerFixButton(rec, fixLabel);
@@ -4582,7 +4605,7 @@ function isCompletedManagerRecord(rec) {
 }
 function renderManagerRepOwnerCell(rec) {
   if (isManagerInstallBaseFieldRequested(rec, "rep")) {
-    return renderManagerFixButton(rec, "FIX");
+    return renderManagerFixButton(rec, getManagerFixBadgeLabel(rec, "rep"));
   }
 
   const repOwner = String(
@@ -4621,7 +4644,7 @@ function renderManagerRepOwnerCell(rec) {
 
   const id = rec.id || getRecordKey(rec) || "";
 
-  return renderManagerFixButton({ ...rec, id }, "FIX");
+  return renderManagerFixButton({ ...rec, id }, getManagerFixBadgeLabel(rec, "rep"));
 }
 
 function renderRepStatus(rec) {
