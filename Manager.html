@@ -5562,28 +5562,38 @@ function isManagerInstallBaseFixCompleted(rec) {
   );
 }
 
-function getComputedManagerInstallBaseReviewReason(rec) {
-  const visibleLabel = normalizeOemReviewLabelForManager(rec);
-  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
-  const age = ageFromDom(dom);
 
-  if (visibleLabel === "Equipment Age") {
-    if (dom && age !== null && age !== undefined && age !== "") {
-      return `Equipment age review based on DOM ${dom} (${age} years).`;
-    }
+function getManagerActiveFixReason(rec) {
+  return clean(
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.axis_clarification_reason ||
+    rec.manager_review_request ||
+    rec.rep_fix_required ||
+    rec.fix_reason ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    ""
+  );
+}
 
-    if (dom) {
-      return `Equipment age review based on DOM ${dom}.`;
-    }
+function isManagerOpenInstallBaseFixRequest(rec) {
+  const label = lower(rec.oem_review_label || rec.review_label || "");
+  const type = lower(rec.oem_review_type || rec.review_type || "");
+  const issueType = lower(rec.install_base_issue_type || "");
+  const issueField = clean(rec.install_base_issue_field || rec.install_base_fix_field || "");
 
-    return "Equipment age review.";
-  }
-
-  if (visibleLabel && visibleLabel !== "Install Base Review") {
-    return `${visibleLabel} review.`;
-  }
-
-  return "Install Base review context is attached to this record.";
+  return Boolean(
+    issueField ||
+    label.includes("manual clarification") ||
+    type.includes("manual clarification") ||
+    issueType.includes("missing") ||
+    issueType.includes("clarification") ||
+    rec.install_base_sync_type === "manual_clarification" ||
+    rec.install_base_release_status === "released_to_manager"
+  );
 }
 
 function getComputedManagerInstallBaseReviewReason(rec) {
@@ -5613,9 +5623,6 @@ function getComputedManagerInstallBaseReviewReason(rec) {
 function getOriginalInstallBaseReviewReasonForManager(rec){
   const currentLabel = normalizeOemReviewLabelForManager(rec);
 
-  const badFixText =
-    /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing|assigned\s+rep|rep\s+owner|rep\s+name|owner\s+group|territory|missing/i;
-
   const candidates = [
     rec.original_oem_review_reason,
     rec.original_install_base_review_reason,
@@ -5624,10 +5631,13 @@ function getOriginalInstallBaseReviewReasonForManager(rec){
     rec.install_base_review_reason,
     rec.original_review_reason,
     rec.proactive_reason,
+    rec.conflict_notes,
     rec.oem_review_reason,
-    rec.review_reason,
-    rec.conflict_notes
+    rec.review_reason
   ];
+
+  const badFixText =
+    /serial\s+number\s+is\s+missing|missing\s+serial|serial.*missing|assigned\s+rep|rep\s+owner|rep\s+name|owner\s+group|territory|missing/i;
 
   const valid = candidates
     .map(v => clean(v))
@@ -5652,6 +5662,15 @@ function getInstallBaseReviewReasonForManager(rec) {
 
   if (wasManagerSerialFixRequest(rec) && !serialNow) {
     return "Serial number is missing from the Install Base record.";
+  }
+
+  const activeFixReason = getManagerActiveFixReason(rec);
+
+  if (
+    isManagerOpenInstallBaseFixRequest(rec) &&
+    activeFixReason
+  ) {
+    return activeFixReason;
   }
 
   return getOriginalInstallBaseReviewReasonForManager(rec);
