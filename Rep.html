@@ -2560,7 +2560,7 @@ button.message-sent-state{
   <div class="shell">
     <div class="hero">
       <div class="title-wrap">
-        <h1>My ESPIN LINK Workspace</h1>
+        <h1>OEM REP Equipment Review Workspace</h1>
         <p class="subtitle">
           Single-rep Equipment Review Workspace. This demo shows one rep using ESPIN LINK with her assigned OEM records, Hub-synced install-base records, and her own locally added install-base records.
         </p>
@@ -2598,8 +2598,8 @@ button.message-sent-state{
       <div>
         <div class="panel">
           <div class="panel-head">
-            <h2>My Local Inputs</h2>
-            <span class="mini">Single rep browser view</span>
+            <h2>Local Inputs</h2>
+            <span class="mini">OEM browser only</span>
           </div>
 
           <div class="panel-body">
@@ -2625,7 +2625,7 @@ button.message-sent-state{
             <div class="footer-note" id="axisShareStatus">ESPIN LINK sharing is currently on.</div>
 
             <div class="footer-note">
-              This view displays records for one rep only. Records can arrive from Hub/Install Base sync, CSV / Excel upload, or the rep’s own manually added install-base records.
+              This view can be filtered to one selected rep while still receiving Hub / Install Base sync, CSV / Excel upload, and rep-entered install-base records.
             </div>
           </div>
         </div>
@@ -2634,8 +2634,8 @@ button.message-sent-state{
       <div>
         <div class="panel">
           <div class="panel-head">
-            <h2>My Rep Workspace</h2>
-            <span class="mini">Single rep demo mode</span>
+            <h2>Demo Rep Menu</h2>
+            <span class="mini">Switch assigned rep view</span>
           </div>
           <div class="panel-body" id="repFeed" style="max-height:260px;overflow:auto;">
             <div class="mini">No reps available</div>
@@ -3058,38 +3058,56 @@ const QUOTE_APPROVAL_KEY = "axis_quote_approval_queue_v1";
 const QUOTE_APPROVAL_SYNC_KEY = "axis_quote_approval_sync_records_v1";
 const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
 
-const SINGLE_REP_DEMO = {
-  first: "Lisa",
-  last: "Tran",
-  full: "Lisa Tran",
-  email: "lisa.tran@oem-demo.com",
-  territory: "Western WA"
-};
 
-function forceSingleRepDemo(rec) {
-  if (!rec || typeof rec !== "object") return rec;
 
+
+function getRecordRepName(rec) {
+  return (
+    `${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() ||
+    rec?.assigned_rep_name ||
+    rec?.rep_owner ||
+    rec?.rep_name ||
+    "Unassigned"
+  );
+}
+
+function recordMatchesSelectedRep(rec) {
+  if (!state.selectedRep) return true;
+  return getRecordRepName(rec) === state.selectedRep;
+}
+
+function getSelectedRepParts() {
+  const full = clean(state.selectedRep || "");
+  if (!full || full === "Unassigned") {
+    return { first: "", last: "", full: full || "Unassigned" };
+  }
+  const parts = full.split(/\s+/).filter(Boolean);
   return {
-    ...rec,
-    sales_rep_first: SINGLE_REP_DEMO.first,
-    sales_rep_last: SINGLE_REP_DEMO.last,
-    assigned_rep_name: SINGLE_REP_DEMO.full,
-    sales_rep_email: rec.sales_rep_email || SINGLE_REP_DEMO.email,
-    manager_territory: rec.manager_territory || rec.territory || SINGLE_REP_DEMO.territory,
-    territory: rec.territory || rec.manager_territory || SINGLE_REP_DEMO.territory,
-    rep_demo_mode: "single_rep"
+    first: parts[0] || "",
+    last: parts.slice(1).join(" ") || "",
+    full
   };
 }
 
-function forceAllRecordsToSingleRep() {
-  state.records = state.records.map(forceSingleRepDemo);
-  state.selectedRep = SINGLE_REP_DEMO.full;
+function assignToSelectedRepIfNeeded(rec) {
+  const selected = getSelectedRepParts();
+  if (!selected.full || selected.full === "Unassigned") return rec;
+
+  const hasRep = clean(rec.sales_rep_first || rec.sales_rep_last || rec.assigned_rep_name || rec.rep_owner || rec.rep_name);
+  if (hasRep) return rec;
+
+  return {
+    ...rec,
+    sales_rep_first: selected.first,
+    sales_rep_last: selected.last,
+    assigned_rep_name: selected.full
+  };
 }
 
   const state = {
   records: [],
   selectedId: null,
-  selectedRep: "Lisa Tran",
+  selectedRep: null,
   installBaseCommunicationOpen: false,
   installBaseCommunicationDismissedId: "",
   installBaseCommunicationDismissedSignature: "",
@@ -4238,59 +4256,22 @@ install_base_review_reason: originalInstallBaseReviewReason,
         : reviewLabel
     };
 
-    const existingIndex = state.records.findIndex(r => {
-      const existingKey =
-        r.key ||
-        getRecordKey(r) ||
-        `${r.oem_project_id || r.asset_id || ""}_${r.serial_number || r.serial || ""}`;
+    const upsertResult = upsertRepWorkspaceRecord(repRecord);
+    const mergedRecord = upsertResult.record;
 
-      return String(existingKey) === String(key);
-    });
-
-    if (existingIndex >= 0) {
-      const existingRecord = state.records[existingIndex] || {};
-      const existingAlreadyFixed =
-        existingRecord.install_base_correction_status === "corrected_by_rep" ||
-        existingRecord.install_base_fix_status === "rep_reviewed" ||
-        existingRecord.install_base_response_status === "rep_correction_sent";
-
-      state.records[existingIndex] = {
-        ...existingRecord,
-        ...repRecord,
-        key: existingRecord.key || repRecord.key,
-        id: existingRecord.id || repRecord.id,
-        rep_visible: true,
-        manager_visible: false,
-
-        // Always accept the newest Install Base communication, even after the
-        // rep has already submitted an earlier correction or response.
-        install_base_reply_to_rep:
-          incoming.install_base_reply_to_rep || existingRecord.install_base_reply_to_rep || "",
-        install_base_reply_to_rep_by:
-          incoming.install_base_reply_to_rep_by || existingRecord.install_base_reply_to_rep_by || "",
-        install_base_reply_to_rep_at:
-          incoming.install_base_reply_to_rep_at || existingRecord.install_base_reply_to_rep_at || "",
-        install_base_reply_to_rep_seen:
-          incoming.install_base_reply_to_rep_at &&
-          incoming.install_base_reply_to_rep_at !== existingRecord.install_base_reply_to_rep_at
-            ? false
-            : (incoming.install_base_reply_to_rep_seen === true || existingRecord.install_base_reply_to_rep_seen === true),
-        install_base_conversation_history:
-          Array.isArray(incoming.install_base_conversation_history)
-            ? incoming.install_base_conversation_history
-            : (Array.isArray(existingRecord.install_base_conversation_history)
-                ? existingRecord.install_base_conversation_history
-                : [])
-      };
-    } else {
-      state.records.unshift(repRecord);
+    // Always accept the newest Install Base communication, even after the
+    // rep has already submitted an earlier correction or response.
+    if (incoming.install_base_reply_to_rep) {
+      mergedRecord.install_base_reply_to_rep = incoming.install_base_reply_to_rep;
+      mergedRecord.install_base_reply_to_rep_by = incoming.install_base_reply_to_rep_by || mergedRecord.install_base_reply_to_rep_by || "";
+      mergedRecord.install_base_reply_to_rep_at = incoming.install_base_reply_to_rep_at || mergedRecord.install_base_reply_to_rep_at || "";
+      mergedRecord.install_base_reply_to_rep_seen = false;
     }
 
     changed = true;
   });
 
   if (changed) {
-    forceAllRecordsToSingleRep();
     saveRecords();
   }
 }
@@ -4312,8 +4293,6 @@ install_base_review_reason: originalInstallBaseReviewReason,
     state.records = [];
   }
   mergeInstallBaseQueueIntoRepRecords();
-  forceAllRecordsToSingleRep();
-
   // Purge any stale Rep copy that was saved before the assignment gate existed.
   const routedRecords = state.records.filter(rec => {
     const complete = isRepRoutingComplete(rec);
@@ -4407,34 +4386,19 @@ queue.forEach(item => {
       manager_response_seen_by_rep: item.manager_response_seen_by_rep ?? true
     };
 
-    if (existing) {
-      const existingAlreadyFixed =
-        existing.install_base_correction_status === "corrected_by_rep" ||
-        existing.install_base_fix_status === "rep_reviewed" ||
-        existing.install_base_response_status === "rep_correction_sent";
+    const upsertResult = upsertRepWorkspaceRecord(releasedRecord);
+    const workspaceRecord = upsertResult.record;
 
-      const merged = {
-        ...(existingAlreadyFixed ? releasedRecord : existing),
-        ...(existingAlreadyFixed ? existing : releasedRecord),
-        id: existing.id || releasedRecord.id
-      };
-
-      if (Object.keys(merged).some(key => existing[key] !== merged[key])) {
-        Object.assign(existing, merged);
-        changed = true;
-      }
-    } else {
-      state.records.unshift(releasedRecord);
-      if (releasedRecord.id) byId.set(String(releasedRecord.id), releasedRecord);
-      if (releasedRecord.key) byKey.set(String(releasedRecord.key), releasedRecord);
-      if (releasedRecord.oem_project_id || releasedRecord.serial_number) {
-        byProjectSerial.set(
-          `${String(releasedRecord.oem_project_id || "")}\u0000${String(releasedRecord.serial_number || "")}`,
-          releasedRecord
-        );
-      }
-      changed = true;
+    if (workspaceRecord.id) byId.set(String(workspaceRecord.id), workspaceRecord);
+    if (workspaceRecord.key) byKey.set(String(workspaceRecord.key), workspaceRecord);
+    if (workspaceRecord.oem_project_id || workspaceRecord.serial_number) {
+      byProjectSerial.set(
+        `${String(workspaceRecord.oem_project_id || "")} ${String(workspaceRecord.serial_number || "")}`,
+        workspaceRecord
+      );
     }
+
+    changed = true;
   });
 
   if (changed) saveRecords();
@@ -4479,6 +4443,205 @@ function writeArrayKey(key, arr) {
     aProject === bProject &&
     aSerial === bSerial
   );
+}
+
+
+function comparableText(v) {
+  return String(v || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sameWorkspaceEquipmentRecord(a, b) {
+  if (!a || !b) return false;
+
+  if (sameSyncRecord(a, b)) return true;
+
+  const aAsset = comparableText(a.asset_id || a.equipment_id || a.oem_asset_id || "");
+  const bAsset = comparableText(b.asset_id || b.equipment_id || b.oem_asset_id || "");
+  if (aAsset && bAsset && aAsset === bAsset) return true;
+
+  const aSerial = comparableText(a.serial_number || a.serial || a.system_serial || "");
+  const bSerial = comparableText(b.serial_number || b.serial || b.system_serial || "");
+  const aSite = comparableText(a.site || a.facility || a.hospital || a.hospital_name || a.customer_name || "");
+  const bSite = comparableText(b.site || b.facility || b.hospital || b.hospital_name || b.customer_name || "");
+  const aMake = comparableText(a.make || a.manufacturer || "");
+  const bMake = comparableText(b.make || b.manufacturer || "");
+  const aModel = comparableText(a.model || "");
+  const bModel = comparableText(b.model || "");
+
+  if (aSerial && bSerial && aSerial === bSerial) {
+    if (aSite && bSite && aSite === bSite) return true;
+    if (aMake && bMake && aMake === bMake && aModel && bModel && aModel === bModel) return true;
+  }
+
+  const aProject = comparableText(a.oem_project_id || a.project_id || "");
+  const bProject = comparableText(b.oem_project_id || b.project_id || "");
+  if (aProject && bProject && aProject === bProject) return true;
+
+  return false;
+}
+
+const REP_OWNED_MERGE_FIELDS = [
+  "rep_manual_priority",
+  "sales_priority",
+  "priority_updated_at",
+  "manual_priority",
+  "rep_attention_alert_enabled",
+  "rep_attention_alert_type",
+  "rep_attention_target_date",
+  "rep_attention_months_before",
+  "rep_attention_alert_note",
+  "rep_attention_alert_configured_at",
+  "rep_attention_alert_dismissed_at",
+  "rep_selected_manual_action",
+  "rep_selected_manual_action_label",
+  "rep_action",
+  "rep_action_label",
+  "rep_notes",
+  "rep_follow_up_date",
+  "rep_last_action_at",
+  "quote_amount",
+  "quote_estimated_cost",
+  "quote_trade_in_credit",
+  "quote_net_amount",
+  "quote_profit",
+  "quote_margin",
+  "quote_status",
+  "quote_follow_up_tag",
+  "quote_expected_close_date",
+  "quote_expiration_date",
+  "quote_recipient_email",
+  "quote_cc_email",
+  "quote_delivery_status",
+  "quote_pdf_saved_at",
+  "quote_sent_at",
+  "quote_sent_to",
+  "quote_sent_cc",
+  "quote_follow_up_alert_date",
+  "quote_follow_up_alert_note",
+  "quote_install_required",
+  "quote_removal_required",
+  "quote_loss_reason",
+  "quote_notes",
+  "quote_created_at",
+  "quote_updated_at",
+  "lifecycle_completed",
+  "completed_at",
+  "completed_by",
+  "project_management_ready",
+  "project_management_status",
+  "project_management_created_at",
+  "rep_added_install_base",
+  "rep_added_at",
+  "rep_hidden",
+  "rep_deleted"
+];
+
+function hasMergeValue(v) {
+  if (Array.isArray(v)) return v.length > 0;
+  if (v === true) return true;
+  if (v === false) return true;
+  if (v === 0) return true;
+  return clean(v) !== "";
+}
+
+function mergeConversationHistory(existingHistory, incomingHistory) {
+  const combined = [];
+  const seen = new Set();
+
+  [existingHistory, incomingHistory].forEach(list => {
+    if (!Array.isArray(list)) return;
+    list.forEach(item => {
+      const key = JSON.stringify(item || {});
+      if (!seen.has(key)) {
+        seen.add(key);
+        combined.push(item);
+      }
+    });
+  });
+
+  return combined;
+}
+
+function mergeIntoRepWorkspace(existing, incoming, options = {}) {
+  const now = new Date().toISOString();
+  const normalizedIncoming = { ...(incoming || {}) };
+  const normalizedExisting = { ...(existing || {}) };
+
+  const merged = {
+    ...normalizedExisting,
+    ...normalizedIncoming,
+    id: normalizedExisting.id || normalizedIncoming.id || uuid(),
+    key: normalizedExisting.key || normalizedIncoming.key || getRecordKey(normalizedIncoming) || getRecordKey(normalizedExisting),
+    rep_visible: true,
+    manager_visible: false,
+    merged_workspace_record: true,
+    merged_workspace_updated_at: now,
+    merged_workspace_sources: [
+      ...String(normalizedExisting.merged_workspace_sources || normalizedExisting.source || "").split(" | ").filter(Boolean),
+      ...String(normalizedIncoming.merged_workspace_sources || normalizedIncoming.source || "").split(" | ").filter(Boolean)
+    ].filter((v, i, arr) => v && arr.indexOf(v) === i).join(" | ")
+  };
+
+  REP_OWNED_MERGE_FIELDS.forEach(field => {
+    if (hasMergeValue(normalizedExisting[field])) merged[field] = normalizedExisting[field];
+  });
+
+  // Preserve existing rep/manager/Hub conversations while still accepting new Hub messages.
+  merged.install_base_conversation_history = mergeConversationHistory(
+    normalizedExisting.install_base_conversation_history,
+    normalizedIncoming.install_base_conversation_history
+  );
+  merged.manager_conversation_history = mergeConversationHistory(
+    normalizedExisting.manager_conversation_history,
+    normalizedIncoming.manager_conversation_history
+  );
+  merged.rep_manager_conversation_history = mergeConversationHistory(
+    normalizedExisting.rep_manager_conversation_history,
+    normalizedIncoming.rep_manager_conversation_history
+  );
+
+  if (normalizedIncoming.install_base_reply_to_rep_at &&
+      normalizedIncoming.install_base_reply_to_rep_at !== normalizedExisting.install_base_reply_to_rep_at) {
+    merged.install_base_reply_to_rep_seen = false;
+  } else if (hasMergeValue(normalizedExisting.install_base_reply_to_rep_seen)) {
+    merged.install_base_reply_to_rep_seen = normalizedExisting.install_base_reply_to_rep_seen;
+  }
+
+  if (options.preserveSelectedId && String(state.selectedId || "") === String(normalizedIncoming.id || "")) {
+    state.selectedId = merged.id;
+  }
+
+  return merged;
+}
+
+function findRepWorkspaceMergeIndex(incoming, list = state.records) {
+  return (list || []).findIndex(existing => sameWorkspaceEquipmentRecord(existing, incoming));
+}
+
+function upsertRepWorkspaceRecord(incoming, options = {}) {
+  const incomingRecord = { ...(incoming || {}) };
+  incomingRecord.key = incomingRecord.key || getRecordKey(incomingRecord);
+  incomingRecord.id = incomingRecord.id || incomingRecord.key || uuid();
+
+  const existingIndex = findRepWorkspaceMergeIndex(incomingRecord);
+  if (existingIndex >= 0) {
+    const merged = mergeIntoRepWorkspace(state.records[existingIndex], incomingRecord, { preserveSelectedId: true });
+    state.records[existingIndex] = merged;
+    return { record: merged, index: existingIndex, merged: true };
+  }
+
+  if (options.append === true) {
+    state.records.push(incomingRecord);
+    return { record: incomingRecord, index: state.records.length - 1, merged: false };
+  }
+
+  state.records.unshift(incomingRecord);
+  return { record: incomingRecord, index: 0, merged: false };
 }
 
 function buildManagerSyncPacket(rec) {
@@ -5025,25 +5188,51 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
       const el = $("repFeed");
       if (!el) return;
 
-      const total = state.records.length;
-      const hubSynced = state.records.filter(rec =>
-        lower(rec.source).includes("install base") ||
-        rec.install_base_release_status ||
-        rec.hub_source
-      ).length;
-      const ownAdded = state.records.filter(rec => rec.source === "Rep Added Install Base").length;
+      const repCounts = new Map();
+      state.records.forEach(rec => {
+        const rep =
+          `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+          rec.assigned_rep_name ||
+          "Unassigned";
+        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+      });
+      const reps = [...repCounts.keys()];
+
+      if (!reps.length) {
+        el.innerHTML = `<div class="mini">No reps available</div>`;
+        return;
+      }
 
       el.innerHTML = `
-        <div style="padding:14px;border-radius:14px;border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.08);">
-          <strong>${escapeHtml(SINGLE_REP_DEMO.full)}</strong>
-          <div class="mini" style="margin-top:5px;">${escapeHtml(SINGLE_REP_DEMO.territory)} · single-rep demo view</div>
+        <div class="btns" style="margin-bottom:12px;">
+          <button type="button" class="secondary" onclick="state.selectedRep=null; render();">
+            Show All
+          </button>
         </div>
 
-        <div style="display:grid;gap:8px;margin-top:12px;">
-          <div class="chip">${total} total record(s)</div>
-          <div class="chip">${hubSynced} Hub / Install Base sync record(s)</div>
-          <div class="chip">${ownAdded} rep-added install-base record(s)</div>
-        </div>
+        ${reps.map(rep => {
+          const safeRep = escapeHtml(rep);
+          const jsRep = String(rep).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+          const count = repCounts.get(rep);
+          const active = state.selectedRep === rep;
+
+          return `
+            <div
+              style="
+                padding:10px 12px;
+                margin-bottom:8px;
+                border-radius:12px;
+                border:1px solid ${active ? "rgba(65,255,156,.55)" : "rgba(88,184,255,.18)"};
+                background:${active ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.55)"};
+                cursor:pointer;
+              "
+              onclick="state.selectedRep='${jsRep}'; render();"
+            >
+              <strong>${safeRep}</strong>
+              <div class="mini">${count} assigned record(s)</div>
+            </div>
+          `;
+        }).join("")}
       `;
     }
 
@@ -5057,6 +5246,7 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
       let repAttentionAlerts = 0;
 
       state.records.forEach(rec => {
+        if (!recordMatchesSelectedRep(rec)) return;
         if (rec.lifecycle_completed) return;
 
         if (rec.quote_amount && rec.quote_status !== "won" && rec.quote_status !== "lost") openQuoteAlerts++;
@@ -5120,6 +5310,7 @@ function renderPrioritySelect(rec) {
 
 function getSalesRoutingRecords() {
   return state.records
+    .filter(rec => recordMatchesSelectedRep(rec))
     .filter(rec => rec.project_type !== 'new_project_record')
     .filter(rec => !isCompletedRepRecord(rec))
     .map(rec => ({ rec, priority: getManualPriority(rec) }))
@@ -5134,7 +5325,7 @@ function updateLeadPriority(id, value) {
 
   state.records = state.records.map(rec => {
     const sameRecord = String(rec.id || '') === String(id || '');
-    const samePriority = selectedPriority && String(rec.rep_manual_priority || '') === selectedPriority;
+    const samePriority = selectedPriority && recordMatchesSelectedRep(rec) && String(rec.rep_manual_priority || '') === selectedPriority;
 
     if (sameRecord) {
       return {
@@ -5182,6 +5373,7 @@ function openTopPriorityRecord() {
 
 function clearLeadPriorities() {
   state.records = state.records.map(rec => {
+    if (!recordMatchesSelectedRep(rec)) return rec;
     const copy = { ...rec };
     delete copy.rep_manual_priority;
     delete copy.sales_priority;
@@ -5279,7 +5471,9 @@ function renderSalesRouting() {
     function renderNewProjectsTable() {
   const panel = $("newProjectsPanel");
   const tbody = $("newProjectsTableBody");
-  const newProjects = state.records.filter(r => r.project_type === "new_project_record");
+  const newProjects = state.records
+    .filter(r => r.project_type === "new_project_record")
+    .filter(recordMatchesSelectedRep);
 
   if (!newProjects.length) {
     panel.style.display = "none";
@@ -5656,6 +5850,10 @@ function bindIncomingCommunicationFrameDismissal() {
     visibleRecords = visibleRecords.filter(
       rec => !isCompletedRepRecord(rec)
     );
+  }
+
+  if (state.selectedRep) {
+    visibleRecords = visibleRecords.filter(recordMatchesSelectedRep);
   }
 
   if (!visibleRecords.length) {
@@ -8995,67 +9193,19 @@ function render() {
           };
         });
 
-        const merged = [];
-
         records.forEach(newRec => {
-          const existing = state.records.find(r =>
-            r.oem_project_id === newRec.oem_project_id &&
-            r.serial_number === newRec.serial_number
-          );
-
-          merged.push(
-  existing
-    ? {
-        ...existing,
-        ...newRec,
-        id: existing.id || newRec.id,
-
-        // Clear old rep workflow fields on fresh CSV import
-        rep_status: "needed",
-        rep_action: "",
-        rep_action_label: "",
-        rep_selected_manual_action: "",
-        rep_selected_manual_action_label: "",
-        rep_notes: "",
-        rep_hidden: false,
-        rep_deleted: false,
-        rep_follow_up_date: "",
-        rep_last_action_at: "",
-
-        // Clear old follow-up fields unless the fresh CSV has a next_action_date
-        next_action_date: newRec.next_action_date || "",
-
-        // Clear old manager flash/update state
-        manager_unseen_update: false,
-        manager_flash_at: "",
-        manager_flash_type: "",
-        manager_flash_text: "",
-
-        // Clear old manager response unless you intentionally want it preserved
-        manager_response_action: "",
-        manager_response_date: "",
-        manager_response_notes: "",
-        manager_response_at: "",
-        manager_response_seen_by_rep: true,
-        manager_response_seen_at: ""
-      }
-    : newRec
-);
+          const prepared = assignToSelectedRepIfNeeded({
+            ...newRec,
+            key: newRec.key || getRecordKey(newRec),
+            rep_visible: true,
+            manager_visible: false
+          });
+          upsertRepWorkspaceRecord(prepared, { append: true });
         });
-        state.records.forEach(oldRec => {
-          const existsInNew = records.some(r =>
-            r.oem_project_id === oldRec.oem_project_id &&
-            r.serial_number === oldRec.serial_number
-          );
-
-          if (!existsInNew) merged.push(oldRec);
-        });
-
-        state.records = merged;
-        state.selectedId = null;
 
         saveRecords();
         render();
+        showBanner("Uploaded records merged into this rep workspace. Existing Hub or rep-entered rows were updated instead of duplicated.");
       };
 
       reader.readAsArrayBuffer(file);
@@ -9107,7 +9257,7 @@ function render() {
       }
 
       const now = new Date().toISOString();
-      const rec = forceSingleRepDemo({
+      const rec = assignToSelectedRepIfNeeded({
         id: uuid(),
         key: `REP-${Date.now()}-${serial}`,
         source: "Rep Added Install Base",
@@ -9144,12 +9294,15 @@ function render() {
         manager_visible: false
       });
 
-      state.records.unshift(rec);
-      state.selectedId = rec.id;
+      const upsertResult = upsertRepWorkspaceRecord(rec);
+      state.selectedId = upsertResult.record.id;
       saveRecords();
       closeOwnInstallBaseModal();
       render();
-      showBanner("My install-base record added to this rep workspace.");
+      showBanner(upsertResult.merged
+        ? "My install-base entry merged into the existing workspace record."
+        : "My install-base record added to this rep workspace."
+      );
     }
 
     function openNewProjectModal() {
@@ -9187,8 +9340,9 @@ const projectName = clean($("newProjectName").value);
 const projectModel = clean($("newProjectModel")?.value || "");
 const projectSerial = clean($("newProjectSerial")?.value || "");
 const projectDOM = clean($("newProjectDOM")?.value || "");
-const repFirst = SINGLE_REP_DEMO.first;
-const repLast = SINGLE_REP_DEMO.last;
+const selectedRepParts = getSelectedRepParts();
+const repFirst = selectedRepParts.first;
+const repLast = selectedRepParts.last;
       if (!customer || !projectName) {
         alert("Fill out customer and project name.");
         return;
@@ -9294,13 +9448,14 @@ manufacture_year: projectDOM,
         manager_response_seen_at: ""
       };
 
-      state.records.unshift(rec);
-      state.selectedId = rec.id;
+      const upsertResult = upsertRepWorkspaceRecord(assignToSelectedRepIfNeeded(rec));
+      state.selectedId = upsertResult.record.id;
 
       saveRecords();
-      syncToManagerQueue(rec);
+      syncToManagerQueue(upsertResult.record);
       closeNewProjectModal();
       render();
+      if (upsertResult.merged) showBanner("New project details merged into the existing workspace record.");
     }
 
     function openQuoteModal() {
