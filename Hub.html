@@ -2663,6 +2663,17 @@ function getReviewStatus(rec) {
     return { type: "released", label: "Fix Sent to Manager" };
   }
 
+  if (visibleFixFields.length) {
+    return {
+      type: "missing",
+      label: `Missing ${getHubFixDisplayLabel(visibleFixFields[0])}`
+    };
+  }
+
+  if (exceptions.length) {
+    return exceptions[0];
+  }
+
   if (
     !isAutoSyncEligible(rec) &&
     rec.install_base_release_status !== "released_to_rep" &&
@@ -2846,6 +2857,7 @@ function loadRecords() {
 
   mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
+  enforceHubFixHolds();
 }
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
@@ -3523,27 +3535,29 @@ function updateReleaseButtonVisibility(rec) {
 function getVisibleHubFixFields(rec) {
   if (!rec || hasActualInstallBaseCorrection(rec)) return [];
 
+  // This must match the table cells, not only the raw uploaded fields.
+  // A FIX button is visible when either:
+  // 1) the field is blank/placeholder, OR
+  // 2) Hub has an unresolved FIX request for that specific field.
   const checks = [
-    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id],
-    ["make", rec.make || rec.manufacturer || rec.brand],
+    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || ""],
+    ["make", rec.make || rec.manufacturer || rec.brand || ""],
     ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "")],
-    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || rec.region || "")],
+    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || "")],
     ["rep", getHubRepOwnerValue(rec)],
-    ["site", clean(rec.site || rec.site_name || rec.facility || rec.facility_name || rec.hospital_name || rec.customer_name || rec.account_name || rec.location || "")],
-    ["modality", rec.modality || rec.equipment_modality],
-    ["model", rec.model || rec.equipment_model],
-    ["serial", rec.serial_number || rec.serial || rec.system_serial || rec.equipment_serial],
-    ["dom", rec.dom || rec.manufacture_year || rec.year]
+    ["site", rec.site || rec.site_name || rec.facility || rec.facility_name || rec.hospital_name || rec.customer_name || rec.account_name || rec.location || ""],
+    ["modality", rec.modality || rec.equipment_modality || ""],
+    ["model", rec.model || rec.equipment_model || ""],
+    ["serial", rec.serial_number || rec.serial || rec.system_serial || ""],
+    ["dom", rec.dom || rec.manufacture_year || rec.year || ""]
   ];
 
   return checks
     .filter(([field, value]) => {
-      // A row shows FIX either because the displayed value is blank OR because
-      // Install Base already has an unresolved FIX request for that field.
-      // Both cases must block Auto-Synced and automatic Manager visibility.
       if (isHubUnresolvedFixField(rec, field)) return true;
 
       if (!isBlankHubField(value, field)) return false;
+
       const corrected = getHubCorrectedDisplayValue(rec, field);
       return isBlankHubField(corrected, field);
     })
@@ -3576,6 +3590,88 @@ function hasValidAssignedRep(rec) {
   return Boolean(getHubRepOwnerValue(rec));
 }
 
+function recordHasHubFixHold(rec) {
+  if (!rec || hasActualInstallBaseCorrection(rec)) return false;
+  if (rec.install_base_manual_route === true) return false;
+
+  return (
+    getVisibleHubFixFields(rec).length > 0 ||
+    getDataExceptions(rec).length > 0 ||
+    getRoutingBlockingFields(rec).length > 0
+  );
+}
+
+function removeHubFixHoldRecordsFromQueues() {
+  const holdKeys = new Set(
+    state.records
+      .filter(recordHasHubFixHold)
+      .map(r => String(getRecordKey(r)))
+  );
+
+  if (!holdKeys.size) return;
+
+  const repQueue = readQueue(REP_QUEUE_KEY, []).filter(r =>
+    !holdKeys.has(String(r.key || getRecordKey(r)))
+  );
+
+  const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+  Object.keys(managerQueue).forEach(ownerName => {
+    managerQueue[ownerName] = (managerQueue[ownerName] || []).filter(r =>
+      !holdKeys.has(String(r.key || getRecordKey(r)))
+    );
+  });
+
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(repQueue));
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+}
+
+function enforceHubFixHolds() {
+  let changed = false;
+
+  state.records = state.records.map(rec => {
+    if (!recordHasHubFixHold(rec)) return rec;
+
+    if (
+      rec.install_base_release_status === "fix_needed" &&
+      rec.rep_visible === false &&
+      rec.manager_visible === false
+    ) {
+      return rec;
+    }
+
+    changed = true;
+    const fields = getRoutingBlockingFields(rec);
+
+    return {
+      ...rec,
+      key: getRecordKey(rec),
+      rep_visible: false,
+      manager_visible: false,
+      install_base_release_status: "fix_needed",
+      install_base_sync_type: "manual_fix_routing_hold",
+      install_base_released_to: "",
+      release_destination: "",
+      install_base_manual_route: false,
+      install_base_issue_field: fields.join(", "),
+      install_base_issue_type: "missing_data",
+      install_base_action_label: "Install Base FIX",
+      install_base_action_reason: fields.length
+        ? `Install Base needs correction for: ${fields.join(", ")}.`
+        : "Install Base needs correction before release.",
+      rep_fix_required: "Install Base FIX"
+    };
+  });
+
+  removeHubFixHoldRecordsFromQueues();
+
+  if (changed) {
+    localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
+    localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+  }
+}
+
 function autoSyncEligibleRecordsToRepAndManager() {
   const now = new Date().toISOString();
 
@@ -3593,24 +3689,15 @@ function autoSyncEligibleRecordsToRepAndManager() {
     return !currentInstallBaseKeys.has(key);
   });
 
-  // Remove current Install Base records from Manager queues first.
-  // Records are added back below ONLY when clean enough for auto-sync OR when
-  // Hub manually sends a FIX to Manager. Unsent FIX rows and FIX sent to Rep
-  // must not stay visible in Manager.
+  // Do not automatically add or refresh unassigned records in Manager queues.
   Object.keys(managerQueue).forEach(ownerName => {
     managerQueue[ownerName] = (managerQueue[ownerName] || []).filter(r => {
       const key = String(r.key || getRecordKey(r));
 
       if (!currentInstallBaseKeys.has(key)) return true;
 
-      const sentToManager =
-        r.install_base_manual_route === true &&
-        (
-          r.install_base_release_status === "released_to_manager" ||
-          r.install_base_released_to === "manager"
-        );
-
-      return sentToManager;
+      // Preserve only records that were manually sent from Hub.
+      return r.install_base_manual_route === true;
     });
   });
 
@@ -3714,26 +3801,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
       manager_visible: true,
       rep_assignment_required: false
     };
-  });
-
-  // Final safety pass: remove any current record with a visible/unresolved FIX
-  // from Manager queues unless Hub manually sent that specific FIX to Manager.
-  Object.keys(managerQueue).forEach(ownerName => {
-    managerQueue[ownerName] = (managerQueue[ownerName] || []).filter(r => {
-      const key = String(r.key || getRecordKey(r));
-      if (!currentInstallBaseKeys.has(key)) return true;
-
-      const source = state.records.find(src => String(getRecordKey(src)) === key) || r;
-      const sentToManager =
-        source.install_base_manual_route === true &&
-        (
-          source.install_base_release_status === "released_to_manager" ||
-          source.install_base_released_to === "manager"
-        );
-
-      if (sentToManager) return true;
-      return !getRoutingBlockingFields(source).length && !getDataExceptions(source).length;
-    });
   });
 
   // Only records that already have a valid rep may sync automatically.
