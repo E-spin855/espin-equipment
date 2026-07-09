@@ -5321,10 +5321,40 @@ issues.forEach(issue => {
     setCorrectedFieldValue(primaryIssue.key, managerFixText);
   }
 
-  const now = new Date().toISOString();
-  const key = getRecordKey(rec) || rec.key || id;
-
-  const correctedRepOwner = clean(
+	  const now = new Date().toISOString();
+	  const key = getRecordKey(rec) || rec.key || id;
+	  const correctedFieldKeys = Object.keys(correctedFields).map(field =>
+	    window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim()
+	  );
+	  const repVisibleCorrectionAliases = [
+	    "project",
+	    "project_id",
+	    "oem_project_id",
+	    "asset_id",
+	    "make",
+	    "manufacturer",
+	    "model",
+	    "modality",
+	    "serial",
+	    "serial_number",
+	    "system_serial",
+	    "dom",
+	    "year",
+	    "manufacture_year",
+	    "site",
+	    "facility",
+	    "hospital",
+	    "hospital_name",
+	    "customer",
+	    "location",
+	    "rep",
+	    "assigned_rep",
+	    "assigned_rep_name",
+	    "rep_owner",
+	    "sales_rep",
+	    "sales_rep_name"
+	  ];
+	  const correctedRepOwner = clean(
     correctedValues.assigned_rep_name ||
     correctedValues.assigned_rep ||
     correctedValues.rep ||
@@ -5343,13 +5373,18 @@ issues.forEach(issue => {
     ""
   );
 
-  const correctedManagerOwner = clean(
+	  const correctedManagerOwner = clean(
     $("mgr_fix_manager_name")?.value ||
     correctedValues.manager_name ||
     rec.manager_name ||
     rec.owner_group_name ||
-    ""
-  );
+	    ""
+	  );
+
+	  const shouldSyncCorrectionToRep = Boolean(
+	    correctedRepOwner &&
+	    correctedFieldKeys.some(field => repVisibleCorrectionAliases.includes(field))
+	  );
 
 	  if (correctedRepOwner) {
 	    [
@@ -5471,10 +5506,10 @@ manager_unseen_update: true,
 manager_alert_seen: false,
   };
 
-  const repSyncRecord = {
-    ...updated,
-    manager_visible: false,
-    rep_visible: Boolean(correctedRepOwner),
+	  const repSyncRecord = {
+	    ...updated,
+	    manager_visible: false,
+	    rep_visible: Boolean(correctedRepOwner),
     rep_assignment_required: !Boolean(correctedRepOwner),
     install_base_sync_type: "manager_assignment_correction_to_rep",
     rep_new_update: true,
@@ -5549,15 +5584,17 @@ manager_alert_seen: false,
     upsertArrayRecord(readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY), updated)
   );
 
-  writeArrayKey(
-    STORAGE_KEY,
-    upsertArrayRecord(readArrayKey(STORAGE_KEY), correctedRepOwner ? repSyncRecord : updated)
-  );
-
-  if (correctedRepOwner) {
-    writeArrayKey(
-      REP_QUEUE_KEY,
-      upsertArrayRecord(readArrayKey(REP_QUEUE_KEY), repSyncRecord)
+	  if (shouldSyncCorrectionToRep) {
+	    writeArrayKey(
+	      STORAGE_KEY,
+	      upsertArrayRecord(readArrayKey(STORAGE_KEY), repSyncRecord)
+	    );
+	  }
+	
+	  if (shouldSyncCorrectionToRep) {
+	    writeArrayKey(
+	      REP_QUEUE_KEY,
+	      upsertArrayRecord(readArrayKey(REP_QUEUE_KEY), repSyncRecord)
     );
   } else {
     writeArrayKey(
@@ -5581,13 +5618,27 @@ manager_alert_seen: false,
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
   localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
-  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+	  if (shouldSyncCorrectionToRep) {
+	    localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+	  }
 
-  // Last-resort stale cleanup: remove old duplicate manager/hub copies that still carry the unresolved FIX route.
-  [INSTALL_BASE_KEY, INSTALL_BASE_RESPONSE_KEY, INSTALL_BASE_FINAL_SYNC_KEY, STORAGE_KEY, REP_QUEUE_KEY].forEach(storeKey => {
-    const cleaned = upsertArrayRecord(readArrayKey(storeKey), storeKey === REP_QUEUE_KEY && correctedRepOwner ? repSyncRecord : updated);
-    writeArrayKey(storeKey, cleaned);
-  });
+	  // Last-resort stale cleanup: remove old duplicate manager/hub copies that still carry the unresolved FIX route.
+	  [INSTALL_BASE_KEY, INSTALL_BASE_RESPONSE_KEY, INSTALL_BASE_FINAL_SYNC_KEY, STORAGE_KEY, REP_QUEUE_KEY].forEach(storeKey => {
+	    if (storeKey === STORAGE_KEY && !shouldSyncCorrectionToRep) {
+	      return;
+	    }
+
+	    if (storeKey === REP_QUEUE_KEY && !shouldSyncCorrectionToRep) {
+	      writeArrayKey(
+	        storeKey,
+	        readArrayKey(storeKey).filter(item => !sameRecord(item, updated))
+	      );
+	      return;
+	    }
+
+	    const cleaned = upsertArrayRecord(readArrayKey(storeKey), storeKey === REP_QUEUE_KEY && shouldSyncCorrectionToRep ? repSyncRecord : updated);
+	    writeArrayKey(storeKey, cleaned);
+	  });
 
   state.records = upsertArrayRecord(state.records, updated);
   state.selectedId = updated.id || getRecordKey(updated) || key;
