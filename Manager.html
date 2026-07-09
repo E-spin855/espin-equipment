@@ -5166,8 +5166,10 @@ function managerMissingValue(value) {
 function isManagerInstallBaseLikeRecord(rec) {
   if (!rec) return false;
 
-  if (hasManagerMissingCoreFields(rec)) return true;
-
+  // IMPORTANT: do not call hasManagerMissingCoreFields() here.
+  // hasManagerMissingCoreFields() calls getManagerMissingInstallBaseIssueFields(),
+  // and getManagerMissingInstallBaseIssueFields() may check this function.
+  // Calling back into missing-field detection creates a recursion loop.
   return Boolean(
     rec.install_base_manager_request === true ||
     rec.install_base_sync_type ||
@@ -5180,12 +5182,23 @@ function isManagerInstallBaseLikeRecord(rec) {
     rec.rep_loaded_from_upload === true ||
     rec.rep_owned_install_base === true ||
     rec.rep_added_install_base === true ||
-    rec.install_base_visible === true
+    rec.install_base_visible === true ||
+    rec.source === "Hub" ||
+    rec.source === "CSV" ||
+    rec.source === "Rep Upload" ||
+    rec.source === "Rep Entered" ||
+    rec.record_source === "Hub" ||
+    rec.record_source === "CSV" ||
+    rec.record_source === "Rep Upload" ||
+    rec.record_source === "Rep Entered"
   );
 }
 
 function getManagerMissingInstallBaseIssueFields(rec) {
-  if (!rec || !isManagerInstallBaseLikeRecord(rec)) return [];
+  if (!rec) return [];
+
+  // Missing-field detection must work for Hub records and rep-uploaded records.
+  // Do not block the check just because a source flag is missing.
 
   const fields = [];
   const add = (key, label) => {
