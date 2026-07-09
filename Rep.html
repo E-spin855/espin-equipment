@@ -4824,11 +4824,35 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
 
-  const repFirst = cleanText(rec.sales_rep_first || rec.rep_first_name || "");
-  const repLast = cleanText(rec.sales_rep_last || rec.rep_last_name || "");
+  const repFirst = cleanText(
+    rec.sales_rep_first ||
+    rec.rep_first_name ||
+    rec.assigned_rep_first_name ||
+    rec.owner_first_name ||
+    ""
+  );
+  const repLast = cleanText(
+    rec.sales_rep_last ||
+    rec.rep_last_name ||
+    rec.assigned_rep_last_name ||
+    rec.owner_last_name ||
+    ""
+  );
   const repName =
     `${repFirst} ${repLast}`.trim() ||
-    cleanText(rec.assigned_rep_name || rec.rep_owner || rec.rep_owner_name || rec.rep_name || "Rep");
+    cleanText(
+      rec.assigned_rep_name ||
+      rec.assigned_rep ||
+      rec.assigned_to ||
+      rec.rep_owner ||
+      rec.rep_owner_name ||
+      rec.rep_name ||
+      rec.sales_rep_name ||
+      rec.sales_rep ||
+      rec.owner ||
+      rec.owner_name ||
+      "Rep"
+    );
 
   const territory = cleanText(
     rec.territory || rec.manager_territory || rec.manager_region || rec.region || ""
@@ -4846,13 +4870,19 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
 
   const siteName = cleanText(
     rec.site ||
+    rec.site_name ||
     rec.facility ||
+    rec.facility_name ||
     rec.hospital ||
     rec.hospital_name ||
     rec.customer_name ||
+    rec.customer_site ||
     rec.account ||
     rec.account_name ||
-    rec.site_name ||
+    rec.account_site ||
+    rec.location ||
+    rec.location_name ||
+    rec.install_site ||
     ""
   );
 
@@ -4880,23 +4910,48 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
     manager_region: rec.manager_region || territory,
     region: rec.region || territory,
 
+    // Rep owner aliases used by Hub / Install Base / Manager.
     rep_owner: repName,
     rep_owner_name: repName,
+    rep_owner_full_name: repName,
     rep_name: repName,
+    sales_rep: repName,
+    sales_rep_name: repName,
+    assigned_rep: repName,
     assigned_rep_name: repName,
+    assigned_rep_owner: repName,
+    assigned_to: repName,
+    assigned_user: repName,
+    owner: repName,
+    owner_name: repName,
+    owner_rep: repName,
     sales_rep_first: repFirst,
     sales_rep_last: repLast,
+    rep_first_name: repFirst,
+    rep_last_name: repLast,
+    assigned_rep_first_name: repFirst,
+    assigned_rep_last_name: repLast,
     sales_rep_email: rec.sales_rep_email || rec.rep_email || "",
     rep_email: rec.rep_email || rec.sales_rep_email || "",
+    assigned_rep_email: rec.assigned_rep_email || rec.sales_rep_email || rec.rep_email || "",
 
+    // Site / facility aliases used by Hub / Install Base / Manager.
     site: siteName,
-    facility: rec.facility || siteName,
-    hospital: rec.hospital || siteName,
-    hospital_name: rec.hospital_name || siteName,
-    customer_name: rec.customer_name || siteName,
-    account: rec.account || siteName,
-    account_name: rec.account_name || siteName,
-    site_name: rec.site_name || siteName,
+    site_name: siteName,
+    site_display_name: siteName,
+    site_facility: siteName,
+    facility: siteName,
+    facility_name: siteName,
+    hospital: siteName,
+    hospital_name: siteName,
+    customer_name: siteName,
+    customer_site: siteName,
+    account: siteName,
+    account_name: siteName,
+    account_site: siteName,
+    location: siteName,
+    location_name: siteName,
+    install_site: siteName,
 
     source: rec.source || "Rep Uploaded Install Base",
     hub_source: "Rep Review Page",
@@ -9388,6 +9443,31 @@ function render() {
               obj.facility ||
               "Unknown Hospital",
 
+            site_name:
+              obj.site_name ||
+              obj.site ||
+              obj.facility ||
+              obj.facility_name ||
+              obj.hospital_name ||
+              obj.account_name ||
+              "Unknown Hospital",
+            location:
+              obj.location ||
+              obj.site ||
+              obj.facility ||
+              obj.facility_name ||
+              obj.hospital_name ||
+              obj.account_name ||
+              "Unknown Hospital",
+            location_name:
+              obj.location_name ||
+              obj.location ||
+              obj.site ||
+              obj.facility ||
+              obj.facility_name ||
+              obj.hospital_name ||
+              obj.account_name ||
+              "Unknown Hospital",
             site_address: obj.site_address || obj.street_address || obj.address || obj.siteaddress || obj.street || "",
             city: obj.city || obj.town || "",
             state: obj.state || obj.province || "",
@@ -9401,10 +9481,17 @@ function render() {
 
             sales_rep_first: obj.sales_rep_first || "",
             sales_rep_last: obj.sales_rep_last || "",
-            rep_owner: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || "",
-            rep_owner_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || "",
-            rep_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || "",
-            assigned_rep_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || "",
+            rep_owner: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || obj.sales_rep_name || obj.assigned_rep || "",
+            rep_owner_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || obj.sales_rep_name || obj.assigned_rep || "",
+            rep_owner_full_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || obj.sales_rep_name || obj.assigned_rep || "",
+            rep_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || obj.sales_rep_name || obj.assigned_rep || "",
+            sales_rep_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.sales_rep_name || obj.rep_owner || obj.assigned_rep_name || obj.assigned_rep || "",
+            sales_rep: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.sales_rep || obj.sales_rep_name || obj.rep_owner || obj.assigned_rep_name || obj.assigned_rep || "",
+            assigned_rep: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.assigned_rep || obj.assigned_rep_name || obj.rep_owner || "",
+            assigned_rep_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.rep_owner || obj.assigned_rep_name || obj.sales_rep_name || obj.assigned_rep || "",
+            assigned_to: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.assigned_to || obj.rep_owner || obj.assigned_rep_name || "",
+            owner: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.owner || obj.rep_owner || obj.assigned_rep_name || "",
+            owner_name: `${obj.sales_rep_first || ""} ${obj.sales_rep_last || ""}`.trim() || obj.owner_name || obj.rep_owner || obj.assigned_rep_name || "",
             sales_rep_company: obj.sales_rep_company || "",
             sales_rep_phone: obj.sales_rep_phone || "",
             sales_rep_email: obj.sales_rep_email || obj.rep_email || "",
