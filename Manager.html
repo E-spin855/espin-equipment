@@ -5323,38 +5323,7 @@ issues.forEach(issue => {
 
 	  const now = new Date().toISOString();
 	  const key = getRecordKey(rec) || rec.key || id;
-	  const correctedFieldKeys = Object.keys(correctedFields).map(field =>
-	    window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim()
-	  );
-	  const repVisibleCorrectionAliases = [
-	    "project",
-	    "project_id",
-	    "oem_project_id",
-	    "asset_id",
-	    "make",
-	    "manufacturer",
-	    "model",
-	    "modality",
-	    "serial",
-	    "serial_number",
-	    "system_serial",
-	    "dom",
-	    "year",
-	    "manufacture_year",
-	    "site",
-	    "facility",
-	    "hospital",
-	    "hospital_name",
-	    "customer",
-	    "location",
-	    "rep",
-	    "assigned_rep",
-	    "assigned_rep_name",
-	    "rep_owner",
-	    "sales_rep",
-	    "sales_rep_name"
-	  ];
-	  const correctedRepOwner = clean(
+		  const correctedRepOwner = clean(
     correctedValues.assigned_rep_name ||
     correctedValues.assigned_rep ||
     correctedValues.rep ||
@@ -5381,12 +5350,7 @@ issues.forEach(issue => {
 	    ""
 	  );
 
-	  const shouldSyncCorrectionToRep = Boolean(
-	    correctedRepOwner &&
-	    correctedFieldKeys.some(field => repVisibleCorrectionAliases.includes(field))
-	  );
-
-	  if (correctedRepOwner) {
+		  if (correctedRepOwner) {
 	    [
 	      "assigned_rep_name",
 	      "assigned_rep",
@@ -5584,19 +5548,17 @@ manager_alert_seen: false,
     upsertArrayRecord(readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY), updated)
   );
 
-	  if (shouldSyncCorrectionToRep) {
-	    writeArrayKey(
-	      STORAGE_KEY,
-	      upsertArrayRecord(readArrayKey(STORAGE_KEY), repSyncRecord)
-	    );
-	  }
-	
-	  if (shouldSyncCorrectionToRep) {
+	  writeArrayKey(
+	    STORAGE_KEY,
+	    upsertArrayRecord(readArrayKey(STORAGE_KEY), correctedRepOwner ? repSyncRecord : updated)
+	  );
+		
+	  if (correctedRepOwner) {
 	    writeArrayKey(
 	      REP_QUEUE_KEY,
 	      upsertArrayRecord(readArrayKey(REP_QUEUE_KEY), repSyncRecord)
-    );
-  } else {
+	    );
+	  } else {
     writeArrayKey(
       REP_QUEUE_KEY,
       readArrayKey(REP_QUEUE_KEY).filter(item => !sameRecord(item, updated))
@@ -5615,28 +5577,14 @@ manager_alert_seen: false,
     JSON.stringify(upsertManagerQueue(managerQueue, updated))
   );
 
-  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
-  localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
-  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
-	  if (shouldSyncCorrectionToRep) {
-	    localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
-	  }
-
+	  localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
+	  localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, String(Date.now()));
+	  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+	  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+	
 	  // Last-resort stale cleanup: remove old duplicate manager/hub copies that still carry the unresolved FIX route.
 	  [INSTALL_BASE_KEY, INSTALL_BASE_RESPONSE_KEY, INSTALL_BASE_FINAL_SYNC_KEY, STORAGE_KEY, REP_QUEUE_KEY].forEach(storeKey => {
-	    if (storeKey === STORAGE_KEY && !shouldSyncCorrectionToRep) {
-	      return;
-	    }
-
-	    if (storeKey === REP_QUEUE_KEY && !shouldSyncCorrectionToRep) {
-	      writeArrayKey(
-	        storeKey,
-	        readArrayKey(storeKey).filter(item => !sameRecord(item, updated))
-	      );
-	      return;
-	    }
-
-	    const cleaned = upsertArrayRecord(readArrayKey(storeKey), storeKey === REP_QUEUE_KEY && shouldSyncCorrectionToRep ? repSyncRecord : updated);
+	    const cleaned = upsertArrayRecord(readArrayKey(storeKey), storeKey === REP_QUEUE_KEY && correctedRepOwner ? repSyncRecord : updated);
 	    writeArrayKey(storeKey, cleaned);
 	  });
 
