@@ -3602,6 +3602,62 @@ function normalizeOemReviewLabelForManager(rec) {
 
   return "Record Note";
 }
+function getManagerActiveFixLabel(rec) {
+  if (!isManagerOpenInstallBaseFixRequest(rec)) return "";
+
+  const requestText = lower([
+    rec.install_base_issue_field,
+    rec.install_base_fix_field,
+    rec.install_base_fix_request_field,
+    rec.install_base_clarification_reason,
+    rec.install_base_issue_reason,
+    rec.install_base_action_reason,
+    rec.install_base_issue_note,
+    rec.oem_review_reason,
+    rec.review_reason,
+    rec.rep_fix_required
+  ].filter(Boolean).join(" "));
+
+  if (
+    requestText.includes("territory") ||
+    requestText.includes("manager_region") ||
+    requestText.includes("manager territory") ||
+    requestText.includes("assigned territory")
+  ) {
+    return "Missing Territory";
+  }
+
+  if (
+    requestText.includes("assigned rep") ||
+    requestText.includes("rep owner") ||
+    requestText.includes("rep name") ||
+    requestText.includes("sales rep") ||
+    requestText.includes("missing rep")
+  ) {
+    return "Missing Rep Owner";
+  }
+
+  if (
+    requestText.includes("owner group") ||
+    requestText.includes("manager assignment") ||
+    requestText.includes("manager owner")
+  ) {
+    return "Missing Owner Group";
+  }
+
+  if (requestText.includes("serial")) return "Missing Serial";
+  if (requestText.includes("dom") || requestText.includes("date of manufacture")) return "Missing DOM";
+  if (requestText.includes("model")) return "Missing Model";
+  if (requestText.includes("make") || requestText.includes("manufacturer")) return "Missing Brand";
+  if (requestText.includes("modality")) return "Missing Modality";
+  if (requestText.includes("site") || requestText.includes("facility")) return "Missing Site";
+
+  return "Manual Clarification";
+}
+
+function getManagerVisibleInstallBaseReviewLabel(rec) {
+  return getManagerActiveFixLabel(rec) || normalizeOemReviewLabelForManager(rec);
+}
 function renderReviewCondition(rec) {
   const isInstallBaseRecord =
     rec.hub_source === "AXIS Install Base Workspace" ||
@@ -3611,13 +3667,20 @@ function renderReviewCondition(rec) {
     rec.install_base_release_status === "released_to_manager";
 
   if (isInstallBaseRecord) {
-    const label = normalizeOemReviewLabelForManager(rec);
+    const label = getManagerVisibleInstallBaseReviewLabel(rec);
     const normalized = String(label || "").toLowerCase();
 
     let cls = "alert-badge alert-record-note";
 
-    if (normalized.includes("service")) {
-      cls = "alert-badge alert-service";
+  if (
+  normalized.includes("missing territory") ||
+  normalized.includes("missing rep") ||
+  normalized.includes("missing owner") ||
+  normalized.includes("manual clarification")
+) {
+  cls = "alert-badge alert-ownership";
+} else if (normalized.includes("service")) {
+  cls = "alert-badge alert-service";? getManagerVisibleInstallBaseReviewLabel(rec)
     } else if (
       normalized.includes("upgrade")
     ) {
@@ -4801,8 +4864,12 @@ function getManagerInstallBaseIssueFields(rec) {
     serial: { key: "serial_number", label: "Serial Number" },
     dom: { key: "dom", label: "DOM / Year" },
     site: { key: "site", label: "Facility / Site" },
-    rep: { key: "assigned_rep_name", label: "Rep Owner" },
-    manager: { key: "manager_name", label: "Owner Group / Manager" }
+ rep: { key: "assigned_rep_name", label: "Rep Owner" },
+manager: { key: "manager_name", label: "Owner Group / Manager" },
+territory: { key: "manager_region", label: "Territory" },
+region: { key: "manager_region", label: "Territory" },
+manager_region: { key: "manager_region", label: "Territory" },
+manager_territory: { key: "manager_region", label: "Territory" }
   };
 
   const requestedFields = String(rec.install_base_issue_field || "")
@@ -4860,6 +4927,14 @@ if (
 ) {
   add("assigned_rep_name", "Rep Owner");
 }
+if (
+  requestText.includes("territory") ||
+  requestText.includes("manager_region") ||
+  requestText.includes("manager territory") ||
+  requestText.includes("assigned territory")
+) {
+  add("manager_region", "Territory");
+}
   if (requestText.includes("rep email")) add("assigned_rep_email", "Rep Email");
   if (requestText.includes("utilization")) add("utilization_percent", "Utilization %");
 
@@ -4892,10 +4967,10 @@ function getManagerInstallBaseFieldsForEdit(rec) {
     { key: "site", label: "Facility / Site" }
   ]);
 }
-
 function getManagerInstallBaseInputValue(rec, key) {
   if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
   if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
+  if (key === "manager_region") return rec.manager_region || rec.manager_territory || rec.territory || "";
   return rec[key] || "";
 }
 
@@ -5078,15 +5153,21 @@ function sendManagerInstallBaseCorrection(id) {
         correctedFields[alias] = cleanValue;
       });
     }
+// Owner Group / Manager is separate from Rep Owner.
+if (["manager_name", "owner_group", "owner_group_name"].includes(canonicalKey)) {
+  ["manager_name", "owner_group", "owner_group_name"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
 
-    // Owner Group / Manager is separate from Rep Owner.
-    if (["manager_name", "owner_group", "owner_group_name"].includes(canonicalKey)) {
-      ["manager_name", "owner_group", "owner_group_name"].forEach(alias => {
-        correctedValues[alias] = cleanValue;
-        correctedFields[alias] = cleanValue;
-      });
-    }
-  };
+// Territory is separate from Owner Group and Rep Owner.
+if (["manager_region", "manager_territory", "territory", "region"].includes(canonicalKey)) {
+  ["manager_region", "manager_territory", "territory", "region"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
 
   issues.forEach(issue => {
     const input = $("mgr_fix_" + issue.key);
@@ -6594,7 +6675,7 @@ function renderDetail() {
         rec.install_base_sync_type ||
         rec.install_base_release_status === "auto_synced" ||
         rec.install_base_release_status === "released_to_manager"
-          ? normalizeOemReviewLabelForManager(rec)
+          ? getManagerVisibleInstallBaseReviewLabel(rec)
           : (
               alert
                 ? formatReviewText(
@@ -6621,7 +6702,7 @@ function renderDetail() {
           rec.install_base_sync_type ||
           rec.install_base_release_status === "auto_synced" ||
           rec.install_base_release_status === "released_to_manager"
-            ? normalizeOemReviewLabelForManager(rec)
+            ? getManagerVisibleInstallBaseReviewLabel(rec)
             : formatReviewText(
                 rec.oem_review_type ||
                 rec.review_type ||
