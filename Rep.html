@@ -4890,6 +4890,50 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
     rec.oem_project_id || rec.project_id || rec.asset_id || rec.id || key
   );
 
+  // Hub can keep an older FIX flag on the same record key if a previous upload
+  // had blanks.  Send both top-level values and corrected-value aliases so Hub
+  // can replace the FIX cell with the real Rep-uploaded value even when it is
+  // merging over an older broken localStorage row.
+  const hubCorrectedValues = {
+    project: projectId,
+    project_id: projectId,
+    oem_project_id: projectId,
+    asset_id: projectId,
+
+    owner: ownerGroup,
+    manager: ownerGroup,
+    manager_name: ownerGroup,
+    owner_group: ownerGroup,
+    owner_group_name: ownerGroup,
+
+    territory,
+    manager_territory: territory,
+    manager_region: territory,
+    region: territory,
+
+    rep: repName,
+    assigned_rep: repName,
+    assigned_rep_name: repName,
+    rep_owner: repName,
+    rep_owner_name: repName,
+    owner_name: repName,
+    sales_rep: repName,
+    sales_rep_name: repName,
+
+    site: siteName,
+    site_name: siteName,
+    facility: siteName,
+    facility_name: siteName,
+    hospital: siteName,
+    hospital_name: siteName,
+    customer: siteName,
+    customer_name: siteName,
+    account: siteName,
+    account_name: siteName,
+    location: siteName,
+    location_name: siteName
+  };
+
   return {
     ...rec,
     key,
@@ -4952,6 +4996,20 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
     location: siteName,
     location_name: siteName,
     install_site: siteName,
+
+    // Give Hub/Manager a corrected-values object too.  This prevents stale FIX
+    // badges from surviving when the rep re-uploads the same record with real
+    // Rep Owner or Site values.
+    corrected_values: { ...(rec.corrected_values || {}), ...hubCorrectedValues },
+    corrected_fields: { ...(rec.corrected_fields || {}), ...hubCorrectedValues },
+    install_base_corrected_values: { ...(rec.install_base_corrected_values || {}), ...hubCorrectedValues },
+    install_base_corrected_field_values: { ...(rec.install_base_corrected_field_values || {}), ...hubCorrectedValues },
+    corrected_field_values: { ...(rec.corrected_field_values || {}), ...hubCorrectedValues },
+    install_base_corrected_fields: Array.from(new Set(String(rec.install_base_corrected_fields || "")
+      .split(",")
+      .map(v => v.trim())
+      .filter(Boolean)
+      .concat(["project","owner","territory","rep","site"])) ).join(", "),
 
     source: rec.source || "Rep Uploaded Install Base",
     hub_source: "Rep Review Page",
