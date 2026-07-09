@@ -3642,12 +3642,7 @@ function normalizeOemReviewLabelForManager(rec) {
 function getManagerActiveFixLabel(rec) {
   if (!isManagerOpenInstallBaseFixRequest(rec)) return "";
 
-  const unresolvedIssues = getManagerInstallBaseIssueFields(rec).filter(issue =>
-    isManagerInstallBaseFieldRequested(rec, issue.key) &&
-    !wasManagerFieldCorrected(rec, issue.key)
-  );
-
-  if (!unresolvedIssues.length) return "";
+  if (!hasUnresolvedManagerInstallBaseIssues(rec)) return "";
 
   const requestText = lower([
     rec.install_base_issue_field,
@@ -4403,6 +4398,15 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
   const aliases = getManagerInstallBaseFieldAliases(fieldName);
 
   return requestedFields.some(field => aliases.includes(field));
+}
+
+function hasUnresolvedManagerInstallBaseIssues(rec) {
+  if (!isManagerOpenInstallBaseFixRequest(rec)) return false;
+
+  return getManagerInstallBaseIssueFields(rec).some(issue =>
+    isManagerInstallBaseFieldRequested(rec, issue.key) &&
+    !wasManagerFieldCorrected(rec, issue.key)
+  );
 }
 
 function getManagerInstallBaseFieldAliases(fieldName) {
@@ -5895,10 +5899,10 @@ function getInstallBaseReviewReasonForManager(rec) {
 
   const activeFixReason = getManagerActiveFixReason(rec);
 
-  if (
-    isManagerOpenInstallBaseFixRequest(rec) &&
-    activeFixReason
-  ) {
+	  if (
+	    hasUnresolvedManagerInstallBaseIssues(rec) &&
+	    activeFixReason
+	  ) {
     return activeFixReason;
   }
 
