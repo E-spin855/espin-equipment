@@ -2882,6 +2882,61 @@ function writeArrayKey(key, arr) {
   localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
 
+
+function isManagerRoutedFromHub(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.install_base_manager_request === true ||
+    rec.install_base_released_to === "manager" ||
+    rec.release_destination === "manager" ||
+    rec.install_base_release_status === "released_to_manager"
+  );
+}
+
+function isInstallBaseHoldStatusForManager(rec) {
+  const status = lower(rec?.install_base_release_status || "");
+  const syncType = lower(rec?.install_base_sync_type || "");
+
+  return Boolean(
+    status === "fix_needed" ||
+    status === "manual_hold" ||
+    status === "awaiting_manual_fix" ||
+    status === "sync_hold" ||
+    syncType.includes("hold") ||
+    syncType.includes("manual_fix_routing") ||
+    syncType.includes("manual_clarification")
+  );
+}
+
+function shouldManagerAcceptHubRecord(rec) {
+  if (!rec) return false;
+
+  // If Install Base explicitly sent the FIX to Manager, Manager should see it.
+  if (isManagerRoutedFromHub(rec)) return true;
+
+  // Hub-only FIX / Sync Hold records must not leak into Manager from raw Hub storage.
+  if (isInstallBaseHoldStatusForManager(rec)) return false;
+
+  // Any Hub-like row with missing core data is still a Hub FIX item, not a Manager row.
+  if (isManagerInstallBaseLikeRecord(rec) && hasManagerMissingCoreFields(rec)) return false;
+
+  // Clean auto-synced records may be visible to Manager.
+  return Boolean(
+    rec.manager_visible === true ||
+    rec.install_base_release_status === "auto_synced"
+  );
+}
+
+function shouldManagerKeepLocalRecord(rec) {
+  if (!rec) return false;
+
+  // Non-Hub manager workspace records are preserved.
+  if (!isManagerInstallBaseLikeRecord(rec)) return true;
+
+  return shouldManagerAcceptHubRecord(rec);
+}
+
 function readManagerQueueRecords() {
   try {
     const data = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
@@ -2894,7 +2949,11 @@ function readManagerQueueRecords() {
     // Always flatten all manager queue buckets.
     // Hub writes by owner name, while Manager may write by MANAGER_NAME.
     // If we only read MANAGER_NAME, repeat Hub sends can be missed.
-    return Object.values(data).flat().filter(Boolean);
+    // Then remove Hub-only FIX / Sync Hold records so they do not appear on Manager.
+    return Object.values(data)
+      .flat()
+      .filter(Boolean)
+      .filter(shouldManagerAcceptHubRecord);
   } catch {
     return [];
   }
@@ -3688,7 +3747,7 @@ function getManagerActiveFixLabel(rec) {
     requestText.includes("sales rep") ||
     requestText.includes("missing rep")
   ) {
-    return "Missing Rep Name";
+    return "Missing Rep Owner";
   }
 
   if (
@@ -3711,7 +3770,7 @@ function getManagerActiveFixLabel(rec) {
   const issueLabel = clean(firstIssue?.label || "");
 
   if (issueKey.includes("territory") || issueKey.includes("region")) return "Missing Territory";
-  if (issueKey.includes("assigned_rep") || issueKey.includes("rep")) return "Missing Rep Name";
+  if (issueKey.includes("assigned_rep") || issueKey.includes("rep")) return "Missing Rep Owner";
   if (issueKey.includes("manager") || issueKey.includes("owner_group")) return "Missing Owner Group";
   if (issueKey.includes("serial")) return "Missing Serial";
   if (issueKey === "dom" || issueKey.includes("year")) return "Missing DOM";
@@ -4494,8 +4553,8 @@ function getManagerFixBadgeLabel(rec, fieldName) {
     owner: "Owner Group",
     manager: "Owner Group",
     manager_name: "Owner Group",
-    rep: "Rep Name",
-assigned_rep_name: "Rep Name"
+    rep: "Rep Owner",
+    assigned_rep_name: "Rep Owner"
   };
 
   const aliases = getManagerInstallBaseFieldAliases(fieldName);
@@ -5042,7 +5101,7 @@ function getManagerInstallBaseIssueFields(rec) {
     serial: { key: "serial_number", label: "Serial Number" },
     dom: { key: "dom", label: "DOM / Year" },
     site: { key: "site", label: "Facility / Site" },
- rep: { key: "assigned_rep_name", label: "Rep Name" },
+ rep: { key: "assigned_rep_name", label: "Rep Owner" },
 manager: { key: "manager_name", label: "Owner Group / Manager" },
 territory: { key: "manager_region", label: "Territory" },
 region: { key: "manager_region", label: "Territory" },
@@ -5267,7 +5326,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   const issues = getManagerInstallBaseFieldsForEdit(rec);
   const assignmentIssues = [
     { key: "manager_name", label: "Owner Group / Manager" },
-    { key: "assigned_rep_name", label: "Rep Name" }
+    { key: "assigned_rep_name", label: "Rep Owner" }
   ];
   const detailIssues = issues.filter(issue =>
     !assignmentIssues.some(assignmentIssue => assignmentIssue.key === issue.key)
@@ -5331,7 +5390,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   onclick="event.stopPropagation();"
   onmousedown="event.stopPropagation();"
   onfocus="event.stopPropagation();"
-  placeholder="Type the corrected value requested by Install Base. Example: if Rep Name is missing, type the rep name here."
+  placeholder="Type the corrected value requested by Install Base. Example: if Rep Owner is missing, type the rep name here."
 ></textarea>
 
       <div class="btns" style="margin-top:12px;">
@@ -8079,9 +8138,15 @@ function showCompletedManagerProjects() {
   showBanner("Completed projects are visible.");
 }
 function render() {
-  const main = readArrayKey(STORAGE_KEY);
+  const main = readArrayKey(STORAGE_KEY).filter(shouldManagerKeepLocalRecord);
   const managerQueue = readManagerQueueRecords();
-  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY);
+
+  // Do NOT merge the entire raw Hub install-base table into Manager.
+  // Hub stores every row in INSTALL_BASE_KEY, including rows with FIX / Sync Hold.
+  // Manager should only receive records that Hub explicitly routed to Manager,
+  // or clean records already written into the Manager queue.
+  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY).filter(isManagerRoutedFromHub);
+
   const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
   const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
 
@@ -8092,7 +8157,7 @@ function render() {
     installBaseRecords,
     installBaseResponses,
     installBaseFinalSync
-  );
+  ).filter(shouldManagerKeepLocalRecord);
 
   if (
     state.selectedId &&
