@@ -1427,46 +1427,27 @@ function flashHubMessageSentButton(buttonId, sentText = "Message Sent") {
 }
 
 function isAutoSyncEligible(rec) {
-  // HARD STOP: if Hub is showing or requesting any FIX field,
-  // the record must stay in Hub until the FIX is manually sent or corrected.
+  // HARD STOP: if Hub is showing a FIX field, the record must stay in Hub
+  // until the FIX is manually sent or corrected.
   const visibleFixFields =
     typeof getVisibleHubFixFields === "function"
       ? getVisibleHubFixFields(rec)
       : [];
 
-  const missingFields =
-    typeof getMissingHubFields === "function"
-      ? getMissingHubFields(rec)
-      : [];
-
-  const dataExceptions =
-    typeof getDataExceptions === "function"
-      ? getDataExceptions(rec)
-      : [];
-
-  if (visibleFixFields.length || missingFields.length || dataExceptions.length) {
+  if (visibleFixFields.length) {
     return false;
   }
 
   const value = lower(rec.axis_auto_sync_eligible);
   if (value === "no") return false;
 
-  const hasManualHoldReason = Boolean(clean(
+  const manualRouteTarget = lower(
     rec.axis_manual_route_target ||
-    rec.axis_clarification_reason ||
-    rec.install_base_clarification_reason ||
-    rec.install_base_issue_reason ||
-    rec.install_base_action_reason ||
-    rec.install_base_issue_note ||
-    rec.conflict_notes ||
-    rec.source_notes ||
-    rec.source_conflict_notes ||
-    rec.source_conflict ||
-    rec.conflict ||
+    rec.manual_route_target ||
     ""
-  ));
+  );
 
-  return !hasManualHoldReason;
+  return !manualRouteTarget;
 }
 
 function getManualRouteTarget(rec) {
@@ -3583,15 +3564,7 @@ function getRoutingBlockingFields(rec) {
     .map(field => canonicalInstallBaseFieldName(field))
     .filter(Boolean);
 
-  const missingFields = getMissingHubFields(rec)
-    .map(field => canonicalInstallBaseFieldName(field))
-    .filter(Boolean);
-
-  const explicitIssues = getDataExceptions(rec)
-    .map(issue => canonicalInstallBaseFieldName(issue.label || issue.type || ""))
-    .filter(Boolean);
-
-  return Array.from(new Set([...visibleFixFields, ...missingFields, ...explicitIssues]));
+  return Array.from(new Set(visibleFixFields));
 }
 function hasValidAssignedRep(rec) {
   return Boolean(getHubRepOwnerValue(rec));
@@ -3734,8 +3707,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
       rec.install_base_manual_route !== true &&
       hasValidAssignedRep(rec) &&
       isAutoSyncEligible(rec) &&
-      !getRoutingBlockingFields(rec).length &&
-      !getDataExceptions(rec).length
+      !getRoutingBlockingFields(rec).length
     )
     .forEach(rec => {
       const ownerName = getOwnerName(rec);
