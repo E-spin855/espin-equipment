@@ -8501,11 +8501,35 @@ function renderInstallBaseCorrectionPanel(rec) {
     rec.rep_response_message ||
     ""
   ));
-  const hasCommunicationPurpose = hasExplicitInstallBaseRepRequest(rec) || issues.length > 0 || hasConversation;
 
-  // Informational Install Base reviews such as Equipment Age, Service Coverage,
+  const sourceText = lower(
+    [
+      rec.source,
+      rec.hub_source,
+      rec.install_base_source,
+      rec.merged_workspace_sources
+    ].filter(Boolean).join(" | ")
+  );
+
+  const isRepLoadedInstallBaseRecord = Boolean(
+    rec.rep_added_install_base === true ||
+    sourceText.includes("csv") ||
+    sourceText.includes("rep added install base") ||
+    sourceText.includes("rep-loaded") ||
+    sourceText.includes("rep loaded")
+  );
+
+  const hasCommunicationPurpose =
+    hasExplicitInstallBaseRepRequest(rec) ||
+    issues.length > 0 ||
+    hasConversation ||
+    isRepLoadedInstallBaseRecord;
+
+  // Informational Hub reviews such as Equipment Age, Service Coverage,
   // Utilization, Capital Planning, and Asset Status belong in the normal Rep
-  // Action workflow. They must not open the Install Base communication composer.
+  // Action workflow unless the record was loaded by the rep. Rep-loaded records
+  // get a voluntary Rep / Install Base message path so the rep can send the
+  // record or notes back to Install Base without waiting for a Hub request.
   if (!hasCommunicationPurpose) return "";
 
   const needsResponse = installBaseCommunicationNeedsResponse(rec);
