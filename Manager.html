@@ -3566,14 +3566,12 @@ function isManagerOwnershipReviewResolved(rec) {
 }
 
 function getResolvedManagerInstallBaseLabel(rec) {
-  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
-  const age = ageFromDom(dom);
-
-  if (dom || (age !== null && age !== undefined && age !== "")) {
-    return "Equipment Age";
-  }
-
   const raw = lower(
+    rec.original_oem_review_label ||
+    rec.original_install_base_review_label ||
+    rec.install_base_review_label ||
+    rec.oem_review_label ||
+    rec.review_label ||
     rec.original_oem_review_type ||
     rec.original_review_type ||
     rec.install_base_review_type ||
@@ -3582,9 +3580,11 @@ function getResolvedManagerInstallBaseLabel(rec) {
     rec.alert_override ||
     rec.proactive_type ||
     rec.proactive_signal ||
-    rec.original_oem_review_label ||
-    rec.original_install_base_review_label ||
-    rec.install_base_review_label ||
+    rec.original_oem_review_reason ||
+    rec.original_install_base_review_reason ||
+    rec.install_base_review_reason ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
     ""
   );
 
@@ -3597,6 +3597,13 @@ function getResolvedManagerInstallBaseLabel(rec) {
   if (raw.includes("project")) return "Project / Asset";
   if (raw.includes("site")) return "Site / Account";
   if (raw.includes("status")) return "Asset Status";
+
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
+
+  if (dom || (age !== null && age !== undefined && age !== "")) {
+    return "Equipment Age";
+  }
 
   return "Asset Status";
 }
@@ -3634,6 +3641,13 @@ function normalizeOemReviewLabelForManager(rec) {
 }
 function getManagerActiveFixLabel(rec) {
   if (!isManagerOpenInstallBaseFixRequest(rec)) return "";
+
+  const unresolvedIssues = getManagerInstallBaseIssueFields(rec).filter(issue =>
+    isManagerInstallBaseFieldRequested(rec, issue.key) &&
+    !wasManagerFieldCorrected(rec, issue.key)
+  );
+
+  if (!unresolvedIssues.length) return "";
 
   const requestText = lower([
     rec.install_base_issue_field,
@@ -4471,7 +4485,7 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
   }
 
-  if (isManagerInstallBaseFieldRequested(rec, fieldName)) {
+  if (isManagerInstallBaseFieldRequested(rec, fieldName) && !wasManagerFieldCorrected(rec, fieldName)) {
     return renderManagerFixButton(rec, getManagerFixBadgeLabel(rec, fieldName));
   }
 
@@ -4557,17 +4571,29 @@ function wasManagerFieldCorrected(rec, fieldName) {
     serial: ["serial", "serial_number", "system_serial"],
     dom: ["dom", "year", "manufacture_year"],
     age: ["dom", "year", "manufacture_year"],
-    site: [
-      "site",
-      "facility",
-      "hospital",
-      "hospital_name",
-      "customer",
-      "location"
-    ],
-    owner: [
-      "owner",
-      "manager",
+	    site: [
+	      "site",
+	      "facility",
+	      "hospital",
+	      "hospital_name",
+	      "customer",
+	      "location"
+	    ],
+	    territory: [
+	      "territory",
+	      "manager_region",
+	      "manager_territory",
+	      "region"
+	    ],
+	    manager_region: [
+	      "territory",
+	      "manager_region",
+	      "manager_territory",
+	      "region"
+	    ],
+	    owner: [
+	      "owner",
+	      "manager",
       "manager_name",
       "owner_group",
       "owner_group_name"
@@ -5340,26 +5366,52 @@ issues.forEach(issue => {
 	    correctedValues.owner_group_name = correctedManagerOwner;
 	  }
 
-  const originalReviewReason =
-    clean(
-      rec.original_oem_review_reason ||
-      rec.original_install_base_review_reason ||
+	  const originalReviewReason =
+	    clean(
+	      rec.original_oem_review_reason ||
+	      rec.original_install_base_review_reason ||
       rec.oem_review_reason ||
       rec.review_reason ||
       rec.proactive_reason ||
-      ""
-    );
+	      ""
+	    );
 
-  const updated = {
+	  const originalReviewLabel =
+	    clean(
+	      rec.original_oem_review_label ||
+	      rec.original_install_base_review_label ||
+	      rec.install_base_review_label ||
+	      rec.oem_review_label ||
+	      rec.review_label ||
+	      ""
+	    );
+
+	  const originalReviewType =
+	    clean(
+	      rec.original_oem_review_type ||
+	      rec.original_review_type ||
+	      rec.install_base_review_type ||
+	      rec.oem_review_type ||
+	      rec.review_type ||
+	      ""
+	    );
+	
+	  const updated = {
     ...rec,
     ...correctedValues,
     key,
 
     id: rec.id || id,
 
-    original_oem_review_reason: originalReviewReason,
-    original_install_base_review_reason:
-      rec.original_install_base_review_reason || originalReviewReason,
+	    original_oem_review_reason: originalReviewReason,
+	    original_install_base_review_reason:
+	      rec.original_install_base_review_reason || originalReviewReason,
+	    original_oem_review_label: originalReviewLabel,
+	    original_install_base_review_label:
+	      rec.original_install_base_review_label || originalReviewLabel,
+	    original_oem_review_type: originalReviewType,
+	    original_review_type:
+	      rec.original_review_type || originalReviewType,
 
     assigned_rep_name: correctedRepOwner,
     assigned_rep: correctedRepOwner,
