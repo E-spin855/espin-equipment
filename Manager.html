@@ -11,6 +11,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Manager Review Workspace</title>
+<!-- PATCH: Manager 74 - clean auto-sync allowed; Hub FIX/Sync Hold blocked -->
 
  <style>
   :root{
@@ -8143,9 +8144,9 @@ function render() {
 
   // Do NOT merge the entire raw Hub install-base table into Manager.
   // Hub stores every row in INSTALL_BASE_KEY, including rows with FIX / Sync Hold.
-  // Manager should only receive records that Hub explicitly routed to Manager,
-  // or clean records already written into the Manager queue.
-  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY).filter(isManagerRoutedFromHub);
+  // Manager should receive only clean auto-synced Hub records or records Hub
+  // explicitly routed to Manager. FIX / Sync Hold rows stay Hub-only.
+  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY).filter(shouldManagerAcceptHubRecord);
 
   const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
   const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
