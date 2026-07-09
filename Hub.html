@@ -1822,31 +1822,59 @@ function isDuplicateAsset(rec) {
 function getDataExceptions(rec) {
   const issues = [];
 
-  if (!clean(rec.oem_project_id || rec.asset_id)) {
+  const projectValue = clean(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    rec.equipment_id ||
+    ""
+  );
+
+  const makeValue = clean(rec.make || rec.manufacturer || rec.brand || "");
+  const modalityValue = clean(rec.modality || rec.equipment_modality || "");
+  const modelValue = clean(rec.model || rec.equipment_model || "");
+  const serialValue = clean(rec.serial_number || rec.serial || rec.system_serial || "");
+  const domValue = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const siteValue = clean(
+    rec.site ||
+    rec.site_name ||
+    rec.facility ||
+    rec.facility_name ||
+    rec.hospital_name ||
+    rec.customer_name ||
+    rec.account_name ||
+    rec.location ||
+    ""
+  );
+
+  // IMPORTANT: use the same blank rules as the table cells.
+  // Values like "-", "Unknown", "N/A", and modality "OTHER" must count as missing
+  // so rows with visible FIX buttons can never show Auto-Synced.
+  if (isBlankHubField(projectValue, "project")) {
     issues.push({ type: "missing", label: "Missing Project / Asset ID" });
   }
 
-  if (!clean(rec.make)) {
+  if (isBlankHubField(makeValue, "make")) {
     issues.push({ type: "missing", label: "Missing Brand" });
   }
 
-  if (!clean(rec.modality) || lower(rec.modality) === "other") {
+  if (isBlankHubField(modalityValue, "modality")) {
     issues.push({ type: "missing", label: "Missing Modality" });
   }
 
-  if (!clean(rec.model)) {
+  if (isBlankHubField(modelValue, "model")) {
     issues.push({ type: "missing", label: "Missing Model" });
   }
 
-  if (!clean(rec.serial_number || rec.serial)) {
+  if (isBlankHubField(serialValue, "serial")) {
     issues.push({ type: "missing", label: "Missing Serial" });
   }
 
-  if (!clean(rec.dom)) {
+  if (isBlankHubField(domValue, "dom")) {
     issues.push({ type: "missing", label: "Missing DOM" });
   }
 
-  if (!clean(rec.site) || rec.site === "Unknown Site") {
+  if (isBlankHubField(siteValue, "site")) {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
