@@ -2608,6 +2608,7 @@ function getReviewStatus(rec) {
   }
 
   const exceptions = getDataExceptions(rec);
+  const visibleFixFields = getVisibleHubFixFields(rec);
   const assignedRep = getHubRepOwnerValue(rec);
   const target = getManualRouteTarget(rec);
 
@@ -2694,8 +2695,15 @@ function getReviewStatus(rec) {
     return { type: "source", label: "Sync Hold" };
   }
 
-  // A record with any unresolved FIX/missing-field condition should never show Auto-Synced.
-  // Keep the missing/FIX badge visible in Install Base Review until it is manually routed or corrected.
+  // A record with any visible FIX button should never show Auto-Synced.
+  // This must match the table cells exactly, not just the imported alias fields.
+  if (visibleFixFields.length) {
+    return {
+      type: "missing",
+      label: `Missing ${getHubFixDisplayLabel(visibleFixFields[0])}`
+    };
+  }
+
   if (exceptions.length) {
     return exceptions[0];
   }
@@ -3512,10 +3520,44 @@ function updateReleaseButtonVisibility(rec) {
 }
 
 
+function getVisibleHubFixFields(rec) {
+  if (!rec || hasActualInstallBaseCorrection(rec)) return [];
+
+  const checks = [
+    ["project", rec.oem_project_id || rec.asset_id],
+    ["make", rec.make],
+    ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "")],
+    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || "")],
+    ["rep", getHubRepOwnerValue(rec)],
+    ["site", rec.site],
+    ["modality", rec.modality],
+    ["model", rec.model],
+    ["serial", rec.serial_number || rec.serial],
+    ["dom", rec.dom]
+  ];
+
+  return checks
+    .filter(([field, value]) => {
+      if (!isBlankHubField(value, field)) return false;
+      const corrected = getHubCorrectedDisplayValue(rec, field);
+      return isBlankHubField(corrected, field);
+    })
+    .map(([field]) => field);
+}
+
+function hasVisibleHubFix(rec) {
+  return getVisibleHubFixFields(rec).length > 0;
+}
+
+
 function getRoutingBlockingFields(rec) {
-  // Any unresolved Hub FIX field blocks auto-sync.
-  // Rep Name is no longer excluded: missing Rep Name must stay on Hub until FIX is sent/resolved.
-  const fields = getMissingHubFields(rec)
+  // Match the actual visible Hub table behavior. If the row is showing any FIX button,
+  // it must be blocked from Auto-Synced until Hub manually routes/fixes it.
+  const visibleFixFields = getVisibleHubFixFields(rec)
+    .map(field => canonicalInstallBaseFieldName(field))
+    .filter(Boolean);
+
+  const missingFields = getMissingHubFields(rec)
     .map(field => canonicalInstallBaseFieldName(field))
     .filter(Boolean);
 
@@ -3523,9 +3565,8 @@ function getRoutingBlockingFields(rec) {
     .map(issue => canonicalInstallBaseFieldName(issue.label || issue.type || ""))
     .filter(Boolean);
 
-  return Array.from(new Set([...fields, ...explicitIssues]));
+  return Array.from(new Set([...visibleFixFields, ...missingFields, ...explicitIssues]));
 }
-
 function hasValidAssignedRep(rec) {
   return Boolean(getHubRepOwnerValue(rec));
 }
