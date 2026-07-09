@@ -2666,6 +2666,12 @@ function getReviewStatus(rec) {
     return { type: "source", label: "Sync Hold" };
   }
 
+  // A record with any unresolved FIX/missing-field condition should never show Auto-Synced.
+  // Keep the missing/FIX badge visible in Install Base Review until it is manually routed or corrected.
+  if (exceptions.length) {
+    return exceptions[0];
+  }
+
   if (rec.install_base_release_status === "auto_synced") {
     return { type: "released", label: "Auto-Synced" };
   }
@@ -3479,16 +3485,17 @@ function updateReleaseButtonVisibility(rec) {
 
 
 function getRoutingBlockingFields(rec) {
-  return getMissingHubFields(rec).filter(field => {
-    const normalized = canonicalInstallBaseFieldName(field);
-    return ![
-      "rep",
-      "assigned_rep",
-      "assigned_rep_name",
-      "rep_owner",
-      "sales_rep"
-    ].includes(normalized);
-  });
+  // Any unresolved Hub FIX field blocks auto-sync.
+  // Rep Name is no longer excluded: missing Rep Name must stay on Hub until FIX is sent/resolved.
+  const fields = getMissingHubFields(rec)
+    .map(field => canonicalInstallBaseFieldName(field))
+    .filter(Boolean);
+
+  const explicitIssues = getDataExceptions(rec)
+    .map(issue => canonicalInstallBaseFieldName(issue.label || issue.type || ""))
+    .filter(Boolean);
+
+  return Array.from(new Set([...fields, ...explicitIssues]));
 }
 
 function hasValidAssignedRep(rec) {
@@ -3528,6 +3535,28 @@ function autoSyncEligibleRecordsToRepAndManager() {
     const key = getRecordKey(rec);
     const missingFixFields = getRoutingBlockingFields(rec);
     const repAssigned = hasValidAssignedRep(rec);
+
+    // Preserve a manually sent FIX. Do not let the auto-sync pass downgrade it to
+    // fix_needed/manual_hold or upgrade it to auto_synced while it is still open.
+    if (
+      rec.install_base_manual_route === true &&
+      (
+        rec.install_base_release_status === "released_to_rep" ||
+        rec.install_base_release_status === "released_to_manager" ||
+        rec.install_base_released_to === "rep" ||
+        rec.install_base_released_to === "manager"
+      ) &&
+      !hasActualInstallBaseCorrection(rec)
+    ) {
+      return {
+        ...rec,
+        key,
+        install_base_manual_route: true,
+        install_base_sync_type: "manual_fix_sent_hold",
+        rep_visible: rec.install_base_released_to === "rep" || rec.install_base_release_status === "released_to_rep",
+        manager_visible: rec.install_base_released_to === "manager" || rec.install_base_release_status === "released_to_manager"
+      };
+    }
 
     if (missingFixFields.length) {
       return {
@@ -3607,9 +3636,11 @@ function autoSyncEligibleRecordsToRepAndManager() {
   // Only records that already have a valid rep may sync automatically.
   state.records
     .filter(rec =>
+      rec.install_base_manual_route !== true &&
       hasValidAssignedRep(rec) &&
       isAutoSyncEligible(rec) &&
-      !getRoutingBlockingFields(rec).length
+      !getRoutingBlockingFields(rec).length &&
+      !getDataExceptions(rec).length
     )
     .forEach(rec => {
       const ownerName = getOwnerName(rec);
