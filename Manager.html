@@ -2910,7 +2910,7 @@ function writeManagerQueueRecord(rec) {
     data = {};
   }
 
-  const key = getRecordKey(rec);
+  const incomingKey = getRecordKey(rec);
 
   const bucketName =
     rec.manager_name ||
@@ -2918,19 +2918,34 @@ function writeManagerQueueRecord(rec) {
     MANAGER_NAME ||
     "Default Manager";
 
-  const list = Array.isArray(data[bucketName]) ? data[bucketName] : [];
+  // De-dupe across every Manager queue bucket, not only the current bucket.
+  // Hub can send the same FIX more than once, and ownership/manager routing can
+  // place older copies in different buckets. Keep one merged row only.
+  let existingMatch = null;
 
-  let found = false;
+  Object.keys(data).forEach(bucket => {
+    const list = Array.isArray(data[bucket]) ? data[bucket] : [];
 
-  const nextList = list.map(item => {
-    if (!sameRecord(item, rec)) return item;
-    found = true;
-    return { ...item, ...rec, key };
+    data[bucket] = list.filter(item => {
+      if (sameRecord(item, rec)) {
+        existingMatch = existingMatch ? { ...existingMatch, ...item } : item;
+        return false;
+      }
+      return true;
+    });
   });
 
-  if (!found) nextList.unshift({ ...rec, key });
+  const merged = {
+    ...(existingMatch || {}),
+    ...rec
+  };
 
-  data[bucketName] = nextList;
+  const key = getRecordKey(merged) || incomingKey;
+  merged.key = key;
+  if (!merged.id) merged.id = key;
+
+  const list = Array.isArray(data[bucketName]) ? data[bucketName] : [];
+  data[bucketName] = [merged, ...list.filter(item => !sameRecord(item, merged))];
 
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(data));
 }
@@ -3640,7 +3655,7 @@ function normalizeOemReviewLabelForManager(rec) {
   return "Record Note";
 }
 function getManagerActiveFixLabel(rec) {
-  if (!isManagerOpenInstallBaseFixRequest(rec)) return "";
+  if (!isManagerOpenInstallBaseFixRequest(rec) && !hasManagerMissingCoreFields(rec)) return "";
 
   if (!hasUnresolvedManagerInstallBaseIssues(rec)) return "";
 
@@ -3691,7 +3706,22 @@ function getManagerActiveFixLabel(rec) {
   if (requestText.includes("modality")) return "Missing Modality";
   if (requestText.includes("site") || requestText.includes("facility")) return "Missing Site";
 
-  return "Manual Clarification";
+  const firstIssue = getManagerInstallBaseIssueFields(rec)[0];
+  const issueKey = clean(firstIssue?.key || "").toLowerCase();
+  const issueLabel = clean(firstIssue?.label || "");
+
+  if (issueKey.includes("territory") || issueKey.includes("region")) return "Missing Territory";
+  if (issueKey.includes("assigned_rep") || issueKey.includes("rep")) return "Missing Rep Owner";
+  if (issueKey.includes("manager") || issueKey.includes("owner_group")) return "Missing Owner Group";
+  if (issueKey.includes("serial")) return "Missing Serial";
+  if (issueKey === "dom" || issueKey.includes("year")) return "Missing DOM";
+  if (issueKey.includes("model")) return "Missing Model";
+  if (issueKey.includes("make") || issueKey.includes("manufacturer")) return "Missing Brand";
+  if (issueKey.includes("modality")) return "Missing Modality";
+  if (issueKey.includes("site") || issueKey.includes("facility") || issueKey.includes("hospital")) return "Missing Site";
+  if (issueKey.includes("project") || issueKey.includes("asset")) return "Missing Project ID";
+
+  return issueLabel ? `Missing ${issueLabel}` : "Manual Clarification";
 }
 
 function getManagerVisibleInstallBaseReviewLabel(rec) {
@@ -4401,7 +4431,7 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
 }
 
 function hasUnresolvedManagerInstallBaseIssues(rec) {
-  if (!isManagerOpenInstallBaseFixRequest(rec)) return false;
+  if (!isManagerOpenInstallBaseFixRequest(rec) && !hasManagerMissingCoreFields(rec)) return false;
 
   return getManagerInstallBaseIssueFields(rec).some(issue =>
     isManagerInstallBaseFieldRequested(rec, issue.key) &&
@@ -4701,6 +4731,30 @@ function renderRepStatus(rec) {
   }
 
   if (
+    status === "rep_correction_sent" ||
+    status === "install_base_data_fixed" ||
+    status === "corrected_by_rep" ||
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_fix_status === "rep_reviewed"
+  ) {
+    return `<span class="pill submitted">Rep Fixed</span>`;
+  }
+
+  if (
+    status === "manager_assignment_correction" ||
+    status === "manager_correction_sent" ||
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_correction_status === "corrected_by_manager" ||
+    rec.install_base_fix_status === "manager_reviewed"
+  ) {
+    return `<span class="pill submitted">Manager Fixed</span>`;
+  }
+
+  if (hasUnresolvedManagerInstallBaseIssues(rec)) {
+    return `<span class="pill ready">Fix Needed</span>`;
+  }
+
+  if (
     status === "follow_up_scheduled" ||
     rec.follow_up_date ||
     rec.next_follow_up_date
@@ -4708,21 +4762,18 @@ function renderRepStatus(rec) {
     return `<span class="pill pending">Follow Up</span>`;
   }
 
-  if (
-    status === "manager_assignment_correction" ||
-    status === "manager_correction_sent" ||
+  const sentToRep = Boolean(
     rec.rep_new_update === true ||
-    rec.rep_visible === true
-  ) {
-    return `<span class="alert-badge manager-flash-pill">Sent to Rep</span>`;
-  }
+    rec.rep_visible === true ||
+    rec.install_base_released_to === "rep" ||
+    rec.release_destination === "rep" ||
+    rec.install_base_release_status === "released_to_rep" ||
+    rec.install_base_release_status === "auto_synced" ||
+    rec.manager_flash_type === "manager_response"
+  );
 
-  if (
-    status === "rep_correction_sent" ||
-    status === "install_base_data_fixed" ||
-    status === "corrected_by_rep"
-  ) {
-    return `<span class="pill submitted">Rep Fixed</span>`;
+  if (sentToRep) {
+    return `<span class="alert-badge manager-flash-pill">Sent to Rep</span>`;
   }
 
   const repOwner = clean(
@@ -4745,7 +4796,6 @@ function renderRepStatus(rec) {
 
   return `<span class="mini">-</span>`;
 }
-
 function renderTable() {
   const tbody = $("tableBody");
 
@@ -5066,6 +5116,11 @@ if (
   if (requestText.includes("rep email")) add("assigned_rep_email", "Rep Email");
   if (requestText.includes("utilization")) add("utilization_percent", "Utilization %");
 
+
+
+  // If the record itself is missing required install-base fields, show the same
+  // yellow FIX badge behavior even if the missing field was not called out in text.
+  getManagerMissingInstallBaseIssueFields(rec).forEach(issue => add(issue.key, issue.label));
   return fields;
 }
 
@@ -5100,6 +5155,70 @@ function getManagerInstallBaseInputValue(rec, key) {
   if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
   if (key === "manager_region") return rec.manager_region || rec.manager_territory || rec.territory || "";
   return rec[key] || "";
+}
+
+
+function managerMissingValue(value) {
+  const v = lower(clean(value));
+  return !v || ["-", "unknown", "none", "n/a", "na", "null", "undefined", "unassigned", "unassigned rep"].includes(v);
+}
+
+function isManagerInstallBaseLikeRecord(rec) {
+  if (!rec) return false;
+
+  if (hasManagerMissingCoreFields(rec)) return true;
+
+  return Boolean(
+    rec.install_base_manager_request === true ||
+    rec.install_base_sync_type ||
+    rec.install_base_received_by_rep ||
+    rec.install_base_release_status ||
+    rec.install_base_released_to ||
+    rec.release_destination ||
+    rec.hub_source ||
+    rec.source_system ||
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.install_base_visible === true
+  );
+}
+
+function getManagerMissingInstallBaseIssueFields(rec) {
+  if (!rec || !isManagerInstallBaseLikeRecord(rec)) return [];
+
+  const fields = [];
+  const add = (key, label) => {
+    if (!fields.some(f => f.key === key)) fields.push({ key, label });
+  };
+
+  if (managerMissingValue(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || rec.project)) {
+    add("oem_project_id", "Project / Asset ID");
+  }
+  if (managerMissingValue(rec.make || rec.manufacturer)) add("make", "Make");
+  if (managerMissingValue(rec.model)) add("model", "Model");
+  if (managerMissingValue(rec.modality)) add("modality", "Modality");
+  if (managerMissingValue(rec.serial_number || rec.serial || rec.system_serial || rec.equipment_serial)) {
+    add("serial_number", "Serial Number");
+  }
+  if (managerMissingValue(rec.dom || rec.manufacture_year || rec.year)) add("dom", "DOM / Year");
+  if (managerMissingValue(rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location)) {
+    add("site", "Facility / Site");
+  }
+  if (managerMissingValue(rec.assigned_rep_name || rec.assigned_rep || rec.rep || rec.rep_owner || rec.sales_rep_name || rec.sales_rep)) {
+    add("assigned_rep_name", "Rep Owner");
+  }
+  if (managerMissingValue(rec.manager_region || rec.manager_territory || rec.territory || rec.region)) {
+    add("manager_region", "Territory");
+  }
+
+  return fields;
+}
+
+function hasManagerMissingCoreFields(rec) {
+  return getManagerMissingInstallBaseIssueFields(rec).some(issue =>
+    !wasManagerFieldCorrected(rec, issue.key)
+  );
 }
 
 function isManagerInstallBaseRequest(rec) {
