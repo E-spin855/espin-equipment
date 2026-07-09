@@ -4116,6 +4116,7 @@ function renderReviewCondition(rec) {
 function getDisplayOrderWeight(rec) {
   if (!rec) return 0;
 
+  if (isManagerInstallBaseRequest(rec)) return 70;
   if (isManagerRepFixUnseen(rec)) return 65;
   if (hasUnseenManagerRelease(rec)) return 60;
   if (hasFollowUpOverdueBy7Days(rec)) return 55;
@@ -4348,6 +4349,54 @@ function isRepInstallBaseFix(rec) {
     rec.manager_flash_type === "rep_update"
   );
 }
+
+function isManagerInstallBaseFieldRequested(rec, fieldName) {
+  if (!isManagerInstallBaseRequest(rec)) return false;
+
+  const requestedFields = getManagerInstallBaseIssueFields(rec).map(issue => issue.key);
+  if (!requestedFields.length) return false;
+
+  const aliases = {
+    project: ["project", "project_id", "oem_project_id", "asset_id"],
+    make: ["make", "manufacturer"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    age: ["dom", "year", "manufacture_year"],
+    site: ["site", "facility", "hospital", "hospital_name", "customer", "location"],
+    territory: ["manager_region", "manager_territory", "territory", "region"],
+    manager_region: ["manager_region", "manager_territory", "territory", "region"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    manager: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    rep: [
+      "rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep_owner",
+      "sales_rep",
+      "sales_rep_name"
+    ]
+  }[fieldName] || [fieldName];
+
+  return requestedFields.some(field => aliases.includes(field));
+}
+
+function renderManagerFixButton(rec, label) {
+  const id = rec.id || getRecordKey(rec) || "";
+
+  return `
+    <button
+      type="button"
+      class="manager-fix-badge manager-fix-clickable open-record-btn"
+      data-select-record-id="${escapeHtml(id)}"
+      title="Install Base sent this correction request to Manager"
+    >
+      ${escapeHtml(label || "FIX")}
+    </button>
+  `;
+}
+
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   const textValue = String(normalHtml || "").replace(/<[^>]*>/g, "").trim();
 
@@ -4355,37 +4404,33 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
   }
 
+  const labelMap = {
+    project: "Fix Project ID",
+    make: "Fix Make",
+    model: "Fix Model",
+    modality: "Fix Modality",
+    serial: "Fix Serial",
+    dom: "Fix DOM",
+    site: "Fix Site",
+    facility: "Fix Facility",
+    territory: "Fix Territory",
+    manager_region: "Fix Territory",
+    rep: "Fix Rep Owner"
+  };
+
+  if (isManagerInstallBaseFieldRequested(rec, fieldName)) {
+    return renderManagerFixButton(rec, labelMap[fieldName] || "FIX");
+  }
+
   if (!textValue || textValue === "-") {
     if (fieldName === "age") {
       return "-";
     }
 
-    const labelMap = {
-      project: "Fix Project ID",
-      make: "Fix Make",
-      model: "Fix Model",
-      modality: "Fix Modality",
-      serial: "Fix Serial",
-      dom: "Fix DOM",
-      site: "Fix Site",
-      facility: "Fix Facility",
-      rep: "Fix Rep Owner"
-    };
-
     const fixLabel = labelMap[fieldName] || "Fix Data";
-    const id = rec.id || "";
 
     if (isManagerInstallBaseRequest(rec)) {
-      return `
-        <button
-          type="button"
-          class="manager-fix-badge manager-fix-clickable open-record-btn"
-          data-select-record-id="${escapeHtml(id)}"
-          title="Install Base sent this correction request to Manager"
-        >
-          ${escapeHtml(fixLabel)}
-        </button>
-      `;
+      return renderManagerFixButton(rec, fixLabel);
     }
 
     return `
@@ -4516,6 +4561,10 @@ function isCompletedManagerRecord(rec) {
   );
 }
 function renderManagerRepOwnerCell(rec) {
+  if (isManagerInstallBaseFieldRequested(rec, "rep")) {
+    return renderManagerFixButton(rec, "FIX");
+  }
+
   const repOwner = String(
     rec.assigned_rep_name ||
     rec.rep ||
@@ -4552,16 +4601,7 @@ function renderManagerRepOwnerCell(rec) {
 
   const id = rec.id || getRecordKey(rec) || "";
 
-  return `
-    <button
-      type="button"
-      class="manager-fix-badge manager-fix-clickable open-record-btn"
-      data-select-record-id="${escapeHtml(id)}"
-      title="Assign Rep Owner"
-    >
-      FIX
-    </button>
-  `;
+  return renderManagerFixButton({ ...rec, id }, "FIX");
 }
 
 function renderRepStatus(rec) {
