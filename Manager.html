@@ -4822,20 +4822,28 @@ function renderRepStatus(rec) {
     return `<span class="pill pending">Follow Up</span>`;
   }
 
-  const sentToRep = Boolean(
-    rec.rep_new_update === true ||
-    rec.rep_visible === true ||
-    rec.install_base_released_to === "rep" ||
-    rec.release_destination === "rep" ||
-    rec.install_base_release_status === "released_to_rep" ||
-    rec.install_base_release_status === "auto_synced" ||
-    rec.manager_flash_type === "manager_response"
-  );
+  const managerActuallySentToRep = Boolean(
+  rec.manager_sent_to_rep === true ||
+  rec.manager_response_sent_to_rep === true ||
+  rec.manager_flash_type === "manager_response" ||
+  rec.install_base_response_status === "manager_response_sent" ||
+  rec.manager_rep_message_sent === true
+);
 
-  if (sentToRep) {
-    return `<span class="alert-badge manager-flash-pill">Sent to Rep</span>`;
-  }
+const repOriginatedOrAutoSynced = Boolean(
+  rec.rep_loaded_from_upload === true ||
+  rec.rep_owned_install_base === true ||
+  rec.rep_added_install_base === true ||
+  rec.record_origin === "rep_uploaded_install_base" ||
+  rec.install_base_sync_direction === "rep_to_install_base" ||
+  rec.install_base_release_status === "auto_synced" ||
+  rec.install_base_sync_type === "automatic" ||
+  rec.install_base_sync_type === "automatic_assigned_rep"
+);
 
+if (managerActuallySentToRep && !repOriginatedOrAutoSynced) {
+  return `<span class="alert-badge manager-flash-pill">Sent to Rep</span>`;
+}
   const repOwner = clean(
     rec.assigned_rep_name ||
     rec.assigned_rep ||
