@@ -9688,19 +9688,43 @@ function render() {
 
   // Manager receives the Manager-visible copy immediately,
   // before saveRecords() / render() can interrupt anything.
+    // Manager receives a separate Manager-visible copy.
+  // Keep Rep local copy manager_visible:false, but send Manager copy as true.
+  const managerPacket = {
+    ...upsertResult.record,
+    manager_visible: true,
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+    manager_flash_at: now,
+    manager_flash_type: "rep_upload",
+    manager_flash_text: "Rep uploaded install-base record"
+  };
+
   try {
-    syncToManagerQueue({
-      ...upsertResult.record,
+    // Channel 1: Manager queue
+    syncToManagerQueue(managerPacket);
+
+    // Channel 2: shared Manager records storage backup
+    let sharedRecords = [];
+    try {
+      sharedRecords = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      if (!Array.isArray(sharedRecords)) sharedRecords = [];
+    } catch {
+      sharedRecords = [];
+    }
+
+    sharedRecords.unshift({
+      ...managerPacket,
       manager_visible: true,
-      manager_unseen_update: true,
-      manager_alert_seen: false,
-      manager_update_seen_at: "",
-      manager_flash_at: now,
-      manager_flash_type: "rep_upload",
-      manager_flash_text: "Rep uploaded install-base record"
+      rep_visible: false,
+      manager_only: true
     });
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sharedRecords));
+    localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
   } catch (err) {
-    console.error("Manager sync failed for rep upload:", err, upsertResult.record);
+    console.error("Manager sync failed for rep upload:", err, managerPacket);
   }
 });
 
