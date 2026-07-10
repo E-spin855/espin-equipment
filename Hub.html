@@ -2285,23 +2285,23 @@ function isHubUnresolvedFixField(rec, fieldName) {
 }
 
 function getMissingFieldFixHtml(rec, fieldName) {
-  // "Fix Sent" is shown only after a user manually sends a FIX request
-  // from Hub. Automatic routing to Manager does not count as a FIX request.
-  const fixSent =
-    rec.install_base_manual_route === true &&
-    (
-      rec.install_base_release_status === "released_to_rep" ||
-      rec.install_base_release_status === "released_to_manager" ||
-      rec.install_base_released_to === "rep" ||
-      rec.install_base_released_to === "manager"
-    );
+  const field = canonicalInstallBaseFieldName(fieldName);
 
-  const label = fixSent ? "Fix Sent" : "FIX";
+    const sentFields = String(
+    rec.install_base_field_fix_sent_fields || ""
+  )
+    .toLowerCase()
+    .split(",")
+    .map(v => canonicalInstallBaseFieldName(v))
+    .filter(Boolean);
+
+  const thisFieldSent = sentFields.includes(field);
+  const label = thisFieldSent ? "Fix Sent" : "FIX";
 
   return `
     <button
       type="button"
-      class="fix-data-badge ${fixSent ? "active" : ""}"
+      class="fix-data-badge ${thisFieldSent ? "active" : ""}"
       onclick="requestFixForRecord(
         '${escapeJs(rec.id || "")}',
         event,
@@ -3463,14 +3463,13 @@ function requestFixForRecord(id, event, fieldName = "") {
     return;
   }
 
-  const requestedField = canonicalInstallBaseFieldName(fieldName);
-  const missingFields = getMissingHubFields(rec);
+ const requestedField = canonicalInstallBaseFieldName(fieldName);
 
-  const issueFields = missingFields.length
-    ? missingFields
-    : requestedField
-      ? [requestedField]
-      : [];
+// Only the clicked FIX field should be marked Fix Sent.
+// Do not mark every missing field on the record.
+const issueFields = requestedField
+  ? [requestedField]
+  : getMissingHubFields(rec);
 
   const spreadsheetTarget = getManualRouteTarget(rec);
 
@@ -3490,7 +3489,23 @@ function requestFixForRecord(id, event, fieldName = "") {
       install_base_issue_field: issueFields.join(", "),
       install_base_issue_type: "missing_field",
       install_base_action_label: "Install Base FIX",
+install_base_field_fix_sent_fields: Array.from(new Set([
+  ...String(r.install_base_field_fix_sent_fields || "")
+    .split(",")
+    .map(v => canonicalInstallBaseFieldName(v))
+    .filter(Boolean),
+  ...issueFields
+])).join(","),
 
+install_base_fix_sent_fields: Array.from(new Set([
+  ...String(r.install_base_field_fix_sent_fields || "")
+    .split(",")
+    .map(v => canonicalInstallBaseFieldName(v))
+    .filter(Boolean),
+  ...issueFields
+])).join(","),
+
+install_base_fix_request_fields: issueFields.join(","),
       install_base_action_reason: issueFields.length
         ? `Install Base requested ${destination} correction for missing field(s): ${issueFields.join(", ")}.`
         : `Install Base requested ${destination} correction for missing install-base data.`,
