@@ -3689,12 +3689,63 @@ install_base_manager_fix_request_fields: "",
       timestamp: now
     };
 
-    // Keep only one active Rep FIX request per equipment record.
-// The newest clicked field replaces the prior Rep FIX packet.
+   // Keep one Rep packet per equipment record, but preserve every
+// individually routed unresolved FIX field for that record.
 const recordKey = String(
   updatedRecord.key ||
   getRecordKey(updatedRecord)
 );
+
+const existingRepFixPacket = repQueue.find(r => {
+  const queuedKey = String(
+    r.key ||
+    getRecordKey(r)
+  );
+
+  const isRepFixPacket =
+    lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
+    Boolean(clean(r.install_base_rep_fix_request_fields)) ||
+    Boolean(clean(r.install_base_fix_request_fields));
+
+  return queuedKey === recordKey && isRepFixPacket;
+});
+
+const normalizeRepFixFields = value =>
+  String(value || "")
+    .split(",")
+    .map(v => canonicalInstallBaseFieldName(v))
+    .filter(Boolean);
+
+const combinedRepFixFields = Array.from(new Set([
+  ...normalizeRepFixFields(
+    existingRepFixPacket?.install_base_rep_fix_request_fields
+  ),
+  ...normalizeRepFixFields(
+    existingRepFixPacket?.install_base_fix_request_fields
+  ),
+  ...outboundIssueFields.map(canonicalInstallBaseFieldName)
+]));
+
+const combinedRepRecord = {
+  ...repRecord,
+
+  // Latest request ID/time still identify the newest click.
+  install_base_fix_request_id: requestId,
+  install_base_fix_request_at: now,
+  install_base_fix_request_field: outboundRequestedField,
+
+  // Explicit unresolved Rep FIX fields already sent for this record.
+  install_base_issue_field:
+    combinedRepFixFields.join(", "),
+
+  install_base_fix_request_fields:
+    combinedRepFixFields.join(","),
+
+  install_base_rep_fix_request_fields:
+    combinedRepFixFields.join(","),
+
+  install_base_manager_fix_request_fields: ""
+};
 
 const cleaned = repQueue.filter(r => {
   const queuedKey = String(
@@ -3705,16 +3756,12 @@ const cleaned = repQueue.filter(r => {
   const isRepFixPacket =
     lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
     Boolean(clean(r.install_base_rep_fix_request_fields)) ||
-    (
-      r.install_base_manual_route === true &&
-      r.release_destination === "rep"
-    );
+    Boolean(clean(r.install_base_fix_request_fields));
 
-  // Remove the older Rep FIX packet for this same equipment record.
   return !(queuedKey === recordKey && isRepFixPacket);
 });
 
-cleaned.unshift(repRecord);
+cleaned.unshift(combinedRepRecord);
 
     localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));

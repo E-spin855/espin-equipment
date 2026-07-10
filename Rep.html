@@ -4695,32 +4695,55 @@ function mergeIntoRepWorkspace(existing, incoming, options = {}) {
       ...String(normalizedIncoming.merged_workspace_sources || normalizedIncoming.source || "").split(" | ").filter(Boolean)
     ].filter((v, i, arr) => v && arr.indexOf(v) === i).join(" | ")
   };
-// Keep only the newest FIX request.
-// Each Hub FIX click must remain an individual field request.
-const incomingRepFixFields = String(
-  normalizedIncoming.install_base_rep_fix_request_fields ||
-  normalizedIncoming.install_base_fix_request_fields ||
-  normalizedIncoming.install_base_fix_request_field ||
-  ""
-)
-  .split(",")
-  .map(v => v.trim().toLowerCase())
-  .filter(Boolean);
+// Preserve all unresolved FIX fields explicitly sent by Hub.
+// Each Hub click adds only its individually routed field.
+const normalizeRepFixFields = value =>
+  String(value || "")
+    .split(",")
+    .map(v =>
+      window.AxisUtils?.canonicalFieldName?.(v) ||
+      String(v || "").toLowerCase().trim()
+    )
+    .filter(Boolean);
 
-if (incomingRepFixFields.length) {
-  const latestFixFields = [...new Set(incomingRepFixFields)];
+const combinedRepFixFields = Array.from(new Set([
+  ...normalizeRepFixFields(
+    normalizedExisting.install_base_rep_fix_request_fields
+  ),
 
+  ...normalizeRepFixFields(
+    normalizedExisting.install_base_fix_request_fields
+  ),
+
+  ...normalizeRepFixFields(
+    normalizedIncoming.install_base_rep_fix_request_fields
+  ),
+
+  ...normalizeRepFixFields(
+    normalizedIncoming.install_base_fix_request_fields
+  ),
+
+  ...normalizeRepFixFields(
+    normalizedIncoming.install_base_fix_request_field
+  )
+]));
+
+if (combinedRepFixFields.length) {
   merged.install_base_rep_fix_request_fields =
-    latestFixFields.join(",");
+    combinedRepFixFields.join(",");
 
   merged.install_base_fix_request_fields =
-    latestFixFields.join(",");
+    combinedRepFixFields.join(",");
 
   merged.install_base_fix_request_field =
-    latestFixFields[0] || "";
+    normalizeRepFixFields(
+      normalizedIncoming.install_base_fix_request_field
+    )[0] ||
+    combinedRepFixFields[0] ||
+    "";
 
   merged.install_base_issue_field =
-    latestFixFields.join(", ");
+    combinedRepFixFields.join(", ");
 
   merged.rep_fix_required = "Install Base FIX";
   merged.rep_status = "clarification_needed";
