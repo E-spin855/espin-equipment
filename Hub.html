@@ -3454,18 +3454,14 @@ function requestFixForRecord(id, event, fieldName = "") {
 
   if (!rec) return;
 
-  if (isFixedByRep(rec)) {
-    selectRecord(rec.id);
-    return;
-  }
-
   const requestedField = canonicalInstallBaseFieldName(fieldName);
 
   // Only the clicked FIX field should be sent.
-  // Do not mark every missing field on the record.
   const issueFields = requestedField
     ? [requestedField]
     : getMissingHubFields(rec);
+
+  if (!issueFields.length) return;
 
   const existingSentFields = String(
     rec.install_base_field_fix_sent_fields || ""
@@ -3486,59 +3482,128 @@ function requestFixForRecord(id, event, fieldName = "") {
       ? "manager"
       : "rep";
 
+  const now = new Date().toISOString();
+
+  const updatedRecord = {
+    ...rec,
+
+    install_base_issue_field: issueFields.join(", "),
+    install_base_issue_type: "missing_field",
+    install_base_action_label: "Install Base FIX",
+
+    // Field-specific Fix Sent tracking for Hub buttons.
+    install_base_field_fix_sent_fields: updatedSentFields.join(","),
+
+    // Compatibility fields.
+    install_base_fix_sent_fields: updatedSentFields.join(","),
+
+    // This outbound request is only the clicked field.
+    install_base_fix_request_fields: issueFields.join(","),
+
+    install_base_action_reason: `Install Base requested ${destination} correction for missing field(s): ${issueFields.join(", ")}.`,
+    install_base_issue_note: `Missing field(s): ${issueFields.join(", ")}.`,
+
+    install_base_manual_route: true,
+    install_base_released_to: destination,
+    release_destination: destination,
+
+    // Keep Hub held. Do not mark the whole record as released/complete.
+    install_base_release_status: "sync_hold",
+    install_base_sync_status: "sync_hold",
+
+    rep_fix_required:
+      destination === "rep"
+        ? "Install Base FIX"
+        : "",
+
+    manager_fix_required:
+      destination === "manager"
+        ? "Install Base FIX"
+        : "",
+
+    hub_source: "AXIS Install Base Workspace",
+    source: "AXIS Install Base Workspace",
+    install_base_fix_request: true,
+    install_base_fix_request_field: requestedField,
+    install_base_sync_type: "fix_request_to_" + destination,
+    install_base_released_at: now
+  };
+
   state.selectedId = rec.id;
 
-  state.records = state.records.map(r => {
-    if (String(r.id || "") !== String(id || "")) return r;
+  state.records = state.records.map(r =>
+    String(r.id || "") === String(id || "")
+      ? updatedRecord
+      : r
+  );
 
-    return {
-      ...r,
+  if (destination === "rep") {
+    const repQueue = readQueue(REP_QUEUE_KEY, []);
 
-      install_base_issue_field: issueFields.join(", "),
-      install_base_issue_type: "missing_field",
-      install_base_action_label: "Install Base FIX",
-
-      // Field-specific Fix Sent tracking.
-      // This controls which individual FIX button changes to Fix Sent.
-      install_base_field_fix_sent_fields: updatedSentFields.join(","),
-
-      // Keep this for compatibility, but also field-specific.
-      install_base_fix_sent_fields: updatedSentFields.join(","),
-
-      // Outbound request should contain only the clicked field.
-      install_base_fix_request_fields: issueFields.join(","),
-
-      install_base_action_reason: issueFields.length
-        ? `Install Base requested ${destination} correction for missing field(s): ${issueFields.join(", ")}.`
-        : `Install Base requested ${destination} correction for missing install-base data.`,
-
-      install_base_issue_note: issueFields.length
-        ? `Missing field(s): ${issueFields.join(", ")}.`
-        : "Missing install-base data.",
-
-      install_base_manual_route: true,
-      install_base_released_to: destination,
-      release_destination: destination,
-
-      // Keep Hub record held until all FIX fields are actually corrected.
-      install_base_release_status: "sync_hold",
-      install_base_sync_status: "sync_hold",
-
-      rep_fix_required:
-        destination === "rep"
-          ? "Install Base FIX"
-          : "",
-
-      manager_fix_required:
-        destination === "manager"
-          ? "Install Base FIX"
-          : ""
+    const repRecord = {
+      ...updatedRecord,
+      rep_visible: true,
+      manager_visible: false,
+      manager_unseen_update: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: "",
+      project:
+        updatedRecord.site ||
+        updatedRecord.site_address ||
+        updatedRecord.oem_project_id ||
+        updatedRecord.asset_id ||
+        "Unknown Site",
+      rep: updatedRecord.assigned_rep_name || "Unassigned",
+      alert: "Install Base FIX",
+      timestamp: now
     };
-  });
+
+    const cleaned = repQueue.filter(r =>
+      String(r.key || getRecordKey(r)) !== String(repRecord.key || getRecordKey(repRecord))
+    );
+
+    cleaned.push(repRecord);
+    localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
+    localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
+  }
+
+  if (destination === "manager") {
+    const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+    const ownerName = getOwnerName(updatedRecord);
+
+    if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
+
+    const managerRecord = {
+      ...updatedRecord,
+      manager_visible: true,
+      rep_visible: false,
+      manager_unseen_update: true,
+      manager_alert_seen: false,
+      manager_update_seen_at: "",
+      manager_flash_at: now,
+      manager_flash_type: "install_base_fix_request",
+      manager_flash_text: "Install Base FIX request"
+    };
+
+    managerQueue[ownerName] = managerQueue[ownerName].filter(r =>
+      String(r.key || getRecordKey(r)) !== String(managerRecord.key || getRecordKey(managerRecord))
+    );
+
+    managerQueue[ownerName].push(managerRecord);
+
+    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+    localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+  }
 
   saveRecords();
+  render();
 
-  releaseSelected(destination, requestedField);
+  showBanner(
+    destination === "manager"
+      ? "Fix request sent to Manager Review."
+      : "Fix request sent to Rep Review."
+  );
 }
 function markSelectedStaged() {
   const rec = findSelectedRecord();
