@@ -2913,16 +2913,28 @@ function isInstallBaseHoldStatusForManager(rec) {
 function shouldManagerAcceptHubRecord(rec) {
   if (!rec) return false;
 
-  // If Install Base explicitly sent the FIX to Manager, Manager should see it.
+  const repOriginated = Boolean(
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.record_origin === "rep_uploaded_install_base" ||
+    rec.install_base_sync_direction === "rep_to_install_base" ||
+    lower(rec.source || "").includes("rep uploaded") ||
+    lower(rec.source || "").includes("rep added") ||
+    lower(rec.source || "").includes("rep review") ||
+    lower(rec.hub_source || "").includes("rep")
+  );
+
+  // Rep-uploaded / rep-added records should be accepted by Manager
+  // before Hub/FIX missing-field hold logic can reject them.
+  if (repOriginated && rec.manager_visible === true) return true;
+
   if (isManagerRoutedFromHub(rec)) return true;
 
-  // Hub-only FIX / Sync Hold records must not leak into Manager from raw Hub storage.
   if (isInstallBaseHoldStatusForManager(rec)) return false;
 
-  // Any Hub-like row with missing core data is still a Hub FIX item, not a Manager row.
   if (isManagerInstallBaseLikeRecord(rec) && hasManagerMissingCoreFields(rec)) return false;
 
-  // Clean auto-synced records may be visible to Manager.
   return Boolean(
     rec.manager_visible === true ||
     rec.install_base_release_status === "auto_synced"
