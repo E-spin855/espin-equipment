@@ -3689,13 +3689,32 @@ install_base_manager_fix_request_fields: "",
       timestamp: now
     };
 
-    // Do NOT filter by record key here.
-    // Same asset can have multiple separate FIX requests.
-    const cleaned = repQueue.filter(r =>
-      String(r.install_base_fix_request_id || "") !== requestId
+    // Keep only one active Rep FIX request per equipment record.
+// The newest clicked field replaces the prior Rep FIX packet.
+const recordKey = String(
+  updatedRecord.key ||
+  getRecordKey(updatedRecord)
+);
+
+const cleaned = repQueue.filter(r => {
+  const queuedKey = String(
+    r.key ||
+    getRecordKey(r)
+  );
+
+  const isRepFixPacket =
+    lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
+    Boolean(clean(r.install_base_rep_fix_request_fields)) ||
+    (
+      r.install_base_manual_route === true &&
+      r.release_destination === "rep"
     );
 
-    cleaned.unshift(repRecord);
+  // Remove the older Rep FIX packet for this same equipment record.
+  return !(queuedKey === recordKey && isRepFixPacket);
+});
+
+cleaned.unshift(repRecord);
 
     localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
