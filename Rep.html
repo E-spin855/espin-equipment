@@ -13090,29 +13090,40 @@ function handleRepRowClick(id) {
   // Install Base communication is opened only from its own communication/FIX control.
   selectRow(id);
 }
-    function selectRow(id) {
-const selectedId = String(id || "").trim();
-if (!selectedId) return;
+  function selectRow(id) {
+  const selectedId = String(id || "").trim();
+  if (!selectedId) return;
 
-const previousSelectedId =
-  String(state.selectedId || "").trim();
+  const previousSelectedId =
+    String(state.selectedId || "").trim();
 
-const changingRows =
-  previousSelectedId &&
-  previousSelectedId !== selectedId;
+  const selectionChanged =
+    previousSelectedId !== selectedId ||
+    state.installBaseCommunicationOpen === true;
 
-// Clicking a different row acknowledges the previous row's
-// green corrected-field capsules and green row frame.
-if (changingRows) {
-  markRepRowUpdateSeen(previousSelectedId);
-}
+  /*
+   * Acknowledge corrected-field green formatting:
+   * - clicking the corrected row clears that row;
+   * - clicking another row clears the previously selected row.
+   */
+  let seenStateChanged = false;
 
-const selectionChanged =
-  previousSelectedId !== selectedId ||
-  state.installBaseCommunicationOpen === true;
+  if (
+    previousSelectedId &&
+    previousSelectedId !== selectedId
+  ) {
+    seenStateChanged =
+      markRepRowUpdateSeen(previousSelectedId) ||
+      seenStateChanged;
+  }
 
-state.selectedId = selectedId;
-state.installBaseCommunicationOpen = false;
+  seenStateChanged =
+    markRepRowUpdateSeen(selectedId) ||
+    seenStateChanged;
+
+  state.selectedId = selectedId;
+  state.installBaseCommunicationOpen = false;
+
   if (selectionChanged) {
     state.repAttentionAlertOpen = false;
     state.repProximityOpen = false;
@@ -13123,7 +13134,8 @@ state.installBaseCommunicationOpen = false;
     r => String(r.id || "") === selectedId
   );
 
-  state.detailUpdateFlash = getDetailUpdateFlashState(recBeforeSeen);
+  state.detailUpdateFlash =
+    getDetailUpdateFlashState(recBeforeSeen);
 
   const hasIncomingCommunication =
     hasUnseenIncomingCommunication(recBeforeSeen);
@@ -13134,15 +13146,13 @@ state.installBaseCommunicationOpen = false;
   const hasIncomingInstallBaseCommunication =
     hasUnseenInstallBaseCommunication(recBeforeSeen);
 
-  const incomingCommunicationSeenChanged = false;
-
-  // Do not clear green correction formatting when this row is opened.
-// It clears only after the user clicks another row.
-const seenStateChanged = false;
-
   if (hasIncomingCommunication) {
     document
-      .querySelectorAll("tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash")
+      .querySelectorAll(
+        "tr.incoming-communication-flash, " +
+        "tr.manager-response-flash, " +
+        "tr.rep-new-row-flash"
+      )
       .forEach(row => {
         row.classList.remove(
           "incoming-communication-flash",
@@ -13153,7 +13163,11 @@ const seenStateChanged = false;
 
     if (hasIncomingManagerCommunication) {
       const managerCommKey = String(selectedId);
-      state.managerCommunicationOpen[managerCommKey] = true;
+
+      state.managerCommunicationOpen[
+        managerCommKey
+      ] = true;
+
       state.managerCommunicationFrameActive = true;
     }
 
@@ -13163,9 +13177,12 @@ const seenStateChanged = false;
     }
   }
 
-  const rec = state.records.find(r => String(r.id || "") === selectedId);
+  const rec = state.records.find(
+    r => String(r.id || "") === selectedId
+  );
 
   let recordChanged = false;
+
   if (rec) {
     if (rec.tradein_seen_by_rep !== true) {
       rec.tradein_seen_by_rep = true;
@@ -13178,7 +13195,9 @@ const seenStateChanged = false;
       !rec.manager_response_seen_by_rep
     ) {
       rec.manager_response_seen_by_rep = true;
-      rec.manager_response_seen_at = new Date().toISOString();
+      rec.manager_response_seen_at =
+        new Date().toISOString();
+
       recordChanged = true;
     }
 
@@ -13191,22 +13210,36 @@ const seenStateChanged = false;
     state.detailUpdateFlash || {}
   ).some(Boolean);
 
-  if (!selectionChanged && !seenStateChanged && !recordChanged && !hasDetailFlash) return;
+  if (
+    !selectionChanged &&
+    !seenStateChanged &&
+    !recordChanged &&
+    !hasDetailFlash
+  ) {
+    return;
+  }
 
-  if (seenStateChanged && hasIncomingCommunication) {
+  /*
+   * Always redraw the tables when the seen state changes.
+   * Corrected-field updates are not always classified as
+   * incoming communication.
+   */
+  if (seenStateChanged) {
     renderTable();
     renderNewProjectsTable();
   }
 
   refreshSelectedRowUI();
 
-  if (selectionChanged || seenStateChanged || recordChanged || hasDetailFlash) {
+  if (
+    selectionChanged ||
+    seenStateChanged ||
+    recordChanged ||
+    hasDetailFlash
+  ) {
     renderDetail();
   }
 }
-const ROW_INTERACTIVE_SELECTOR =
-  "button, input, select, textarea, label, a, [contenteditable='true'], [role='button']";
-
 function bindRepRowDelegation(tbody, rowHandler) {
   if (!tbody || tbody.dataset.rowDelegationBound === "true") return;
 
@@ -13231,7 +13264,7 @@ function bindRepRowDelegation(tbody, rowHandler) {
 }
 
 let repSyncRenderQueued = false;
-
+}
 function refreshRepFromSync() {
   loadRecords(true);
   importRepQueueRecords();
