@@ -1142,7 +1142,35 @@ tr.incoming-communication-flash td:last-child{
 .fix-data-cell .fix-data-badge.active:hover{
   transform:translateY(2px) scale(.97);
 }
+/* Returned FIX values: green capsule until the user clicks away */
+.corrected-field-value{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 
+  width:auto;
+  min-width:54px;
+  max-width:100%;
+  min-height:34px;
+  padding:6px 10px;
+  margin:0 auto;
+
+  border:2px solid rgba(65,255,156,.88);
+  border-radius:14px;
+
+  background:rgba(65,255,156,.14);
+  color:#eafff4;
+
+  font-size:13px;
+  font-weight:950;
+  line-height:1.05;
+  text-align:center;
+  white-space:normal;
+
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.18),
+    0 0 16px rgba(65,255,156,.40);
+}
 .fix-data-badge .fix-main{
   display:block;
   font-size:13px;
@@ -8959,6 +8987,12 @@ function wasRepFieldCorrected(rec, fieldName) {
 
   if (!fixed) return false;
 
+// After the user clicks away from this corrected row,
+// corrected-value green formatting must disappear.
+if (rec.install_base_fixed_seen_by_rep === true) {
+  return false;
+}
+
   const correctedFields = String(
     rec.install_base_corrected_fields ||
     rec.install_base_issue_field ||
@@ -13057,15 +13091,28 @@ function handleRepRowClick(id) {
   selectRow(id);
 }
     function selectRow(id) {
-  const selectedId = String(id || "").trim();
-  if (!selectedId) return;
+const selectedId = String(id || "").trim();
+if (!selectedId) return;
 
-  const selectionChanged =
-    String(state.selectedId || "") !== selectedId ||
-    state.installBaseCommunicationOpen === true;
+const previousSelectedId =
+  String(state.selectedId || "").trim();
 
-  state.selectedId = selectedId;
-  state.installBaseCommunicationOpen = false;
+const changingRows =
+  previousSelectedId &&
+  previousSelectedId !== selectedId;
+
+// Clicking a different row acknowledges the previous row's
+// green corrected-field capsules and green row frame.
+if (changingRows) {
+  markRepRowUpdateSeen(previousSelectedId);
+}
+
+const selectionChanged =
+  previousSelectedId !== selectedId ||
+  state.installBaseCommunicationOpen === true;
+
+state.selectedId = selectedId;
+state.installBaseCommunicationOpen = false;
   if (selectionChanged) {
     state.repAttentionAlertOpen = false;
     state.repProximityOpen = false;
@@ -13089,9 +13136,9 @@ function handleRepRowClick(id) {
 
   const incomingCommunicationSeenChanged = false;
 
-  const seenStateChanged = hasIncomingCommunication
-    ? false
-    : markRepRowUpdateSeen(selectedId);
+  // Do not clear green correction formatting when this row is opened.
+// It clears only after the user clicks another row.
+const seenStateChanged = false;
 
   if (hasIncomingCommunication) {
     document
