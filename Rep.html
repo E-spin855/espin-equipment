@@ -9657,17 +9657,14 @@ function render() {
           };
         });
 
-       const uploadedForManagerSync = [];
-
-records.forEach(newRec => {
+      records.forEach(newRec => {
   const now = new Date().toISOString();
 
   const prepared = assignToSelectedRepIfNeeded({
     ...newRec,
     key: newRec.key || getRecordKey(newRec),
 
-    // This is the LOCAL Rep workspace copy.
-    // Keep manager_visible false or loadRecords() will filter it out.
+    // Local Rep copy must stay visible on Rep.
     rep_visible: true,
     manager_visible: false,
     manager_only: false,
@@ -9686,16 +9683,11 @@ records.forEach(newRec => {
 
   const upsertResult = upsertRepWorkspaceRecord(prepared, { append: true });
 
-  // Hub receives the Rep copy.
-  syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_upload");
-
-  // Manager receives a separate copy.
-  uploadedForManagerSync.push({
+  // This helper creates the correct split:
+  // Rep local copy stays manager_visible false.
+  // Manager queue copy becomes manager_visible true.
+  syncFeedStatus({
     ...upsertResult.record,
-    manager_visible: true,
-    manager_unseen_update: true,
-    manager_alert_seen: false,
-    manager_update_seen_at: "",
     manager_flash_at: now,
     manager_flash_type: "rep_upload",
     manager_flash_text: "Rep uploaded install-base record"
@@ -9704,14 +9696,6 @@ records.forEach(newRec => {
 
 saveRecords();
 render();
-
-uploadedForManagerSync.forEach(record => {
-  try {
-    syncToManagerQueue(record);
-  } catch (err) {
-    console.error("Manager sync failed for rep upload:", err, record);
-  }
-});
 
 showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
       };
