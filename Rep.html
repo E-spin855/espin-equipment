@@ -7262,7 +7262,33 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
   };
 
   const correctedFields = [];
+const invalidDomInput = fixedInputs.find(input => {
+  const rawKey = input.id.replace(/^fix_/, "");
+  const correctedField =
+    normalizeCorrectedFieldName(rawKey);
 
+  if (correctedField !== "dom") return false;
+
+  const enteredYear = Number(input.value.trim());
+  const currentYear = new Date().getFullYear();
+
+  return (
+    !Number.isInteger(enteredYear) ||
+    enteredYear < 1900 ||
+    enteredYear > currentYear
+  );
+});
+
+if (invalidDomInput) {
+  const currentYear = new Date().getFullYear();
+
+  alert(
+    `DOM must be a valid year between 1900 and ${currentYear}.`
+  );
+
+  invalidDomInput.focus();
+  return;
+}
 const updated = {
   ...rec,
   key,
@@ -7311,24 +7337,69 @@ const updated = {
     install_base_fixed_seen_by_install_base_at: ""
   };
 
-  fixedInputs.forEach(input => {
-    const rawKey = input.id.replace(/^fix_/, "");
-    const value = input.value.trim();
-    if (!value) return;
+fixedInputs.forEach(input => {
+  const rawKey = input.id.replace(/^fix_/, "");
+  const value = input.value.trim();
+  if (!value) return;
 
-    const correctedField = normalizeCorrectedFieldName(rawKey);
-    applyCorrectedFieldValue(updated, correctedField, rawKey, value);
+  const correctedField = normalizeCorrectedFieldName(rawKey);
 
+  if (correctedField === "dom") {
+    const enteredYear = Number(value);
+    const currentYear = new Date().getFullYear();
+
+    if (
+      !Number.isInteger(enteredYear) ||
+      enteredYear < 1900 ||
+      enteredYear > currentYear
+    ) {
+      alert(
+        `DOM must be a valid year between 1900 and ${currentYear}.`
+      );
+
+      input.focus();
+      throw new Error("Invalid DOM correction");
+    }
+  }
+
+  applyCorrectedFieldValue(updated, correctedField, rawKey, value);
     if (correctedField && !correctedFields.includes(correctedField)) {
       correctedFields.push(correctedField);
     }
   });
 
-  issues.forEach(issue => {
-    const input = $("fix_" + issue.key);
-    if (input && input.value.trim()) {
-      const correctedField = normalizeCorrectedFieldName(issue.key);
-      applyCorrectedFieldValue(updated, correctedField, issue.key, input.value.trim());
+ issues.forEach(issue => {
+  const input = $("fix_" + issue.key);
+
+  if (input && input.value.trim()) {
+    const value = input.value.trim();
+    const correctedField =
+      normalizeCorrectedFieldName(issue.key);
+
+    if (correctedField === "dom") {
+      const enteredYear = Number(value);
+      const currentYear = new Date().getFullYear();
+
+      if (
+        !Number.isInteger(enteredYear) ||
+        enteredYear < 1900 ||
+        enteredYear > currentYear
+      ) {
+        alert(
+          `DOM must be a valid year between 1900 and ${currentYear}.`
+        );
+
+        input.focus();
+        throw new Error("Invalid DOM correction");
+      }
+    }
+
+    applyCorrectedFieldValue(
+      updated,
+      correctedField,
+      issue.key,
+      value
+    );
 
       if (correctedField && !correctedFields.includes(correctedField)) {
         correctedFields.push(correctedField);
