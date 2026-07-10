@@ -2573,7 +2573,31 @@ function applyHubReturnedCorrection(target, source) {
 
   return target;
 }
+function isHubRepOriginatedRecord(rec) {
+  return Boolean(
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.record_origin === "rep_uploaded_install_base" ||
+    rec.install_base_sync_direction === "rep_to_install_base" ||
+    lower(rec.source || "").includes("rep uploaded") ||
+    lower(rec.source || "").includes("rep added")
+  );
+}
 
+function getHubReviewStatusTypeFromLabel(label) {
+  const text = lower(label);
+
+  if (text.includes("service")) return "source";
+  if (text.includes("age") || text.includes("replacement")) return "owner";
+  if (text.includes("planning") || text.includes("capital")) return "released";
+  if (text.includes("asset")) return "staged";
+  if (text.includes("data")) return "missing";
+  if (text.includes("source") || text.includes("conflict")) return "source";
+  if (text.includes("project") || text.includes("site")) return "staged";
+
+  return "source";
+}
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
     return { type: "completed", label: "Project Completed" };
@@ -2672,15 +2696,25 @@ function getReviewStatus(rec) {
     };
   }
 
-  if (rec.install_base_staged === true) {
-    return { type: "staged", label: "Staged Only" };
-  }
+if (rec.install_base_staged === true) {
+  return { type: "staged", label: "Staged Only" };
+}
 
-  if (exceptions.length) {
-    return exceptions[0];
-  }
+if (exceptions.length) {
+  return exceptions[0];
+}
 
-  return { type: "ok", label: "Ready" };
+// Rep-uploaded / rep-synced records should keep their actual review reason.
+// Do not label them as generic "Ready" just because the fields are complete.
+if (isHubRepOriginatedRecord(rec)) {
+  const label = getResolvedHubInstallBaseReviewLabel(rec);
+  return {
+    type: getHubReviewStatusTypeFromLabel(label),
+    label
+  };
+}
+
+return { type: "ok", label: "Ready" };
 }
 
 function getRepLifecycleLabelForInstallBaseRecord(rec) {
