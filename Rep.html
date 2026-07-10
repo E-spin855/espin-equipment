@@ -6436,11 +6436,12 @@ function bindIncomingCommunicationFrameDismissal() {
       rec.system_serial ||
       "";
 
-    const domValue =
-      rec.dom ||
-      rec.year ||
-      rec.manufacture_year ||
-      "";
+   const domValue =
+  rec.dom ||
+  rec.year ||
+  rec.manufacture_year ||
+  rec.manufacturing_year ||
+  "";
 
     const age = ageFromDom(domValue);
 
@@ -8487,86 +8488,258 @@ function renderFieldOrFixData(rec, fieldName, valueHtml) {
   return valueHtml;
 }
 function getFixDataBadge(rec, fieldName) {
-  if (wasRepFieldCorrected(rec, fieldName)) return "";
+  if (!rec) return "";
 
-  let show = false;
+  const normalizeFixField = value => {
+    const field = String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "_")
+      .replace(/-/g, "_");
 
-  if (fieldName === "project") {
-    show = !String(rec.oem_project_id || rec.project_id || rec.asset_id || "").trim();
+    if (
+      [
+        "project",
+        "project_id",
+        "oem_project_id",
+        "asset",
+        "asset_id",
+        "equipment_id"
+      ].includes(field)
+    ) {
+      return "project";
+    }
+
+    if (
+      [
+        "serial",
+        "serial_number",
+        "system_serial"
+      ].includes(field)
+    ) {
+      return "serial";
+    }
+
+    if (
+      [
+        "dom",
+        "year",
+        "manufacture_year",
+        "manufacturing_year",
+        "date_of_manufacture"
+      ].includes(field)
+    ) {
+      return "dom";
+    }
+
+    if (
+      [
+        "site",
+        "site_name",
+        "facility",
+        "facility_name",
+        "hospital",
+        "hospital_name",
+        "customer",
+        "customer_name",
+        "account",
+        "account_name",
+        "location",
+        "location_name"
+      ].includes(field)
+    ) {
+      return "site";
+    }
+
+    if (
+      [
+        "make",
+        "manufacturer",
+        "brand"
+      ].includes(field)
+    ) {
+      return "make";
+    }
+
+    if (field === "model") return "model";
+    if (field === "modality") return "modality";
+
+    return field;
+  };
+
+  const requestedField = normalizeFixField(fieldName);
+
+  if (
+    wasRepFieldCorrected(
+      rec,
+      requestedField
+    )
+  ) {
+    return "";
   }
 
-  if (fieldName === "equipment") {
-    show =
-      !String(rec.make || "").trim() ||
-      !String(rec.model || "").trim();
-  }
+  /*
+   * Hub's explicit Rep FIX list is the source of truth.
+   * Do not depend only on whether the value appears blank.
+   */
+  const explicitRequestedFields = Array.from(
+    new Set(
+      [
+        rec.install_base_rep_fix_request_fields,
+        rec.install_base_fix_request_fields,
+        rec.install_base_fix_request_field,
+        rec.install_base_issue_field
+      ]
+        .filter(Boolean)
+        .flatMap(value =>
+          String(value)
+            .split(",")
+            .map(normalizeFixField)
+            .filter(Boolean)
+        )
+    )
+  );
 
-  if (fieldName === "make") {
-    show = !String(rec.make || "").trim();
-  }
+  const explicitlyRequested =
+    explicitRequestedFields.includes(requestedField);
 
-  if (fieldName === "model") {
-    show = !String(rec.model || "").trim();
-  }
+  let valueIsMissing = false;
 
-  if (fieldName === "modality") {
-    show = !String(rec.modality || "").trim();
-  }
-
-  if (fieldName === "serial") {
-    show = !String(rec.serial_number || rec.serial || "").trim();
-  }
-
-  if (fieldName === "dom") {
-    show = !String(rec.dom || "").trim();
-  }
-
-  if (fieldName === "site") {
-    const site = String(
-      rec.site ||
-      rec.facility ||
-      rec.hospital ||
-      rec.hospital_name ||
-      rec.customer ||
+  if (requestedField === "project") {
+    const projectValue = String(
+      rec.oem_project_id ||
+      rec.project_id ||
+      rec.asset_id ||
+      rec.equipment_id ||
       ""
     ).trim();
 
-    show =
-      !site ||
-      site === "Unknown Site" ||
-      site === "Unknown Facility";
+    valueIsMissing =
+      !projectValue ||
+      ["-", "unknown", "unknown project"].includes(
+        projectValue.toLowerCase()
+      );
   }
 
-  if (!show) return "";
+  if (requestedField === "make") {
+    valueIsMissing = !String(
+      rec.make ||
+      rec.manufacturer ||
+      rec.brand ||
+      ""
+    ).trim();
+  }
 
-	  const labelMap = {
-  project: "Project ID",
-  equipment: "Make",
-  make: "Make",
-  model: "Model",
-  modality: "Modality",
-  serial: "Serial",
-  dom: "DOM",
-  site: "Site"
-};
+  if (requestedField === "model") {
+    valueIsMissing = !String(
+      rec.model ||
+      rec.equipment_model ||
+      ""
+    ).trim();
+  }
 
-	  const label = labelMap[fieldName] || "Data";
+  if (requestedField === "modality") {
+    const modalityValue = String(
+      rec.modality ||
+      rec.equipment_modality ||
+      ""
+    ).trim();
+
+    valueIsMissing =
+      !modalityValue ||
+      modalityValue.toLowerCase() === "other";
+  }
+
+  if (requestedField === "serial") {
+    valueIsMissing = !String(
+      rec.serial_number ||
+      rec.serial ||
+      rec.system_serial ||
+      ""
+    ).trim();
+  }
+
+  if (requestedField === "dom") {
+    valueIsMissing = !String(
+      rec.dom ||
+      rec.year ||
+      rec.manufacture_year ||
+      rec.manufacturing_year ||
+      ""
+    ).trim();
+  }
+
+  if (requestedField === "site") {
+    const siteValue = String(
+      rec.site ||
+      rec.site_name ||
+      rec.facility ||
+      rec.facility_name ||
+      rec.hospital ||
+      rec.hospital_name ||
+      rec.customer ||
+      rec.customer_name ||
+      rec.account ||
+      rec.account_name ||
+      rec.location ||
+      rec.location_name ||
+      ""
+    ).trim();
+
+    valueIsMissing =
+      !siteValue ||
+      [
+        "-",
+        "unknown",
+        "unknown site",
+        "unknown facility"
+      ].includes(siteValue.toLowerCase());
+  }
+
+  /*
+   * Show the FIX when Hub specifically requested it,
+   * even if an alias currently contains some value.
+   */
+  if (!explicitlyRequested && !valueIsMissing) {
+    return "";
+  }
+
+  const labelMap = {
+    project: "Project ID",
+    make: "Make",
+    model: "Model",
+    modality: "Modality",
+    serial: "Serial",
+    dom: "DOM",
+    site: "Site"
+  };
+
+  const label =
+    labelMap[requestedField] ||
+    "Data";
 
   const active =
     state.installBaseCommunicationOpen === true &&
-    String(state.selectedId) === String(rec.id);
+    String(state.selectedId || "") ===
+      String(rec.id || "");
 
   return `
     <button
       type="button"
       class="fix-data-badge ${active ? "active" : ""}"
-      onclick="event.stopPropagation(); openInstallBaseCommunication('${escapeJs(rec.id || "")}', '${escapeJs(fieldName || "")}')"
-	    >
-	      <span class="fix-main">Fix</span>
-	      <span class="fix-sub">${escapeHtml(label)}</span>
-	    </button>
-	  `;
-	}
+      onclick="
+        event.stopPropagation();
+        openInstallBaseCommunication(
+          '${escapeJs(rec.id || "")}',
+          '${escapeJs(requestedField)}'
+        );
+      "
+    >
+      <span class="fix-main">Fix</span>
+      <span class="fix-sub">${escapeHtml(label)}</span>
+    </button>
+  `;
+}
 function isInstallBaseFixedByRep(rec) {
   return (
     rec.install_base_correction_status === "corrected_by_rep" ||
