@@ -3474,7 +3474,19 @@ function requestFixForRecord(id, event, fieldName = "") {
     ...existingSentFields,
     ...issueFields
   ]));
+const existingManagerRequestFields = String(
+  rec.install_base_manager_fix_request_fields || ""
+)
+  .split(",")
+  .map(v => canonicalInstallBaseFieldName(v))
+  .filter(Boolean);
 
+const existingRepRequestFields = String(
+  rec.install_base_rep_fix_request_fields || ""
+)
+  .split(",")
+  .map(v => canonicalInstallBaseFieldName(v))
+  .filter(Boolean);
 // Do not use getManualRouteTarget(rec) here.
 // That function reads install_base_released_to / release_destination,
 // which are changed after the first FIX click and make later FIX buttons route wrong.
@@ -3541,7 +3553,28 @@ const outboundIssueFields = mustRouteToManager
     })
   : issueFields;
 
-  const outboundRequestedField = outboundIssueFields[0] || requestedField;
+  const outboundRequestedField =
+  outboundIssueFields[0] || requestedField;
+
+const updatedManagerRequestFields =
+  destination === "manager"
+    ? Array.from(new Set([
+        ...existingManagerRequestFields,
+        ...outboundIssueFields
+      ]))
+    : existingManagerRequestFields;
+
+const updatedRepRequestFields =
+  destination === "rep"
+    ? Array.from(new Set([
+        ...existingRepRequestFields,
+        ...outboundIssueFields
+      ]))
+    : existingRepRequestFields;
+
+const now = new Date().toISOString();
+const requestId =
+  `${getRecordKey(rec)}_${outboundIssueFields.join("_")}_${Date.now()}`;
 
   const now = new Date().toISOString();
   const requestId = `${getRecordKey(rec)}_${outboundIssueFields.join("_")}_${Date.now()}`;
@@ -3563,7 +3596,13 @@ const outboundIssueFields = mustRouteToManager
     // This outbound request is only the clicked field,
     // except Rep Owner is normalized to assigned_rep_name for Manager.
     install_base_fix_request_fields: outboundIssueFields.join(","),
+// Keep Manager and Rep requests separate when the same record
+// has multiple FIX fields.
+install_base_manager_fix_request_fields:
+  updatedManagerRequestFields.join(","),
 
+install_base_rep_fix_request_fields:
+  updatedRepRequestFields.join(","),
     install_base_action_reason: `Install Base requested ${destination} correction for missing field(s): ${outboundIssueFields.join(", ")}.`,
     install_base_issue_note: `Missing field(s): ${outboundIssueFields.join(", ")}.`,
 
@@ -3669,10 +3708,20 @@ const outboundIssueFields = mustRouteToManager
       ...updatedRecord,
 
       install_base_fix_request_id: requestId,
-      install_base_fix_request_at: now,
-      install_base_fix_request_field: outboundRequestedField,
-      install_base_issue_field: outboundIssueFields.join(", "),
-      install_base_fix_request_fields: outboundIssueFields.join(","),
+install_base_fix_request_at: now,
+install_base_fix_request_field:
+  updatedManagerRequestFields[0] || outboundRequestedField,
+
+install_base_issue_field:
+  updatedManagerRequestFields.join(", "),
+
+install_base_fix_request_fields:
+  updatedManagerRequestFields.join(","),
+
+install_base_manager_fix_request_fields:
+  updatedManagerRequestFields.join(","),
+
+install_base_rep_fix_request_fields: "",
 
       manager_visible: true,
       rep_visible: false,

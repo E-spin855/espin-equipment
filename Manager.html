@@ -4404,38 +4404,31 @@ function getManagerFixBadgeLabel(rec, fieldName) {
 }
 
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
-  const textValue = String(normalHtml || "").replace(/<[^>]*>/g, "").trim();
+  const textValue = String(normalHtml || "")
+    .replace(/<[^>]*>/g, "")
+    .trim();
 
   if (wasManagerFieldCorrected(rec, fieldName)) {
-    return renderManagerCorrectedValue(rec, fieldName, normalHtml || "-");
+    return renderManagerCorrectedValue(
+      rec,
+      fieldName,
+      normalHtml || "-"
+    );
   }
 
-  if (isManagerInstallBaseFieldRequested(rec, fieldName) && !wasManagerFieldCorrected(rec, fieldName)) {
-    return renderManagerFixButton(rec, getManagerFixBadgeLabel(rec, fieldName));
+  if (
+    isManagerInstallBaseFieldRequested(rec, fieldName) &&
+    !wasManagerFieldCorrected(rec, fieldName)
+  ) {
+    return renderManagerFixButton(
+      rec,
+      getManagerFixBadgeLabel(rec, fieldName)
+    );
   }
 
-  if (!textValue || textValue === "-") {
-    if (fieldName === "age") {
-      return "-";
-    }
-
-    const fixLabel = getManagerFixBadgeLabel(rec, fieldName);
-
-    if (isManagerInstallBaseRequest(rec)) {
-      return renderManagerFixButton(rec, fixLabel);
-    }
-
-    return `
-      <span
-        class="manager-waiting-badge"
-        title="Rep correction expected from rep workspace"
-      >
-        Waiting on Rep
-      </span>
-    `;
-  }
-
-  return normalHtml;
+  return textValue && textValue !== "-"
+    ? normalHtml
+    : "-";
 }
 function isManagerRecordFixed(rec) {
   return (
@@ -4933,96 +4926,88 @@ function getUpdateLabel(rec) {
 }
 
 function getManagerInstallBaseIssueFields(rec) {
-  const fieldMap = {
-    project: { key: "oem_project_id", label: "Project / Asset ID" },
-    make: { key: "make", label: "Make" },
-    model: { key: "model", label: "Model" },
-    modality: { key: "modality", label: "Modality" },
-    serial: { key: "serial_number", label: "Serial Number" },
-    dom: { key: "dom", label: "DOM / Year" },
-    site: { key: "site", label: "Facility / Site" },
- rep: { key: "assigned_rep_name", label: "Rep Owner" },
-manager: { key: "manager_name", label: "Owner Group / Manager" },
-territory: { key: "manager_region", label: "Territory" },
-region: { key: "manager_region", label: "Territory" },
-manager_region: { key: "manager_region", label: "Territory" },
-manager_territory: { key: "manager_region", label: "Territory" }
-  };
+  if (!rec) return [];
 
-  const requestedFields = String(rec.install_base_issue_field || "")
+  const explicitManagerFields = String(
+    rec.install_base_manager_fix_request_fields ||
+    rec.install_base_fix_request_fields ||
+    rec.install_base_fix_request_field ||
+    ""
+  )
     .split(",")
-    .map(field => window.AxisUtils?.canonicalFieldName?.(field) || String(field || "").toLowerCase().trim())
+    .map(v => canonicalInstallBaseFieldName(v))
     .filter(Boolean);
-
-  const requestText = [
-    rec.install_base_issue_field,
-    rec.install_base_issue_type,
-    rec.install_base_issue_reason,
-    rec.rep_fix_required,
-    rec.install_base_action_label,
-    rec.install_base_action_reason,
-    rec.install_base_issue_note,
-    rec.oem_review_reason,
-    rec.review_reason,
-    rec.conflict_notes
-  ].join(" ").toLowerCase();
 
   const fields = [];
 
   const add = (key, label) => {
-    if (!fields.some(f => f.key === key)) fields.push({ key, label });
+    if (!fields.some(item => item.key === key)) {
+      fields.push({ key, label });
+    }
   };
 
-  requestedFields.forEach(field => {
-    const mapped = fieldMap[field];
-    if (mapped) add(mapped.key, mapped.label);
+  explicitManagerFields.forEach(field => {
+    switch (field) {
+      case "rep":
+      case "assigned_rep":
+      case "assigned_rep_name":
+      case "rep_owner":
+      case "sales_rep":
+      case "sales_rep_name":
+        add("assigned_rep_name", "Rep Owner");
+        break;
+
+      case "territory":
+      case "manager_region":
+      case "manager_territory":
+      case "region":
+        add("manager_territory", "Territory");
+        break;
+
+      case "owner":
+      case "manager":
+      case "manager_name":
+      case "owner_group":
+      case "owner_group_name":
+        add("manager_name", "Owner Group");
+        break;
+
+      case "serial":
+      case "serial_number":
+      case "system_serial":
+        add("serial_number", "Serial Number");
+        break;
+
+      case "dom":
+      case "year":
+      case "manufacture_year":
+        add("dom", "DOM / Year");
+        break;
+
+      case "make":
+      case "manufacturer":
+        add("make", "Make");
+        break;
+
+      case "model":
+        add("model", "Model");
+        break;
+
+      case "modality":
+        add("modality", "Modality");
+        break;
+
+      case "site":
+      case "facility":
+      case "hospital":
+      case "location":
+        add("site", "Facility / Site");
+        break;
+    }
   });
 
-  if (requestText.includes("serial")) add("serial_number", "Serial Number");
-  if (requestText.includes("dom") || requestText.includes("year")) add("dom", "DOM / Year");
-  if (requestText.includes("model")) add("model", "Model");
-  if (requestText.includes("make") || requestText.includes("manufacturer")) add("make", "Make");
-  if (requestText.includes("modality")) add("modality", "Modality");
-  if (requestText.includes("site") || requestText.includes("facility") || requestText.includes("hospital")) add("site", "Facility / Site");
-  if (requestText.includes("address")) add("site_address", "Street Address");
-  if (requestText.includes("city")) add("city", "City");
-  if (requestText.includes("state")) add("state", "State");
-  if (requestText.includes("zip") || requestText.includes("postal")) add("zip_code", "Zip Code");
-  if (
-  requestText.includes("owner group") ||
-  requestText.includes("manager assignment") ||
-  requestText.includes("manager owner") ||
-  requestText.includes("manager")
-) {
-  add("manager_name", "Owner Group / Manager");
-}
-
-if (
-  requestText.includes("rep owner") ||
-  requestText.includes("sales owner") ||
-  requestText.includes("assigned rep")
-) {
-  add("assigned_rep_name", "Rep Owner");
-}
-if (
-  requestText.includes("territory") ||
-  requestText.includes("manager_region") ||
-  requestText.includes("manager territory") ||
-  requestText.includes("assigned territory")
-) {
-  add("manager_region", "Territory");
-}
-  if (requestText.includes("rep email")) add("assigned_rep_email", "Rep Email");
-  if (requestText.includes("utilization")) add("utilization_percent", "Utilization %");
-
-
-
-  // If the record itself is missing required install-base fields, show the same
-  // yellow FIX badge behavior even if the missing field was not called out in text.
-  getManagerMissingInstallBaseIssueFields(rec).forEach(issue => add(issue.key, issue.label));
   return fields;
 }
-
 function getManagerInstallBaseFieldsForEdit(rec) {
   const issues = getManagerInstallBaseIssueFields(rec);
 
