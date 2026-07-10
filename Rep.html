@@ -9658,15 +9658,27 @@ function render() {
         });
 
         records.forEach(newRec => {
-          const prepared = assignToSelectedRepIfNeeded({
-            ...newRec,
-            key: newRec.key || getRecordKey(newRec),
-            rep_visible: true,
-            manager_visible: false
-          });
-          const upsertResult = upsertRepWorkspaceRecord(prepared, { append: true });
-          syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_upload");
-        });
+  const prepared = assignToSelectedRepIfNeeded({
+    ...newRec,
+    key: newRec.key || getRecordKey(newRec),
+
+    rep_visible: true,
+    manager_visible: true,
+
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+    manager_flash_at: new Date().toISOString(),
+    manager_flash_type: "rep_upload",
+    manager_flash_text: "Rep uploaded install-base record"
+  });
+
+  const upsertResult = upsertRepWorkspaceRecord(prepared, { append: true });
+
+  // Rep uploaded records must sync to both Hub and Manager.
+  syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_upload");
+  syncToManagerQueue(upsertResult.record);
+});
 
         saveRecords();
         render();
@@ -9759,14 +9771,22 @@ function render() {
         install_base_visible: true,
         install_base_received_from_rep: true,
         install_base_received_from_rep_at: now,
-        manager_visible: false,
+        manager_visible: true,
+manager_unseen_update: true,
+manager_alert_seen: false,
+manager_update_seen_at: "",
+manager_flash_at: now,
+manager_flash_type: "rep_added_install_base",
+manager_flash_text: "Rep added install-base record",
         territory: state.selectedRepTerritory || "",
         manager_territory: state.selectedRepTerritory || "",
         manager_region: state.selectedRepTerritory || ""
       });
 
       const upsertResult = upsertRepWorkspaceRecord(rec);
-      syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_added_install_base");
+     // Rep-created records must sync to both Hub and Manager.
+syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_added_install_base");
+syncToManagerQueue(upsertResult.record);
       state.selectedId = upsertResult.record.id;
       saveRecords();
       closeOwnInstallBaseModal();
