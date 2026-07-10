@@ -3477,32 +3477,56 @@ function requestFixForRecord(id, event, fieldName = "") {
 
   const spreadsheetTarget = getManualRouteTarget(rec);
 
+  const managerOnlyFixFields = [
+    "rep",
+    "assigned_rep",
+    "assigned_rep_name",
+    "rep_owner",
+    "owner_name",
+    "sales_rep",
+    "sales_rep_name"
+  ];
+
+  const mustRouteToManager = issueFields.some(field =>
+    managerOnlyFixFields.includes(canonicalInstallBaseFieldName(field))
+  );
+
   const destination =
-    spreadsheetTarget === "manager"
+    mustRouteToManager || spreadsheetTarget === "manager"
       ? "manager"
       : "rep";
 
+  // Rep Owner FIX must be sent to Manager as assigned_rep_name.
+  // Other FIX fields keep their actual clicked field.
+  const outboundIssueFields = mustRouteToManager
+    ? ["assigned_rep_name"]
+    : issueFields;
+
+  const outboundRequestedField = outboundIssueFields[0] || requestedField;
+
   const now = new Date().toISOString();
-  const requestId = `${getRecordKey(rec)}_${issueFields.join("_")}_${Date.now()}`;
+  const requestId = `${getRecordKey(rec)}_${outboundIssueFields.join("_")}_${Date.now()}`;
 
   const updatedRecord = {
     ...rec,
 
-    install_base_issue_field: issueFields.join(", "),
+    install_base_issue_field: outboundIssueFields.join(", "),
     install_base_issue_type: "missing_field",
     install_base_action_label: "Install Base FIX",
 
     // Field-specific Fix Sent tracking for Hub buttons.
+    // Keep original clicked field here so the correct Hub button changes to Fix Sent.
     install_base_field_fix_sent_fields: updatedSentFields.join(","),
 
     // Compatibility fields.
     install_base_fix_sent_fields: updatedSentFields.join(","),
 
-    // This outbound request is only the clicked field.
-    install_base_fix_request_fields: issueFields.join(","),
+    // This outbound request is only the clicked field,
+    // except Rep Owner is normalized to assigned_rep_name for Manager.
+    install_base_fix_request_fields: outboundIssueFields.join(","),
 
-    install_base_action_reason: `Install Base requested ${destination} correction for missing field(s): ${issueFields.join(", ")}.`,
-    install_base_issue_note: `Missing field(s): ${issueFields.join(", ")}.`,
+    install_base_action_reason: `Install Base requested ${destination} correction for missing field(s): ${outboundIssueFields.join(", ")}.`,
+    install_base_issue_note: `Missing field(s): ${outboundIssueFields.join(", ")}.`,
 
     install_base_manual_route: true,
     install_base_released_to: destination,
@@ -3528,7 +3552,7 @@ function requestFixForRecord(id, event, fieldName = "") {
     install_base_fix_request: true,
     install_base_fix_request_id: requestId,
     install_base_fix_request_at: now,
-    install_base_fix_request_field: requestedField,
+    install_base_fix_request_field: outboundRequestedField,
 
     install_base_sync_type: "fix_request_to_" + destination,
     install_base_released_at: now
@@ -3551,9 +3575,9 @@ function requestFixForRecord(id, event, fieldName = "") {
       // Keep same equipment record, but make each FIX click a new incoming request.
       install_base_fix_request_id: requestId,
       install_base_fix_request_at: now,
-      install_base_fix_request_field: requestedField,
-      install_base_issue_field: issueFields.join(", "),
-      install_base_fix_request_fields: issueFields.join(","),
+      install_base_fix_request_field: outboundRequestedField,
+      install_base_issue_field: outboundIssueFields.join(", "),
+      install_base_fix_request_fields: outboundIssueFields.join(","),
 
       rep_visible: true,
       manager_visible: false,
@@ -3607,9 +3631,9 @@ function requestFixForRecord(id, event, fieldName = "") {
 
       install_base_fix_request_id: requestId,
       install_base_fix_request_at: now,
-      install_base_fix_request_field: requestedField,
-      install_base_issue_field: issueFields.join(", "),
-      install_base_fix_request_fields: issueFields.join(","),
+      install_base_fix_request_field: outboundRequestedField,
+      install_base_issue_field: outboundIssueFields.join(", "),
+      install_base_fix_request_fields: outboundIssueFields.join(","),
 
       manager_visible: true,
       rep_visible: false,
@@ -3618,7 +3642,9 @@ function requestFixForRecord(id, event, fieldName = "") {
       manager_update_seen_at: "",
       manager_flash_at: now,
       manager_flash_type: "install_base_fix_request",
-      manager_flash_text: "Install Base FIX request"
+      manager_flash_text: mustRouteToManager
+        ? "Install Base FIX request: assign Rep Owner"
+        : "Install Base FIX request"
     };
 
     // Do NOT filter by record key here.
