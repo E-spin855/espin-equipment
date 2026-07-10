@@ -2719,9 +2719,17 @@ function getReviewStatus(rec) {
     return { type: "source", label: "Sync Hold" };
   }
 
-  if (rec.install_base_release_status === "auto_synced") {
-    return { type: "released", label: "Auto-Synced" };
+ if (rec.install_base_release_status === "auto_synced") {
+  if (hasPendingHubFix(rec)) {
+    const blockingFields = getMissingHubFields(rec);
+    return {
+      type: "source",
+      label: blockingFields.length ? "Fix Required" : "Sync Hold"
+    };
   }
+
+  return { type: "released", label: "Auto-Synced" };
+}
 
   if (isFixedByRep(rec)) {
     return { type: "fixed", label: isFixedByManager(rec) ? "Fixed by Manager" : "Fixed by Rep" };
