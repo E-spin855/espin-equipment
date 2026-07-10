@@ -2927,7 +2927,16 @@ function shouldManagerAcceptHubRecord(rec) {
 
   // Rep-uploaded / rep-added records should be accepted by Manager
   // before Hub/FIX missing-field hold logic can reject them.
-  if (repOriginated && rec.manager_visible === true) return true;
+  if (
+    repOriginated &&
+    (
+      rec.manager_visible === true ||
+      rec.manager_only === true ||
+      rec.manager_unseen_update === true
+    )
+  ) {
+    return true;
+  }
 
   if (isManagerRoutedFromHub(rec)) return true;
 
@@ -3236,12 +3245,20 @@ const normalSeen = isFreshRepUpdate
   releaseIsUnseen ||
   legacyUnseen;
 
-    map.set(key, {
-      ...existing,
-      ...rec,
-      key,
+	    map.set(key, {
+	      ...existing,
+	      ...rec,
+	      key,
+	      manager_visible:
+	        rec.manager_visible === true ||
+	        existing.manager_visible === true ||
+	        rec.manager_only === true ||
+	        existing.manager_only === true,
+	      manager_only:
+	        rec.manager_only === true ||
+	        existing.manager_only === true,
 
-      quote_seen: existing.quote_seen === true || rec.quote_seen === true,
+	      quote_seen: existing.quote_seen === true || rec.quote_seen === true,
 
       manager_response_seen_by_rep:
         rec.manager_response_seen_by_rep === false
