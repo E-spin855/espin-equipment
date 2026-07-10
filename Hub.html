@@ -3483,6 +3483,7 @@ function requestFixForRecord(id, event, fieldName = "") {
       : "rep";
 
   const now = new Date().toISOString();
+  const requestId = `${getRecordKey(rec)}_${issueFields.join("_")}_${Date.now()}`;
 
   const updatedRecord = {
     ...rec,
@@ -3523,8 +3524,12 @@ function requestFixForRecord(id, event, fieldName = "") {
 
     hub_source: "AXIS Install Base Workspace",
     source: "AXIS Install Base Workspace",
+
     install_base_fix_request: true,
+    install_base_fix_request_id: requestId,
+    install_base_fix_request_at: now,
     install_base_fix_request_field: requestedField,
+
     install_base_sync_type: "fix_request_to_" + destination,
     install_base_released_at: now
   };
@@ -3542,28 +3547,51 @@ function requestFixForRecord(id, event, fieldName = "") {
 
     const repRecord = {
       ...updatedRecord,
+
+      // Keep same equipment record, but make each FIX click a new incoming request.
+      install_base_fix_request_id: requestId,
+      install_base_fix_request_at: now,
+      install_base_fix_request_field: requestedField,
+      install_base_issue_field: issueFields.join(", "),
+      install_base_fix_request_fields: issueFields.join(","),
+
       rep_visible: true,
       manager_visible: false,
       manager_unseen_update: false,
       manager_flash_at: "",
       manager_flash_type: "",
       manager_flash_text: "",
+
+      rep_status: "clarification_needed",
+      rep_action: "fix_install_base_data",
+      rep_action_label: "Install Base FIX",
+      rep_selected_manual_action_label: "Install Base FIX",
+      rep_fix_required: "Install Base FIX",
+
+      rep_new_update: true,
+      rep_new_update_at: now,
+      rep_new_update_type: "install_base_fix_request",
+
       project:
         updatedRecord.site ||
         updatedRecord.site_address ||
         updatedRecord.oem_project_id ||
         updatedRecord.asset_id ||
         "Unknown Site",
+
       rep: updatedRecord.assigned_rep_name || "Unassigned",
       alert: "Install Base FIX",
       timestamp: now
     };
 
+    // Do NOT filter by record key here.
+    // Same asset can have multiple separate FIX requests.
     const cleaned = repQueue.filter(r =>
-      String(r.key || getRecordKey(r)) !== String(repRecord.key || getRecordKey(repRecord))
+      String(r.install_base_fix_request_id || "") !== requestId
     );
 
-    cleaned.push(repRecord);
+    cleaned.unshift(repRecord);
+
     localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
   }
@@ -3576,6 +3604,13 @@ function requestFixForRecord(id, event, fieldName = "") {
 
     const managerRecord = {
       ...updatedRecord,
+
+      install_base_fix_request_id: requestId,
+      install_base_fix_request_at: now,
+      install_base_fix_request_field: requestedField,
+      install_base_issue_field: issueFields.join(", "),
+      install_base_fix_request_fields: issueFields.join(","),
+
       manager_visible: true,
       rep_visible: false,
       manager_unseen_update: true,
@@ -3586,11 +3621,13 @@ function requestFixForRecord(id, event, fieldName = "") {
       manager_flash_text: "Install Base FIX request"
     };
 
+    // Do NOT filter by record key here.
+    // Same asset can have multiple separate FIX requests.
     managerQueue[ownerName] = managerQueue[ownerName].filter(r =>
-      String(r.key || getRecordKey(r)) !== String(managerRecord.key || getRecordKey(managerRecord))
+      String(r.install_base_fix_request_id || "") !== requestId
     );
 
-    managerQueue[ownerName].push(managerRecord);
+    managerQueue[ownerName].unshift(managerRecord);
 
     localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
     localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
