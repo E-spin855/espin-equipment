@@ -4695,36 +4695,32 @@ function mergeIntoRepWorkspace(existing, incoming, options = {}) {
       ...String(normalizedIncoming.merged_workspace_sources || normalizedIncoming.source || "").split(" | ").filter(Boolean)
     ].filter((v, i, arr) => v && arr.indexOf(v) === i).join(" | ")
   };
-const normalizeFixFieldList = value =>
-  String(value || "")
-    .split(",")
-    .map(v => v.trim().toLowerCase())
-    .filter(Boolean);
+// Keep only the newest FIX request.
+// Each Hub FIX click must remain an individual field request.
+const incomingRepFixFields = String(
+  normalizedIncoming.install_base_rep_fix_request_fields ||
+  normalizedIncoming.install_base_fix_request_fields ||
+  normalizedIncoming.install_base_fix_request_field ||
+  ""
+)
+  .split(",")
+  .map(v => v.trim().toLowerCase())
+  .filter(Boolean);
 
-const combinedRepFixFields = Array.from(new Set([
-  ...normalizeFixFieldList(
-    normalizedExisting.install_base_rep_fix_request_fields
-  ),
-  ...normalizeFixFieldList(
-    normalizedExisting.install_base_fix_request_fields
-  ),
-  ...normalizeFixFieldList(
-    normalizedIncoming.install_base_rep_fix_request_fields
-  ),
-  ...normalizeFixFieldList(
-    normalizedIncoming.install_base_fix_request_fields
-  )
-]));
+if (incomingRepFixFields.length) {
+  const latestFixFields = [...new Set(incomingRepFixFields)];
 
-if (combinedRepFixFields.length) {
   merged.install_base_rep_fix_request_fields =
-    combinedRepFixFields.join(",");
+    latestFixFields.join(",");
 
   merged.install_base_fix_request_fields =
-    combinedRepFixFields.join(",");
+    latestFixFields.join(",");
+
+  merged.install_base_fix_request_field =
+    latestFixFields[0] || "";
 
   merged.install_base_issue_field =
-    combinedRepFixFields.join(", ");
+    latestFixFields.join(", ");
 
   merged.rep_fix_required = "Install Base FIX";
   merged.rep_status = "clarification_needed";
@@ -8700,9 +8696,11 @@ function getFixDataBadge(rec, fieldName) {
    * Show the FIX when Hub specifically requested it,
    * even if an alias currently contains some value.
    */
-  if (!explicitlyRequested && !valueIsMissing) {
-    return "";
-  }
+ // A Rep FIX badge may appear only for the exact field
+// explicitly routed by Hub in the newest FIX request.
+if (!explicitlyRequested) {
+  return "";
+}
 
   const labelMap = {
     project: "Project ID",

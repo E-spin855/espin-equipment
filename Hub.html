@@ -3556,21 +3556,17 @@ const outboundIssueFields = mustRouteToManager
   const outboundRequestedField =
   outboundIssueFields[0] || requestedField;
 
+// Each FIX click creates an individual request.
+// Do not carry earlier FIX fields into the new packet.
 const updatedManagerRequestFields =
   destination === "manager"
-    ? Array.from(new Set([
-        ...existingManagerRequestFields,
-        ...outboundIssueFields
-      ]))
-    : existingManagerRequestFields;
+    ? [...outboundIssueFields]
+    : [];
 
 const updatedRepRequestFields =
   destination === "rep"
-    ? Array.from(new Set([
-        ...existingRepRequestFields,
-        ...outboundIssueFields
-      ]))
-    : existingRepRequestFields;
+    ? [...outboundIssueFields]
+    : [];
 
 const now = new Date().toISOString();
 
@@ -3648,23 +3644,20 @@ install_base_rep_fix_request_fields:
     const repRecord = {
       ...updatedRecord,
 
-      // Keep same equipment record, but make each FIX click a new incoming request.
-      install_base_fix_request_id: requestId,
+     install_base_fix_request_id: requestId,
 install_base_fix_request_at: now,
 
 install_base_fix_request_field:
   outboundRequestedField,
 
-// The Rep copy carries every Rep-routed FIX currently sent
-// for this equipment record.
 install_base_issue_field:
-  updatedRepRequestFields.join(", "),
+  outboundIssueFields.join(", "),
 
 install_base_fix_request_fields:
-  updatedRepRequestFields.join(","),
+  outboundIssueFields.join(","),
 
 install_base_rep_fix_request_fields:
-  updatedRepRequestFields.join(","),
+  outboundIssueFields.join(","),
 
 install_base_manager_fix_request_fields: "",
 
@@ -3718,19 +3711,20 @@ install_base_manager_fix_request_fields: "",
     const managerRecord = {
       ...updatedRecord,
 
-      install_base_fix_request_id: requestId,
+     install_base_fix_request_id: requestId,
 install_base_fix_request_at: now,
+
 install_base_fix_request_field:
-  updatedManagerRequestFields[0] || outboundRequestedField,
+  outboundRequestedField,
 
 install_base_issue_field:
-  updatedManagerRequestFields.join(", "),
+  outboundIssueFields.join(", "),
 
 install_base_fix_request_fields:
-  updatedManagerRequestFields.join(","),
+  outboundIssueFields.join(","),
 
 install_base_manager_fix_request_fields:
-  updatedManagerRequestFields.join(","),
+  outboundIssueFields.join(","),
 
 install_base_rep_fix_request_fields: "",
 
