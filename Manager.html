@@ -7963,57 +7963,55 @@ function showCompletedManagerProjects() {
   showBanner("Completed projects are visible.");
 }
 function render() {
-  const allHubRecords = readArrayKey(INSTALL_BASE_KEY);
-
-  // Current Hub state is the source of truth.
-  // Any Hub record that is presently on FIX / Sync Hold must also be
-  // removed from older Manager storage copies.
-  const acceptedHubRecords = allHubRecords.filter(
-    shouldManagerAcceptHubRecord
-  );
-
-  const blockedHubKeys = new Set(
-    allHubRecords
-      .filter(rec => !shouldManagerAcceptHubRecord(rec))
-      .map(getRecordKey)
-      .filter(Boolean)
-  );
-
-  const isNotCurrentlyBlockedByHub = rec => {
-    const key = getRecordKey(rec);
-    return !key || !blockedHubKeys.has(key);
-  };
-
+  // Existing Manager records that are still valid.
   const main = readArrayKey(STORAGE_KEY)
-    .filter(shouldManagerKeepLocalRecord)
-    .filter(isNotCurrentlyBlockedByHub);
+    .filter(shouldManagerKeepLocalRecord);
 
-  const managerQueue = readManagerQueueRecords()
-    .filter(isNotCurrentlyBlockedByHub);
+  // Records specifically routed to Manager, including FIX requests.
+  const managerQueue = readManagerQueueRecords();
 
-  const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY)
-    .filter(isNotCurrentlyBlockedByHub);
+  // From the complete Hub table, accept only:
+  // 1. clean auto-synced records, or
+  // 2. the exact record manually routed to Manager.
+  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY)
+    .filter(shouldManagerAcceptHubRecord);
 
-  const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY)
-    .filter(isNotCurrentlyBlockedByHub);
+  const installBaseResponses =
+    readArrayKey(INSTALL_BASE_RESPONSE_KEY);
 
-  state.records = mergeRecordsByKey(
-    main,
-    managerQueue,
-    acceptedHubRecords,
-    installBaseResponses,
-    installBaseFinalSync
-  ).filter(rec => {
-    return (
-      shouldManagerKeepLocalRecord(rec) &&
-      isNotCurrentlyBlockedByHub(rec)
-    );
+  const installBaseFinalSync =
+    readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
+
+ state.records = mergeRecordsByKey(
+  main,
+
+  // Older response copies first.
+  installBaseResponses,
+  installBaseFinalSync,
+
+  // Current Hub state overrides older stored copies.
+  installBaseRecords,
+
+  // Explicit Manager routing must have final priority.
+  managerQueue
+).filter(rec => {
+    if (!rec) return false;
+
+    // Always preserve Rep activity and normal Manager records.
+    if (isManagerRepActionUpdate(rec)) return true;
+    if (!isManagerInstallBaseLikeRecord(rec)) return true;
+
+    // Preserve clean Hub records and records explicitly routed to Manager.
+    return shouldManagerAcceptHubRecord(rec);
   });
 
   if (
     state.selectedId &&
     !state.records.some(
-      rec => String(rec.id || "") === String(state.selectedId)
+      rec =>
+        String(rec.id || "") === String(state.selectedId) ||
+        String(rec.key || "") === String(state.selectedId) ||
+        String(getRecordKey(rec) || "") === String(state.selectedId)
     )
   ) {
     state.selectedId = null;
@@ -8023,6 +8021,7 @@ function render() {
   renderRepMenu();
   renderTable();
   renderDetail();
+
   managerStorageSignature = getManagerStorageSignature();
 }
 function safeRender(context = "render") {
