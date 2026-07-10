@@ -4642,7 +4642,43 @@ function mergeIntoRepWorkspace(existing, incoming, options = {}) {
       ...String(normalizedIncoming.merged_workspace_sources || normalizedIncoming.source || "").split(" | ").filter(Boolean)
     ].filter((v, i, arr) => v && arr.indexOf(v) === i).join(" | ")
   };
+const normalizeFixFieldList = value =>
+  String(value || "")
+    .split(",")
+    .map(v => v.trim().toLowerCase())
+    .filter(Boolean);
 
+const combinedRepFixFields = Array.from(new Set([
+  ...normalizeFixFieldList(
+    normalizedExisting.install_base_rep_fix_request_fields
+  ),
+  ...normalizeFixFieldList(
+    normalizedExisting.install_base_fix_request_fields
+  ),
+  ...normalizeFixFieldList(
+    normalizedIncoming.install_base_rep_fix_request_fields
+  ),
+  ...normalizeFixFieldList(
+    normalizedIncoming.install_base_fix_request_fields
+  )
+]));
+
+if (combinedRepFixFields.length) {
+  merged.install_base_rep_fix_request_fields =
+    combinedRepFixFields.join(",");
+
+  merged.install_base_fix_request_fields =
+    combinedRepFixFields.join(",");
+
+  merged.install_base_issue_field =
+    combinedRepFixFields.join(", ");
+
+  merged.rep_fix_required = "Install Base FIX";
+  merged.rep_status = "clarification_needed";
+  merged.rep_action = "fix_install_base_data";
+  merged.rep_action_label = "Install Base FIX";
+  merged.rep_selected_manual_action_label = "Install Base FIX";
+}
   REP_OWNED_MERGE_FIELDS.forEach(field => {
     if (hasMergeValue(normalizedExisting[field])) merged[field] = normalizedExisting[field];
   });
@@ -8648,13 +8684,14 @@ function getRepFixPanelIssues(rec) {
   };
 
   const requestedFields = String(
-    state.installBaseActiveFixField ||
-    rec.install_base_issue_field ||
-    rec.install_base_fix_request_fields ||
-    rec.install_base_field_fix_sent_fields ||
-    rec.install_base_fix_sent_fields ||
-    ""
-  )
+  rec.install_base_rep_fix_request_fields ||
+  rec.install_base_fix_request_fields ||
+  rec.install_base_issue_field ||
+  state.installBaseActiveFixField ||
+  rec.install_base_field_fix_sent_fields ||
+  rec.install_base_fix_sent_fields ||
+  ""
+)
     .split(",")
     .map(v => normalizeFixField(v))
     .filter(Boolean);

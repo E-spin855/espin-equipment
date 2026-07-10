@@ -3650,10 +3650,23 @@ install_base_rep_fix_request_fields:
 
       // Keep same equipment record, but make each FIX click a new incoming request.
       install_base_fix_request_id: requestId,
-      install_base_fix_request_at: now,
-      install_base_fix_request_field: outboundRequestedField,
-      install_base_issue_field: outboundIssueFields.join(", "),
-      install_base_fix_request_fields: outboundIssueFields.join(","),
+install_base_fix_request_at: now,
+
+install_base_fix_request_field:
+  outboundRequestedField,
+
+// The Rep copy carries every Rep-routed FIX currently sent
+// for this equipment record.
+install_base_issue_field:
+  updatedRepRequestFields.join(", "),
+
+install_base_fix_request_fields:
+  updatedRepRequestFields.join(","),
+
+install_base_rep_fix_request_fields:
+  updatedRepRequestFields.join(","),
+
+install_base_manager_fix_request_fields: "",
 
       rep_visible: true,
       manager_visible: false,
@@ -3855,12 +3868,28 @@ function autoSyncEligibleRecordsToRepAndManager() {
     state.records.map(r => String(getRecordKey(r)))
   );
 
-  // Remove current Install Base records from Rep queue.
-  // Records are added back only when a valid rep is already assigned.
-  repQueue = repQueue.filter(r => {
-    const key = String(r.key || getRecordKey(r));
-    return !currentInstallBaseKeys.has(key);
-  });
+  // Remove only old automatic Hub copies.
+//
+// Preserve manually routed FIX requests. Otherwise every Hub render
+// deletes prior Rep FIX requests for the same equipment record.
+repQueue = repQueue.filter(r => {
+  const key = String(r.key || getRecordKey(r));
+
+  if (!currentInstallBaseKeys.has(key)) {
+    return true;
+  }
+
+  const isManualFixRequest =
+    r.install_base_manual_route === true &&
+    (
+      lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
+      Boolean(clean(r.install_base_fix_request_id)) ||
+      Boolean(clean(r.install_base_rep_fix_request_fields)) ||
+      Boolean(clean(r.install_base_fix_request_fields))
+    );
+
+  return isManualFixRequest;
+});
 
   // Do not automatically add or refresh unassigned records in Manager queues.
   Object.keys(managerQueue).forEach(ownerName => {
