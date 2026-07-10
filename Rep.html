@@ -4399,16 +4399,41 @@ function importRepQueueRecords() {
         `${String(item.oem_project_id || "")}\u0000${String(item.serial_number || "")}`
       )
     );
+       const isIncomingInstallBaseFix = Boolean(
+      item.install_base_manual_route === true ||
+      lower(item.install_base_sync_type) === "manual_clarification" ||
+      lower(item.install_base_sync_type) === "manual_fix_routing" ||
+      clean(item.rep_fix_required || "") ||
+      clean(item.install_base_issue_field || "") ||
+      clean(item.install_base_fix_request_fields || "") ||
+      clean(item.install_base_field_fix_sent_fields || "")
+    );
+
     const releasedRecord = {
       ...item,
       source:
         lower(item.hub_source || item.source || "").includes("install base")
           ? "Install Base"
           : (item.hub_source || item.source || "Install Base"),
+
       install_base_release_status: item.install_base_release_status || "released_to_rep",
-      rep_status: item.rep_status || "needed",
-      rep_action: item.rep_action || "",
-      rep_action_label: item.rep_action_label || "",
+
+      rep_status: isIncomingInstallBaseFix
+        ? "clarification_needed"
+        : (item.rep_status || "needed"),
+
+      rep_action: isIncomingInstallBaseFix
+        ? "fix_install_base_data"
+        : (item.rep_action || ""),
+
+      rep_action_label: isIncomingInstallBaseFix
+        ? getInstallBaseFixLabel(item)
+        : (item.rep_action_label || ""),
+
+      rep_selected_manual_action_label: isIncomingInstallBaseFix
+        ? getInstallBaseFixLabel(item)
+        : (item.rep_selected_manual_action_label || item.rep_action_label || ""),
+
       manager_response_seen_by_rep: item.manager_response_seen_by_rep ?? true
     };
 
@@ -8584,23 +8609,61 @@ function getLatestInstallBaseCommunicationItem(rec) {
 }
 function getRepFixPanelIssues(rec) {
   const issues = [];
-  const activeField = String(state.installBaseActiveFixField || "").trim();
+
+  const normalizeFixField = (field) => {
+    const f = String(field || "").toLowerCase().trim();
+
+    if (["project", "project_id", "oem_project_id", "asset_id"].includes(f)) return "project";
+    if (["serial", "serial_number", "system_serial"].includes(f)) return "serial";
+    if (["dom", "year", "manufacture_year"].includes(f)) return "dom";
+    if (["make", "manufacturer", "brand"].includes(f)) return "make";
+    if (["model"].includes(f)) return "model";
+    if (["modality"].includes(f)) return "modality";
+    if (["site", "facility", "hospital", "hospital_name", "customer", "location"].includes(f)) return "site";
+
+    return f;
+  };
 
   const addIssue = (field, label) => {
-    if (!issues.some(([existing]) => existing === field)) {
-      issues.push([field, label]);
+    const normalized = normalizeFixField(field);
+    if (!normalized) return;
+
+    if (!issues.some(([existing]) => existing === normalized)) {
+      issues.push([normalized, label]);
     }
   };
 
-  if (activeField === "site") addIssue("site", "Site / Facility");
-  if (activeField === "serial") addIssue("serial_number", "Serial Number");
-  if (activeField === "dom") addIssue("dom", "DOM / Year");
-  if (activeField === "make") addIssue("make", "Make");
-  if (activeField === "model") addIssue("model", "Model");
-  if (activeField === "modality") addIssue("modality", "Modality");
-  if (activeField === "project") addIssue("oem_project_id", "Project / Asset ID");
+  const labelForField = (field) => {
+    const f = normalizeFixField(field);
 
-  if (activeField && issues.length) return issues;
+    if (f === "project") return "Project / Asset ID";
+    if (f === "serial") return "Serial Number";
+    if (f === "dom") return "DOM / Year";
+    if (f === "make") return "Make";
+    if (f === "model") return "Model";
+    if (f === "modality") return "Modality";
+    if (f === "site") return "Site / Facility";
+
+    return "Requested Field";
+  };
+
+  const requestedFields = String(
+    state.installBaseActiveFixField ||
+    rec.install_base_issue_field ||
+    rec.install_base_fix_request_fields ||
+    rec.install_base_field_fix_sent_fields ||
+    rec.install_base_fix_sent_fields ||
+    ""
+  )
+    .split(",")
+    .map(v => normalizeFixField(v))
+    .filter(Boolean);
+
+  requestedFields.forEach(field => {
+    addIssue(field, labelForField(field));
+  });
+
+  if (issues.length) return issues;
 
   getInstallBaseIssues(rec).forEach(([field, label]) => {
     addIssue(field, label);
@@ -8620,11 +8683,12 @@ function getRepFixPanelIssues(rec) {
       addIssue("site", "Site / Facility");
     }
 
-    if (issueText.includes("serial")) addIssue("serial_number", "Serial Number");
+    if (issueText.includes("serial")) addIssue("serial", "Serial Number");
     if (issueText.includes("dom") || issueText.includes("year")) addIssue("dom", "DOM / Year");
     if (issueText.includes("model")) addIssue("model", "Model");
-    if (issueText.includes("make")) addIssue("make", "Make");
+    if (issueText.includes("make") || issueText.includes("manufacturer") || issueText.includes("brand")) addIssue("make", "Make");
     if (issueText.includes("modality")) addIssue("modality", "Modality");
+    if (issueText.includes("project") || issueText.includes("asset")) addIssue("project", "Project / Asset ID");
   }
 
   return issues;
@@ -8940,7 +9004,7 @@ function renderInstallBaseCorrectionPanel(rec) {
     </div>
   `;
 
-  const correctionFieldsHtml = issues.length && state.installBaseActiveFixField ? `
+  const correctionFieldsHtml = issues.length ? `
     <div style="display:grid;gap:10px;margin-top:12px;">
       ${issues.map(([field,label]) => `
         <label>${escapeHtml(label)}</label>
