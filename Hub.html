@@ -3549,7 +3549,29 @@ function updateReleaseButtonVisibility(rec) {
     !isCompletedRecord(rec)
   );
 }
+function hasPendingHubFix(rec) {
+  if (!rec) return false;
 
+  // If the Hub still sees any data exception or missing field,
+  // the record must stay on Hub and must not auto-sync.
+  if (getMissingHubFields(rec).length) return true;
+  if (getDataExceptions(rec).length) return true;
+
+  const fixFields = [
+    "project",
+    "make",
+    "model",
+    "modality",
+    "serial",
+    "dom",
+    "site",
+    "owner",
+    "territory",
+    "rep"
+  ];
+
+  return fixFields.some(field => isHubUnresolvedFixField(rec, field));
+}
 
 function getRoutingBlockingFields(rec) {
   return getMissingHubFields(rec).filter(field => {
@@ -3599,7 +3621,9 @@ function autoSyncEligibleRecordsToRepAndManager() {
 
   state.records = state.records.map(rec => {
     const key = getRecordKey(rec);
-    const missingFixFields = getRoutingBlockingFields(rec);
+   const missingFixFields = hasPendingHubFix(rec)
+  ? getMissingHubFields(rec)
+  : [];
     const repAssigned = hasValidAssignedRep(rec);
 
     if (missingFixFields.length) {
@@ -3680,10 +3704,10 @@ function autoSyncEligibleRecordsToRepAndManager() {
   // Only records that already have a valid rep may sync automatically.
   state.records
     .filter(rec =>
-      hasValidAssignedRep(rec) &&
-      isAutoSyncEligible(rec) &&
-      !getRoutingBlockingFields(rec).length
-    )
+  hasValidAssignedRep(rec) &&
+  isAutoSyncEligible(rec) &&
+  !hasPendingHubFix(rec)
+)
     .forEach(rec => {
       const ownerName = getOwnerName(rec);
       if (!managerQueue[ownerName]) managerQueue[ownerName] = [];
