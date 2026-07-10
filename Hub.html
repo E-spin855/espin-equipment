@@ -3484,29 +3484,62 @@ const spreadsheetTarget = lower(
   ""
 );
   const managerOnlyFixFields = [
-    "rep",
-    "assigned_rep",
-    "assigned_rep_name",
-    "rep_owner",
-    "owner_name",
-    "sales_rep",
-    "sales_rep_name"
-  ];
+  // Rep Owner fixes go to Manager
+  "rep",
+  "assigned_rep",
+  "assigned_rep_name",
+  "rep_owner",
+  "owner_name",
+  "sales_rep",
+  "sales_rep_name",
 
-  const mustRouteToManager = issueFields.some(field =>
-    managerOnlyFixFields.includes(canonicalInstallBaseFieldName(field))
-  );
+  // Territory fixes also go to Manager
+  "territory",
+  "manager_region",
+  "manager_territory",
+  "region"
+];
 
-  const destination =
-    mustRouteToManager || spreadsheetTarget === "manager"
-      ? "manager"
-      : "rep";
+const mustRouteToManager = issueFields.some(field =>
+  managerOnlyFixFields.includes(canonicalInstallBaseFieldName(field))
+);
 
-  // Rep Owner FIX must be sent to Manager as assigned_rep_name.
-  // Other FIX fields keep their actual clicked field.
-  const outboundIssueFields = mustRouteToManager
-    ? ["assigned_rep_name"]
-    : issueFields;
+// FIX routing must be field-based only.
+// Rep Owner + Territory go to Manager.
+// Everything else goes to Rep.
+const destination = mustRouteToManager ? "manager" : "rep";
+
+// Rep Owner should be sent to Manager as assigned_rep_name.
+// Territory should be sent to Manager as manager_territory.
+// Other FIX fields keep their actual clicked field.
+const outboundIssueFields = mustRouteToManager
+  ? issueFields.map(field => {
+      const f = canonicalInstallBaseFieldName(field);
+
+      if ([
+        "rep",
+        "assigned_rep",
+        "assigned_rep_name",
+        "rep_owner",
+        "owner_name",
+        "sales_rep",
+        "sales_rep_name"
+      ].includes(f)) {
+        return "assigned_rep_name";
+      }
+
+      if ([
+        "territory",
+        "manager_region",
+        "manager_territory",
+        "region"
+      ].includes(f)) {
+        return "manager_territory";
+      }
+
+      return f;
+    })
+  : issueFields;
 
   const outboundRequestedField = outboundIssueFields[0] || requestedField;
 
