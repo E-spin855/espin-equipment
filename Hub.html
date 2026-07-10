@@ -2684,12 +2684,15 @@ function getReviewStatus(rec) {
     };
   }
 
-  // Field-level exceptions must win over route labels.
-  // Example: if Excel says territory/rep owner is missing, do not show "Sent to Manager"
-  // just because a demo owner group or demo territory is visible.
-  if (exceptions.length) {
-    return exceptions[0];
+  // Field-level exceptions hold the record on Hub.
+// Show Sync Hold in Review Status while the specific field still shows FIX.
+if (exceptions.length) {
+  if (hasPendingHubFix(rec)) {
+    return { type: "source", label: "Sync Hold" };
   }
+
+  return exceptions[0];
+}
 
   if (
     !isAutoSyncEligible(rec) &&
