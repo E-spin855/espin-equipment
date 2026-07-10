@@ -1441,6 +1441,10 @@ function isAutoSyncEligible(rec) {
   const value = lower(rec.axis_auto_sync_eligible);
   if (value === "no") return false;
 
+  if (hasActualInstallBaseCorrection(rec)) {
+    return true;
+  }
+
   const manualRouteTarget = lower(
     rec.axis_manual_route_target ||
     rec.manual_route_target ||
@@ -3685,14 +3689,20 @@ function autoSyncEligibleRecordsToRepAndManager() {
       };
     }
 
+    const correctedFixReturned = hasActualInstallBaseCorrection(rec);
+
     return {
       ...rec,
       key,
       hub_source: "ESPIN LINK Install Base Workspace",
       source: rec.source || "ESPIN LINK Install Base Workspace",
-      install_base_sync_type: "automatic_assigned_rep",
+      install_base_sync_type: correctedFixReturned
+        ? "fixed_synced_to_rep_and_manager"
+        : "automatic_assigned_rep",
       install_base_manual_route: false,
-      install_base_release_status: "auto_synced",
+      install_base_release_status: correctedFixReturned
+        ? "fixed_synced"
+        : "auto_synced",
       install_base_released_at: rec.install_base_released_at || now,
       install_base_released_to: "rep_and_manager",
       rep_visible: true,
@@ -3704,7 +3714,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
   // Only records that already have a valid rep may sync automatically.
   state.records
     .filter(rec =>
-      rec.install_base_manual_route !== true &&
+      (rec.install_base_manual_route !== true || hasActualInstallBaseCorrection(rec)) &&
       hasValidAssignedRep(rec) &&
       isAutoSyncEligible(rec) &&
       !getRoutingBlockingFields(rec).length
@@ -3720,7 +3730,13 @@ function autoSyncEligibleRecordsToRepAndManager() {
         rep_assignment_required: false,
         install_base_released_to: "rep_and_manager",
         release_destination: "rep_and_manager",
-        install_base_release_status: "auto_synced"
+        install_base_manual_route: false,
+        install_base_sync_type: hasActualInstallBaseCorrection(rec)
+          ? "fixed_synced_to_rep_and_manager"
+          : "automatic_assigned_rep",
+        install_base_release_status: hasActualInstallBaseCorrection(rec)
+          ? "fixed_synced"
+          : "auto_synced"
       });
 
       repQueue.push({
@@ -3735,6 +3751,15 @@ function autoSyncEligibleRecordsToRepAndManager() {
         rep_visible: true,
         manager_visible: true,
         rep_assignment_required: false,
+        install_base_manual_route: false,
+        install_base_released_to: "rep_and_manager",
+        release_destination: "rep_and_manager",
+        install_base_sync_type: hasActualInstallBaseCorrection(rec)
+          ? "fixed_synced_to_rep_and_manager"
+          : "automatic_assigned_rep",
+        install_base_release_status: hasActualInstallBaseCorrection(rec)
+          ? "fixed_synced"
+          : "auto_synced",
         alert: getReviewStatus(rec).label,
         timestamp: now
       });
