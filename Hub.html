@@ -1131,7 +1131,7 @@ button.message-sent-state{
 
   <div class="stats">
     <div class="stat"><div class="k">Install Base Records</div><div class="v" id="statTotal">0</div></div>
-    <div class="stat"><div class="k">Regional Managers</div><div class="v" id="statOwners">0</div></div>
+    <div class="stat"><div class="k">Owner Groups</div><div class="v" id="statOwners">0</div></div>
     <div class="stat"><div class="k">Rep Owners</div><div class="v" id="statReps">0</div></div>
     <div class="stat"><div class="k">Data Exceptions</div><div class="v" id="statExceptions">0</div></div>
   </div>
@@ -1159,19 +1159,19 @@ button.message-sent-state{
         Useful fields: project ID, asset ID, make, model, modality, serial,
         DOM/year, site, city, state, assigned rep, manager, source system.
         <br><br>
-        If manager fields are missing, demo regional managers are assigned only for
+        If manager fields are missing, demo owner groups are assigned only for
         display. Final ownership confirmation should remain manual.
       </div>
 
       <div class="panel" style="margin-top:18px;">
         <div class="panel-head">
-          <h2>Regional Managers</h2>
+          <h2>Owner Groups</h2>
           <span class="mini">Click to filter</span>
         </div>
 
         <div class="panel-body">
           <div id="ownerList" class="owner-list">
-            <div class="mini">Upload data to create regional managers.</div>
+            <div class="mini">Upload data to create owner groups.</div>
           </div>
         </div>
       </div>
@@ -1220,7 +1220,7 @@ button.message-sent-state{
               <tr>
                 <th>Project / Asset ID</th>
                 <th>Make</th>
-                <th>Regional Manager</th>
+                <th>Owner Group</th>
                 <th>Territory</th>
                 <th>Rep Owner</th>
                 <th>Site</th>
@@ -1427,31 +1427,26 @@ function flashHubMessageSentButton(buttonId, sentText = "Message Sent") {
 }
 
 function isAutoSyncEligible(rec) {
-  // HARD STOP: if Hub is showing a FIX field, the record must stay in Hub
-  // until the FIX is manually sent or corrected.
-  const visibleFixFields =
-    typeof getVisibleHubFixFields === "function"
-      ? getVisibleHubFixFields(rec)
-      : [];
-
-  if (visibleFixFields.length) {
-    return false;
-  }
-
   const value = lower(rec.axis_auto_sync_eligible);
-  if (value === "no") return false;
 
-  if (hasActualInstallBaseCorrection(rec)) {
-    return true;
-  }
+  if (value !== "no") return true;
 
-  const manualRouteTarget = lower(
+  const hasManualHoldReason = Boolean(clean(
     rec.axis_manual_route_target ||
-    rec.manual_route_target ||
+    rec.axis_clarification_reason ||
+    rec.install_base_clarification_reason ||
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.conflict_notes ||
+    rec.source_notes ||
+    rec.source_conflict_notes ||
+    rec.source_conflict ||
+    rec.conflict ||
     ""
-  );
+  ));
 
-  return !manualRouteTarget;
+  return getMissingHubFields(rec).length === 0 && !hasManualHoldReason;
 }
 
 function getManualRouteTarget(rec) {
@@ -1497,7 +1492,7 @@ function getHubInstallBaseReviewReason(rec) {
     oldReasonLower.includes("assigned rep") ||
     oldReasonLower.includes("rep name") ||
     oldReasonLower.includes("rep owner") ||
-    oldReasonLower.includes("regional manager") ||
+    oldReasonLower.includes("owner group") ||
     oldReasonLower.includes("territory") ||
     oldReasonLower.includes("missing");
 
@@ -1646,7 +1641,7 @@ function isHubOwnershipReviewResolved(rec) {
     context.includes("assigned rep") ||
     context.includes("rep owner") ||
     context.includes("rep name") ||
-    context.includes("regional manager") ||
+    context.includes("owner group") ||
     context.includes("territory");
 
   if (!isOwnershipIssue) return false;
@@ -1658,7 +1653,7 @@ function isHubOwnershipReviewResolved(rec) {
     context.includes("missing rep");
 
   const needsOwnerGroup =
-    context.includes("regional manager") ||
+    context.includes("owner group") ||
     context.includes("manager assignment") ||
     context.includes("manager owner");
 
@@ -1799,7 +1794,7 @@ function getDemoOwner(seed, stateValue) {
 }
 
 function getOwnerName(rec) {
-  return rec.manager_name || rec.owner_group_name || "Unassigned Regional Manager";
+  return rec.manager_name || rec.owner_group_name || "Unassigned Owner Group";
 }
 
 function getOwnerTerritory(rec) {
@@ -1827,59 +1822,31 @@ function isDuplicateAsset(rec) {
 function getDataExceptions(rec) {
   const issues = [];
 
-  const projectValue = clean(
-    rec.oem_project_id ||
-    rec.project_id ||
-    rec.asset_id ||
-    rec.equipment_id ||
-    ""
-  );
-
-  const makeValue = clean(rec.make || rec.manufacturer || rec.brand || "");
-  const modalityValue = clean(rec.modality || rec.equipment_modality || "");
-  const modelValue = clean(rec.model || rec.equipment_model || "");
-  const serialValue = clean(rec.serial_number || rec.serial || rec.system_serial || "");
-  const domValue = clean(rec.dom || rec.manufacture_year || rec.year || "");
-  const siteValue = clean(
-    rec.site ||
-    rec.site_name ||
-    rec.facility ||
-    rec.facility_name ||
-    rec.hospital_name ||
-    rec.customer_name ||
-    rec.account_name ||
-    rec.location ||
-    ""
-  );
-
-  // IMPORTANT: use the same blank rules as the table cells.
-  // Values like "-", "Unknown", "N/A", and modality "OTHER" must count as missing
-  // so rows with visible FIX buttons can never show Auto-Synced.
-  if (isBlankHubField(projectValue, "project")) {
+  if (!clean(rec.oem_project_id || rec.asset_id)) {
     issues.push({ type: "missing", label: "Missing Project / Asset ID" });
   }
 
-  if (isBlankHubField(makeValue, "make")) {
+  if (!clean(rec.make)) {
     issues.push({ type: "missing", label: "Missing Brand" });
   }
 
-  if (isBlankHubField(modalityValue, "modality")) {
+  if (!clean(rec.modality) || lower(rec.modality) === "other") {
     issues.push({ type: "missing", label: "Missing Modality" });
   }
 
-  if (isBlankHubField(modelValue, "model")) {
+  if (!clean(rec.model)) {
     issues.push({ type: "missing", label: "Missing Model" });
   }
 
-  if (isBlankHubField(serialValue, "serial")) {
+  if (!clean(rec.serial_number || rec.serial)) {
     issues.push({ type: "missing", label: "Missing Serial" });
   }
 
-  if (isBlankHubField(domValue, "dom")) {
+  if (!clean(rec.dom)) {
     issues.push({ type: "missing", label: "Missing DOM" });
   }
 
-  if (isBlankHubField(siteValue, "site")) {
+  if (!clean(rec.site) || rec.site === "Unknown Site") {
     issues.push({ type: "missing", label: "Missing Site" });
   }
 
@@ -1910,10 +1877,10 @@ function getDataExceptions(rec) {
     requestText.includes("missing rep");
 
   const ownerGroupRequested =
-    requestText.includes("regional manager") ||
+    requestText.includes("owner group") ||
     requestText.includes("manager assignment") ||
     requestText.includes("manager owner") ||
-    requestText.includes("missing regional manager");
+    requestText.includes("missing owner group");
 
   const territoryRequested =
     requestText.includes("territory") ||
@@ -1934,7 +1901,7 @@ function getDataExceptions(rec) {
   const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
 
   if (ownerGroupRequested && !ownerGroupWasCorrected) {
-    issues.push({ type: "owner", label: "Missing Regional Manager" });
+    issues.push({ type: "owner", label: "Missing Owner Group" });
   } else if (
     !ownerGroupRequested &&
     (
@@ -1942,7 +1909,7 @@ function getDataExceptions(rec) {
       isBlankHubField(ownerValue, "owner")
     )
   ) {
-    issues.push({ type: "owner", label: "Missing Regional Manager" });
+    issues.push({ type: "owner", label: "Missing Owner Group" });
   }
 
   const actualTerritoryValue = clean(
@@ -2102,7 +2069,7 @@ function isBlankHubField(value, fieldName = "") {
     "unknown",
     "unknown site",
     "unassigned",
-    "unassigned regional manager",
+    "unassigned owner group",
     "unassigned territory"
   ];
 
@@ -2127,7 +2094,7 @@ function getHubFixDisplayLabel(fieldName) {
   }
 
   if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(field)) {
-    return "Regional Manager";
+    return "Owner Group";
   }
 
   if (field === "make") return "Brand";
@@ -2224,7 +2191,7 @@ function isHubFieldFixRequested(rec, fieldName) {
     ],
     owner: [
       "owner",
-      "regional manager",
+      "owner group",
       "owner_group",
       "owner_group_name",
       "manager",
@@ -2234,7 +2201,7 @@ function isHubFieldFixRequested(rec, fieldName) {
     ],
     manager: [
       "owner",
-      "regional manager",
+      "owner group",
       "owner_group",
       "owner_group_name",
       "manager",
@@ -2385,12 +2352,12 @@ function wasHubOwnerGroupSpecificallyRequested(rec) {
     requestText.includes("missing rep");
 
   const ownerGroupRequest =
-    requestText.includes("regional manager") ||
+    requestText.includes("owner group") ||
     requestText.includes("manager assignment") ||
     requestText.includes("manager owner") ||
-    requestText.includes("missing regional manager");
+    requestText.includes("missing owner group");
 
-  // If the Hub asked Manager to fix Rep Owner, do not turn Regional Manager green
+  // If the Hub asked Manager to fix Rep Owner, do not turn Owner Group green
   // just because Manager's name is present in the returned record.
   if (repOwnerRequest && !ownerGroupRequest) return false;
 
@@ -2613,12 +2580,11 @@ function getReviewStatus(rec) {
   }
 
   const exceptions = getDataExceptions(rec);
-  const visibleFixFields = getVisibleHubFixFields(rec);
   const assignedRep = getHubRepOwnerValue(rec);
   const target = getManualRouteTarget(rec);
 
-  // Only true FIX returns temporarily replace the record's normal badge.
-  // Plain text messages stay inside the communication panel only.
+  // If a correction came back from Manager and created/confirmed a Rep Owner,
+  // the Hub status should describe the completed path, not stay on "Manager Response."
   if (
     hasActualInstallBaseCorrection(rec) &&
     rec.install_base_response_at &&
@@ -2645,27 +2611,11 @@ function getReviewStatus(rec) {
     };
   }
 
-  // Manual FIX routing must remain visible in Install Base Review.
-  // Missing-field FIX buttons still remain in the row, but the Review Status
-  // tells Install Base that the FIX has already been sent.
-  if (
-    rec.install_base_manual_route === true &&
-    (
-      rec.install_base_release_status === "released_to_rep" ||
-      rec.install_base_released_to === "rep"
-    )
-  ) {
-    return { type: "released", label: "Fix Sent to Rep" };
-  }
-
-  if (
-    rec.install_base_manual_route === true &&
-    (
-      rec.install_base_release_status === "released_to_manager" ||
-      rec.install_base_released_to === "manager"
-    )
-  ) {
-    return { type: "released", label: "Fix Sent to Manager" };
+  // Field-level exceptions must win over route labels.
+  // Example: if Excel says territory/rep owner is missing, do not show "Sent to Manager"
+  // just because a demo owner group or demo territory is visible.
+  if (exceptions.length) {
+    return exceptions[0];
   }
 
   if (
@@ -2693,24 +2643,7 @@ function getReviewStatus(rec) {
       return { type: "source", label: "Sent to Rep" };
     }
 
-    if (exceptions.length) {
-      return exceptions[0];
-    }
-
     return { type: "source", label: "Sync Hold" };
-  }
-
-  // A record with any visible FIX button should never show Auto-Synced.
-  // This must match the table cells exactly, not just the imported alias fields.
-  if (visibleFixFields.length) {
-    return {
-      type: "missing",
-      label: `Missing ${getHubFixDisplayLabel(visibleFixFields[0])}`
-    };
-  }
-
-  if (exceptions.length) {
-    return exceptions[0];
   }
 
   if (rec.install_base_release_status === "auto_synced") {
@@ -2722,11 +2655,21 @@ function getReviewStatus(rec) {
   }
 
   if (rec.install_base_release_status === "released_to_manager") {
-    return { type: "released", label: "Sent to Manager" };
+    return {
+      type: "released",
+      label: rec.install_base_manual_route === true
+        ? "Sent to Manager"
+        : "Auto-Synced to Manager"
+    };
   }
 
   if (rec.install_base_release_status === "released_to_rep") {
-    return { type: "released", label: "Sent to Rep" };
+    return {
+      type: "released",
+      label: rec.install_base_manual_route === true
+        ? "Sent to Rep"
+        : "Auto-Synced to Rep"
+    };
   }
 
   if (rec.install_base_staged === true) {
@@ -3005,9 +2948,7 @@ function mergeWonProjectsFromRepIntoInstallBase() {
   return changed;
 }
 function mergeRepResponsesIntoRecords() {
-  const responseRecords = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
-  const finalSyncRecords = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
-  const responses = [...responseRecords, ...finalSyncRecords];
+  const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
   let changed = false;
 
   responses.forEach(resp => {
@@ -3527,51 +3468,19 @@ function updateReleaseButtonVisibility(rec) {
 }
 
 
-function getVisibleHubFixFields(rec) {
-  if (!rec || hasActualInstallBaseCorrection(rec)) return [];
-
-  const checks = [
-    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id || ""],
-    ["make", rec.make || rec.manufacturer || rec.brand || ""],
-    ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "")],
-    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || "")],
-    ["rep", getHubRepOwnerValue(rec)],
-    ["site", clean(rec.site || rec.site_name || rec.facility || rec.facility_name || rec.hospital_name || rec.customer_name || rec.account_name || rec.location || "")],
-    ["modality", rec.modality || rec.equipment_modality || ""],
-    ["model", rec.model || rec.equipment_model || ""],
-    ["serial", rec.serial_number || rec.serial || rec.system_serial || ""],
-    ["dom", rec.dom || rec.manufacture_year || rec.year || ""]
-  ];
-
-  return checks
-    .filter(([field, value]) => {
-      // This matches the real table behavior: a FIX can appear either because
-      // the displayed value is blank OR because Hub has an unresolved FIX request
-      // for that field. Either case must block Auto-Synced and Manager sync.
-      if (isHubUnresolvedFixField(rec, field)) return true;
-
-      if (!isBlankHubField(value, field)) return false;
-
-      const corrected = getHubCorrectedDisplayValue(rec, field);
-      return isBlankHubField(corrected, field);
-    })
-    .map(([field]) => field);
-}
-
-function hasVisibleHubFix(rec) {
-  return getVisibleHubFixFields(rec).length > 0;
-}
-
-
 function getRoutingBlockingFields(rec) {
-  // Match the actual visible Hub table behavior. If the row is showing any FIX button,
-  // it must be blocked from Auto-Synced until Hub manually routes/fixes it.
-  const visibleFixFields = getVisibleHubFixFields(rec)
-    .map(field => canonicalInstallBaseFieldName(field))
-    .filter(Boolean);
-
-  return Array.from(new Set(visibleFixFields));
+  return getMissingHubFields(rec).filter(field => {
+    const normalized = canonicalInstallBaseFieldName(field);
+    return ![
+      "rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep_owner",
+      "sales_rep"
+    ].includes(normalized);
+  });
 }
+
 function hasValidAssignedRep(rec) {
   return Boolean(getHubRepOwnerValue(rec));
 }
@@ -3609,28 +3518,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
     const key = getRecordKey(rec);
     const missingFixFields = getRoutingBlockingFields(rec);
     const repAssigned = hasValidAssignedRep(rec);
-
-    // Preserve a manually sent FIX. Do not let the auto-sync pass downgrade it to
-    // fix_needed/manual_hold or upgrade it to auto_synced while it is still open.
-    if (
-      rec.install_base_manual_route === true &&
-      (
-        rec.install_base_release_status === "released_to_rep" ||
-        rec.install_base_release_status === "released_to_manager" ||
-        rec.install_base_released_to === "rep" ||
-        rec.install_base_released_to === "manager"
-      ) &&
-      !hasActualInstallBaseCorrection(rec)
-    ) {
-      return {
-        ...rec,
-        key,
-        install_base_manual_route: true,
-        install_base_sync_type: "manual_fix_sent_hold",
-        rep_visible: rec.install_base_released_to === "rep" || rec.install_base_release_status === "released_to_rep",
-        manager_visible: rec.install_base_released_to === "manager" || rec.install_base_release_status === "released_to_manager"
-      };
-    }
 
     if (missingFixFields.length) {
       return {
@@ -3691,20 +3578,14 @@ function autoSyncEligibleRecordsToRepAndManager() {
       };
     }
 
-    const correctedFixReturned = hasActualInstallBaseCorrection(rec);
-
     return {
       ...rec,
       key,
       hub_source: "ESPIN LINK Install Base Workspace",
       source: rec.source || "ESPIN LINK Install Base Workspace",
-      install_base_sync_type: correctedFixReturned
-        ? "fixed_synced_to_rep_and_manager"
-        : "automatic_assigned_rep",
+      install_base_sync_type: "automatic_assigned_rep",
       install_base_manual_route: false,
-      install_base_release_status: correctedFixReturned
-        ? "fixed_synced"
-        : "auto_synced",
+      install_base_release_status: "auto_synced",
       install_base_released_at: rec.install_base_released_at || now,
       install_base_released_to: "rep_and_manager",
       rep_visible: true,
@@ -3716,7 +3597,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
   // Only records that already have a valid rep may sync automatically.
   state.records
     .filter(rec =>
-      (rec.install_base_manual_route !== true || hasActualInstallBaseCorrection(rec)) &&
       hasValidAssignedRep(rec) &&
       isAutoSyncEligible(rec) &&
       !getRoutingBlockingFields(rec).length
@@ -3732,13 +3612,7 @@ function autoSyncEligibleRecordsToRepAndManager() {
         rep_assignment_required: false,
         install_base_released_to: "rep_and_manager",
         release_destination: "rep_and_manager",
-        install_base_manual_route: false,
-        install_base_sync_type: hasActualInstallBaseCorrection(rec)
-          ? "fixed_synced_to_rep_and_manager"
-          : "automatic_assigned_rep",
-        install_base_release_status: hasActualInstallBaseCorrection(rec)
-          ? "fixed_synced"
-          : "auto_synced"
+        install_base_release_status: "auto_synced"
       });
 
       repQueue.push({
@@ -3753,15 +3627,6 @@ function autoSyncEligibleRecordsToRepAndManager() {
         rep_visible: true,
         manager_visible: true,
         rep_assignment_required: false,
-        install_base_manual_route: false,
-        install_base_released_to: "rep_and_manager",
-        release_destination: "rep_and_manager",
-        install_base_sync_type: hasActualInstallBaseCorrection(rec)
-          ? "fixed_synced_to_rep_and_manager"
-          : "automatic_assigned_rep",
-        install_base_release_status: hasActualInstallBaseCorrection(rec)
-          ? "fixed_synced"
-          : "auto_synced",
         alert: getReviewStatus(rec).label,
         timestamp: now
       });
@@ -4294,7 +4159,7 @@ function renderOwnerGroups() {
   const groups = getOwnerGroups();
 
   if (!groups.length) {
-    el.innerHTML = `<div class="mini">Upload data to create regional managers.</div>`;
+    el.innerHTML = `<div class="mini">Upload data to create owner groups.</div>`;
     return;
   }
 
@@ -4340,7 +4205,7 @@ function renderTable() {
     : "Install Base Review";
 
   $("tableSubtitle").textContent = state.selectedOwner
-    ? "Filtered regional manager"
+    ? "Filtered owner group"
     : "All records";
 
   if (!records.length) {
@@ -5110,7 +4975,7 @@ function renderDetail() {
     ` : ""}
 
     <div class="detail-card">
-      <div class="k">Regional Manager</div>
+      <div class="k">Owner Group</div>
       <div class="v">${escapeHtml(getOwnerName(rec))}</div>
       <div class="mini">${escapeHtml(rec.manager_email || "")}</div>
     </div>
@@ -5248,8 +5113,6 @@ if (showCompletedProjectsBtn) {
 }
 function render() {
   mergeRepResponsesIntoRecords();
-  autoSyncEligibleRecordsToRepAndManager();
-  saveRecords();
   renderStats();
   renderOwnerGroups();
   renderTable();
