@@ -5068,6 +5068,21 @@ function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
   if (!isRepOwnedInstallBaseRecord(rec)) return;
 
   const packet = buildRepOwnedInstallBasePacket(rec, reason);
+  const managerPacket = {
+    ...packet,
+    manager_visible: true,
+    rep_visible: false,
+    manager_only: true,
+    manager_unseen_update: true,
+    manager_alert_seen: false,
+    manager_update_seen_at: "",
+    manager_flash_at: packet.manager_flash_at || new Date().toISOString(),
+    manager_flash_type: reason === "rep_upload" ? "rep_upload" : "rep_update",
+    manager_flash_text:
+      reason === "rep_upload"
+        ? "Rep uploaded install-base record"
+        : "Rep updated install-base record"
+  };
 
   let installBaseRecords = readArrayKey(INSTALL_BASE_KEY);
   installBaseRecords = installBaseRecords.filter(item => !sameWorkspaceEquipmentRecord(item, packet));
@@ -5079,10 +5094,19 @@ function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
   responseQueue.unshift(packet);
   writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
 
+  let finalSyncRecords = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
+  finalSyncRecords = finalSyncRecords.filter(item => !sameWorkspaceEquipmentRecord(item, managerPacket));
+  finalSyncRecords.unshift(managerPacket);
+  writeArrayKey(INSTALL_BASE_FINAL_SYNC_KEY, finalSyncRecords);
+
+  syncToManagerQueue(managerPacket);
+
   const ping = String(Date.now());
   localStorage.setItem("axis_install_base_records_ping_v1", ping);
   localStorage.setItem("axis_install_base_sync_ping_v1", ping);
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, ping);
+  localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, ping);
+  localStorage.setItem(MANAGER_SYNC_KEY, ping);
 
   try {
     window.dispatchEvent(new StorageEvent("storage", {
