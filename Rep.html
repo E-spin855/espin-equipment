@@ -7336,24 +7336,103 @@ const updated = {
     }
   });
 
-  updated.install_base_corrected_fields = correctedFields.join(",");
-  updated.install_base_issue_field = String(rec.install_base_issue_field || "")
-    .split(",")
-    .map(field => normalizeCorrectedFieldName(field))
-    .filter(field => field && !correctedFields.includes(field))
-    .join(",");
+  // Preserve fields corrected during earlier FIX responses.
+const previousCorrectedFields = String(
+  rec.install_base_corrected_fields || ""
+)
+  .split(",")
+  .map(field => normalizeCorrectedFieldName(field))
+  .filter(Boolean);
 
-  if (!updated.install_base_issue_field) {
-    updated.install_base_action_label = "";
-    updated.install_base_issue_type = "";
-    updated.rep_fix_required = "";
-  }
+const allCorrectedFields = Array.from(
+  new Set([
+    ...previousCorrectedFields,
+    ...correctedFields
+  ])
+);
 
-  updated.corrected_fields = correctedFields.reduce((acc, field) => {
-    acc[field] = window.AxisUtils?.getInstallBaseFieldValue?.(updated, field) || updated[field] || "";
+// Collect every explicitly requested Rep FIX field.
+const allRequestedFixFields = Array.from(
+  new Set(
+    [
+      rec.install_base_rep_fix_request_fields,
+      rec.install_base_fix_request_fields,
+      rec.install_base_issue_field,
+      rec.install_base_fix_request_field
+    ]
+      .filter(Boolean)
+      .flatMap(value =>
+        String(value)
+          .split(",")
+          .map(field => normalizeCorrectedFieldName(field))
+          .filter(Boolean)
+      )
+  )
+);
+
+// Remove every field that has already been corrected.
+const outstandingFixFields = allRequestedFixFields.filter(
+  field => !allCorrectedFields.includes(field)
+);
+
+updated.install_base_corrected_fields =
+  allCorrectedFields.join(",");
+
+updated.install_base_rep_fix_request_fields =
+  outstandingFixFields.join(",");
+
+updated.install_base_fix_request_fields =
+  outstandingFixFields.join(",");
+
+updated.install_base_issue_field =
+  outstandingFixFields.join(",");
+
+updated.install_base_fix_request_field =
+  outstandingFixFields[0] || "";
+
+// Preserve earlier corrected values and add the newest correction.
+const previousCorrectedValues =
+  rec.corrected_fields &&
+  typeof rec.corrected_fields === "object" &&
+  !Array.isArray(rec.corrected_fields)
+    ? rec.corrected_fields
+    : {};
+
+const newestCorrectedValues = correctedFields.reduce(
+  (acc, field) => {
+    acc[field] =
+      window.AxisUtils?.getInstallBaseFieldValue?.(
+        updated,
+        field
+      ) ||
+      updated[field] ||
+      "";
+
     return acc;
-  }, {});
+  },
+  {}
+);
 
+updated.corrected_fields = {
+  ...previousCorrectedValues,
+  ...newestCorrectedValues
+};
+
+if (outstandingFixFields.length) {
+  updated.install_base_has_open_issue = true;
+  updated.rep_fix_required = "Install Base FIX";
+  updated.rep_status = "clarification_needed";
+  updated.rep_action = "fix_install_base_data";
+  updated.rep_action_label = "Install Base FIX";
+} else {
+  updated.install_base_has_open_issue = false;
+  updated.install_base_action_label = "";
+  updated.install_base_issue_type = "";
+  updated.rep_fix_required = "";
+  updated.rep_status = "install_base_data_fixed";
+  updated.rep_action = "install_base_data_fixed";
+  updated.rep_action_label = "Updated";
+}
   state.records = state.records.map(r => {
     const sameId = String(r.id || "") === String(updated.id || "");
     const sameKey = updated.key && String(r.key || "") === String(updated.key);
