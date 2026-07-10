@@ -3380,27 +3380,37 @@ if (hasManualRepFollowUp && followUpDate && followUpDate > today) {
     disposition: "disposal"
   };
 
-  const displayTypeMap = {
-  planning: "Planning",
-  capital_planning_signal: "Planning",
-  capital_planning: "Planning",
-  service: "Service",
-  service_review: "Service",
-  utilization: "Use",
-  utilization_review: "Use",
-  lifecycle: "Age",
-  lifecycle_review: "Age",
+ const displayTypeMap = {
+  planning: "Capital Planning",
+  capital_planning_signal: "Capital Planning",
+  capital_planning: "Capital Planning",
+
+  service: "Service Coverage",
+  service_review: "Service Coverage",
+
+  utilization: "Utilization",
+  utilization_review: "Utilization",
+
+  lifecycle: "Equipment Age",
+  lifecycle_review: "Equipment Age",
+  age: "Equipment Age",
+  age_review: "Equipment Age",
+  replacement: "Equipment Age",
+
   tradein: "Review",
-trade_in: "Review",
-tradein_signal: "Review",
-trade_in_signal: "Review",
+  trade_in: "Review",
+  tradein_signal: "Review",
+  trade_in_signal: "Review",
+
   quote: "Quote",
   quote_review: "Quote",
-  project: "Project",
-  project_review: "Project",
+
+  project: "Project / Asset",
+  project_review: "Project / Asset",
+
   proactive: "Notice",
   review: "Review",
-  replacement: "Replace",
+
   upgrade: "Upgrade",
   disposal: "Dispose",
   disposition: "Dispose"
@@ -3936,15 +3946,25 @@ function getRepVisibleInstallBaseReviewReason(rec) {
   return getRepOriginalInstallBaseReviewReason(rec);
 }
 function normalizeOemReviewLabelForRep(rec) {
-  const directLabel = clean(rec.oem_review_label || rec.review_label || "");
-  const directNormalized = lower(directLabel);
+  const directLabel = clean(
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.install_base_review_label ||
+    rec.original_oem_review_label ||
+    rec.original_install_base_review_label ||
+    ""
+  );
 
   const raw = lower(
     rec.oem_review_type ||
     rec.review_type ||
+    rec.install_base_review_type ||
+    rec.original_oem_review_type ||
+    rec.original_review_type ||
     rec.alert_override ||
     rec.proactive_type ||
     rec.proactive_signal ||
+    directLabel ||
     ""
   );
 
@@ -3978,10 +3998,8 @@ function normalizeOemReviewLabelForRep(rec) {
     return "Asset Status";
   }
 
-  if (directLabel) return directLabel;
-
   if (raw.includes("service")) return "Service Coverage";
-  if (raw.includes("utilization")) return "Utilization";
+  if (raw.includes("utilization") || raw === "use") return "Utilization";
   if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
   if (raw.includes("age") || raw.includes("lifecycle") || raw.includes("replacement")) return "Equipment Age";
   if (raw.includes("ownership")) return "Ownership";
@@ -3991,7 +4009,7 @@ function normalizeOemReviewLabelForRep(rec) {
   if (raw.includes("site")) return "Site / Account";
   if (raw.includes("status")) return "Asset Status";
 
-  return "Record Note";
+  return directLabel || "Record Note";
 }
 function getInstallBaseFixLabel(rec) {
   const fields = String(rec.install_base_issue_field || "")
