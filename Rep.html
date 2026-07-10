@@ -8757,10 +8757,15 @@ if (!explicitlyRequested) {
     labelMap[requestedField] ||
     "Data";
 
-  const active =
-    state.installBaseCommunicationOpen === true &&
-    String(state.selectedId || "") ===
-      String(rec.id || "");
+ const active =
+  state.installBaseCommunicationOpen === true &&
+  String(state.selectedId || "") === String(rec.id || "") &&
+  String(state.installBaseActiveFixField || "")
+    .toLowerCase()
+    .trim() ===
+  String(requestedField || "")
+    .toLowerCase()
+    .trim();
 
   return `
     <button
@@ -8893,9 +8898,10 @@ function toggleInstallBaseCommunication(id = "") {
 
   state.installBaseCommunicationOpen = willOpen;
 
-  if (willOpen) {
-    state.installBaseCommunicationDismissedId = "";
-    state.installBaseCommunicationDismissedSignature = "";
+if (willOpen) {
+  state.installBaseActiveFixField = "";
+  state.installBaseCommunicationDismissedId = "";
+  state.installBaseCommunicationDismissedSignature = "";
   } else {
     state.installBaseCommunicationDismissedId = String(state.selectedId || "");
     state.installBaseCommunicationDismissedSignature = getInstallBaseIncomingSignature(rec);
@@ -9262,8 +9268,20 @@ function buildInstallBaseMiniTimeline(rec) {
   `;
 }
 
-function renderInstallBaseCorrectionPanel(rec) {
-  const issues = getRepFixPanelIssues(rec);
+ffunction renderInstallBaseCorrectionPanel(rec) {
+  const allIssues = getRepFixPanelIssues(rec);
+
+  const activeFixField = String(
+    state.installBaseActiveFixField || ""
+  )
+    .toLowerCase()
+    .trim();
+
+  const issues = activeFixField
+    ? allIssues.filter(([field]) =>
+        String(field || "").toLowerCase().trim() === activeFixField
+      )
+    : allIssues;
 
   const reviewLabel = clean(
     rec.oem_review_label ||
