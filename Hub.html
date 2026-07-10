@@ -2642,9 +2642,85 @@ function getHubReviewStatusTypeFromLabel(label) {
 
   return "source";
 }
+function hubRecordHasVisibleFix(rec) {
+  if (!rec) return false;
+
+  const standardFields = [
+    ["project", rec.oem_project_id || rec.project_id || rec.asset_id],
+    ["make", rec.make || rec.manufacturer || rec.brand],
+    ["model", rec.model || rec.equipment_model],
+    ["modality", rec.modality || rec.equipment_modality],
+    ["serial", rec.serial_number || rec.serial || rec.system_serial],
+    ["dom", rec.dom || rec.year || rec.manufacture_year],
+    [
+      "site",
+      rec.site ||
+      rec.site_name ||
+      rec.facility ||
+      rec.facility_name ||
+      rec.hospital ||
+      rec.hospital_name
+    ],
+    ["rep", getHubRepOwnerValue(rec)]
+  ];
+
+  const hasStandardFix = standardFields.some(([field, value]) => {
+    if (wasHubFieldCorrectionReturned(rec, field)) {
+      return false;
+    }
+
+    return (
+      isBlankHubField(value, field) ||
+      isHubUnresolvedFixField(rec, field)
+    );
+  });
+
+  if (hasStandardFix) return true;
+
+  const ownerValue = clean(
+    rec.manager_name ||
+    rec.owner_group_name ||
+    rec.owner_group ||
+    ""
+  );
+
+  const territoryValue = clean(
+    rec.manager_region ||
+    rec.manager_territory ||
+    rec.territory ||
+    ""
+  );
+
+  const ownerFixVisible =
+    !wasHubFieldCorrectionReturned(rec, "owner") &&
+    (
+      isBlankHubField(ownerValue, "owner") ||
+      wasHubOwnerGroupSpecificallyRequested(rec)
+    );
+
+  const territoryFixVisible =
+    !wasHubFieldCorrectionReturned(rec, "territory") &&
+    (
+      isBlankHubField(territoryValue, "territory") ||
+      wasHubTerritorySpecificallyRequested(rec)
+    );
+
+  return ownerFixVisible || territoryFixVisible;
+}
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
-    return { type: "completed", label: "Project Completed" };
+    return {
+      type: "completed",
+      label: "Project Completed"
+    };
+  }
+
+  // Any FIX currently visible in the Hub row must block READY/AUTO-SYNC.
+  if (hubRecordHasVisibleFix(rec)) {
+    return {
+      type: "source",
+      label: "Sync Hold"
+    };
   }
 
   const exceptions = getDataExceptions(rec);
