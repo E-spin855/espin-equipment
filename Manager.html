@@ -3903,8 +3903,8 @@ function renderReviewCondition(rec) {
       cls = "alert-badge alert-ownership";
     } else if (normalized.includes("service")) {
       cls = "alert-badge alert-service";
-    } else if (normalized.includes("upgrade")) {
-      cls = "alert-badge alert-upgrade-review";
+   } else if (normalized.includes("upgrade")) {
+  cls = "alert-badge alert-upgrade";
     } else if (normalized.includes("ownership change")) {
       cls = "alert-badge alert-ownership-change";
     } else if (
@@ -7978,30 +7978,58 @@ function showCompletedManagerProjects() {
   showBanner("Completed projects are visible.");
 }
 function render() {
-  const main = readArrayKey(STORAGE_KEY).filter(shouldManagerKeepLocalRecord);
-  const managerQueue = readManagerQueueRecords();
+  const allHubRecords = readArrayKey(INSTALL_BASE_KEY);
 
-  // Do NOT merge the entire raw Hub install-base table into Manager.
-  // Hub stores every row in INSTALL_BASE_KEY, including rows with FIX / Sync Hold.
-  // Manager should receive only clean auto-synced Hub records or records Hub
-  // explicitly routed to Manager. FIX / Sync Hold rows stay Hub-only.
-  const installBaseRecords = readArrayKey(INSTALL_BASE_KEY).filter(shouldManagerAcceptHubRecord);
+  // Current Hub state is the source of truth.
+  // Any Hub record that is presently on FIX / Sync Hold must also be
+  // removed from older Manager storage copies.
+  const acceptedHubRecords = allHubRecords.filter(
+    shouldManagerAcceptHubRecord
+  );
 
-  const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
-  const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
+  const blockedHubKeys = new Set(
+    allHubRecords
+      .filter(rec => !shouldManagerAcceptHubRecord(rec))
+      .map(getRecordKey)
+      .filter(Boolean)
+  );
 
-  // Merge final correction channels last so corrected values override older Hub/Manager release copies.
+  const isNotCurrentlyBlockedByHub = rec => {
+    const key = getRecordKey(rec);
+    return !key || !blockedHubKeys.has(key);
+  };
+
+  const main = readArrayKey(STORAGE_KEY)
+    .filter(shouldManagerKeepLocalRecord)
+    .filter(isNotCurrentlyBlockedByHub);
+
+  const managerQueue = readManagerQueueRecords()
+    .filter(isNotCurrentlyBlockedByHub);
+
+  const installBaseResponses = readArrayKey(INSTALL_BASE_RESPONSE_KEY)
+    .filter(isNotCurrentlyBlockedByHub);
+
+  const installBaseFinalSync = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY)
+    .filter(isNotCurrentlyBlockedByHub);
+
   state.records = mergeRecordsByKey(
     main,
     managerQueue,
-    installBaseRecords,
+    acceptedHubRecords,
     installBaseResponses,
     installBaseFinalSync
-  ).filter(shouldManagerKeepLocalRecord);
+  ).filter(rec => {
+    return (
+      shouldManagerKeepLocalRecord(rec) &&
+      isNotCurrentlyBlockedByHub(rec)
+    );
+  });
 
   if (
     state.selectedId &&
-    !state.records.some(r => String(r.id || "") === String(state.selectedId))
+    !state.records.some(
+      rec => String(rec.id || "") === String(state.selectedId)
+    )
   ) {
     state.selectedId = null;
   }
@@ -8012,7 +8040,6 @@ function render() {
   renderDetail();
   managerStorageSignature = getManagerStorageSignature();
 }
-
 function safeRender(context = "render") {
   try {
     render();

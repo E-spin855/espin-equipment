@@ -3827,33 +3827,58 @@ function autoSyncEligibleRecordsToRepAndManager() {
     });
   });
 
-  state.records = state.records.map(rec => {
-    const key = getRecordKey(rec);
-   const missingFixFields = hasPendingHubFix(rec)
-  ? getMissingHubFields(rec)
-  : [];
-    const repAssigned = hasValidAssignedRep(rec);
+ state.records = state.records.map(rec => {
+  const key = getRecordKey(rec);
+  const pendingHubFix = hasPendingHubFix(rec);
+  const missingFixFields = getMissingHubFields(rec);
+  const dataExceptions = getDataExceptions(rec);
 
-    if (missingFixFields.length) {
-      return {
-        ...rec,
-        key,
-        rep_visible: false,
-        manager_visible: false,
-        install_base_release_status: "fix_needed",
-        install_base_sync_type: "manual_fix_routing_hold",
-        install_base_manual_route: false,
-        install_base_issue_field: missingFixFields.join(", "),
-        install_base_issue_type: "missing_data",
-        install_base_action_label: "Install Base FIX",
-        install_base_action_reason:
-          `Install Base needs correction for: ${missingFixFields.join(", ")}.`,
-        install_base_issue_note:
-          `Missing field(s): ${missingFixFields.join(", ")}.`,
-        rep_fix_required: "Install Base FIX"
-      };
-    }
+  const exceptionLabels = [
+    ...missingFixFields,
+    ...dataExceptions.map(issue => clean(issue.label))
+  ].filter(Boolean);
 
+  const uniqueExceptionLabels = [...new Set(exceptionLabels)];
+  const repAssigned = hasValidAssignedRep(rec);
+
+  // Any unresolved FIX condition blocks automatic syncing.
+  // This includes missing fields, source conflicts, and other data exceptions.
+  if (pendingHubFix) {
+    return {
+      ...rec,
+      key,
+
+      rep_visible: false,
+      manager_visible: false,
+
+      install_base_release_status: "fix_needed",
+      install_base_sync_type: "manual_fix_routing_hold",
+      install_base_manual_route: false,
+      install_base_released_to: "",
+      release_destination: "",
+
+      install_base_issue_field: uniqueExceptionLabels.join(", "),
+      install_base_issue_type: "data_exception",
+      install_base_action_label: "Install Base FIX",
+      install_base_action_reason:
+        uniqueExceptionLabels.length
+          ? `Install Base needs correction for: ${uniqueExceptionLabels.join(", ")}.`
+          : "Install Base correction is required before syncing.",
+
+      install_base_issue_note:
+        uniqueExceptionLabels.length
+          ? `FIX required: ${uniqueExceptionLabels.join(", ")}.`
+          : "FIX required before automatic syncing.",
+
+      rep_fix_required: "Install Base FIX",
+
+      manager_unseen_update: false,
+      manager_alert_seen: true,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: ""
+    };
+  }
     // Missing rep owner stays on Hub until Hub manually clicks FIX.
     if (!repAssigned) {
       return {
