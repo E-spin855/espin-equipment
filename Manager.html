@@ -3780,217 +3780,6 @@ function getManagerActiveFixLabel(rec) {
 function getManagerVisibleInstallBaseReviewLabel(rec) {
   return getManagerActiveFixLabel(rec) || normalizeOemReviewLabelForManager(rec);
 }
-function renderReviewCondition(rec) {
-  const isInstallBaseRecord =
-    rec.hub_source === "AXIS Install Base Workspace" ||
-    rec.install_base_sync_type ||
-    rec.install_base_received_by_rep ||
-    rec.install_base_release_status === "auto_synced" ||
-    rec.install_base_release_status === "released_to_manager";
-
-  if (isInstallBaseRecord) {
-    const label = getManagerVisibleInstallBaseReviewLabel(rec);
-    const normalized = String(label || "").toLowerCase();
-
-    let cls = "alert-badge alert-record-note";
-
-  if (
-  normalized.includes("missing territory") ||
-  normalized.includes("missing rep") ||
-  normalized.includes("missing owner") ||
-  normalized.includes("manual clarification")
-) {
-  cls = "alert-badge alert-ownership";
-} else if (normalized.includes("service")) {
-  cls = "alert-badge alert-service";
-    } else if (
-      normalized.includes("upgrade")
-    ) {
-      cls = "alert-badge alert-upgrade-review";
-    } else if (
-      normalized.includes("ownership change")
-    ) {
-      cls = "alert-badge alert-ownership-change";
-    } else if (
-      normalized.includes("capital") ||
-      normalized.includes("planning")
-    ) {
-      cls = "alert-badge alert-capital-planning";
-    } else if (
-      normalized.includes("data check") ||
-      normalized.includes("data")
-    ) {
-      cls = "alert-badge alert-data-check";
-    } else if (
-      normalized.includes("asset status") ||
-      normalized.includes("status")
-    ) {
-      cls = "alert-badge alert-asset-status";
-    } else if (
-      normalized.includes("ownership") ||
-      normalized.includes("owner")
-    ) {
-      cls = "alert-badge alert-ownership";
-    } else if (
-      normalized.includes("source mismatch") ||
-      normalized.includes("source") ||
-      normalized.includes("conflict")
-    ) {
-      cls = "alert-badge alert-source-mismatch";
-    } else if (
-      normalized.includes("utilization") ||
-      normalized.includes("use")
-    ) {
-      cls = "alert-badge alert-utilization";
-    } else if (
-      normalized.includes("project") ||
-      normalized.includes("asset")
-    ) {
-      cls = "alert-badge alert-project";
-    } else if (
-      normalized.includes("site") ||
-      normalized.includes("account")
-    ) {
-      cls = "alert-badge alert-site";
-    } else if (normalized.includes("quote")) {
-      cls = "alert-badge alert-quote";
-    } else if (
-      normalized.includes("age") ||
-      normalized.includes("replacement")
-    ) {
-      cls = "alert-badge alert-age";
-    } else if (normalized.includes("new record")) {
-      cls = "alert-badge alert-new-record";
-    }
-
-    return `<span class="${cls}">${escapeHtml(label)}</span>`;
-  }
-
-  if (isCompletedManagerRecord(rec)) {
-    return `<span class="pill completed-pill">Completed</span>`;
-  }
-
-  if (
-    rec.manager_unseen_update === true ||
-    rec.manager_flash_at ||
-    isManagerRepFixUnseen(rec) ||
-    hasUnseenManagerRelease(rec)
-  ) {
-    return `<span class="alert-badge manager-flash-pill">New</span>`;
-  }
-
-  if (hasFollowUpOverdueBy7Days(rec)) {
-    return `<span class="alert-badge alert-disposal">Overdue</span>`;
-  }
-
-  const alerts = getAlerts(rec);
-  const first = alerts[0];
-
- const type = lower(
-  (first && first.type) ||
-  rec.oem_review_type ||
-  rec.review_type ||
-  rec.alert_override ||
-  ""
-);
-
-  if (type === "tradein" || type === "trade_in") {
-    return `<span class="alert-badge alert-proactive">Review</span>`;
-  }
-
-  if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
-    return `<span class="alert-badge alert-proactive">Review</span>`;
-  }
-
-  if (rec.quote_amount) {
-    const status = String(rec.quote_status || "draft").toLowerCase();
-
-    if (status === "sent") {
-      return `<span class="pill pending">Sent</span>`;
-    }
-
-    if (status === "won") {
-      return `<span class="pill submitted">Won</span>`;
-    }
-
-    if (status === "lost") {
-      return `<span class="pill postponed">Lost</span>`;
-    }
-
-    if (status === "submitted_for_approval") {
-      return `<span class="pill pending">Review</span>`;
-    }
-
-    if (status === "approved_for_customer_release") {
-      return `<span class="pill submitted">Approved</span>`;
-    }
-
-    if (status === "revision_needed") {
-      return `<span class="pill pending">Revise</span>`;
-    }
-
-    if (status === "rejected") {
-      return `<span class="pill postponed">Rejected</span>`;
-    }
-
-    return `
-      <span class="pill quote-draft ${rec.quote_seen ? "quote-seen" : ""}">
-        Draft
-      </span>
-    `;
-  }
-
-  if (!alerts.length) {
-    return `<span class="alert-badge alert-none">Normal</span>`;
-  }
-
-  let cls = "alert-badge alert-record-note";
-  let shortText = first.displayType || "Review";
-
-  if (type === "service") {
-    cls = "alert-badge alert-service";
-    shortText = "Service Coverage";
-  } else if (type === "upgrade") {
-    cls = "alert-badge alert-quote";
-    shortText = "Upgrade";
-  } else if (type === "utilization") {
-    cls = "alert-badge alert-utilization";
-    shortText = "Utilization";
-  } else if (
-    type === "planning" ||
-    type === "capital_planning"
-  ) {
-    cls = "alert-badge alert-capital-planning";
-    shortText = "Capital Planning";
-  } else if (
-    type === "disposal" ||
-    type === "disposition"
-  ) {
-    cls = "alert-badge alert-disposal";
-    shortText = "Disposition";
-  } else if (type === "project") {
-    cls = "alert-badge alert-project";
-    shortText = "Project / Asset";
-   } else if (
-    type === "age" ||
-    type === "age_review" ||
-    type === "lifecycle" ||
-    type === "lifecycle_review" ||
-    type === "replacement" ||
-    lower(first.displayType || "").includes("age") ||
-    lower(first.label || "").includes("age") ||
-    lower(first.displayType || "").includes("replacement") ||
-    lower(first.label || "").includes("replacement")
-  ) {
-    cls = "alert-badge alert-age";
-    shortText = "Equipment Age";
-  } else if (type === "quote") {
-    cls = "alert-badge alert-quote";
-    shortText = "Quote";
-  }
-
-  return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
-}
 function getRepActionLabel(action) {
   const map = {
     quote_review: "Quote Review",
@@ -8118,11 +7907,11 @@ function scheduleManagerRender() {
   if (managerRenderQueued) return;
   managerRenderQueued = true;
 
-  requestAnimationFrame(() => {
-    managerRenderQueued = false;
-    if (!isManagerEditing()) render();
-  });
-}
+	  requestAnimationFrame(() => {
+	    managerRenderQueued = false;
+	    if (!isManagerEditing()) safeRender("scheduled refresh");
+	  });
+	}
 function hideCompletedManagerProjects() {
   const rec = findSelectedRecord();
 
@@ -8187,8 +7976,27 @@ function render() {
   renderDetail();
   managerStorageSignature = getManagerStorageSignature();
 }
+
+function safeRender(context = "render") {
+  try {
+    render();
+  } catch (err) {
+    console.error(`Manager ${context} failed:`, err);
+    const tbody = $("tableBody");
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="15" style="color:#ffd8d8;padding:18px;">
+            Manager could not render. Check the browser console for the saved-record error.
+          </td>
+        </tr>
+      `;
+    }
+  }
+}
+
 function init() {
-  render();
+  safeRender("startup");
 
  const tableBody = $("tableBody");
 
@@ -8398,12 +8206,12 @@ if (showCompletedProjectsBtn) {
     scheduleManagerRender();
   });
 
-  setInterval(() => {
-    const nextSignature = getManagerStorageSignature();
-    if (nextSignature !== managerStorageSignature && !isManagerEditing()) {
-      render();
-    }
-  }, 1500);
+	  setInterval(() => {
+	    const nextSignature = getManagerStorageSignature();
+	    if (nextSignature !== managerStorageSignature && !isManagerEditing()) {
+	      safeRender("auto refresh");
+	    }
+	  }, 1500);
 }
 
 document.addEventListener("DOMContentLoaded", init);
