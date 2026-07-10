@@ -1682,6 +1682,23 @@ function isHubOwnershipReviewResolved(rec) {
 }
 
 function getResolvedHubInstallBaseReviewLabel(rec) {
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
+  const threshold = Number(rec.threshold_years || 0);
+
+  // Match Rep page logic:
+  // if the imported record has an age threshold and equipment meets it,
+  // Age must win before service/utilization/planning labels.
+  if (
+    threshold > 0 &&
+    age !== null &&
+    age !== undefined &&
+    age !== "" &&
+    Number(age) >= threshold
+  ) {
+    return "Equipment Age";
+  }
+
   const raw = lower(
     rec.original_oem_review_type ||
     rec.original_review_type ||
@@ -1694,22 +1711,36 @@ function getResolvedHubInstallBaseReviewLabel(rec) {
     rec.original_oem_review_label ||
     rec.original_install_base_review_label ||
     rec.install_base_review_label ||
+    rec.oem_review_label ||
+    rec.review_label ||
+    rec.original_oem_review_reason ||
+    rec.original_install_base_review_reason ||
+    rec.install_base_review_reason ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    rec.proactive_reason ||
     ""
   );
 
   if (raw.includes("service")) return "Service Coverage";
   if (raw.includes("utilization")) return "Utilization";
   if (raw.includes("planning") || raw.includes("capital")) return "Capital Planning";
-  if (raw.includes("age") || raw.includes("replacement")) return "Equipment Age";
+  if (raw.includes("age") || raw.includes("lifecycle") || raw.includes("replacement")) return "Equipment Age";
   if (raw.includes("conflict")) return "Source Mismatch";
   if (raw.includes("data")) return "Data Check";
   if (raw.includes("project")) return "Project / Asset";
   if (raw.includes("site")) return "Site / Account";
   if (raw.includes("status")) return "Asset Status";
 
-  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
-
-  if (dom || ageFromDom(dom)) {
+  // Only use DOM alone as Age when this is a rep-originated record
+  // and no stronger imported label exists.
+  if (
+    isHubRepOriginatedRecord(rec) &&
+    dom &&
+    age !== null &&
+    age !== undefined &&
+    age !== ""
+  ) {
     return "Equipment Age";
   }
 
