@@ -2861,6 +2861,36 @@ button.message-sent-state{
   .selected-record-overview-left{grid-template-columns:1fr;}
 }
 
+
+/* Collapsible Financial Record after financial data has synced */
+.rep-financial-collapsible-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.rep-financial-toggle-btn{
+  min-height:40px;
+  padding:9px 13px;
+  white-space:nowrap;
+}
+.rep-financial-collapsed-summary{
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid rgba(88,184,255,.18);
+  border-radius:12px;
+  background:rgba(7,17,31,.68);
+  color:#d8ebff;
+  font-size:13px;
+  line-height:1.42;
+}
+.rep-financial-expanded{
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid rgba(88,184,255,.18);
+}
+
 </style>
 </head>
 
@@ -4892,39 +4922,6 @@ function writeArrayKey(key, arr) {
 }
     function saveRecords() {
       const records = Array.isArray(state.records) ? state.records : [];
-
-      records.forEach(rec => {
-        const isWonLifecycleRecord =
-          String(rec.quote_status || "").toLowerCase() === "won" ||
-          String(rec.rep_status || "").toLowerCase() === "won" ||
-          rec.new_project_promoted === true ||
-          rec.lifecycle_created_from_quote_won === true;
-
-        if (!isWonLifecycleRecord) return;
-
-        rec.project_type = "equipment_review_record";
-        rec.axis_parent_project_type = "equipment_review_record";
-        rec.new_project_badge = false;
-        rec.is_new_project = false;
-        rec.rep_created_new_project = false;
-        rec.new_project_promoted = true;
-        rec.lifecycle_created_from_quote_won = true;
-        rec.install_base_lifecycle_entry = true;
-        rec.lifecycle_completed = false;
-        rec.rep_visible = true;
-        rec.rep_hidden = false;
-        rec.rep_deleted = false;
-        rec.manager_visible = false;
-
-        if (rec.release_destination === "manager") {
-          delete rec.release_destination;
-        }
-
-        if (rec.install_base_released_to === "manager") {
-          delete rec.install_base_released_to;
-        }
-      });
-
       const payload = JSON.stringify(records);
 
       // Shared cross-page storage.
@@ -5140,20 +5137,7 @@ const REP_OWNED_MERGE_FIELDS = [
   "manager_territory",
   "manager_region",
   "owner_group",
-  "owner_group_name",
-  "project_type",
-  "axis_parent_project_type",
-  "new_project_badge",
-  "is_new_project",
-  "rep_created_new_project",
-  "new_project_promoted",
-  "new_project_promoted_at",
-  "lifecycle_created_from_quote_won",
-  "install_base_lifecycle_entry",
-  "install_base_lifecycle_status",
-  "install_base_review_status",
-  "install_base_sync_type",
-  "equipment_review_added_at"
+  "owner_group_name"
 ];
 
 function hasMergeValue(v) {
@@ -6272,22 +6256,6 @@ function getManualPriority(rec) {
 
 function isRepNewProjectIntakeRecord(rec) {
   if (!rec) return false;
-
-  const quoteStatus = String(rec.quote_status || "").trim().toLowerCase();
-  const repStatus = String(rec.rep_status || "").trim().toLowerCase();
-
-  const hasEnteredEquipmentLifecycle = Boolean(
-    quoteStatus === "won" ||
-    repStatus === "won" ||
-    rec.new_project_promoted === true ||
-    rec.lifecycle_created_from_quote_won === true ||
-    rec.install_base_lifecycle_entry === true ||
-    String(rec.project_type || "").trim().toLowerCase() === "equipment_review_record"
-  );
-
-  // Once WON, the same record permanently belongs to My Equipment Review
-  // Records. Its original NEW- identifier must not send it back to intake.
-  if (hasEnteredEquipmentLifecycle) return false;
 
   const projectType = String(
     rec.project_type ||
@@ -9328,6 +9296,96 @@ function addRepRecordToVisitList(id){
   showBanner(`Added to visit list as manual route stop ${nextPriority}.`);
 }
 
+
+const REP_FINANCIAL_COLLAPSE_KEY = "espin_rep_financial_collapsed_v1";
+
+function getRepFinancialCollapseMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REP_FINANCIAL_COLLAPSE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isRepFinancialCollapsed(recordId) {
+  return Boolean(getRepFinancialCollapseMap()[String(recordId || "")]);
+}
+
+function toggleRepFinancialRecord(recordId) {
+  const id = String(recordId || "");
+  if (!id) return;
+
+  const map = getRepFinancialCollapseMap();
+
+  if (map[id]) {
+    delete map[id];
+  } else {
+    map[id] = true;
+  }
+
+  localStorage.setItem(REP_FINANCIAL_COLLAPSE_KEY, JSON.stringify(map));
+  render();
+}
+
+function hasSyncedRepFinancialRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    Number(rec.quote_amount || 0) > 0 ||
+    Number(rec.quote_net_amount || 0) > 0 ||
+    Number(rec.quote_estimated_cost || rec.estimated_cost || 0) > 0 ||
+    Number(rec.tradein_credit || rec.quote_trade_in_credit || 0) > 0 ||
+    Number(rec.tradein_estimated_value || rec.external_tradein_value || 0) > 0 ||
+    rec.tradein_sync_received === true ||
+    rec.quote_created_at ||
+    rec.quote_updated_at ||
+    rec.quote_approved_at ||
+    String(rec.quote_status || "").toLowerCase() === "approved" ||
+    String(rec.quote_status || "").toLowerCase() === "won"
+  );
+}
+
+function renderRepFinancialRecordCard(rec, bodyHtml, title = "Financial Record") {
+  const synced = hasSyncedRepFinancialRecord(rec);
+  const collapsed = synced && isRepFinancialCollapsed(rec.id);
+
+  return `
+    <div class="detail-card rep-financial-review-card">
+      <div class="rep-financial-collapsible-head">
+        <div class="k">${escapeHtml(title)}</div>
+        ${
+          synced
+            ? `
+              <button
+                type="button"
+                class="secondary rep-financial-toggle-btn"
+                onclick="toggleRepFinancialRecord('${escapeJs(rec.id)}')"
+              >
+                ${collapsed ? "Open Financial Record" : "Hide Financial Record"}
+              </button>
+            `
+            : ""
+        }
+      </div>
+
+      ${
+        collapsed
+          ? `
+            <div class="rep-financial-collapsed-summary">
+              Financial data is saved for this record.
+            </div>
+          `
+          : `
+            <div class="rep-financial-expanded">
+              ${bodyHtml}
+            </div>
+          `
+      }
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
@@ -9427,43 +9485,46 @@ function renderDetail() {
 
         ${renderRepInstallBaseFixResponsePanel(rec)}
 
-    <div class="detail-card rep-financial-review-card">
-      <div class="k">Financial Record</div>
-      <div class="v">
-        ${
-          quoteAmount
-            ? `
-              <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
-              <div class="mini" style="margin-top:6px;line-height:1.5;">
-                Applied Trade-In Credit: -${money(tradeInCredit)}<br>
-                Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
-                Net Quote Amount: ${money(netQuote)}<br>
-                Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
-                Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
-                Estimated Margin: ${margin}%
-              </div>
-            `
-            : `
-              <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
-              <div class="mini" style="margin-top:6px;line-height:1.45;">
-                This equipment review record is visible, but the rep has not entered quote details yet.
-              </div>
-            `
-        }
+${renderRepFinancialRecordCard(
+      rec,
+      `
+        <div class="v">
+          ${
+            quoteAmount
+              ? `
+                <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
+                <div class="mini" style="margin-top:6px;line-height:1.5;">
+                  Applied Trade-In Credit: -${money(tradeInCredit)}<br>
+                  Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
+                  Net Quote Amount: ${money(netQuote)}<br>
+                  Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
+                  Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
+                  Estimated Margin: ${margin}%
+                </div>
+              `
+              : `
+                <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
+                <div class="mini" style="margin-top:6px;line-height:1.45;">
+                  This equipment review record is visible, but the rep has not entered quote details yet.
+                </div>
+              `
+          }
 
-        ${renderQuoteApprovalActionPanel(rec)}
+          ${renderQuoteApprovalActionPanel(rec)}
 
-        ${
-          quoteAmount
-            ? `
-              <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
-                Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
-              </div>
-            `
-            : ""
-        }
-      </div>
-    </div>
+          ${
+            quoteAmount
+              ? `
+                <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+                  Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
+                </div>
+              `
+              : ""
+          }
+        </div>
+      `,
+      "Financial Record"
+    )}
       </div>
     </div>
 
@@ -10861,30 +10922,37 @@ function saveInstallBaseFix(id) {
             `
         }
 
-       <div class="detail-card rep-financial-review-card">
-  <div class="k">Financial Review</div>
-          <div class="v">
-            ${
-              quoteAmount
-                ? `
-                  <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote Amount</div>
-                  <div class="mini" style="margin-top:6px;line-height:1.5;">
-                    Applied Trade-In Credit: -${money(tradeInCredit)}<br>
-                    Net Quote Amount: ${money(netQuote)}<br>
-                    Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
-                    Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
-                    Estimated Margin: ${margin}%
-                  </div>
-${renderQuoteApprovalActionPanel(rec)}
-                  <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.</div>
-                `
-                : `
-                  <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
-                  <div class="mini" style="margin-top:8px;line-height:1.45;">This new project has been created, but the rep has not finalized quote details yet.</div>
-                `
-            }
-          </div>
-        </div>
+${renderRepFinancialRecordCard(
+          rec,
+          `
+            <div class="v">
+              ${
+                quoteAmount
+                  ? `
+                    <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote Amount</div>
+                    <div class="mini" style="margin-top:6px;line-height:1.5;">
+                      Applied Trade-In Credit: -${money(tradeInCredit)}<br>
+                      Net Quote Amount: ${money(netQuote)}<br>
+                      Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
+                      Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
+                      Estimated Margin: ${margin}%
+                    </div>
+                    ${renderQuoteApprovalActionPanel(rec)}
+                    <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+                      Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
+                    </div>
+                  `
+                  : `
+                    <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
+                    <div class="mini" style="margin-top:8px;line-height:1.45;">
+                      This new project has been created, but the rep has not finalized quote details yet.
+                    </div>
+                  `
+              }
+            </div>
+          `,
+          "Financial Record"
+        )}
         <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
           <div class="k">Project Outcome</div>
          <div class="v" style="margin-bottom:12px;">${escapeHtml(formatStatusText(rec.quote_status || "open"))}</div>
@@ -11858,12 +11926,9 @@ if (
 
 if (isNewProjectRecord) {
   rec.project_type = "equipment_review_record";
-  rec.axis_parent_project_type = "equipment_review_record";
 
-  /* Remove every New Project Intake classifier */
+  /* Remove it from New Project Review Items */
   rec.new_project_badge = false;
-  rec.is_new_project = false;
-  rec.rep_created_new_project = false;
   rec.new_project_promoted = true;
   rec.new_project_promoted_at = now;
 
@@ -12474,29 +12539,7 @@ queue.unshift(updated);
   rec.rep_last_action_at = now;
 
   rec.project_type = "equipment_review_record";
-  rec.axis_parent_project_type = "equipment_review_record";
-
-  rec.new_project_badge = false;
-  rec.is_new_project = false;
-  rec.rep_created_new_project = false;
-  rec.new_project_promoted = true;
-  rec.new_project_promoted_at = now;
-
-  rec.lifecycle_created_from_quote_won = true;
-  rec.install_base_lifecycle_entry = true;
-  rec.install_base_lifecycle_status = "active";
-  rec.install_base_review_status = "lifecycle_active";
-  rec.install_base_sync_type = "won_project_lifecycle_entry";
-
-  rec.rep_visible = true;
-  rec.rep_hidden = false;
-  rec.rep_deleted = false;
-  rec.manager_visible = false;
-  delete rec.release_destination;
-  delete rec.install_base_released_to;
-
   rec.source = "Won Project Moved to Equipment Review";
-  rec.hub_source = "Equipment Review Workspace";
   rec.equipment_review_added_at = now;
 
   rec.lifecycle_completed = false;
@@ -12524,9 +12567,6 @@ queue.unshift(updated);
   rec.rep_hidden = false;
   rec.rep_deleted = false;
 
-  // Persist the lifecycle transition locally before any cross-page sync.
-  saveRecords();
-
   syncFinalOutcomeToInstallBase(
     rec,
     "won",
@@ -12534,33 +12574,6 @@ queue.unshift(updated);
   );
 
   syncFeedStatus(rec);
-
-  // Reinforce the Rep-local lifecycle copy after Manager/Install Base packets
-  // are created so the record cannot disappear from the Rep workspace.
-  const lifecycleRecord = state.records.find(item =>
-    String(item.id || "") === String(rec.id || "")
-  );
-
-  if (lifecycleRecord) {
-    lifecycleRecord.project_type = "equipment_review_record";
-    lifecycleRecord.axis_parent_project_type = "equipment_review_record";
-    lifecycleRecord.new_project_badge = false;
-    lifecycleRecord.is_new_project = false;
-    lifecycleRecord.rep_created_new_project = false;
-    lifecycleRecord.new_project_promoted = true;
-    lifecycleRecord.lifecycle_created_from_quote_won = true;
-    lifecycleRecord.install_base_lifecycle_entry = true;
-    lifecycleRecord.lifecycle_completed = false;
-    lifecycleRecord.rep_visible = true;
-    lifecycleRecord.rep_hidden = false;
-    lifecycleRecord.rep_deleted = false;
-    lifecycleRecord.manager_visible = false;
-    delete lifecycleRecord.release_destination;
-    delete lifecycleRecord.install_base_released_to;
-  }
-
-  saveRecords();
-  state.selectedId = rec.id;
   render();
 }
 
