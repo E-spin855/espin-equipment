@@ -13231,39 +13231,72 @@ function handleRepRowClick(id) {
 
   refreshSelectedRowUI();
 
-  if (
+   if (
     selectionChanged ||
     seenStateChanged ||
     recordChanged ||
     hasDetailFlash
   ) {
     renderDetail();
+  }
 }
+
+const ROW_INTERACTIVE_SELECTOR =
+  "button, input, select, textarea, label, a, [contenteditable='true'], [role='button']";
+
 function bindRepRowDelegation(tbody, rowHandler) {
-  if (!tbody || tbody.dataset.rowDelegationBound === "true") return;
+  if (
+    !tbody ||
+    tbody.dataset.rowDelegationBound === "true"
+  ) {
+    return;
+  }
 
   tbody.dataset.rowDelegationBound = "true";
-  tbody.addEventListener("click", event => {
-    const directSelect = event.target.closest("[data-select-record-id]");
 
-    if (directSelect && tbody.contains(directSelect)) {
+  tbody.addEventListener("click", event => {
+    const directSelect = event.target.closest(
+      "[data-select-record-id]"
+    );
+
+    if (
+      directSelect &&
+      tbody.contains(directSelect)
+    ) {
       event.preventDefault();
       event.stopPropagation();
-      selectRow(directSelect.dataset.selectRecordId);
+
+      selectRow(
+        directSelect.dataset.selectRecordId
+      );
+
       return;
     }
 
-    if (event.target.closest(ROW_INTERACTIVE_SELECTOR)) return;
+    if (
+      event.target.closest(
+        ROW_INTERACTIVE_SELECTOR
+      )
+    ) {
+      return;
+    }
 
-    const row = event.target.closest("tr[data-record-id]");
-    if (!row || !tbody.contains(row)) return;
+    const row = event.target.closest(
+      "tr[data-record-id]"
+    );
+
+    if (
+      !row ||
+      !tbody.contains(row)
+    ) {
+      return;
+    }
 
     rowHandler(row.dataset.recordId);
   });
 }
-}
-let repSyncRenderQueued = false;
 
+let repSyncRenderQueued = false;
 function refreshRepFromSync() {
   loadRecords(true);
   importRepQueueRecords();
