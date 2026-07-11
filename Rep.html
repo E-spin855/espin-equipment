@@ -6223,6 +6223,56 @@ function getManualPriority(rec) {
   return Math.floor(n);
 }
 
+
+function isRepNewProjectIntakeRecord(rec) {
+  if (!rec) return false;
+
+  const projectType = String(
+    rec.project_type ||
+    rec.axis_parent_project_type ||
+    ""
+  ).trim().toLowerCase();
+
+  const projectId = String(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    rec.id ||
+    ""
+  ).trim().toLowerCase();
+
+  const sourceText = [
+    rec.source,
+    rec.source_system,
+    rec.record_origin,
+    rec.project_source
+  ].map(value => String(value || "").trim().toLowerCase()).join(" ");
+
+  return Boolean(
+    projectType === "new_project_record" ||
+    projectType === "new_sales_project" ||
+    rec.new_project_badge === true ||
+    rec.is_new_project === true ||
+    rec.rep_created_new_project === true ||
+    projectId.startsWith("new-") ||
+    sourceText.includes("new espin link project") ||
+    sourceText.includes("new axis project") ||
+    sourceText.includes("new project intake")
+  );
+}
+
+function getMyEquipmentReviewRecords() {
+  let records = state.records
+    .filter(recordMatchesSelectedRep)
+    .filter(rec => !isRepNewProjectIntakeRecord(rec));
+
+  if (!state.showCompleted) {
+    records = records.filter(rec => !isCompletedRepRecord(rec));
+  }
+
+  return records;
+}
+
 function renderPrioritySelect(rec) {
   const current = getManualPriority(rec);
   const hasPriority = current !== 9999;
@@ -6246,10 +6296,7 @@ function renderPrioritySelect(rec) {
 }
 
 function getSalesRoutingRecords() {
-  return state.records
-    .filter(rec => recordMatchesSelectedRep(rec))
-    .filter(rec => rec.project_type !== 'new_project_record')
-    .filter(rec => !isCompletedRepRecord(rec))
+  return getMyEquipmentReviewRecords()
     .map(rec => ({ rec, priority: getManualPriority(rec) }))
     .filter(item => item.priority !== 9999)
     .sort((a, b) => a.priority - b.priority)
@@ -6330,12 +6377,9 @@ function renderSalesRouting() {
   const wrap = $('salesRoutingPanelWrap');
   if (!el) return;
 
-  // Sales routing applies only to existing equipment/project records.
-  // Rep-created New Project intake records must never display or participate here.
-  const eligibleExistingRecords = state.records
-    .filter(rec => recordMatchesSelectedRep(rec))
-    .filter(rec => rec.project_type !== 'new_project_record')
-    .filter(rec => !isCompletedRepRecord(rec));
+  // The route panel exists only when at least one record is actually
+  // present in My Equipment Review Records. New Project intake never counts.
+  const eligibleExistingRecords = getMyEquipmentReviewRecords();
 
   if (!eligibleExistingRecords.length) {
     if (wrap) wrap.style.display = 'none';
@@ -6849,21 +6893,7 @@ function bindIncomingCommunicationFrameDismissal() {
   function renderTable() {
   const tbody = $("tableBody");
 
-  let visibleRecords = state.records.filter(
-    rec => rec.project_type !== "new_project_record"
-  );
-
-  if (!state.showCompleted) {
-    visibleRecords = visibleRecords.filter(
-      rec => !isCompletedRepRecord(rec)
-    );
-  }
-
-  if (state.selectedRep) {
-    visibleRecords = visibleRecords.filter(
-      recordMatchesSelectedRep
-    );
-  }
+  let visibleRecords = getMyEquipmentReviewRecords();
 
   if (!visibleRecords.length) {
     tbody.innerHTML =
