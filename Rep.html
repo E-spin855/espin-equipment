@@ -6319,33 +6319,90 @@ function renderSalesRouting() {
 
   tbody.innerHTML = newProjects.map(rec => {
     const selectedClass = rec.id === state.selectedId ? "selected" : "";
-    const age = ageFromDom(rec.dom);
+    const domValue = clean(
+      rec.dom ||
+      rec.year ||
+      rec.manufacture_year ||
+      rec.manufacturing_year ||
+      ""
+    );
+    const age = ageFromDom(domValue);
+    const tradeInReference = clean(
+      rec.trade_in_reference ||
+      rec.trade_in_ref ||
+      rec.tradein_reference ||
+      rec.tradein_ref ||
+      rec.trade_in_reference_number ||
+      ""
+    );
+    const facility = clean(
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      rec.location ||
+      ""
+    );
+    const rawSource = clean(
+      rec.hub_source ||
+      rec.source_system ||
+      rec.source ||
+      "New ESPIN LINK Project"
+    );
+    const sourceText = lower(rawSource).includes("install base")
+      ? "Install Base"
+      : rawSource;
 
     return `
       <tr class="${selectedClass}" data-record-id="${escapeHtml(rec.id)}">
+        <!-- 1: Project ID -->
         <td>${escapeHtml(rec.oem_project_id || rec.id || "-")}</td>
 
-        <td class="wrap">
-          <strong>${escapeHtml(rec.make || "New Project")}</strong>
-          <div class="mini">${escapeHtml(rec.model || "-")}</div>
-        </td>
+        <!-- 2: Make -->
+        <td>${escapeHtml(rec.make || "New Project")}</td>
 
+        <!-- 3: Model -->
+        <td class="wrap">${escapeHtml(rec.model || rec.new_project_name || "-")}</td>
+
+        <!-- 4: Modality -->
         <td>${escapeHtml(rec.modality || "PROJECT")}</td>
 
-        <td>${escapeHtml(rec.serial_number || "-")}</td>
+        <!-- 5: Serial -->
+        <td>${escapeHtml(rec.serial_number || rec.serial || "-")}</td>
 
+        <!-- 6: DOM -->
+        <td>${escapeHtml(domValue || "-")}</td>
+
+        <!-- 7: Age -->
+        <td>${age !== null && age !== undefined && age !== "" ? `${escapeHtml(String(age))} yrs` : "-"}</td>
+
+        <!-- 8: Install Base Review -->
         <td>
-          ${escapeHtml(rec.dom || "-")}
-          <div class="mini">${age ?? "-"} yrs</div>
+          <button
+            type="button"
+            class="review-reason-button"
+            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
+            aria-label="Open Install Base review reason"
+            title="Show why this Install Base review was created"
+          >
+            ${renderReviewSignalCell(rec)}
+          </button>
         </td>
 
-        <td>${renderReviewSignalCell(rec)}</td>
+        <!-- 9: Trade-In Ref -->
+        <td>${escapeHtml(tradeInReference || "-")}</td>
 
-        <td class="wrap">${escapeHtml(rec.site || rec.facility || rec.hospital || "Unknown Facility")}</td>
+        <!-- 10: Facility -->
+        <td class="wrap">${escapeHtml(facility || "Unknown Facility")}</td>
 
-        <td>${escapeHtml(rec.source || "New AXIS Project")}</td>
+        <!-- 11: Source -->
+        <td><span class="source-pill">${escapeHtml(sourceText)}</span></td>
 
-        <td>${renderRepReviewStatus(rec)}</td>
+        <!-- 12: My Priority -->
+        <td class="manual-priority-cell">${renderPrioritySelect(rec)}</td>
+
+        <!-- 13: Rep Status -->
+        <td>${renderRepStatusCell(rec)}</td>
       </tr>
     `;
   }).join("");
