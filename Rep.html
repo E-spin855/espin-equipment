@@ -10980,8 +10980,22 @@ const projectModel = clean($("newProjectModel")?.value || "");
 const projectSerial = clean($("newProjectSerial")?.value || "");
 const projectDOM = clean($("newProjectDOM")?.value || "");
 const selectedRepParts = getSelectedRepParts();
-const repFirst = selectedRepParts.first;
-const repLast = selectedRepParts.last;
+
+let repFull = clean(selectedRepParts.full || "");
+if (!repFull || repFull === "Unassigned") {
+  const existingAssignedRecord = state.records.find(record =>
+    hasValidAssignedRep(record) ||
+    clean(record.sales_rep_first || record.sales_rep_last)
+  );
+
+  repFull = existingAssignedRecord
+    ? getRecordRepName(existingAssignedRecord)
+    : "Demo Rep";
+}
+
+const repNameParts = repFull.split(/\s+/).filter(Boolean);
+const repFirst = repNameParts[0] || "Demo";
+const repLast = repNameParts.slice(1).join(" ") || "Rep";
       if (!customer || !projectName) {
         alert("Fill out customer and project name.");
         return;
@@ -11020,6 +11034,9 @@ manufacture_year: projectDOM,
 
         sales_rep_first: repFirst,
         sales_rep_last: repLast,
+        sales_rep_name: repFull,
+        assigned_rep_name: repFull,
+        rep_name: repFull,
 
         quote_amount: "",
         quote_estimated_cost: "",
