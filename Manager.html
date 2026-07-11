@@ -2515,6 +2515,46 @@ button.message-sent-state{
     min-width:1220px!important;
   }
 }
+
+/* Rep-added Manager row: unmistakable green pulse until clicked */
+#tableBody tr.manager-row-flash{
+  position:relative!important;
+  outline:3px solid rgba(65,255,156,1)!important;
+  outline-offset:-3px!important;
+  animation:managerRepAddedVisiblePulse .9s ease-in-out infinite!important;
+}
+
+#tableBody tr.manager-row-flash td{
+  background:rgba(20,76,60,.38)!important;
+  border-top:2px solid rgba(65,255,156,.72)!important;
+  border-bottom:2px solid rgba(65,255,156,.72)!important;
+}
+
+#tableBody tr.manager-row-flash td:first-child{
+  border-left:3px solid rgba(65,255,156,1)!important;
+}
+
+#tableBody tr.manager-row-flash td:last-child{
+  border-right:3px solid rgba(65,255,156,1)!important;
+}
+
+@keyframes managerRepAddedVisiblePulse{
+  0%,100%{
+    filter:brightness(1);
+    box-shadow:
+      inset 7px 0 0 rgba(65,255,156,.90),
+      inset -3px 0 0 rgba(65,255,156,.65),
+      0 0 12px rgba(65,255,156,.35)!important;
+  }
+  50%{
+    filter:brightness(1.22);
+    box-shadow:
+      inset 7px 0 0 rgba(142,255,195,1),
+      inset -3px 0 0 rgba(142,255,195,.95),
+      0 0 34px rgba(65,255,156,.95)!important;
+  }
+}
+
 </style>
 
 <style>
@@ -4323,46 +4363,119 @@ function isHubRepOnlyTextExchange(rec) {
   return hasHubRepConversation || responseIsForInstallBase;
 }
 
+
+const MANAGER_REP_ADDED_SEEN_KEY = "espin_manager_rep_added_seen_v1";
+
+function getManagerRepAddedSeenMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MANAGER_REP_ADDED_SEEN_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function getManagerRepAddedRecordId(rec) {
+  return String(
+    rec?.id ||
+    rec?.key ||
+    rec?.oem_project_id ||
+    rec?.project_id ||
+    rec?.asset_id ||
+    ""
+  ).trim();
+}
+
+function isRepAddedManagerRecord(rec) {
+  if (!rec) return false;
+
+  const recordId = getManagerRepAddedRecordId(rec).toLowerCase();
+  const projectId = String(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    ""
+  ).trim().toLowerCase();
+
+  const sourceText = [
+    rec.source,
+    rec.source_system,
+    rec.hub_source,
+    rec.record_origin,
+    rec.install_base_sync_direction
+  ].map(value => String(value || "").toLowerCase()).join(" ");
+
+  return Boolean(
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.created_by_rep === true ||
+    rec.rep_created === true ||
+    rec.record_origin === "rep_uploaded_install_base" ||
+    rec.record_origin === "rep_added_install_base" ||
+    rec.install_base_sync_direction === "rep_to_install_base" ||
+    recordId.startsWith("rep-ib-") ||
+    projectId.startsWith("rep-ib-") ||
+    sourceText.includes("rep upload") ||
+    sourceText.includes("rep added") ||
+    sourceText.includes("rep entered") ||
+    sourceText.includes("rep review")
+  );
+}
+
+function hasManagerSeenRepAddedRecord(rec) {
+  const id = getManagerRepAddedRecordId(rec);
+  if (!id) return false;
+  return Boolean(getManagerRepAddedSeenMap()[id]);
+}
+
+function markManagerRepAddedRecordSeen(recOrId) {
+  const rec = typeof recOrId === "object" ? recOrId : null;
+  const id = rec
+    ? getManagerRepAddedRecordId(rec)
+    : String(recOrId || "").trim();
+
+  if (!id) return;
+
+  const seen = getManagerRepAddedSeenMap();
+  seen[id] = new Date().toISOString();
+  localStorage.setItem(MANAGER_REP_ADDED_SEEN_KEY, JSON.stringify(seen));
+}
+
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
-  if (String(rec.id) === String(state.selectedId)) return false;
 
+  // Every record added from the Rep workspace flashes until that exact row
+  // is clicked. This does not depend on manager_unseen_update being supplied.
+  if (
+    isRepAddedManagerRecord(rec) &&
+    !hasManagerSeenRepAddedRecord(rec) &&
+    String(rec.id || rec.key || "") !== String(state.selectedId || "")
+  ) {
+    return true;
+  }
+
+  if (String(rec.id) === String(state.selectedId)) return false;
   if (isHubRepOnlyTextExchange(rec)) return false;
 
   const flashType = lower(rec.manager_flash_type || "");
 
-  const isRepAddedInstallBaseRecord = Boolean(
-    rec.rep_loaded_from_upload === true ||
-    rec.rep_owned_install_base === true ||
-    rec.rep_added_install_base === true ||
-    rec.record_origin === "rep_uploaded_install_base" ||
-    rec.install_base_sync_direction === "rep_to_install_base" ||
-    lower(rec.source || "").includes("rep upload") ||
-    lower(rec.source || "").includes("rep added") ||
-    lower(rec.source || "").includes("rep entered")
-  );
-
   const isRealRepUpdate =
     rec.manager_unseen_update === true &&
-    (
-      isRepAddedInstallBaseRecord ||
-      [
-        "rep_update",
-        "rep_message",
-        "rep_action",
-        "new_project_created",
-        "follow_up",
-        "completed",
-        "quote_created",
-        "quote_sent",
-        "tradein_sync",
-        "rep_upload",
-        "rep_added_install_base"
-      ].includes(flashType)
-    );
+    [
+      "rep_update",
+      "rep_message",
+      "rep_action",
+      "new_project_created",
+      "follow_up",
+      "completed",
+      "quote_created",
+      "quote_sent",
+      "tradein_sync",
+      "rep_upload",
+      "rep_added_install_base"
+    ].includes(flashType);
 
-  // Normal Hub refreshes and automatic Install Base sync must never
-  // green-frame every Manager row.
   const isAutomaticHubRefresh =
     rec.install_base_release_status === "auto_synced" ||
     rec.install_base_sync_type === "automatic" ||
@@ -8154,7 +8267,17 @@ if (tableBody) {
     const row = e.target.closest("tr[data-record-id]");
     if (!row || !tableBody.contains(row)) return;
 
-    selectRow(row.dataset.recordId);
+    const clickedId = row.dataset.recordId;
+    const clickedRecord = state.records.find(item =>
+      String(item.id || item.key || getRecordKey(item) || "") === String(clickedId)
+    );
+
+    if (clickedRecord && isRepAddedManagerRecord(clickedRecord)) {
+      markManagerRepAddedRecordSeen(clickedRecord);
+      row.classList.remove("manager-row-flash");
+    }
+
+    selectRow(clickedId);
 	  });
 	}
 
