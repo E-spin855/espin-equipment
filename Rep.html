@@ -3223,6 +3223,8 @@ function assignToSelectedRepIfNeeded(rec) {
   selectedId: null,
   selectedRep: null,
   installBaseCommunicationOpen: false,
+installBaseFixResponseOpen: false,
+installBaseFixResponseRecordId: "",
   installBaseCommunicationDismissedId: "",
   installBaseCommunicationDismissedSignature: "",
   installBaseHistoryOpen: false,
@@ -8647,9 +8649,11 @@ function renderDetail() {
 
     ${renderRepProximityView(rec)}
 
-    ${renderRepManagerCommunication(rec)}
+ ${renderRepManagerCommunication(rec)}
 
-    ${renderInstallBaseCorrectionPanel(rec)}
+${renderRepInstallBaseFixResponsePanel(rec)}
+
+${renderInstallBaseCorrectionPanel(rec)}
 
     ${
       rec.tradein_sync_received
@@ -9048,9 +9052,10 @@ if (!explicitlyRequested) {
     labelMap[requestedField] ||
     "Data";
 
- const active =
-  state.installBaseCommunicationOpen === true &&
-  String(state.selectedId || "") === String(rec.id || "") &&
+const active =
+  state.installBaseFixResponseOpen === true &&
+  String(state.installBaseFixResponseRecordId || "") ===
+    String(rec.id || "") &&
   String(state.installBaseActiveFixField || "")
     .toLowerCase()
     .trim() ===
@@ -9064,10 +9069,10 @@ if (!explicitlyRequested) {
       class="fix-data-badge ${active ? "active" : ""}"
       onclick="
         event.stopPropagation();
-        openInstallBaseCommunication(
-          '${escapeJs(rec.id || "")}',
-          '${escapeJs(requestedField)}'
-        );
+        openRepInstallBaseFixResponse(
+  '${escapeJs(rec.id || "")}',
+  '${escapeJs(requestedField)}'
+);
       "
     >
       <span class="fix-main">${active ? "Selected" : "Fix"}</span>
@@ -9129,7 +9134,7 @@ function renderCorrectedValue(rec, fieldName, normalHtml) {
     </div>
   `;
 }
-function openInstallBaseCommunication(id, fieldName = "") {
+function openRepInstallBaseFixResponse(id, fieldName = "") {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
 
@@ -9137,19 +9142,49 @@ function openInstallBaseCommunication(id, fieldName = "") {
     item => String(item.id || "") === selectedId
   );
 
-  if (!rec || !needsInstallBaseCommunication(rec)) return;
+  if (!rec) return;
 
   state.selectedId = selectedId;
-  state.installBaseCommunicationOpen = true;
+
+  state.installBaseFixResponseOpen = true;
+  state.installBaseFixResponseRecordId = selectedId;
   state.installBaseActiveFixField = fieldName || "";
+
+  // FIX response is separate from ordinary communication.
+  state.installBaseCommunicationOpen = false;
 
   refreshSelectedRowUI();
   renderDetail();
 
   setTimeout(() => {
-    const panel = document.querySelector(".install-base-comm-open");
-    if (panel) panel.scrollIntoView({ behavior: "smooth", block: "center" });
+    const panel = document.querySelector(
+      ".rep-install-base-fix-response-panel"
+    );
+
+    if (panel) {
+      panel.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+
+      const firstInput = panel.querySelector(
+        "input, textarea"
+      );
+
+      if (firstInput) firstInput.focus();
+    }
   }, 50);
+}
+
+function closeRepInstallBaseFixResponse() {
+  state.installBaseFixResponseOpen = false;
+  state.installBaseFixResponseRecordId = "";
+  state.installBaseActiveFixField = "";
+
+  renderTable();
+  renderNewProjectsTable();
+  refreshSelectedRowUI();
+  renderDetail();
 }
 function closeInstallBaseCommunication() {
   if (!state.installBaseCommunicationOpen) return;
@@ -9564,7 +9599,131 @@ function buildInstallBaseMiniTimeline(rec) {
     </div>
   `;
 }
+function renderRepInstallBaseFixResponsePanel(rec) {
+  const recordId = String(rec?.id || "");
 
+  const isOpen =
+    state.installBaseFixResponseOpen === true &&
+    String(state.installBaseFixResponseRecordId || "") === recordId;
+
+  if (!isOpen) return "";
+
+  const allIssues = getRepFixPanelIssues(rec);
+
+  const activeFixField = String(
+    state.installBaseActiveFixField || ""
+  )
+    .toLowerCase()
+    .trim();
+
+  const issues = activeFixField
+    ? allIssues.filter(([field]) =>
+        String(field || "")
+          .toLowerCase()
+          .trim() === activeFixField
+      )
+    : allIssues;
+
+  if (!issues.length) return "";
+
+  const requestedItem = clean(
+    rec.install_base_action_label ||
+    rec.rep_fix_required ||
+    rec.install_base_issue_type ||
+    "Install Base FIX"
+  );
+
+  const reason = clean(
+    rec.install_base_issue_reason ||
+    rec.install_base_action_reason ||
+    rec.install_base_issue_note ||
+    rec.oem_review_reason ||
+    rec.review_reason ||
+    "-"
+  );
+
+  return `
+    <div
+      class="detail-card full update-detail-card rep-install-base-fix-response-panel"
+      style="
+        border:2px solid rgba(255,216,77,.72);
+        background:rgba(255,216,77,.07);
+        box-shadow:0 0 22px rgba(255,216,77,.16);
+      "
+    >
+      <div class="k">Rep Response to Install Base</div>
+
+      <div class="v">
+        Correct the requested field and return it to Install Base
+      </div>
+
+      <div
+        class="mini"
+        style="margin-top:8px;line-height:1.5;"
+      >
+        Requested item:
+        <strong>${escapeHtml(requestedItem)}</strong><br>
+
+        Reason:
+        ${escapeHtml(reason)}
+      </div>
+
+      <div
+        style="
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:12px;
+          margin-top:14px;
+        "
+      >
+        ${issues.map(([field, label]) => `
+          <div>
+            <label>${escapeHtml(label)}</label>
+
+            <input
+              id="fix_${escapeHtml(field)}"
+              class="install-base-fix-field-frame"
+              value=""
+              placeholder="Enter corrected ${escapeHtml(label)}"
+              onclick="event.stopPropagation();"
+              onmousedown="event.stopPropagation();"
+            />
+          </div>
+        `).join("")}
+      </div>
+
+      <label style="display:block;margin-top:14px;">
+        Rep FIX Response to Install Base
+      </label>
+
+      <textarea
+        id="installBaseFixReason"
+        placeholder="Enter the corrected value or a short explanation."
+        onclick="event.stopPropagation();"
+        onmousedown="event.stopPropagation();"
+        onfocus="event.stopPropagation();"
+      ></textarea>
+
+      <div class="btns" style="margin-top:12px;">
+        <button
+          type="button"
+          class="green"
+          onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
+        >
+          Send Correction to Install Base
+        </button>
+
+        <button
+          type="button"
+          class="secondary"
+          onclick="closeRepInstallBaseFixResponse()"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  `;
+}
 function renderInstallBaseCorrectionPanel(rec) {
   const allIssues = getRepFixPanelIssues(rec);
 
@@ -9682,52 +9841,6 @@ function renderInstallBaseCorrectionPanel(rec) {
     </div>
   `;
 
-  const responseFieldHtml = `
-    <div style="margin-top:12px;display:grid;gap:9px;">
-      <label for="installBaseFixReason">Response to Install Base</label>
-      <textarea
-        id="installBaseFixReason"
-        placeholder="Enter your confirmation, response, or follow-up message."
-        style="min-height:110px;"
-      >${escapeHtml(rec.install_base_fix_reason || "")}</textarea>
-
-      <div class="btns">
-        <button
-          type="button"
-          id="sendInstallBaseMessageBtn_${escapeHtml(rec.id)}"
-          class="green install-base-send-btn send-message-glow"
-          onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
-        >
-          Send Message to Install Base
-        </button>
-
-        ${issues.length ? `
-          <button
-            type="button"
-            class="secondary"
-            onclick="openInstallBaseCommunication('${escapeJs(rec.id)}')"
-          >
-            Correct Record Fields
-          </button>
-        ` : ""}
-      </div>
-    </div>
-  `;
-
-  const correctionFieldsHtml = issues.length ? `
-    <div style="display:grid;gap:10px;margin-top:12px;">
-      ${issues.map(([field,label]) => `
-        <label>${escapeHtml(label)}</label>
-        <input
-  id="fix_${field}"
-  class="install-base-fix-field-frame"
-  value=""
-  placeholder="Enter corrected ${escapeHtml(label)}"
-/>
-      `).join("")}
-    </div>
-  ` : "";
-
   const historyHtml = `
     <div class="rep-action-history ${historyOpen ? "" : "rep-install-base-history-collapsed"}">
       <div class="rep-action-history-title">Activity / Install Base History</div>
@@ -9750,11 +9863,9 @@ function renderInstallBaseCorrectionPanel(rec) {
       </div>
 
       ${isOpen ? `
-        <div class="comm-composer">
-          ${renderInstallBaseReplyCard(rec)}
-          ${correctionFieldsHtml}
-          ${responseFieldHtml}
-        </div>
+      <div class="comm-composer">
+  ${renderInstallBaseReplyCard(rec)}
+</div>
       ` : ""}
 
       ${historyOpen ? `
