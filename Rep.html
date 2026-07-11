@@ -6769,6 +6769,431 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
+    function renderNewProjectsTable() {
+  const panel = $("newProjectsPanel");
+  const tbody = $("newProjectsTableBody");
+  const newProjects = state.records
+    .filter(r => r.project_type === "new_project_record")
+    .filter(recordMatchesSelectedRep);
+
+  if (!newProjects.length) {
+    panel.style.display = "none";
+    tbody.innerHTML = "";
+    $("newProjectDetailArea")?.classList.add("hidden");
+    return;
+  }
+
+  panel.style.display = "block";
+
+  tbody.innerHTML = newProjects.map(rec => {
+    const selectedClass = rec.id === state.selectedId ? "selected" : "";
+    const domValue = clean(
+      rec.dom ||
+      rec.year ||
+      rec.manufacture_year ||
+      rec.manufacturing_year ||
+      ""
+    );
+    const age = ageFromDom(domValue);
+    const tradeInReference = clean(
+      rec.trade_in_reference ||
+      rec.trade_in_ref ||
+      rec.tradein_reference ||
+      rec.tradein_ref ||
+      rec.trade_in_reference_number ||
+      ""
+    );
+    const facility = clean(
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      rec.location ||
+      ""
+    );
+    const rawSource = clean(
+      rec.hub_source ||
+      rec.source_system ||
+      rec.source ||
+      "New ESPIN LINK Project"
+    );
+    const sourceText = lower(rawSource).includes("install base")
+      ? "Install Base"
+      : rawSource;
+
+    return `
+      <tr class="${selectedClass}" data-record-id="${escapeHtml(rec.id)}">
+        <!-- 1: Project ID -->
+        <td>${escapeHtml(rec.oem_project_id || rec.id || "-")}</td>
+
+        <!-- 2: Make -->
+        <td>${escapeHtml(rec.make || "New Project")}</td>
+
+        <!-- 3: Model -->
+        <td class="wrap">${escapeHtml(rec.model || rec.new_project_name || "-")}</td>
+
+        <!-- 4: Modality -->
+        <td>${escapeHtml((rec.modality && rec.modality !== "PROJECT") ? rec.modality : "Not Entered")}</td>
+
+        <!-- 5: Serial -->
+        <td>${escapeHtml(rec.serial_number || rec.serial || "-")}</td>
+
+        <!-- 6: DOM -->
+        <td>${escapeHtml(domValue || "-")}</td>
+
+        <!-- 7: Age -->
+        <td>${age !== null && age !== undefined && age !== "" ? `${escapeHtml(String(age))} yrs` : "-"}</td>
+
+        <!-- 8: Install Base Review -->
+        <td>
+          <button
+            type="button"
+            class="review-reason-button"
+            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
+            aria-label="Open Install Base review reason"
+            title="Show why this Install Base review was created"
+          >
+            ${renderReviewSignalCell(rec)}
+          </button>
+        </td>
+
+        <!-- 9: Trade-In Ref -->
+        <td>${escapeHtml(tradeInReference || "-")}</td>
+
+        <!-- 10: Facility -->
+        <td class="wrap">${escapeHtml(facility || "Unknown Facility")}</td>
+
+        <!-- 11: Source -->
+        <td><span class="source-pill">${escapeHtml(sourceText)}</span></td>
+
+        <!-- 12: Rep Status -->
+        <td>${renderRepStatusCell(rec)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+    function getDisplayOrderWeight(rec, today = todayISO()) {
+  /*
+    Display ordering only.
+    This is not a recommendation, ranking, score, offer prioritization,
+    customer prioritization, next-best-action calculation, or opportunity engine.
+  */
+
+  if (!rec) return 0;
+
+  // Unseen manager responses are shown first so the rep can view manager feedback.
+  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 50;
+
+  // Completed/submitted/postponed items are lower because no immediate display attention is needed.
+  if (rec.lifecycle_completed) return 0;
+  if (rec.submitted_to) return 0;
+  if (rec.next_action_date && rec.next_action_date > today) return 5;
+
+  const status = lower(rec.quote_status);
+
+  // Closed outcomes remain visible but are not elevated.
+  if (status === "won") return 10;
+  if (status === "lost") return 10;
+
+  // Open quote records are grouped for visibility only.
+  // No quote value, margin, customer value, probability, or recommended action is used.
+  if (rec.quote_amount) return 30;
+
+  // OEM Review Fields are grouped for display only.
+  // AXIS does not decide importance or recommend action.
+  if (getAlerts(rec, today).length) return 20;
+
+  return 0;
+}
+function getRepMissingFieldLabel(fieldName) {
+  const labels = {
+    serial: "Fix Serial",
+    serial_number: "Fix Serial",
+    dom: "Fix DOM",
+    make: "Fix Make",
+    model: "Fix Model",
+    modality: "Fix Modality",
+    site: "Fix Site",
+    facility: "Fix Site",
+    owner: "Fix Owner",
+    rep: "Fix Rep"
+  };
+
+  return labels[fieldName] || "Fix Data";
+}
+
+function renderRepFixOrValue(fieldName, valueHtml) {
+  const rawValue = String(valueHtml || "").replace(/<[^>]*>/g, "").trim();
+
+  if (!rawValue || rawValue === "-") {
+    return `
+      <span class="rep-fix-badge">
+        ${escapeHtml(getRepMissingFieldLabel(fieldName))}
+      </span>
+    `;
+  }
+
+  return valueHtml;
+}
+function isCompletedRepRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.lifecycle_completed === true ||
+    lower(rec.rep_status) === "completed" ||
+    lower(rec.rep_action) === "complete" ||
+    lower(rec.rep_action) === "completed" ||
+    lower(rec.project_status) === "completed" ||
+    lower(rec.install_base_completion_status) === "completed_by_rep" ||
+    lower(rec.install_base_response_status) === "project_completed_by_rep"
+  );
+}
+
+function getLatestIncomingManagerCommunication(rec) {
+  const history = getRepManagerCommunicationHistory(rec);
+  return [...history].reverse().find(item => lower(item.sender) === "manager") || null;
+}
+
+function hasUnseenManagerCommunication(rec) {
+  const latest = getLatestIncomingManagerCommunication(rec);
+  if (!latest) return false;
+
+  const signature = [
+    clean(latest.sender),
+    clean(latest.at),
+    clean(latest.message)
+  ].join("|");
+
+  return (
+    rec.rep_manager_ack_signature !== signature ||
+    rec.manager_response_seen_by_rep !== true
+  );
+}
+
+function getLatestIncomingInstallBaseCommunication(rec) {
+  const history = getInstallBaseConversationHistory(rec);
+  const latest = [...history]
+    .reverse()
+    .find(item => lower(item.sender) === "install_base");
+
+  if (latest) return latest;
+
+  const directMessage = clean(rec.install_base_reply_to_rep || "");
+  if (!directMessage) return null;
+
+  return {
+    sender: "install_base",
+    at: rec.install_base_reply_to_rep_at || "",
+    message: directMessage,
+    seen_by_rep: rec.install_base_reply_to_rep_seen === true
+  };
+}
+
+function getInstallBaseIncomingSignature(rec) {
+  const latest = getLatestIncomingInstallBaseCommunication(rec);
+  if (!latest) return "";
+
+  return [
+    clean(latest.at || ""),
+    clean(latest.message || "")
+  ].join("|");
+}
+
+function hasUnseenInstallBaseCommunication(rec) {
+  const latest = getLatestIncomingInstallBaseCommunication(rec);
+  if (!latest) return false;
+
+  const signature = getInstallBaseIncomingSignature(rec);
+
+  if (
+    signature &&
+    clean(rec.rep_install_base_ack_signature || "") === signature
+  ) {
+    return false;
+  }
+
+  if (latest.seen_by_rep !== true) return true;
+
+  return rec.install_base_reply_to_rep_seen !== true &&
+    clean(rec.install_base_reply_to_rep || "") === clean(latest.message || "");
+}
+
+function hasUnseenIncomingCommunication(rec) {
+  return (
+    hasUnseenManagerCommunication(rec) ||
+    hasUnseenInstallBaseCommunication(rec)
+  );
+}
+
+function hasDirectIncomingInstallBaseTarget(rec) {
+  if (!rec) return false;
+
+  // A row should flash only for its own direct incoming Hub/Install Base update.
+  // This prevents a FIX sent to one record from lighting another row that only
+  // shares older status fields or a loose record key.
+  return (
+    rec.install_base_release_new === true ||
+    rec.install_base_release_seen !== true ||
+    rec.rep_unseen_update === true ||
+    rec.install_base_reply_to_rep_seen === false ||
+    rec.rep_flash_type === "install_base_update" ||
+    rec.rep_flash_type === "install_base_message"
+  );
+}
+
+function hasDirectIncomingManagerTarget(rec) {
+  if (!rec) return false;
+
+  return (
+    rec.manager_response_seen_by_rep !== true ||
+    rec.manager_unseen_update === true ||
+    rec.manager_alert_seen === false ||
+    rec.manager_flash_type === "manager_response" ||
+    rec.manager_flash_type === "manager_message"
+  );
+}
+
+function getCommunicationFrameClass(rec, type) {
+  if (!rec) return "";
+
+  if (
+    type === "manager" &&
+    state.managerCommunicationFrameActive === true &&
+    hasUnseenManagerCommunication(rec)
+  ) {
+    return "communication-update-frame";
+  }
+
+  if (
+    type === "install_base" &&
+    state.installBaseCommunicationFrameActive === true &&
+    hasUnseenInstallBaseCommunication(rec)
+  ) {
+    return "communication-update-frame";
+  }
+
+  return "";
+}
+
+function markIncomingCommunicationSeen(id) {
+  const selectedId = String(id || "");
+  const rec = state.records.find(r => String(r.id || "") === selectedId);
+  if (!rec || !hasUnseenIncomingCommunication(rec)) return false;
+
+  const now = new Date().toISOString();
+  const latestManager = getLatestIncomingManagerCommunication(rec);
+  const installBaseSignature = getInstallBaseIncomingSignature(rec);
+  const managerSignature = latestManager
+    ? [
+        clean(latestManager.sender),
+        clean(latestManager.at),
+        clean(latestManager.message)
+      ].join("|")
+    : rec.rep_manager_ack_signature || "";
+
+  const updateRecord = r => {
+    const sameId = String(r.id || "") === selectedId;
+    const sameKey = rec.key && String(r.key || "") === String(rec.key || "");
+    if (!sameId && !sameKey) return r;
+
+    const conversation = Array.isArray(r.install_base_conversation_history)
+      ? r.install_base_conversation_history.map(item =>
+          lower(item?.sender) === "install_base"
+            ? { ...item, seen_by_rep: true, seen_by_rep_at: now }
+            : item
+        )
+      : r.install_base_conversation_history;
+
+    return {
+      ...r,
+      install_base_conversation_history: conversation,
+      install_base_reply_to_rep_seen: true,
+      install_base_reply_to_rep_seen_at: now,
+      manager_response_seen_by_rep: true,
+      manager_response_seen_at: now,
+      rep_manager_ack_signature: managerSignature,
+      rep_install_base_ack_signature:
+        installBaseSignature || r.rep_install_base_ack_signature || ""
+    };
+  };
+
+  state.records = state.records.map(updateRecord);
+  saveRecords();
+
+  let queue = [];
+  try {
+    queue = JSON.parse(localStorage.getItem(REP_QUEUE_KEY) || "[]");
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  queue = queue.map(updateRecord);
+  localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(queue));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+  return true;
+}
+
+function bindIncomingCommunicationFrameDismissal() {
+  if (document.body.dataset.incomingCommFrameDismissBound === "true") return;
+  document.body.dataset.incomingCommFrameDismissBound = "true";
+
+  document.addEventListener("click", event => {
+    const selectedId = String(state.selectedId || "");
+    if (!selectedId) return;
+
+    // Do not re-render while the Rep is typing or clicking inside a communication panel.
+    // Re-rendering here was replacing the FIX input and preventing typing.
+    if (
+      event.target.closest(
+        ".comm-shell, .comm-composer, .install-base-comm-open, input, textarea, select, button"
+      )
+    ) {
+      return;
+    }
+
+    const selectedRow = event.target.closest(
+      "#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]"
+    );
+
+    if (
+      selectedRow &&
+      String(selectedRow.dataset.recordId || "") === selectedId
+    ) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const hadVisibleFrame = Boolean(
+        document.querySelector(
+          "tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash"
+        )
+      );
+
+      const rec = state.records.find(r => String(r.id || "") === selectedId);
+      const changed = rec ? markIncomingCommunicationSeen(selectedId) : false;
+
+      if (changed || hadVisibleFrame) {
+        document
+          .querySelectorAll("tr.incoming-communication-flash, tr.manager-response-flash, tr.rep-new-row-flash")
+          .forEach(row => {
+            row.classList.remove(
+              "incoming-communication-flash",
+              "manager-response-flash",
+              "rep-new-row-flash"
+            );
+          });
+
+        renderTable();
+        renderNewProjectsTable();
+        refreshSelectedRowUI();
+        renderDetail();
+      }
+    }, 0);
+  }, true);
+}
+
   function renderTable() {
   const tbody = $("tableBody");
 
