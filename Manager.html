@@ -973,6 +973,29 @@ td:nth-child(11) .manager-waiting-badge{
     background:rgba(9,18,35,.45)!important;
   }
 
+  tr.manager-row-flash{
+    animation:managerRepAddedRowPulse 1.05s ease-in-out infinite!important;
+  }
+
+  @keyframes managerRepAddedRowPulse{
+    0%,100%{
+      outline-color:rgba(65,255,156,.72);
+      box-shadow:
+        inset 5px 0 0 rgba(65,255,156,.82),
+        inset -2px 0 0 rgba(65,255,156,.52),
+        0 0 0 1px rgba(65,255,156,.30),
+        0 0 16px rgba(65,255,156,.28)!important;
+    }
+    50%{
+      outline-color:rgba(142,255,195,1);
+      box-shadow:
+        inset 5px 0 0 rgba(142,255,195,1),
+        inset -2px 0 0 rgba(142,255,195,.86),
+        0 0 0 2px rgba(142,255,195,.56),
+        0 0 34px rgba(65,255,156,.78)!important;
+    }
+  }
+
   /* Updated manager fields: flash only until the user clicks away. */
   .manager-field-update-frame{
     position:relative;
@@ -3909,7 +3932,19 @@ function hasActualInstallBaseCorrection(rec) {
 }
 
 function renderReviewCondition(rec) {
+  const isRepAddedInstallBaseRecord = Boolean(
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.record_origin === "rep_uploaded_install_base" ||
+    rec.install_base_sync_direction === "rep_to_install_base" ||
+    lower(rec.source || "").includes("rep upload") ||
+    lower(rec.source || "").includes("rep added") ||
+    lower(rec.source || "").includes("rep entered")
+  );
+
   const isInstallBaseRecord =
+    isRepAddedInstallBaseRecord ||
     rec.hub_source === "AXIS Install Base Workspace" ||
     rec.install_base_sync_type ||
     rec.install_base_received_by_rep ||
@@ -4296,19 +4331,35 @@ function shouldManagerRowFlash(rec) {
 
   const flashType = lower(rec.manager_flash_type || "");
 
+  const isRepAddedInstallBaseRecord = Boolean(
+    rec.rep_loaded_from_upload === true ||
+    rec.rep_owned_install_base === true ||
+    rec.rep_added_install_base === true ||
+    rec.record_origin === "rep_uploaded_install_base" ||
+    rec.install_base_sync_direction === "rep_to_install_base" ||
+    lower(rec.source || "").includes("rep upload") ||
+    lower(rec.source || "").includes("rep added") ||
+    lower(rec.source || "").includes("rep entered")
+  );
+
   const isRealRepUpdate =
     rec.manager_unseen_update === true &&
-    [
-      "rep_update",
-      "rep_message",
-      "rep_action",
-      "new_project_created",
-      "follow_up",
-      "completed",
-      "quote_created",
-      "quote_sent",
-      "tradein_sync"
-    ].includes(flashType);
+    (
+      isRepAddedInstallBaseRecord ||
+      [
+        "rep_update",
+        "rep_message",
+        "rep_action",
+        "new_project_created",
+        "follow_up",
+        "completed",
+        "quote_created",
+        "quote_sent",
+        "tradein_sync",
+        "rep_upload",
+        "rep_added_install_base"
+      ].includes(flashType)
+    );
 
   // Normal Hub refreshes and automatic Install Base sync must never
   // green-frame every Manager row.
