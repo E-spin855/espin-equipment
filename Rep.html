@@ -4333,12 +4333,25 @@ if (
 }
     const fixLabel = getInstallBaseFixLabel(incoming);
 
-    const alreadyFixed =
-      incoming.install_base_correction_status === "corrected_by_rep" ||
-      incoming.install_base_fix_status === "rep_reviewed" ||
-      incoming.install_base_response_status === "rep_correction_sent";
+  const alreadyFixed =
+  incoming.install_base_correction_status === "corrected_by_rep" ||
+  incoming.install_base_fix_status === "rep_reviewed" ||
+  incoming.install_base_response_status === "rep_correction_sent";
 
-    const repRecord = {
+const isIncomingManagerFix = Boolean(
+  incoming.install_base_correction_status === "corrected_by_manager" ||
+  incoming.install_base_response_status === "manager_correction_sent" ||
+  incoming.install_base_fix_status === "manager_reviewed" ||
+  incoming.install_base_response_from === "manager"
+);
+
+const managerFixTime =
+  incoming.install_base_correction_at ||
+  incoming.install_base_response_at ||
+  incoming.manager_response_at ||
+  new Date().toISOString();
+
+const repRecord = {
       ...incoming,
       key,
       id: incoming.id || key,
@@ -4352,7 +4365,26 @@ if (
 
       rep_visible: true,
       manager_visible: false,
+// Manager FIX received by Rep: pulse the row until clicked.
+manager_response_seen_by_rep: isIncomingManagerFix
+  ? false
+  : incoming.manager_response_seen_by_rep,
 
+install_base_fixed_seen_by_rep: isIncomingManagerFix
+  ? false
+  : incoming.install_base_fixed_seen_by_rep,
+
+rep_unseen_update: isIncomingManagerFix
+  ? true
+  : incoming.rep_unseen_update === true,
+
+rep_flash_at: isIncomingManagerFix
+  ? managerFixTime
+  : (incoming.rep_flash_at || ""),
+
+rep_flash_type: isIncomingManagerFix
+  ? "manager_fix"
+  : (incoming.rep_flash_type || ""),
       oem_review_label: reviewLabel,
 oem_review_reason: reviewReason,
 
