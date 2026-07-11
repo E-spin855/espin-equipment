@@ -4516,9 +4516,41 @@ function importRepQueueRecords() {
       clean(item.install_base_fix_request_fields || "") ||
       clean(item.install_base_field_fix_sent_fields || "")
     );
+const isNewHubRow =
+  !existing &&
+  !isIncomingInstallBaseFix;
 
+const hubArrivalTime =
+  item.install_base_released_at ||
+  item.install_base_auto_synced_at ||
+  new Date().toISOString();
     const releasedRecord = {
       ...item,
+      // A genuinely new clean row synced from Hub must pulse green
+      // until the Rep clicks the row.
+      install_base_release_new: isNewHubRow
+        ? true
+        : item.install_base_release_new === true,
+
+      install_base_release_seen: isNewHubRow
+        ? false
+        : item.install_base_release_seen,
+
+      install_base_release_seen_at: isNewHubRow
+        ? ""
+        : (item.install_base_release_seen_at || ""),
+
+      rep_unseen_update: isNewHubRow
+        ? true
+        : item.rep_unseen_update === true,
+
+      rep_flash_at: isNewHubRow
+        ? hubArrivalTime
+        : (item.rep_flash_at || ""),
+
+      rep_flash_type: isNewHubRow
+        ? "hub_new_record"
+        : (item.rep_flash_type || ""),
       source:
         lower(item.hub_source || item.source || "").includes("install base")
           ? "Install Base"
