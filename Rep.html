@@ -2861,36 +2861,6 @@ button.message-sent-state{
   .selected-record-overview-left{grid-template-columns:1fr;}
 }
 
-
-/* Collapsible Financial Record after financial data has synced */
-.rep-financial-collapsible-head{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:14px;
-  flex-wrap:wrap;
-}
-.rep-financial-toggle-btn{
-  min-height:40px;
-  padding:9px 13px;
-  white-space:nowrap;
-}
-.rep-financial-collapsed-summary{
-  margin-top:10px;
-  padding:10px 12px;
-  border:1px solid rgba(88,184,255,.18);
-  border-radius:12px;
-  background:rgba(7,17,31,.68);
-  color:#d8ebff;
-  font-size:13px;
-  line-height:1.42;
-}
-.rep-financial-expanded{
-  margin-top:14px;
-  padding-top:14px;
-  border-top:1px solid rgba(88,184,255,.18);
-}
-
 </style>
 </head>
 
@@ -4696,6 +4666,54 @@ install_base_review_reason: originalInstallBaseReviewReason,
 
   const protectedRepRecords = readRepWorkspaceBackup();
 
+  // Recover Rep projects that may exist in Quote Review packets even when a
+  // previous shared-storage overwrite removed their visible Rep copy.
+  let quoteApprovalRecords = [];
+  try {
+    const parsedQuoteRecords = JSON.parse(
+      localStorage.getItem(QUOTE_APPROVAL_KEY) || "[]"
+    );
+    quoteApprovalRecords = Array.isArray(parsedQuoteRecords)
+      ? parsedQuoteRecords
+      : [];
+  } catch {
+    quoteApprovalRecords = [];
+  }
+
+  quoteApprovalRecords.forEach(packet => {
+    const repRecordId = String(
+      packet.axis_record_id ||
+      packet.axis_parent_record_id ||
+      ""
+    ).trim();
+
+    if (!repRecordId) return;
+
+    const alreadyProtected = protectedRepRecords.some(item =>
+      String(item.id || "") === repRecordId ||
+      sameSyncRecord(item, packet)
+    );
+
+    if (alreadyProtected) return;
+
+    protectedRepRecords.push(
+      buildRepLocalPacket({
+        ...packet,
+        id: repRecordId,
+        key: packet.key || packet.axis_record_key || repRecordId,
+        project_type:
+          packet.axis_parent_project_type ||
+          packet.project_type ||
+          "new_project_record",
+        rep_visible: true,
+        manager_visible: false,
+        manager_only: false,
+        release_destination: "rep",
+        install_base_released_to: "rep"
+      })
+    );
+  });
+
   // The dedicated Rep copy is authoritative. Shared Manager/Hub updates may
   // add information, but blank/shared copies cannot erase Rep-entered fields.
   const combinedRecords = mergeSharedRecordsIntoRepBackup(
@@ -5806,23 +5824,45 @@ function syncFeedStatus(rec) {
     id: rec.id || managerPacket.id
   });
 
-  let main = [];
+  /*
+    Never replace state.records with the shared storage array.
+    Quote Review and Manager can write partial/manager-facing copies into the
+    shared key. Replacing the whole Rep list with that array caused the new
+    project to disappear when the Rep returned from Quote Review.
+  */
+  const currentRepRecords = Array.isArray(state.records)
+    ? state.records.map(item => ({ ...item }))
+    : [];
 
-  try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
-  } catch {
-    main = [];
+  const existingIndex = currentRepRecords.findIndex(item =>
+    sameSyncRecord(item, localPacket)
+  );
+
+  if (existingIndex >= 0) {
+    currentRepRecords[existingIndex] = mergeRepProtectedRecord(
+      currentRepRecords[existingIndex],
+      localPacket
+    );
+  } else {
+    currentRepRecords.unshift({
+      ...localPacket,
+      rep_visible: true,
+      manager_visible: false,
+      manager_only: false
+    });
   }
 
-  const cleanedMain = main.filter(item => !sameSyncRecord(item, localPacket));
-  cleanedMain.unshift(localPacket);
+  state.records = currentRepRecords;
 
-  state.records = cleanedMain;
+  // Save the complete protected Rep list before sending Manager/Hub copies.
   saveRecords();
 
   syncToManagerQueue(managerPacket);
   syncRepOwnedRecordToInstallBase(rec, "rep_update");
+
+  // Save again after cross-page sync so no shared-page write can replace the
+  // protected Rep workspace copy.
+  saveRecords();
 
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
@@ -9296,96 +9336,6 @@ function addRepRecordToVisitList(id){
   showBanner(`Added to visit list as manual route stop ${nextPriority}.`);
 }
 
-
-const REP_FINANCIAL_COLLAPSE_KEY = "espin_rep_financial_collapsed_v1";
-
-function getRepFinancialCollapseMap() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(REP_FINANCIAL_COLLAPSE_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function isRepFinancialCollapsed(recordId) {
-  return Boolean(getRepFinancialCollapseMap()[String(recordId || "")]);
-}
-
-function toggleRepFinancialRecord(recordId) {
-  const id = String(recordId || "");
-  if (!id) return;
-
-  const map = getRepFinancialCollapseMap();
-
-  if (map[id]) {
-    delete map[id];
-  } else {
-    map[id] = true;
-  }
-
-  localStorage.setItem(REP_FINANCIAL_COLLAPSE_KEY, JSON.stringify(map));
-  render();
-}
-
-function hasSyncedRepFinancialRecord(rec) {
-  if (!rec) return false;
-
-  return Boolean(
-    Number(rec.quote_amount || 0) > 0 ||
-    Number(rec.quote_net_amount || 0) > 0 ||
-    Number(rec.quote_estimated_cost || rec.estimated_cost || 0) > 0 ||
-    Number(rec.tradein_credit || rec.quote_trade_in_credit || 0) > 0 ||
-    Number(rec.tradein_estimated_value || rec.external_tradein_value || 0) > 0 ||
-    rec.tradein_sync_received === true ||
-    rec.quote_created_at ||
-    rec.quote_updated_at ||
-    rec.quote_approved_at ||
-    String(rec.quote_status || "").toLowerCase() === "approved" ||
-    String(rec.quote_status || "").toLowerCase() === "won"
-  );
-}
-
-function renderRepFinancialRecordCard(rec, bodyHtml, title = "Financial Record") {
-  const synced = hasSyncedRepFinancialRecord(rec);
-  const collapsed = synced && isRepFinancialCollapsed(rec.id);
-
-  return `
-    <div class="detail-card rep-financial-review-card">
-      <div class="rep-financial-collapsible-head">
-        <div class="k">${escapeHtml(title)}</div>
-        ${
-          synced
-            ? `
-              <button
-                type="button"
-                class="secondary rep-financial-toggle-btn"
-                onclick="toggleRepFinancialRecord('${escapeJs(rec.id)}')"
-              >
-                ${collapsed ? "Open Financial Record" : "Hide Financial Record"}
-              </button>
-            `
-            : ""
-        }
-      </div>
-
-      ${
-        collapsed
-          ? `
-            <div class="rep-financial-collapsed-summary">
-              Financial data is saved for this record.
-            </div>
-          `
-          : `
-            <div class="rep-financial-expanded">
-              ${bodyHtml}
-            </div>
-          `
-      }
-    </div>
-  `;
-}
-
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
@@ -9485,46 +9435,43 @@ function renderDetail() {
 
         ${renderRepInstallBaseFixResponsePanel(rec)}
 
-${renderRepFinancialRecordCard(
-      rec,
-      `
-        <div class="v">
-          ${
-            quoteAmount
-              ? `
-                <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
-                <div class="mini" style="margin-top:6px;line-height:1.5;">
-                  Applied Trade-In Credit: -${money(tradeInCredit)}<br>
-                  Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
-                  Net Quote Amount: ${money(netQuote)}<br>
-                  Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
-                  Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
-                  Estimated Margin: ${margin}%
-                </div>
-              `
-              : `
-                <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
-                <div class="mini" style="margin-top:6px;line-height:1.45;">
-                  This equipment review record is visible, but the rep has not entered quote details yet.
-                </div>
-              `
-          }
+    <div class="detail-card rep-financial-review-card">
+      <div class="k">Financial Record</div>
+      <div class="v">
+        ${
+          quoteAmount
+            ? `
+              <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote</div>
+              <div class="mini" style="margin-top:6px;line-height:1.5;">
+                Applied Trade-In Credit: -${money(tradeInCredit)}<br>
+                Trade-In Reference Amount: ${money(rec.tradein_estimated_value || rec.external_tradein_value || 0)}<br>
+                Net Quote Amount: ${money(netQuote)}<br>
+                Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
+                Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
+                Estimated Margin: ${margin}%
+              </div>
+            `
+            : `
+              <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
+              <div class="mini" style="margin-top:6px;line-height:1.45;">
+                This equipment review record is visible, but the rep has not entered quote details yet.
+              </div>
+            `
+        }
 
-          ${renderQuoteApprovalActionPanel(rec)}
+        ${renderQuoteApprovalActionPanel(rec)}
 
-          ${
-            quoteAmount
-              ? `
-                <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
-                  Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
-                </div>
-              `
-              : ""
-          }
-        </div>
-      `,
-      "Financial Record"
-    )}
+        ${
+          quoteAmount
+            ? `
+              <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
+                Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
+              </div>
+            `
+            : ""
+        }
+      </div>
+    </div>
       </div>
     </div>
 
@@ -10922,37 +10869,30 @@ function saveInstallBaseFix(id) {
             `
         }
 
-${renderRepFinancialRecordCard(
-          rec,
-          `
-            <div class="v">
-              ${
-                quoteAmount
-                  ? `
-                    <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote Amount</div>
-                    <div class="mini" style="margin-top:6px;line-height:1.5;">
-                      Applied Trade-In Credit: -${money(tradeInCredit)}<br>
-                      Net Quote Amount: ${money(netQuote)}<br>
-                      Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
-                      Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
-                      Estimated Margin: ${margin}%
-                    </div>
-                    ${renderQuoteApprovalActionPanel(rec)}
-                    <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
-                      Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. ESPIN LINK does not determine pricing, profitability, margin, value, or financial outcome.
-                    </div>
-                  `
-                  : `
-                    <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
-                    <div class="mini" style="margin-top:8px;line-height:1.45;">
-                      This new project has been created, but the rep has not finalized quote details yet.
-                    </div>
-                  `
-              }
-            </div>
-          `,
-          "Financial Record"
-        )}
+       <div class="detail-card rep-financial-review-card">
+  <div class="k">Financial Review</div>
+          <div class="v">
+            ${
+              quoteAmount
+                ? `
+                  <div style="font-weight:900;color:#41ff9c;font-size:18px;">${money(quoteAmount)} Gross Quote Amount</div>
+                  <div class="mini" style="margin-top:6px;line-height:1.5;">
+                    Applied Trade-In Credit: -${money(tradeInCredit)}<br>
+                    Net Quote Amount: ${money(netQuote)}<br>
+                    Rep-Entered Estimated Cost: ${money(estimatedCost)}<br>
+                    Rep-Entered Estimated Profit: <strong style="color:${profit >= 0 ? "#41ff9c" : "#ff6b6b"};">${money(profit)}</strong><br>
+                    Estimated Margin: ${margin}%
+                  </div>
+${renderQuoteApprovalActionPanel(rec)}
+                  <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">Financial figures are calculated from rep-entered quote amount, rep-entered estimated cost, and manually applied trade-in credit. AXIS does not determine pricing, profitability, margin, value, or financial outcome.</div>
+                `
+                : `
+                  <span style="color:#ffd84d;font-weight:800;">Quote not created yet</span>
+                  <div class="mini" style="margin-top:8px;line-height:1.45;">This new project has been created, but the rep has not finalized quote details yet.</div>
+                `
+            }
+          </div>
+        </div>
         <div class="detail-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
           <div class="k">Project Outcome</div>
          <div class="v" style="margin-bottom:12px;">${escapeHtml(formatStatusText(rec.quote_status || "open"))}</div>
@@ -12704,6 +12644,9 @@ function reviewApprovedQuote() {
     function submitQuoteForApproval(rec) {
   if (!rec || !rec.quote_amount) return;
 
+  // Protect the full Rep workspace before Quote Review receives its packet.
+  saveRecords();
+
   let queue = [];
 
   try {
@@ -12773,6 +12716,9 @@ function reviewApprovedQuote() {
   localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
   localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+
+  // Quote Review receives a separate packet; the Rep record remains local.
+  saveRecords();
 
   window.dispatchEvent(new Event("axis_quote_approval_update"));
 }
