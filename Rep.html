@@ -13950,6 +13950,94 @@ if (showCompletedProjectsBtn) {
 }
 
     document.addEventListener("DOMContentLoaded", init);
-  </script>
+  
+// FINAL NEW PROJECT TABLE OVERRIDE - 13 COLUMN ALIGNMENT
+window.renderNewProjectsTable = function renderNewProjectsTable() {
+  const panel = document.getElementById("newProjectsPanel");
+  const tbody = document.getElementById("newProjectsTableBody");
+  if (!panel || !tbody) return;
+
+  const newProjects = state.records
+    .filter(r => r && r.project_type === "new_project_record")
+    .filter(recordMatchesSelectedRep);
+
+  if (!newProjects.length) {
+    panel.style.display = "none";
+    tbody.innerHTML = "";
+    document.getElementById("newProjectDetailArea")?.classList.add("hidden");
+    return;
+  }
+
+  panel.style.display = "block";
+
+  tbody.innerHTML = newProjects.map(rec => {
+    const selectedClass = rec.id === state.selectedId ? "selected" : "";
+    const domValue = clean(rec.dom || rec.year || rec.manufacture_year || rec.manufacturing_year || "");
+    const calculatedAge = ageFromDom(domValue);
+    const ageText = calculatedAge !== null && calculatedAge !== undefined && calculatedAge !== ""
+      ? `${escapeHtml(String(calculatedAge))} yrs`
+      : "-";
+
+    const projectId = clean(rec.oem_project_id || rec.project_id || rec.id || "-");
+    const make = clean(rec.make || "New Project");
+    const model = clean(rec.model || rec.new_project_name || "-");
+    const modality = clean(rec.modality || "PROJECT");
+    const serial = clean(rec.serial_number || rec.serial || "-");
+    const tradeInRef = clean(
+      rec.trade_in_reference ||
+      rec.trade_in_ref ||
+      rec.tradein_reference ||
+      rec.tradein_ref ||
+      rec.trade_in_reference_number ||
+      ""
+    );
+    const facility = clean(
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      rec.location ||
+      "Unknown Facility"
+    );
+    const rawSource = clean(rec.hub_source || rec.source_system || rec.source || "New ESPIN LINK Project");
+    const sourceText = lower(rawSource).includes("install base") ? "Install Base" : rawSource;
+
+    return `
+      <tr class="${selectedClass}" data-record-id="${escapeHtml(rec.id)}">
+        <td>${escapeHtml(projectId)}</td>
+        <td>${escapeHtml(make)}</td>
+        <td class="wrap">${escapeHtml(model)}</td>
+        <td>${escapeHtml(modality)}</td>
+        <td>${escapeHtml(serial)}</td>
+        <td>${escapeHtml(domValue || "-")}</td>
+        <td>${ageText}</td>
+        <td>
+          <button
+            type="button"
+            class="review-reason-button"
+            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
+            aria-label="Open Install Base review reason"
+            title="Show why this Install Base review was created"
+          >
+            ${renderReviewSignalCell(rec)}
+          </button>
+        </td>
+        <td>${escapeHtml(tradeInRef || "-")}</td>
+        <td class="wrap">${escapeHtml(facility)}</td>
+        <td><span class="source-pill">${escapeHtml(sourceText)}</span></td>
+        <td class="manual-priority-cell">${renderPrioritySelect(rec)}</td>
+        <td>${renderRepStatusCell(rec)}</td>
+      </tr>
+    `;
+  }).join("");
+};
+
+// Re-render immediately so an already-open page uses the corrected 13-column row.
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => window.renderNewProjectsTable());
+} else {
+  window.renderNewProjectsTable();
+}
+</script>
 </body>
 </html>
