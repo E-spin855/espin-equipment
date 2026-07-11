@@ -3011,7 +3011,6 @@ button.message-sent-state{
       <th>Trade-In Ref</th>
       <th>Facility</th>
       <th>Source</th>
-      <th>My Priority</th>
       <th>Rep Status</th>
     </tr>
   </thead>
@@ -6230,7 +6229,23 @@ function clearLeadPriorities() {
 
 function renderSalesRouting() {
   const el = $('salesRoutingPanel');
+  const wrap = $('salesRoutingPanelWrap');
   if (!el) return;
+
+  // Sales routing applies only to existing equipment/project records.
+  // Rep-created New Project intake records must never display or participate here.
+  const eligibleExistingRecords = state.records
+    .filter(rec => recordMatchesSelectedRep(rec))
+    .filter(rec => rec.project_type !== 'new_project_record')
+    .filter(rec => !isCompletedRepRecord(rec));
+
+  if (!eligibleExistingRecords.length) {
+    if (wrap) wrap.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  if (wrap) wrap.style.display = 'block';
 
   const route = getSalesRoutingRecords();
   const first = route[0];
@@ -6405,10 +6420,7 @@ function renderSalesRouting() {
         <!-- 11: Source -->
         <td><span class="source-pill">${escapeHtml(sourceText)}</span></td>
 
-        <!-- 12: My Priority -->
-        <td class="manual-priority-cell">${renderPrioritySelect(rec)}</td>
-
-        <!-- 13: Rep Status -->
+        <!-- 12: Rep Status -->
         <td>${renderRepStatusCell(rec)}</td>
       </tr>
     `;
