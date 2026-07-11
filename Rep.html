@@ -4519,7 +4519,11 @@ function importRepQueueRecords() {
 const isNewHubRow =
   !existing &&
   !isIncomingInstallBaseFix;
-
+const isIncomingManagerFix = Boolean(
+  item.install_base_correction_status === "corrected_by_manager" ||
+  item.install_base_response_status === "manager_correction_sent" ||
+  item.install_base_fix_status === "manager_reviewed"
+);
 const hubArrivalTime =
   item.install_base_released_at ||
   item.install_base_auto_synced_at ||
@@ -4574,7 +4578,34 @@ const hubArrivalTime =
         ? getInstallBaseFixLabel(item)
         : (item.rep_selected_manual_action_label || item.rep_action_label || ""),
 
-      manager_response_seen_by_rep: item.manager_response_seen_by_rep ?? true
+      manager_response_seen_by_rep:
+  isIncomingManagerFix
+    ? false
+    : (item.manager_response_seen_by_rep ?? true),
+
+rep_unseen_update:
+  isIncomingManagerFix
+    ? true
+    : item.rep_unseen_update === true,
+
+rep_flash_at:
+  isIncomingManagerFix
+    ? (
+        item.install_base_correction_at ||
+        item.install_base_response_at ||
+        new Date().toISOString()
+      )
+    : (item.rep_flash_at || ""),
+
+rep_flash_type:
+  isIncomingManagerFix
+    ? "manager_fix"
+    : (item.rep_flash_type || ""),
+
+install_base_fixed_seen_by_rep:
+  isIncomingManagerFix
+    ? false
+    : item.install_base_fixed_seen_by_rep
     };
 
     const upsertResult = upsertRepWorkspaceRecord(releasedRecord);
