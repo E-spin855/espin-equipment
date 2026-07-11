@@ -6373,18 +6373,15 @@ function clearLeadPriorities() {
 }
 
 function renderSalesRouting() {
-  const el = $('salesRoutingPanel');
-  const wrap = $('salesRoutingPanelWrap');
+  const el = $("salesRoutingPanel");
+  const wrap = $("salesRoutingPanelWrap");
   if (!el) return;
 
-  // The route panel is controlled by the actual rows currently shown in
-  // My Equipment Review Records. New Project Review Items never count.
-  const equipmentTableBody = $("tableBody");
-  const renderedEquipmentRows = equipmentTableBody
-    ? Array.from(equipmentTableBody.querySelectorAll("tr[data-record-id]"))
-    : [];
+  // My Sales Route must not exist until the Rep has manually selected
+  // My Priority on at least one record in My Equipment Review Records.
+  const route = getSalesRoutingRecords();
 
-  if (!renderedEquipmentRows.length) {
+  if (!route.length) {
     if (wrap) wrap.style.display = "none";
     el.innerHTML = "";
     return;
@@ -6392,65 +6389,82 @@ function renderSalesRouting() {
 
   if (wrap) wrap.style.display = "block";
 
-  const route = getSalesRoutingRecords();
   const first = route[0];
   const nextFacility = first
-    ? (first.site || first.facility || first.hospital || first.hospital_name || 'Selected record')
-    : 'No top priority set';
+    ? (first.site || first.facility || first.hospital || first.hospital_name || "Selected record")
+    : "No top priority set";
 
   const routeRows = route.map((rec, index) => {
-    const equipment = [rec.make, rec.model, rec.modality].filter(Boolean).join(' · ') || 'Equipment record';
-    const facility = rec.site || rec.facility || rec.hospital || rec.hospital_name || '';
-    const serial = rec.serial_number || rec.serial || '';
+    const equipment = [rec.make, rec.model, rec.modality]
+      .filter(Boolean)
+      .join(" · ") || "Equipment record";
+
+    const facility =
+      rec.site ||
+      rec.facility ||
+      rec.hospital ||
+      rec.hospital_name ||
+      "";
+
+    const serial = rec.serial_number || rec.serial || "";
 
     return `
       <tr data-record-id="${escapeHtml(rec.id)}">
         <td><strong>${index + 1}</strong></td>
-        <td class="wrap">
-          <strong>${escapeHtml(facility)}</strong>
-          <div class="mini">${escapeHtml(rec.oem_project_id || rec.asset_id || rec.id || '')}</div>
-        </td>
-        <td class="wrap">
-          ${escapeHtml(equipment)}
-          <div class="mini">Serial: ${escapeHtml(serial || '—')}</div>
-        </td>
+        <td>${escapeHtml(facility)}</td>
         <td>
-          ${renderPrioritySelect(rec)}
+          <div><strong>${escapeHtml(equipment)}</strong></div>
+          ${serial ? `<div class="mini">${escapeHtml(serial)}</div>` : ""}
         </td>
+        <td>${escapeHtml(String(getManualPriority(rec)))}</td>
         <td>
-          <button type="button" class="open-record-btn" onclick="event.stopPropagation(); selectRow('${escapeJs(rec.id)}');">Open</button>
+          <button
+            type="button"
+            class="open-record-btn"
+            onclick="selectRow('${escapeJs(rec.id)}')"
+          >
+            Open
+          </button>
         </td>
       </tr>
     `;
-  }).join('');
+  }).join("");
 
   el.innerHTML = `
-    <div class="sales-route-grid">
-      <div class="sales-route-card">
-        <div class="k">Route Stops</div>
-        <div class="v">${route.length}</div>
+    <div class="route-summary-grid">
+      <div class="route-summary-card">
+        <div class="route-summary-label">Route Stops</div>
+        <div class="route-summary-value">${route.length}</div>
       </div>
-      <div class="sales-route-card">
-        <div class="k">Top Priority</div>
-        <div class="v">${escapeHtml(nextFacility)}</div>
+
+      <div class="route-summary-card">
+        <div class="route-summary-label">Top Priority</div>
+        <div class="route-summary-value">${escapeHtml(nextFacility)}</div>
       </div>
-      <div class="sales-route-card">
-        <div class="k">Route Control</div>
-        <div class="v">Rep-entered order</div>
+
+      <div class="route-summary-card">
+        <div class="route-summary-label">Route Control</div>
+        <div class="route-summary-value">Rep-entered order</div>
       </div>
     </div>
 
-    <div class="sales-route-note">
-      Manual routing only: the rep chooses the priority/order. The proximity view can help her see nearby accounts, but ESPIN LINK does not optimize routes, score, recommend, or automatically select leads.
+    <div class="route-manual-note">
+      Manual routing only: the rep chooses the priority/order. The proximity
+      view can help identify nearby accounts, but ESPIN LINK does not optimize
+      routes, score, recommend, or automatically select leads.
     </div>
 
-    <div class="btns" style="margin-bottom:14px;">
-      <button type="button" class="green" onclick="openTopPriorityRecord();">Open Top Priority</button>
-      <button type="button" class="secondary" onclick="clearLeadPriorities();">Clear Priority Order</button>
+    <div class="btns" style="margin-top:14px;">
+      <button type="button" class="green" onclick="openTopPriorityRecord()">
+        Open Top Priority
+      </button>
+      <button type="button" class="secondary" onclick="clearLeadPriorities()">
+        Clear Priority Order
+      </button>
     </div>
 
-    <div class="table-wrap">
-      <table class="sales-route-table">
+    <div class="table-wrap" style="margin-top:14px;">
+      <table class="route-table">
         <thead>
           <tr>
             <th>Stop</th>
@@ -6461,149 +6475,11 @@ function renderSalesRouting() {
           </tr>
         </thead>
         <tbody>
-          ${routeRows || '<tr><td colspan="5">No route stops yet. Set My Priority on records below.</td></tr>'}
+          ${routeRows}
         </tbody>
       </table>
     </div>
   `;
-}
-
-    function renderNewProjectsTable() {
-  const panel = $("newProjectsPanel");
-  const tbody = $("newProjectsTableBody");
-  const newProjects = state.records
-    .filter(r => r.project_type === "new_project_record")
-    .filter(recordMatchesSelectedRep);
-
-  if (!newProjects.length) {
-    panel.style.display = "none";
-    tbody.innerHTML = "";
-    $("newProjectDetailArea")?.classList.add("hidden");
-    return;
-  }
-
-  panel.style.display = "block";
-
-  tbody.innerHTML = newProjects.map(rec => {
-    const selectedClass = rec.id === state.selectedId ? "selected" : "";
-    const domValue = clean(
-      rec.dom ||
-      rec.year ||
-      rec.manufacture_year ||
-      rec.manufacturing_year ||
-      ""
-    );
-    const age = ageFromDom(domValue);
-    const tradeInReference = clean(
-      rec.trade_in_reference ||
-      rec.trade_in_ref ||
-      rec.tradein_reference ||
-      rec.tradein_ref ||
-      rec.trade_in_reference_number ||
-      ""
-    );
-    const facility = clean(
-      rec.site ||
-      rec.facility ||
-      rec.hospital ||
-      rec.hospital_name ||
-      rec.location ||
-      ""
-    );
-    const rawSource = clean(
-      rec.hub_source ||
-      rec.source_system ||
-      rec.source ||
-      "New ESPIN LINK Project"
-    );
-    const sourceText = lower(rawSource).includes("install base")
-      ? "Install Base"
-      : rawSource;
-
-    return `
-      <tr class="${selectedClass}" data-record-id="${escapeHtml(rec.id)}">
-        <!-- 1: Project ID -->
-        <td>${escapeHtml(rec.oem_project_id || rec.id || "-")}</td>
-
-        <!-- 2: Make -->
-        <td>${escapeHtml(rec.make || "New Project")}</td>
-
-        <!-- 3: Model -->
-        <td class="wrap">${escapeHtml(rec.model || rec.new_project_name || "-")}</td>
-
-        <!-- 4: Modality -->
-        <td>${escapeHtml((rec.modality && rec.modality !== "PROJECT") ? rec.modality : "Not Entered")}</td>
-
-        <!-- 5: Serial -->
-        <td>${escapeHtml(rec.serial_number || rec.serial || "-")}</td>
-
-        <!-- 6: DOM -->
-        <td>${escapeHtml(domValue || "-")}</td>
-
-        <!-- 7: Age -->
-        <td>${age !== null && age !== undefined && age !== "" ? `${escapeHtml(String(age))} yrs` : "-"}</td>
-
-        <!-- 8: Install Base Review -->
-        <td>
-          <button
-            type="button"
-            class="review-reason-button"
-            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
-            aria-label="Open Install Base review reason"
-            title="Show why this Install Base review was created"
-          >
-            ${renderReviewSignalCell(rec)}
-          </button>
-        </td>
-
-        <!-- 9: Trade-In Ref -->
-        <td>${escapeHtml(tradeInReference || "-")}</td>
-
-        <!-- 10: Facility -->
-        <td class="wrap">${escapeHtml(facility || "Unknown Facility")}</td>
-
-        <!-- 11: Source -->
-        <td><span class="source-pill">${escapeHtml(sourceText)}</span></td>
-
-        <!-- 12: Rep Status -->
-        <td>${renderRepStatusCell(rec)}</td>
-      </tr>
-    `;
-  }).join("");
-}
-
-    function getDisplayOrderWeight(rec, today = todayISO()) {
-  /*
-    Display ordering only.
-    This is not a recommendation, ranking, score, offer prioritization,
-    customer prioritization, next-best-action calculation, or opportunity engine.
-  */
-
-  if (!rec) return 0;
-
-  // Unseen manager responses are shown first so the rep can view manager feedback.
-  if (rec.manager_response_action && !rec.manager_response_seen_by_rep) return 50;
-
-  // Completed/submitted/postponed items are lower because no immediate display attention is needed.
-  if (rec.lifecycle_completed) return 0;
-  if (rec.submitted_to) return 0;
-  if (rec.next_action_date && rec.next_action_date > today) return 5;
-
-  const status = lower(rec.quote_status);
-
-  // Closed outcomes remain visible but are not elevated.
-  if (status === "won") return 10;
-  if (status === "lost") return 10;
-
-  // Open quote records are grouped for visibility only.
-  // No quote value, margin, customer value, probability, or recommended action is used.
-  if (rec.quote_amount) return 30;
-
-  // OEM Review Fields are grouped for display only.
-  // AXIS does not decide importance or recommend action.
-  if (getAlerts(rec, today).length) return 20;
-
-  return 0;
 }
 function getRepMissingFieldLabel(fieldName) {
   const labels = {
