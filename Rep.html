@@ -3357,6 +3357,7 @@ button.message-sent-state{
 
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
+const REP_WORKSPACE_BACKUP_KEY = "espin_rep_workspace_records_v1";
 
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const MANAGER_NAME =
@@ -4655,22 +4656,32 @@ install_base_review_reason: originalInstallBaseReviewReason,
    function loadRecords(preserveSelection = true) {
   const previousSelectedId = state.selectedId;
 
+  let sharedRecords = [];
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-
-    state.records = Array.isArray(saved)
-      ? saved.filter(rec =>
-          isRepRoutingComplete(rec) &&
-          rec.install_base_released_to !== "manager" &&
-          rec.release_destination !== "manager" &&
-          rec.manager_visible !== true
-        )
-      : [];
+    sharedRecords = Array.isArray(saved) ? saved : [];
   } catch {
-    state.records = [];
+    sharedRecords = [];
   }
+
+  const protectedRepRecords = readRepWorkspaceBackup();
+
+  // The dedicated Rep copy is authoritative. Shared Manager/Hub updates may
+  // add information, but blank/shared copies cannot erase Rep-entered fields.
+  const combinedRecords = mergeSharedRecordsIntoRepBackup(
+    protectedRepRecords,
+    sharedRecords
+  );
+
+  state.records = combinedRecords.filter(rec =>
+    isRepRoutingComplete(rec) &&
+    rec.install_base_released_to !== "manager" &&
+    rec.release_destination !== "manager" &&
+    rec.manager_visible !== true
+  );
+
   mergeInstallBaseQueueIntoRepRecords();
-  // Purge any stale Rep copy that was saved before the assignment gate existed.
+
   const routedRecords = state.records.filter(rec => {
     const complete = isRepRoutingComplete(rec);
 
@@ -4683,12 +4694,10 @@ install_base_review_reason: originalInstallBaseReviewReason,
 
   if (routedRecords.length !== state.records.length) {
     state.records = routedRecords;
-    saveRecords();
-    localStorage.setItem(
-      "axis_rep_sync_ping_v1",
-      String(Date.now())
-    );
   }
+
+  // Re-save the recovered/merged Rep records immediately so both stores heal.
+  saveRecords();
 
   if (
     preserveSelection &&
@@ -4882,8 +4891,97 @@ function writeArrayKey(key, arr) {
   localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
     function saveRecords() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records || []));
+      const records = Array.isArray(state.records) ? state.records : [];
+      const payload = JSON.stringify(records);
+
+      // Shared cross-page storage.
+      localStorage.setItem(STORAGE_KEY, payload);
+
+      // Protected Rep workspace copy. Manager/Hub pages must never erase this.
+      localStorage.setItem(REP_WORKSPACE_BACKUP_KEY, payload);
     }
+
+function readRepWorkspaceBackup() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(REP_WORKSPACE_BACKUP_KEY) || "[]"
+    );
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeRepProtectedRecord(protectedRecord, sharedRecord) {
+  const protectedCopy = { ...(protectedRecord || {}) };
+  const sharedCopy = { ...(sharedRecord || {}) };
+
+  // Start with shared updates, then restore every meaningful Rep-entered value.
+  const merged = {
+    ...sharedCopy,
+    ...protectedCopy
+  };
+
+  Object.keys(sharedCopy).forEach(field => {
+    const protectedValue = protectedCopy[field];
+    const sharedValue = sharedCopy[field];
+
+    // Accept new Manager/Hub values only when the Rep copy has no value.
+    if (!hasMergeValue(protectedValue) && hasMergeValue(sharedValue)) {
+      merged[field] = sharedValue;
+    }
+  });
+
+  merged.id =
+    protectedCopy.id ||
+    sharedCopy.id ||
+    protectedCopy.key ||
+    sharedCopy.key ||
+    uuid();
+
+  merged.key =
+    protectedCopy.key ||
+    sharedCopy.key ||
+    getRecordKey(protectedCopy) ||
+    getRecordKey(sharedCopy);
+
+  // A Rep workspace record must remain visible on the Rep page.
+  merged.rep_visible = protectedCopy.rep_visible !== false;
+  merged.manager_visible = false;
+
+  return merged;
+}
+
+function mergeSharedRecordsIntoRepBackup(backupRecords, sharedRecords) {
+  const merged = Array.isArray(backupRecords)
+    ? backupRecords.map(record => ({ ...record }))
+    : [];
+
+  (Array.isArray(sharedRecords) ? sharedRecords : []).forEach(incoming => {
+    // Manager-only copies must not replace the protected Rep record.
+    const index = merged.findIndex(existing =>
+      sameWorkspaceEquipmentRecord(existing, incoming)
+    );
+
+    if (index >= 0) {
+      merged[index] = mergeRepProtectedRecord(merged[index], incoming);
+      return;
+    }
+
+    const belongsOnRepPage =
+      isRepRoutingComplete(incoming) &&
+      incoming.install_base_released_to !== "manager" &&
+      incoming.release_destination !== "manager" &&
+      incoming.rep_visible !== false &&
+      incoming.manager_visible !== true;
+
+    if (belongsOnRepPage) {
+      merged.push({ ...incoming, manager_visible: false });
+    }
+  });
+
+  return merged;
+}
 
    function sameSyncRecord(a, b) {
   if (!a || !b) return false;
@@ -13846,6 +13944,16 @@ function scheduleRepSyncRender() {
 }
   function init() {
   loadRecords(true);
+
+  window.addEventListener("pagehide", () => {
+    saveRecords();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      saveRecords();
+    }
+  });
   importRepQueueRecords();
   importTradeInSyncRecords();
   updateAxisShareStatus();
