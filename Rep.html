@@ -4910,6 +4910,24 @@ function writeArrayKey(key, arr) {
 }
     function saveRecords() {
       const records = Array.isArray(state.records) ? state.records : [];
+
+      records.forEach(rec => {
+        const isWonRecord =
+          String(rec.quote_status || "").toLowerCase() === "won" ||
+          String(rec.rep_status || "").toLowerCase() === "won" ||
+          rec.new_project_promoted === true ||
+          rec.lifecycle_created_from_quote_won === true;
+
+        if (isWonRecord) {
+          promoteWonProjectToEquipmentReview(
+            rec,
+            rec.new_project_promoted_at ||
+            rec.equipment_review_added_at ||
+            new Date().toISOString()
+          );
+        }
+      });
+
       const payload = JSON.stringify(records);
 
       // Shared cross-page storage.
@@ -5125,7 +5143,20 @@ const REP_OWNED_MERGE_FIELDS = [
   "manager_territory",
   "manager_region",
   "owner_group",
-  "owner_group_name"
+  "owner_group_name",
+  "project_type",
+  "axis_parent_project_type",
+  "new_project_badge",
+  "is_new_project",
+  "rep_created_new_project",
+  "new_project_promoted",
+  "new_project_promoted_at",
+  "lifecycle_created_from_quote_won",
+  "install_base_lifecycle_entry",
+  "install_base_lifecycle_status",
+  "install_base_review_status",
+  "install_base_sync_type",
+  "equipment_review_added_at"
 ];
 
 function hasMergeValue(v) {
@@ -6244,6 +6275,20 @@ function getManualPriority(rec) {
 
 function isRepNewProjectIntakeRecord(rec) {
   if (!rec) return false;
+
+  const quoteStatus = String(rec.quote_status || "").trim().toLowerCase();
+  const repStatus = String(rec.rep_status || "").trim().toLowerCase();
+
+  const isWonLifecycleRecord = Boolean(
+    quoteStatus === "won" ||
+    repStatus === "won" ||
+    rec.new_project_promoted === true ||
+    rec.lifecycle_created_from_quote_won === true ||
+    rec.install_base_lifecycle_entry === true ||
+    String(rec.project_type || "").trim().toLowerCase() === "equipment_review_record"
+  );
+
+  if (isWonLifecycleRecord) return false;
 
   const projectType = String(
     rec.project_type ||
@@ -11855,9 +11900,7 @@ if (
       rec.manager_flash_at = now;
 
     if (status === "won") {
-  rec.rep_status = "won";
-  rec.rep_action = "won";
-  rec.rep_action_label = "Won";
+  promoteWonProjectToEquipmentReview(rec, now);
 
   /*
     Important:
@@ -11871,37 +11914,7 @@ if (
   rec.source === "New AXIS Project";
 
 if (isNewProjectRecord) {
-  rec.project_type = "equipment_review_record";
-
-  /* Remove it from New Project Review Items */
-  rec.new_project_badge = false;
-  rec.new_project_promoted = true;
-  rec.new_project_promoted_at = now;
-
-  /* Add it to Equipment Review Records */
-  rec.rep_visible = true;
-  rec.rep_hidden = false;
-  rec.rep_deleted = false;
-
-  rec.lifecycle_created_from_quote_won = true;
-  rec.install_base_lifecycle_entry = true;
-  rec.install_base_lifecycle_status = "active";
-  rec.install_base_review_status = "lifecycle_active";
-  rec.install_base_sync_type = "won_project_lifecycle_entry";
-
-  rec.source = "Rep Won Project";
-  rec.hub_source = "Equipment Review Workspace";
-
-  rec.oem_review_type = "project";
-  rec.review_type = "project";
-  rec.oem_review_label = "Project Won - Enter Equipment Review";
-  rec.review_label = "Project Won - Enter Equipment Review";
-
-  rec.oem_review_reason =
-    "Rep marked the new project as Won. The record was moved into Equipment Review Records.";
-
-  rec.review_reason =
-    "Rep marked the new project as Won. The record was moved into Equipment Review Records.";
+  promoteWonProjectToEquipmentReview(rec, now);
 }
 
   rec.project_management_visible = true;
@@ -12470,13 +12483,9 @@ queue.unshift(updated);
       alert("Trade-in reference applied to quote.");
     }
 
-    function markNewProjectWon(id) {
-  const rec = state.records.find(r => r.id === id);
-  if (!rec) return;
-
-  if (!confirm("Mark this project as won and move it into Equipment Review Records?")) return;
-
-  const now = new Date().toISOString();
+    
+function promoteWonProjectToEquipmentReview(rec, now = new Date().toISOString()) {
+  if (!rec) return rec;
 
   rec.quote_status = "won";
   rec.rep_status = "won";
@@ -12485,23 +12494,60 @@ queue.unshift(updated);
   rec.rep_last_action_at = now;
 
   rec.project_type = "equipment_review_record";
-  rec.source = "Won Project Moved to Equipment Review";
-  rec.equipment_review_added_at = now;
+  rec.axis_parent_project_type = "equipment_review_record";
+
+  rec.new_project_badge = false;
+  rec.is_new_project = false;
+  rec.rep_created_new_project = false;
+  rec.new_project_promoted = true;
+  rec.new_project_promoted_at = now;
+
+  rec.lifecycle_created_from_quote_won = true;
+  rec.install_base_lifecycle_entry = true;
+  rec.install_base_lifecycle_status = "active";
+  rec.install_base_review_status = "lifecycle_active";
+  rec.install_base_sync_type = "won_project_lifecycle_entry";
 
   rec.lifecycle_completed = false;
   rec.completed_at = "";
   rec.completed_by = "";
 
+  rec.rep_visible = true;
+  rec.rep_hidden = false;
+  rec.rep_deleted = false;
+  rec.manager_visible = false;
+  rec.manager_only = false;
+
+  if (rec.release_destination === "manager") delete rec.release_destination;
+  if (rec.install_base_released_to === "manager") delete rec.install_base_released_to;
+
+  rec.source = "Won Project Moved to Equipment Review";
+  rec.hub_source = "Equipment Review Workspace";
+  rec.equipment_review_added_at = rec.equipment_review_added_at || now;
+
   rec.make = rec.tradein_equipment_make || rec.make || "Converted Project";
   rec.model = rec.tradein_equipment_model || rec.model || "";
   rec.modality = rec.tradein_equipment_modality || rec.modality || "OTHER";
   rec.serial_number =
-    rec.tradein_equipment_serial_number || rec.serial_number || "";
+    rec.tradein_equipment_serial_number ||
+    rec.serial_number ||
+    rec.serial ||
+    "";
   rec.dom = rec.tradein_equipment_dom || rec.dom || "";
 
   rec.project_management_ready = true;
-  rec.project_management_status = "Pending PM Review";
-  rec.project_management_created_at = now;
+  rec.project_management_visible = true;
+  rec.project_management_status = "Available for PM Review";
+  rec.project_management_created_at =
+    rec.project_management_created_at || now;
+
+  rec.oem_review_type = "project";
+  rec.review_type = "project";
+  rec.oem_review_label = "Project Won - Enter Equipment Review";
+  rec.review_label = "Project Won - Enter Equipment Review";
+  rec.oem_review_reason =
+    "Rep marked the new project as Won. The record moved into My Equipment Review Records.";
+  rec.review_reason = rec.oem_review_reason;
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = now;
@@ -12510,8 +12556,23 @@ queue.unshift(updated);
     "Won project moved into equipment review pipeline";
 
   rec.next_action_date = "";
-  rec.rep_hidden = false;
-  rec.rep_deleted = false;
+
+  return rec;
+}
+
+function markNewProjectWon(id) {
+  const rec = state.records.find(r => String(r.id) === String(id));
+  if (!rec) return;
+
+  if (!confirm("Mark this project as won and move it into My Equipment Review Records?")) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  promoteWonProjectToEquipmentReview(rec, now);
+
+  // Persist the Rep lifecycle record before any cross-page packets are written.
+  saveRecords();
 
   syncFinalOutcomeToInstallBase(
     rec,
@@ -12520,7 +12581,21 @@ queue.unshift(updated);
   );
 
   syncFeedStatus(rec);
+
+  // Re-assert the Rep-local lifecycle state after Manager/Install Base sync.
+  const localRecord = state.records.find(
+    item => String(item.id) === String(rec.id)
+  );
+
+  if (localRecord) {
+    promoteWonProjectToEquipmentReview(localRecord, now);
+  }
+
+  saveRecords();
+  state.selectedId = rec.id;
   render();
+
+  showBanner("✅ Project marked WON and moved to My Equipment Review Records");
 }
 
     function markNewProjectLost(id) {
