@@ -121,6 +121,30 @@
     .panel-head h2{margin:0;font-size:18px}
     .panel-body{padding:18px}
 
+    .equipment-review-toolbar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+
+    .equipment-review-toolbar input{
+      flex:1 1 360px;
+      min-width:240px;
+    }
+
+    .equipment-review-collapse-btn{
+      min-width:132px;
+      min-height:40px;
+      padding:9px 13px;
+      white-space:nowrap;
+    }
+
+    body.my-equipment-records-collapsed #lifecycleDetailPanel{
+      display:none!important;
+    }
+
     .footer-note{
       margin-top:14px;
       font-size:12px;
@@ -4632,10 +4656,29 @@ button.message-sent-state{
               >
                 Show Completed Projects
               </button>
+
+              <button
+                type="button"
+                class="secondary equipment-review-collapse-btn"
+                id="toggleMyEquipmentReviewBtn"
+                onclick="toggleMyEquipmentReviewPanel()"
+              >
+                Hide Records
+              </button>
             </div>
           </div>
 
-         <div class="panel-body table-wrap">
+         <div class="panel-body" id="myEquipmentReviewBody">
+           <div class="equipment-review-toolbar">
+             <input
+               id="myEquipmentReviewSearch"
+               type="search"
+               placeholder="Search project, equipment, serial, facility, source, review, priority, or status..."
+               oninput="updateMyEquipmentReviewSearch(this.value)"
+             />
+           </div>
+
+           <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -4657,6 +4700,7 @@ button.message-sent-state{
 
               <tbody id="tableBody"></tbody>
             </table>
+           </div>
           </div>
         </div>
 
@@ -5022,6 +5066,8 @@ installBaseFixResponseRecordId: "",
   repAttentionAlertOpen: false,
   repProximityOpen: false,
   repActionOpen: false,
+  myEquipmentReviewOpen: true,
+  myEquipmentReviewSearch: "",
   showCompleted: true,
   detailUpdateFlash: {
     manager: false,
@@ -8817,14 +8863,92 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
+function toggleMyEquipmentReviewPanel() {
+  state.myEquipmentReviewOpen = state.myEquipmentReviewOpen !== true;
+
+  document.body.classList.toggle(
+    "my-equipment-records-collapsed",
+    state.myEquipmentReviewOpen !== true
+  );
+
+  const body = $("myEquipmentReviewBody");
+  const button = $("toggleMyEquipmentReviewBtn");
+
+  if (body) {
+    body.classList.toggle("hidden", !state.myEquipmentReviewOpen);
+  }
+
+  if (button) {
+    button.textContent = state.myEquipmentReviewOpen
+      ? "Hide Records"
+      : "Open Records";
+  }
+}
+
+function updateMyEquipmentReviewSearch(value) {
+  state.myEquipmentReviewSearch = String(value || "").trim().toLowerCase();
+  renderTable();
+}
+
+function getMyEquipmentReviewSearchText(rec) {
+  return [
+    rec.oem_project_id,
+    rec.project_id,
+    rec.asset_id,
+    rec.id,
+    rec.make,
+    rec.manufacturer,
+    rec.model,
+    rec.equipment_model,
+    rec.modality,
+    rec.equipment_modality,
+    rec.serial_number,
+    rec.serial,
+    rec.system_serial,
+    rec.site,
+    rec.facility,
+    rec.hospital,
+    rec.hospital_name,
+    rec.customer,
+    rec.source,
+    rec.source_system,
+    rec.record_origin,
+    rec.install_base_review_label,
+    rec.oem_review_label,
+    rec.review_label,
+    rec.rep_status,
+    rec.status,
+    rec.rep_action,
+    rec.rep_manual_priority,
+    rec.sales_priority
+  ]
+    .filter(value => value !== null && value !== undefined)
+    .join(" ")
+    .toLowerCase();
+}
+
   function renderTable() {
   const tbody = $("tableBody");
 
   let visibleRecords = getMyEquipmentReviewRecords();
 
+  const equipmentSearch = String(
+    state.myEquipmentReviewSearch || ""
+  ).trim().toLowerCase();
+
+  if (equipmentSearch) {
+    visibleRecords = visibleRecords.filter(rec =>
+      getMyEquipmentReviewSearchText(rec).includes(equipmentSearch)
+    );
+  }
+
   if (!visibleRecords.length) {
     tbody.innerHTML =
-      '<tr><td colspan="13">No records</td></tr>';
+      `<tr><td colspan="13">${
+        state.myEquipmentReviewSearch
+          ? "No matching records"
+          : "No records"
+      }</td></tr>`;
     return;
   }
 
@@ -13069,6 +13193,35 @@ function showCompletedRepProjects() {
 
 
 function render() {
+  document.body.classList.toggle(
+    "my-equipment-records-collapsed",
+    state.myEquipmentReviewOpen !== true
+  );
+
+  const equipmentBody = $("myEquipmentReviewBody");
+  const equipmentToggle = $("toggleMyEquipmentReviewBtn");
+  const equipmentSearchInput = $("myEquipmentReviewSearch");
+
+  if (equipmentBody) {
+    equipmentBody.classList.toggle(
+      "hidden",
+      state.myEquipmentReviewOpen !== true
+    );
+  }
+
+  if (equipmentToggle) {
+    equipmentToggle.textContent =
+      state.myEquipmentReviewOpen === true
+        ? "Hide Records"
+        : "Open Records";
+  }
+
+  if (
+    equipmentSearchInput &&
+    equipmentSearchInput.value !== state.myEquipmentReviewSearch
+  ) {
+    equipmentSearchInput.value = state.myEquipmentReviewSearch || "";
+  }
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
