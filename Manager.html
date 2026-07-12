@@ -2555,74 +2555,6 @@ button.message-sent-state{
   }
 }
 
-
-/* Exact Rep field layout for Manager Response to Install Base */
-.manager-install-base-response-fields{
-  display:grid!important;
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  gap:18px 16px!important;
-  margin-top:18px!important;
-}
-
-.manager-install-base-response-fields > div{
-  min-width:0!important;
-}
-
-.manager-install-base-response-fields label{
-  display:block!important;
-  margin-bottom:6px!important;
-  color:#9bc6ec!important;
-  font-size:12px!important;
-  font-weight:500!important;
-  letter-spacing:.11em!important;
-  text-transform:uppercase!important;
-}
-
-.manager-install-base-response-fields input{
-  width:100%!important;
-  min-height:62px!important;
-  padding:14px 18px!important;
-  border:1px solid rgba(88,184,255,.22)!important;
-  border-radius:14px!important;
-  background:#081223!important;
-  color:var(--text)!important;
-  font-size:17px!important;
-  font-weight:600!important;
-  box-shadow:inset 0 0 0 1px rgba(0,229,255,.04)!important;
-}
-
-.manager-install-base-response-fields input.manager-install-base-fix-field-frame{
-  border:2px solid rgba(65,255,156,.95)!important;
-  box-shadow:
-    0 0 0 1px rgba(65,255,156,.28),
-    0 0 20px rgba(65,255,156,.44)!important;
-}
-
-.manager-install-base-correction-panel textarea{
-  min-height:120px!important;
-  margin-top:6px!important;
-  padding:14px 18px!important;
-  border-radius:14px!important;
-  font-size:16px!important;
-}
-
-.manager-install-base-correction-panel .btns{
-  margin-top:18px!important;
-}
-
-.manager-install-base-correction-panel .btns .green{
-  min-height:58px!important;
-  padding:14px 20px!important;
-  font-size:16px!important;
-  font-weight:950!important;
-}
-
-@media(max-width:900px){
-  .manager-install-base-response-fields{
-    grid-template-columns:1fr!important;
-  }
-}
-
 </style>
 
 <style>
@@ -4574,7 +4506,12 @@ function isRepInstallBaseFix(rec) {
 function isManagerInstallBaseFieldRequested(rec, fieldName) {
   if (!isManagerInstallBaseRequest(rec)) return false;
 
-  const requestedFields = getManagerInstallBaseIssueFields(rec).map(issue => issue.key);
+  // The Manager receives only Rep Name or Territory requests.
+  // Use only fields explicitly marked requested by the Hub packet.
+  const requestedFields = getManagerInstallBaseIssueFields(rec)
+    .filter(issue => issue.requested === true)
+    .map(issue => issue.key);
+
   if (!requestedFields.length) return false;
 
   const aliases = getManagerInstallBaseFieldAliases(fieldName);
@@ -4583,9 +4520,10 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
 }
 
 function hasUnresolvedManagerInstallBaseIssues(rec) {
-  if (!isManagerOpenInstallBaseFixRequest(rec) && !hasManagerMissingCoreFields(rec)) return false;
+  if (!isManagerOpenInstallBaseFixRequest(rec)) return false;
 
   return getManagerInstallBaseIssueFields(rec).some(issue =>
+    issue.requested === true &&
     isManagerInstallBaseFieldRequested(rec, issue.key) &&
     !wasManagerFieldCorrected(rec, issue.key)
   );
@@ -5201,25 +5139,28 @@ function getManagerInstallBaseIssueFields(rec) {
   const normalizeManagerFixField = field => {
     const f = String(field || "").toLowerCase().trim();
 
-    if (["project", "project_id", "oem_project_id", "asset_id", "equipment_id"].includes(f)) return "oem_project_id";
-    if (["make", "manufacturer", "brand"].includes(f)) return "make";
-    if (["model", "equipment_model"].includes(f)) return "model";
-    if (["modality", "equipment_modality"].includes(f)) return "modality";
-    if (["serial", "serial_number", "system_serial", "equipment_serial"].includes(f)) return "serial_number";
-    if (["dom", "year", "manufacture_year"].includes(f)) return "dom";
-    if (["site", "site_name", "facility", "facility_name", "hospital", "hospital_name", "customer", "location"].includes(f)) return "site";
-    if (["address", "street_address", "site_address"].includes(f)) return "site_address";
-    if (["city"].includes(f)) return "city";
-    if (["state"].includes(f)) return "state";
-    if (["zip", "zipcode", "zip_code", "postal_code"].includes(f)) return "zip_code";
-    if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(f)) return "manager_name";
-    if (["territory", "manager_region", "manager_territory", "region"].includes(f)) return "manager_region";
-    if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(f)) return "assigned_rep_name";
-    if (["utilization", "utilization_percent", "utilization_percentage", "use"].includes(f)) return "utilization_percent";
-    if (["source", "source_system", "record_source", "source_conflict", "source_mismatch"].includes(f)) return "source";
-    if (["duplicate", "duplicate_asset", "duplicate_review"].includes(f)) return "duplicate_asset";
+    if ([
+      "rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep_owner",
+      "owner_name",
+      "sales_rep",
+      "sales_rep_name"
+    ].includes(f)) {
+      return "assigned_rep_name";
+    }
 
-    return f;
+    if ([
+      "territory",
+      "manager_region",
+      "manager_territory",
+      "region"
+    ].includes(f)) {
+      return "manager_region";
+    }
+
+    return "";
   };
 
   const requested = new Set(
@@ -5239,53 +5180,20 @@ function getManagerInstallBaseIssueFields(rec) {
   );
 
   return [
-    { key:"oem_project_id", label:"Project / Asset ID" },
-    { key:"make", label:"Brand / Make" },
-    { key:"model", label:"Model" },
-    { key:"modality", label:"Modality" },
-    { key:"serial_number", label:"Serial Number" },
-    { key:"dom", label:"DOM / Year" },
-    { key:"site", label:"Site / Facility" },
-    { key:"site_address", label:"Street Address" },
-    { key:"city", label:"City" },
-    { key:"state", label:"State" },
-    { key:"zip_code", label:"ZIP Code" },
-    { key:"manager_name", label:"Owner Group / Manager" },
-    { key:"manager_region", label:"Territory" },
-    { key:"assigned_rep_name", label:"Rep Owner" },
-    { key:"utilization_percent", label:"Utilization %" },
-    { key:"source", label:"Source" },
-    { key:"duplicate_asset", label:"Duplicate Asset Review" }
-  ].map(field => ({
-    ...field,
-    requested: requested.has(field.key)
-  }));
+    {
+      key: "assigned_rep_name",
+      label: "Rep Name",
+      requested: requested.has("assigned_rep_name")
+    },
+    {
+      key: "manager_region",
+      label: "Territory",
+      requested: requested.has("manager_region")
+    }
+  ];
 }
 function getManagerInstallBaseFieldsForEdit(rec) {
-  const issues = getManagerInstallBaseIssueFields(rec);
-
-  const addRequiredAssignmentFields = (fields) => {
-    const next = Array.isArray(fields) ? [...fields] : [];
-    const add = (key, label) => {
-      if (!next.some(f => f.key === key)) next.push({ key, label });
-    };
-
-    add("manager_name", "Owner Group / Manager");
-    add("assigned_rep_name", "Rep Owner");
-
-    return next;
-  };
-
-  if (issues.length) return addRequiredAssignmentFields(issues);
-
-  return addRequiredAssignmentFields([
-    { key: "serial_number", label: "Serial Number" },
-    { key: "dom", label: "DOM / Year" },
-    { key: "make", label: "Make" },
-    { key: "model", label: "Model" },
-    { key: "modality", label: "Modality" },
-    { key: "site", label: "Facility / Site" }
-  ]);
+  return getManagerInstallBaseIssueFields(rec);
 }
 function getManagerInstallBaseInputValue(rec, key) {
   if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
@@ -5405,7 +5313,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
   const requestedItem =
     rec.install_base_action_label ||
-    rec.rep_fix_required ||
+    rec.manager_fix_required ||
     rec.install_base_issue_type ||
     "Install Base FIX";
 
@@ -5413,10 +5321,8 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
     rec.install_base_issue_reason ||
     rec.install_base_action_reason ||
     rec.install_base_issue_note ||
-    rec.conflict_notes ||
     rec.oem_review_reason ||
     rec.review_reason ||
-    rec.proactive_reason ||
     "-";
 
   return `
@@ -5451,7 +5357,10 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
         `).join("")}
       </div>
 
-      <label style="display:block;margin-top:18px;">Manager FIX Response to Install Base</label>
+      <label style="display:block;margin-top:18px;">
+        Manager FIX Response to Install Base
+      </label>
+
       <textarea
         id="managerInstallBaseCorrectionNote"
         onclick="event.stopPropagation();"
@@ -5460,7 +5369,7 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
         placeholder="Enter the corrected value or a short explanation."
       ></textarea>
 
-      <div class="btns">
+      <div class="btns" style="margin-top:18px;">
         <button
           type="button"
           class="green"
