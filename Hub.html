@@ -2301,7 +2301,7 @@ function getMissingFieldFixHtml(rec, fieldName) {
     <button
       type="button"
       class="fix-data-badge ${thisFieldSent ? "active" : ""}"
-      onclick="event.preventDefault(); event.stopPropagation(); requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}'); return false;"
+      onclick="event.preventDefault(); event.stopPropagation(); requestFixForRecord('${escapeJs(rec.id || "")}', event, '${escapeJs(fieldName || "")}')"
     >
       ${escapeHtml(label)}
     </button>
@@ -3112,111 +3112,68 @@ function mergeWonProjectsFromRepIntoInstallBase() {
   if (changed) {
     localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
     localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
+
+    const correctedByRecord = new Map();
+
+    responses.forEach(resp => {
+      const key = getRecordKey(resp);
+      if (!key) return;
+
+      const fields = new Set(
+        String(resp.install_base_corrected_fields || "")
+          .split(",")
+          .map(canonicalInstallBaseFieldName)
+          .filter(Boolean)
+      );
+
+      if (
+        resp.corrected_fields &&
+        typeof resp.corrected_fields === "object" &&
+        !Array.isArray(resp.corrected_fields)
+      ) {
+        Object.keys(resp.corrected_fields).forEach(field => {
+          fields.add(canonicalInstallBaseFieldName(field));
+        });
+      }
+
+      if (fields.size) correctedByRecord.set(key, fields);
+    });
+
+    const repQueue = readQueue(REP_QUEUE_KEY, []);
+    const cleanedRepQueue = repQueue
+      .map(packet => {
+        const key = getRecordKey(packet);
+        const corrected = correctedByRecord.get(key);
+        if (!corrected) return packet;
+
+        const remaining = String(
+          packet.install_base_rep_fix_request_fields ||
+          packet.install_base_fix_request_fields ||
+          packet.install_base_fix_request_field ||
+          ""
+        )
+          .split(",")
+          .map(canonicalInstallBaseFieldName)
+          .filter(Boolean)
+          .filter(field => !corrected.has(field));
+
+        if (!remaining.length) return null;
+
+        return {
+          ...packet,
+          install_base_issue_field: remaining.join(", "),
+          install_base_fix_request_fields: remaining.join(","),
+          install_base_rep_fix_request_fields: remaining.join(","),
+          install_base_fix_request_field: remaining[0]
+        };
+      })
+      .filter(Boolean);
+
+    localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleanedRepQueue));
   }
 
   return changed;
 }
-
-function removeReturnedFixFieldsFromHubTracking(target, response) {
-  if (!target || !response) return target;
-
-  const returnedFields = new Set(
-    String(
-      response.install_base_corrected_fields ||
-      (
-        response.corrected_fields &&
-        typeof response.corrected_fields !== "object"
-          ? response.corrected_fields
-          : ""
-      ) ||
-      ""
-    )
-      .split(",")
-      .map(v => canonicalInstallBaseFieldName(v))
-      .filter(Boolean)
-  );
-
-  if (
-    response.corrected_fields &&
-    typeof response.corrected_fields === "object" &&
-    !Array.isArray(response.corrected_fields)
-  ) {
-    Object.keys(response.corrected_fields).forEach(field => {
-      returnedFields.add(canonicalInstallBaseFieldName(field));
-    });
-  }
-
-  if (!returnedFields.size) return target;
-
-  const removeReturned = value =>
-    String(value || "")
-      .split(",")
-      .map(v => canonicalInstallBaseFieldName(v))
-      .filter(Boolean)
-      .filter(field => !returnedFields.has(field));
-
-  const remainingSentFields = removeReturned(
-    target.install_base_field_fix_sent_fields
-  );
-
-  const remainingFixFields = removeReturned(
-    target.install_base_fix_request_fields
-  );
-
-  const remainingRepFields = removeReturned(
-    target.install_base_rep_fix_request_fields
-  );
-
-  const remainingManagerFields = removeReturned(
-    target.install_base_manager_fix_request_fields
-  );
-
-  target.install_base_field_fix_sent_fields =
-    remainingSentFields.join(",");
-
-  target.install_base_fix_sent_fields =
-    remainingSentFields.join(",");
-
-  target.install_base_fix_request_fields =
-    remainingFixFields.join(",");
-
-  target.install_base_rep_fix_request_fields =
-    remainingRepFields.join(",");
-
-  target.install_base_manager_fix_request_fields =
-    remainingManagerFields.join(",");
-
-  if (
-    returnedFields.has(
-      canonicalInstallBaseFieldName(
-        target.install_base_fix_request_field
-      )
-    )
-  ) {
-    target.install_base_fix_request_field =
-      remainingRepFields[0] ||
-      remainingManagerFields[0] ||
-      remainingFixFields[0] ||
-      "";
-  }
-
-  target.install_base_issue_field = [
-    ...remainingRepFields,
-    ...remainingManagerFields,
-    ...remainingFixFields
-  ]
-    .filter((field, index, list) => list.indexOf(field) === index)
-    .join(", ");
-
-  target.install_base_fix_request = Boolean(
-    remainingRepFields.length ||
-    remainingManagerFields.length ||
-    remainingFixFields.length
-  );
-
-  return target;
-}
-
 function mergeRepResponsesIntoRecords() {
   const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
   let changed = false;
@@ -3237,14 +3194,11 @@ function mergeRepResponsesIntoRecords() {
         rec.install_base_response_at &&
         rec.install_base_response_at === resp.install_base_response_at;
 
-      const canonicalMerged = removeReturnedFixFieldsFromHubTracking(
-        applyHubReturnedCorrection({
-          ...rec,
-          ...resp,
-          key: getRecordKey(rec)
-        }, resp),
-        resp
-      );
+      const canonicalMerged = applyHubReturnedCorrection({
+        ...rec,
+        ...resp,
+        key: getRecordKey(rec)
+      }, resp);
 
       String(resp.install_base_corrected_fields || "")
         .split(",")
@@ -3266,8 +3220,69 @@ function mergeRepResponsesIntoRecords() {
           }
         });
 
+      const returnedFields = new Set(
+        String(resp.install_base_corrected_fields || "")
+          .split(",")
+          .map(canonicalInstallBaseFieldName)
+          .filter(Boolean)
+      );
+
+      if (
+        resp.corrected_fields &&
+        typeof resp.corrected_fields === "object" &&
+        !Array.isArray(resp.corrected_fields)
+      ) {
+        Object.keys(resp.corrected_fields).forEach(field => {
+          returnedFields.add(canonicalInstallBaseFieldName(field));
+        });
+      }
+
+      const removeReturnedFields = value =>
+        String(value || "")
+          .split(",")
+          .map(canonicalInstallBaseFieldName)
+          .filter(Boolean)
+          .filter(field => !returnedFields.has(field));
+
+      const remainingSentFields = removeReturnedFields(
+        rec.install_base_field_fix_sent_fields
+      );
+
+      const remainingRepRequestFields = removeReturnedFields(
+        rec.install_base_rep_fix_request_fields
+      );
+
+      const remainingManagerRequestFields = removeReturnedFields(
+        rec.install_base_manager_fix_request_fields
+      );
+
+      const remainingRequestFields = removeReturnedFields(
+        rec.install_base_fix_request_fields
+      );
+
 	     return {
 	  ...canonicalMerged,
+
+      install_base_field_fix_sent_fields:
+        remainingSentFields.join(","),
+
+      install_base_fix_sent_fields:
+        remainingSentFields.join(","),
+
+      install_base_rep_fix_request_fields:
+        remainingRepRequestFields.join(","),
+
+      install_base_manager_fix_request_fields:
+        remainingManagerRequestFields.join(","),
+
+      install_base_fix_request_fields:
+        remainingRequestFields.join(","),
+
+      install_base_fix_request_field:
+        remainingRepRequestFields[0] ||
+        remainingManagerRequestFields[0] ||
+        remainingRequestFields[0] ||
+        "",
 
  install_base_correction_status:
   clean(resp.install_base_corrected_fields || "") ||
@@ -3879,49 +3894,98 @@ install_base_manager_fix_request_fields: "",
       timestamp: now
     };
 
-    // Every clicked FIX field gets its own independent Rep packet.
-    // A returned correction for one field must not block the next FIX button.
-    const recordKey = String(
-      updatedRecord.key ||
-      getRecordKey(updatedRecord)
-    );
+   // Keep one Rep packet per equipment record, but preserve every
+// individually routed unresolved FIX field for that record.
+const recordKey = String(
+  updatedRecord.key ||
+  getRecordKey(updatedRecord)
+);
 
-    const requestedCanonicalField =
-      canonicalInstallBaseFieldName(outboundRequestedField);
+const existingRepFixPacket = repQueue.find(r => {
+  const queuedKey = String(
+    r.key ||
+    getRecordKey(r)
+  );
 
-    const cleaned = repQueue.filter(r => {
-      const queuedKey = String(
-        r.key ||
-        getRecordKey(r)
-      );
+  const isRepFixPacket =
+    lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
+    Boolean(clean(r.install_base_rep_fix_request_fields)) ||
+    Boolean(clean(r.install_base_fix_request_fields));
 
-      if (queuedKey !== recordKey) return true;
+  return queuedKey === recordKey && isRepFixPacket;
+});
 
-      const queuedFields = String(
-        r.install_base_rep_fix_request_fields ||
-        r.install_base_fix_request_fields ||
-        r.install_base_fix_request_field ||
-        ""
-      )
-        .split(",")
-        .map(v => canonicalInstallBaseFieldName(v))
-        .filter(Boolean);
+const normalizeRepFixFields = value =>
+  String(value || "")
+    .split(",")
+    .map(v => canonicalInstallBaseFieldName(v))
+    .filter(Boolean);
 
-      // Replace only a prior packet for this exact field.
-      // Packets for other unresolved fields remain untouched.
-      return !queuedFields.includes(requestedCanonicalField);
-    });
+// Fields already returned by Rep must never be carried into the next packet.
+const returnedRepFixFields = new Set([
+  ...normalizeRepFixFields(updatedRecord.install_base_corrected_fields),
+  ...(
+    updatedRecord.corrected_fields &&
+    typeof updatedRecord.corrected_fields === "object" &&
+    !Array.isArray(updatedRecord.corrected_fields)
+      ? Object.keys(updatedRecord.corrected_fields)
+          .map(v => canonicalInstallBaseFieldName(v))
+          .filter(Boolean)
+      : []
+  )
+]);
 
-    cleaned.unshift({
-      ...repRecord,
-      install_base_fix_request_id: requestId,
-      install_base_fix_request_at: now,
-      install_base_fix_request_field: outboundRequestedField,
-      install_base_issue_field: outboundIssueFields.join(", "),
-      install_base_fix_request_fields: outboundIssueFields.join(","),
-      install_base_rep_fix_request_fields: outboundIssueFields.join(","),
-      install_base_manager_fix_request_fields: ""
-    });
+const combinedRepFixFields = Array.from(new Set([
+  ...normalizeRepFixFields(
+    existingRepFixPacket?.install_base_rep_fix_request_fields
+  ),
+  ...normalizeRepFixFields(
+    existingRepFixPacket?.install_base_fix_request_fields
+  ),
+  ...outboundIssueFields.map(canonicalInstallBaseFieldName)
+])).filter(field =>
+  !returnedRepFixFields.has(field) ||
+  outboundIssueFields
+    .map(canonicalInstallBaseFieldName)
+    .includes(field)
+);
+
+const combinedRepRecord = {
+  ...repRecord,
+
+  // Latest request ID/time still identify the newest click.
+  install_base_fix_request_id: requestId,
+  install_base_fix_request_at: now,
+  install_base_fix_request_field: outboundRequestedField,
+
+  // Explicit unresolved Rep FIX fields already sent for this record.
+  install_base_issue_field:
+    combinedRepFixFields.join(", "),
+
+  install_base_fix_request_fields:
+    combinedRepFixFields.join(","),
+
+  install_base_rep_fix_request_fields:
+    combinedRepFixFields.join(","),
+
+  install_base_manager_fix_request_fields: ""
+};
+
+const cleaned = repQueue.filter(r => {
+  const queuedKey = String(
+    r.key ||
+    getRecordKey(r)
+  );
+
+  const isRepFixPacket =
+    lower(r.install_base_sync_type).includes("fix_request_to_rep") ||
+    Boolean(clean(r.install_base_rep_fix_request_fields)) ||
+    Boolean(clean(r.install_base_fix_request_fields));
+
+  return !(queuedKey === recordKey && isRepFixPacket);
+});
+
+cleaned.unshift(combinedRepRecord);
 
     localStorage.setItem(REP_QUEUE_KEY, JSON.stringify(cleaned));
     localStorage.setItem("axis_rep_sync_ping_v1", String(Date.now()));
