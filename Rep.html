@@ -121,6 +121,52 @@
     .panel-head h2{margin:0;font-size:18px}
     .panel-body{padding:18px}
 
+    .equipment-review-toolbar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+
+    .equipment-review-toolbar input{
+      flex:1 1 360px;
+      min-width:240px;
+    }
+
+    .equipment-review-collapse-btn{
+      min-width:132px;
+      min-height:40px;
+      padding:9px 13px;
+      white-space:nowrap;
+    }
+
+    #myEquipmentReviewPanel.equipment-review-collapsed-update{
+      border:2px solid rgba(65,255,156,.98)!important;
+      box-shadow:
+        0 0 0 1px rgba(65,255,156,.34),
+        0 0 24px rgba(65,255,156,.56),
+        0 0 42px rgba(65,255,156,.22)!important;
+      animation:equipmentReviewCollapsedUpdatePulse 1.05s ease-in-out infinite!important;
+    }
+
+    @keyframes equipmentReviewCollapsedUpdatePulse{
+      0%,100%{
+        border-color:rgba(65,255,156,.70);
+        box-shadow:
+          0 0 0 1px rgba(65,255,156,.26),
+          0 0 14px rgba(65,255,156,.30),
+          0 0 26px rgba(65,255,156,.14);
+      }
+      50%{
+        border-color:rgba(142,255,195,1);
+        box-shadow:
+          0 0 0 2px rgba(142,255,195,.56),
+          0 0 30px rgba(65,255,156,.84),
+          0 0 54px rgba(65,255,156,.30);
+      }
+    }
+
     .footer-note{
       margin-top:14px;
       font-size:12px;
@@ -4632,10 +4678,29 @@ button.message-sent-state{
               >
                 Show Completed Projects
               </button>
+
+              <button
+                type="button"
+                class="secondary equipment-review-collapse-btn"
+                id="toggleMyEquipmentReviewBtn"
+                onclick="toggleMyEquipmentReviewPanel()"
+              >
+                Hide Records
+              </button>
             </div>
           </div>
 
-         <div class="panel-body table-wrap">
+         <div class="panel-body" id="myEquipmentReviewBody">
+           <div class="equipment-review-toolbar">
+             <input
+               id="myEquipmentReviewSearch"
+               type="search"
+               placeholder="Search project, equipment, serial, facility, source, review, priority, or status..."
+               oninput="updateMyEquipmentReviewSearch(this.value)"
+             />
+           </div>
+
+           <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -4657,6 +4722,7 @@ button.message-sent-state{
 
               <tbody id="tableBody"></tbody>
             </table>
+           </div>
           </div>
         </div>
 
@@ -5022,6 +5088,9 @@ installBaseFixResponseRecordId: "",
   repAttentionAlertOpen: false,
   repProximityOpen: false,
   repActionOpen: false,
+  myEquipmentReviewOpen: true,
+  myEquipmentReviewSearch: "",
+  myEquipmentReviewCollapsedUpdate: false,
   showCompleted: true,
   detailUpdateFlash: {
     manager: false,
@@ -8817,14 +8886,101 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
+function toggleMyEquipmentReviewPanel() {
+  state.myEquipmentReviewOpen = state.myEquipmentReviewOpen !== true;
+
+  // Opening the records acknowledges the collapsed-panel update alert.
+  if (state.myEquipmentReviewOpen) {
+    state.myEquipmentReviewCollapsedUpdate = false;
+  }
+
+  const panel = $("myEquipmentReviewPanel");
+  const body = $("myEquipmentReviewBody");
+  const button = $("toggleMyEquipmentReviewBtn");
+
+  if (body) {
+    body.classList.toggle("hidden", !state.myEquipmentReviewOpen);
+  }
+
+  if (button) {
+    button.textContent = state.myEquipmentReviewOpen
+      ? "Hide Records"
+      : "Open Records";
+  }
+
+  if (panel) {
+    panel.classList.toggle(
+      "equipment-review-collapsed-update",
+      !state.myEquipmentReviewOpen &&
+      state.myEquipmentReviewCollapsedUpdate === true
+    );
+  }
+}
+
+function updateMyEquipmentReviewSearch(value) {
+  state.myEquipmentReviewSearch = String(value || "").trim().toLowerCase();
+  renderTable();
+}
+
+function getMyEquipmentReviewSearchText(rec) {
+  return [
+    rec.oem_project_id,
+    rec.project_id,
+    rec.asset_id,
+    rec.id,
+    rec.make,
+    rec.manufacturer,
+    rec.model,
+    rec.equipment_model,
+    rec.modality,
+    rec.equipment_modality,
+    rec.serial_number,
+    rec.serial,
+    rec.system_serial,
+    rec.site,
+    rec.facility,
+    rec.hospital,
+    rec.hospital_name,
+    rec.customer,
+    rec.source,
+    rec.source_system,
+    rec.record_origin,
+    rec.install_base_review_label,
+    rec.oem_review_label,
+    rec.review_label,
+    rec.rep_status,
+    rec.status,
+    rec.rep_action,
+    rec.rep_manual_priority,
+    rec.sales_priority
+  ]
+    .filter(value => value !== null && value !== undefined)
+    .join(" ")
+    .toLowerCase();
+}
+
   function renderTable() {
   const tbody = $("tableBody");
 
   let visibleRecords = getMyEquipmentReviewRecords();
 
+  const equipmentSearch = String(
+    state.myEquipmentReviewSearch || ""
+  ).trim().toLowerCase();
+
+  if (equipmentSearch) {
+    visibleRecords = visibleRecords.filter(rec =>
+      getMyEquipmentReviewSearchText(rec).includes(equipmentSearch)
+    );
+  }
+
   if (!visibleRecords.length) {
     tbody.innerHTML =
-      '<tr><td colspan="13">No records</td></tr>';
+      `<tr><td colspan="13">${
+        state.myEquipmentReviewSearch
+          ? "No matching records"
+          : "No records"
+      }</td></tr>`;
     return;
   }
 
@@ -13069,6 +13225,39 @@ function showCompletedRepProjects() {
 
 
 function render() {
+  const equipmentPanel = $("myEquipmentReviewPanel");
+  const equipmentBody = $("myEquipmentReviewBody");
+  const equipmentToggle = $("toggleMyEquipmentReviewBtn");
+  const equipmentSearchInput = $("myEquipmentReviewSearch");
+
+  if (equipmentPanel) {
+    equipmentPanel.classList.toggle(
+      "equipment-review-collapsed-update",
+      state.myEquipmentReviewOpen !== true &&
+      state.myEquipmentReviewCollapsedUpdate === true
+    );
+  }
+
+  if (equipmentBody) {
+    equipmentBody.classList.toggle(
+      "hidden",
+      state.myEquipmentReviewOpen !== true
+    );
+  }
+
+  if (equipmentToggle) {
+    equipmentToggle.textContent =
+      state.myEquipmentReviewOpen === true
+        ? "Hide Records"
+        : "Open Records";
+  }
+
+  if (
+    equipmentSearchInput &&
+    equipmentSearchInput.value !== state.myEquipmentReviewSearch
+  ) {
+    equipmentSearchInput.value = state.myEquipmentReviewSearch || "";
+  }
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
@@ -16377,13 +16566,51 @@ function bindRepRowDelegation(tbody, rowHandler) {
   });
 }
 
+function getMyEquipmentReviewUpdateSignature() {
+  const records = getMyEquipmentReviewRecords()
+    .map(rec => {
+      const copy = { ...rec };
+
+      // UI-only acknowledgement fields must not create a false new-update pulse.
+      delete copy.manager_update_seen_by_rep;
+      delete copy.install_base_response_seen_by_rep;
+      delete copy.install_base_message_seen_by_rep;
+      delete copy.rep_seen_at;
+      delete copy.last_opened_at;
+
+      return copy;
+    })
+    .sort((a, b) =>
+      String(getRecordKey(a) || a.id || "").localeCompare(
+        String(getRecordKey(b) || b.id || "")
+      )
+    );
+
+  try {
+    return JSON.stringify(records);
+  } catch {
+    return String(records.length);
+  }
+}
+
 let repSyncRenderQueued = false;
 function refreshRepFromSync() {
+  const equipmentReviewBefore = getMyEquipmentReviewUpdateSignature();
+
   loadRecords(true);
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
   updateAxisShareStatus();
+
+  const equipmentReviewAfter = getMyEquipmentReviewUpdateSignature();
+
+  if (
+    state.myEquipmentReviewOpen !== true &&
+    equipmentReviewBefore !== equipmentReviewAfter
+  ) {
+    state.myEquipmentReviewCollapsedUpdate = true;
+  }
 
   renderStats();
   renderRepMenu();
