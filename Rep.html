@@ -8134,16 +8134,20 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
       .replace(/^fix_/, "")
       .trim();
 
-    const shared = window.AxisUtils?.canonicalFieldName?.(k);
-    if (shared) return shared;
-
+    /*
+      Exact Rep form IDs must win before shared alias normalization.
+      This prevents fix_model from being redirected to Project / Asset ID.
+    */
+    if (["model", "equipment_model"].includes(k)) return "model";
+    if (["make", "manufacturer", "brand"].includes(k)) return "make";
+    if (["modality", "equipment_modality"].includes(k)) return "modality";
     if (["serial", "serial_number", "system_serial"].includes(k)) return "serial";
     if (["dom", "year", "manufacture_year"].includes(k)) return "dom";
     if (["site", "facility", "hospital", "hospital_name", "customer", "location"].includes(k)) return "site";
-    if (["make", "manufacturer"].includes(k)) return "make";
-    if (["model"].includes(k)) return "model";
-    if (["modality"].includes(k)) return "modality";
     if (["project", "project_id", "oem_project_id", "asset_id"].includes(k)) return "project";
+
+    const shared = window.AxisUtils?.canonicalFieldName?.(k);
+    if (shared) return shared;
     if (["address", "street_address", "site_address"].includes(k)) return "site_address";
     if (["city"].includes(k)) return "city";
     if (["state"].includes(k)) return "state";
@@ -8168,8 +8172,8 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
 
     if (correctedField === "project") {
       target.oem_project_id = cleanValue;
-      target.project_id = target.project_id || cleanValue;
-      target.asset_id = target.asset_id || cleanValue;
+      target.project_id = cleanValue;
+      target.asset_id = cleanValue;
       return;
     }
 
@@ -8383,44 +8387,6 @@ fixedInputs.forEach(input => {
     }
   });
 
- issues.forEach(issue => {
-  const input = $("fix_" + issue.key);
-
-  if (input && input.value.trim()) {
-    const value = input.value.trim();
-    const correctedField =
-      normalizeCorrectedFieldName(issue.key);
-
-    if (correctedField === "dom") {
-      const enteredYear = Number(value);
-      const currentYear = new Date().getFullYear();
-
-      if (
-        !Number.isInteger(enteredYear) ||
-        enteredYear < 1900 ||
-        enteredYear > currentYear
-      ) {
-        alert(
-          `DOM must be a valid year between 1900 and ${currentYear}.`
-        );
-
-        input.focus();
-        throw new Error("Invalid DOM correction");
-      }
-    }
-
-    applyCorrectedFieldValue(
-      updated,
-      correctedField,
-      issue.key,
-      value
-    );
-
-      if (correctedField && !correctedFields.includes(correctedField)) {
-        correctedFields.push(correctedField);
-      }
-    }
-  });
 
   // Preserve fields corrected during earlier FIX responses.
 const previousCorrectedFields = String(
