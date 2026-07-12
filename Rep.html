@@ -8050,19 +8050,28 @@ function renderQuoteApprovalActionPanel(rec) {
   `;
 }
 function getInstallBaseIssueFields(rec) {
-  const issues = [];
-
-  if (!rec.asset_id) issues.push({ key:"asset_id", label:"Asset ID" });
-  if (!rec.site_address) issues.push({ key:"site_address", label:"Street Address" });
-  if (!rec.city) issues.push({ key:"city", label:"City" });
-  if (!rec.state) issues.push({ key:"state", label:"State" });
-  if (!rec.zip_code) issues.push({ key:"zip_code", label:"Zip Code" });
-  if (!rec.manager_name) issues.push({ key:"manager_name", label:"Owner Group / Manager" });
-  if (!rec.utilization_percent) issues.push({ key:"utilization_percent", label:"Utilization %" });
-
-  return issues;
+  // Complete field set available in the Rep response form.
+  // Fields remain visually normal unless Hub specifically requested that field.
+  return [
+    { key:"project", label:"Project / Asset ID" },
+    { key:"make", label:"Brand / Make" },
+    { key:"model", label:"Model" },
+    { key:"modality", label:"Modality" },
+    { key:"serial", label:"Serial Number" },
+    { key:"dom", label:"DOM / Year" },
+    { key:"site", label:"Site / Facility" },
+    { key:"site_address", label:"Street Address" },
+    { key:"city", label:"City" },
+    { key:"state", label:"State" },
+    { key:"zip_code", label:"ZIP Code" },
+    { key:"manager", label:"Owner Group / Manager" },
+    { key:"territory", label:"Territory" },
+    { key:"rep", label:"Rep Owner" },
+    { key:"utilization_percent", label:"Utilization %" },
+    { key:"source", label:"Source" },
+    { key:"duplicate_asset", label:"Duplicate Asset Review" }
+  ];
 }
-
 function getInstallBaseIssues(rec) {
   const issues = getInstallBaseIssueFields(rec);
 
@@ -8076,7 +8085,7 @@ function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
 
-  const issues = getInstallBaseIssues(rec).map(([key, label]) => ({ key, label }));
+  const issues = getRepFixPanelIssues(rec).map(([key, label, requested]) => ({ key, label, requested }));
   console.log("INSTALL BASE ISSUES:", issues);
 
   const messageEl =
@@ -8135,6 +8144,16 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
     if (["model"].includes(k)) return "model";
     if (["modality"].includes(k)) return "modality";
     if (["project", "project_id", "oem_project_id", "asset_id"].includes(k)) return "project";
+    if (["address", "street_address", "site_address"].includes(k)) return "site_address";
+    if (["city"].includes(k)) return "city";
+    if (["state"].includes(k)) return "state";
+    if (["zip", "zipcode", "zip_code", "postal_code"].includes(k)) return "zip_code";
+    if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(k)) return "manager";
+    if (["territory", "manager_region", "manager_territory", "region"].includes(k)) return "territory";
+    if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(k)) return "rep";
+    if (["utilization", "utilization_percent", "utilization_percentage", "use"].includes(k)) return "utilization_percent";
+    if (["source", "source_system", "record_source", "source_conflict", "source_mismatch"].includes(k)) return "source";
+    if (["duplicate", "duplicate_asset", "duplicate_review"].includes(k)) return "duplicate_asset";
 
     return k;
   };
@@ -8200,8 +8219,57 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
 
     if (correctedField === "manager") {
       target.manager_name = cleanValue;
-      target.owner_group_name = target.owner_group_name || cleanValue;
-      target.owner_group = target.owner_group || cleanValue;
+      target.owner_group_name = cleanValue;
+      target.owner_group = cleanValue;
+      return;
+    }
+
+    if (correctedField === "territory") {
+      target.territory = cleanValue;
+      target.manager_territory = cleanValue;
+      target.manager_region = cleanValue;
+      target.region = cleanValue;
+      return;
+    }
+
+    if (correctedField === "site_address") {
+      target.site_address = cleanValue;
+      target.street_address = cleanValue;
+      target.address = cleanValue;
+      return;
+    }
+
+    if (correctedField === "city") {
+      target.city = cleanValue;
+      return;
+    }
+
+    if (correctedField === "state") {
+      target.state = cleanValue;
+      return;
+    }
+
+    if (correctedField === "zip_code") {
+      target.zip_code = cleanValue;
+      target.postal_code = cleanValue;
+      return;
+    }
+
+    if (correctedField === "utilization_percent") {
+      target.utilization_percent = cleanValue;
+      target.utilization = cleanValue;
+      return;
+    }
+
+    if (correctedField === "source") {
+      target.source = cleanValue;
+      target.source_system = cleanValue;
+      return;
+    }
+
+    if (correctedField === "duplicate_asset") {
+      target.duplicate_asset = cleanValue;
+      target.duplicate_review = cleanValue;
       return;
     }
 
@@ -8407,6 +8475,12 @@ updated.install_base_issue_field =
 
 updated.install_base_fix_request_field =
   outstandingFixFields[0] || "";
+
+// Submitted fields are no longer active FIX fields on the Rep form.
+// The green frame disappears immediately after the successful submission.
+state.installBaseActiveFixField = "";
+state.installBaseFixResponseOpen = false;
+state.installBaseFixResponseRecordId = "";
 
 // Preserve earlier corrected values and add the newest correction.
 const previousCorrectedValues =
@@ -10228,8 +10302,6 @@ function getLatestInstallBaseCommunicationItem(rec) {
   return null;
 }
 function getRepFixPanelIssues(rec) {
-  const issues = [];
-
   const normalizeFixField = (field) => {
     const f = String(field || "").toLowerCase().trim();
 
@@ -10237,82 +10309,45 @@ function getRepFixPanelIssues(rec) {
     if (["serial", "serial_number", "system_serial"].includes(f)) return "serial";
     if (["dom", "year", "manufacture_year"].includes(f)) return "dom";
     if (["make", "manufacturer", "brand"].includes(f)) return "make";
-    if (["model"].includes(f)) return "model";
-    if (["modality"].includes(f)) return "modality";
-    if (["site", "facility", "hospital", "hospital_name", "customer", "location"].includes(f)) return "site";
+    if (["model", "equipment_model"].includes(f)) return "model";
+    if (["modality", "equipment_modality"].includes(f)) return "modality";
+    if (["site", "site_name", "facility", "facility_name", "hospital", "hospital_name", "customer", "location"].includes(f)) return "site";
+    if (["address", "street_address", "site_address"].includes(f)) return "site_address";
+    if (["city"].includes(f)) return "city";
+    if (["state"].includes(f)) return "state";
+    if (["zip", "zipcode", "zip_code", "postal_code"].includes(f)) return "zip_code";
+    if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(f)) return "manager";
+    if (["territory", "manager_region", "manager_territory", "region"].includes(f)) return "territory";
+    if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(f)) return "rep";
+    if (["utilization", "utilization_percent", "utilization_percentage", "use"].includes(f)) return "utilization_percent";
+    if (["source", "source_system", "record_source", "source_conflict", "source_mismatch"].includes(f)) return "source";
+    if (["duplicate", "duplicate_asset", "duplicate_review"].includes(f)) return "duplicate_asset";
 
     return f;
   };
 
-  const addIssue = (field, label) => {
-    const normalized = normalizeFixField(field);
-    if (!normalized) return;
+  const requestedFields = new Set(
+    [
+      rec.install_base_rep_fix_request_fields,
+      rec.install_base_fix_request_fields,
+      rec.install_base_issue_field,
+      rec.install_base_fix_request_field,
+      state.installBaseActiveFixField
+    ]
+      .filter(Boolean)
+      .flatMap(value =>
+        String(value)
+          .split(",")
+          .map(normalizeFixField)
+          .filter(Boolean)
+      )
+  );
 
-    if (!issues.some(([existing]) => existing === normalized)) {
-      issues.push([normalized, label]);
-    }
-  };
-
-  const labelForField = (field) => {
-    const f = normalizeFixField(field);
-
-    if (f === "project") return "Project / Asset ID";
-    if (f === "serial") return "Serial Number";
-    if (f === "dom") return "DOM / Year";
-    if (f === "make") return "Make";
-    if (f === "model") return "Model";
-    if (f === "modality") return "Modality";
-    if (f === "site") return "Site / Facility";
-
-    return "Requested Field";
-  };
-
-  const requestedFields = String(
-  rec.install_base_rep_fix_request_fields ||
-  rec.install_base_fix_request_fields ||
-  rec.install_base_issue_field ||
-  state.installBaseActiveFixField ||
-  rec.install_base_field_fix_sent_fields ||
-  rec.install_base_fix_sent_fields ||
-  ""
-)
-    .split(",")
-    .map(v => normalizeFixField(v))
-    .filter(Boolean);
-
-  requestedFields.forEach(field => {
-    addIssue(field, labelForField(field));
-  });
-
-  if (issues.length) return issues;
-
-  getInstallBaseIssues(rec).forEach(([field, label]) => {
-    addIssue(field, label);
-  });
-
-  if (!issues.length) {
-    const issueText = String(
-      rec.install_base_issue_field ||
-      rec.install_base_issue_reason ||
-      rec.install_base_issue_note ||
-      rec.install_base_action_reason ||
-      rec.rep_fix_required ||
-      ""
-    ).toLowerCase();
-
-    if (issueText.includes("site") || issueText.includes("facility") || issueText.includes("location")) {
-      addIssue("site", "Site / Facility");
-    }
-
-    if (issueText.includes("serial")) addIssue("serial", "Serial Number");
-    if (issueText.includes("dom") || issueText.includes("year")) addIssue("dom", "DOM / Year");
-    if (issueText.includes("model")) addIssue("model", "Model");
-    if (issueText.includes("make") || issueText.includes("manufacturer") || issueText.includes("brand")) addIssue("make", "Make");
-    if (issueText.includes("modality")) addIssue("modality", "Modality");
-    if (issueText.includes("project") || issueText.includes("asset")) addIssue("project", "Project / Asset ID");
-  }
-
-  return issues;
+  return getInstallBaseIssueFields(rec).map(issue => [
+    normalizeFixField(issue.key),
+    issue.label,
+    requestedFields.has(normalizeFixField(issue.key))
+  ]);
 }
 function getInstallBaseRepActionRequired(rec) {
   const direct = clean(
@@ -10494,18 +10529,8 @@ function renderRepInstallBaseFixResponsePanel(rec) {
     state.installBaseFixResponseOpen === true &&
     String(state.installBaseFixResponseRecordId || "") === recordId;
 
-  const allIssues = getRepFixPanelIssues(rec);
-  const activeFixField = String(state.installBaseActiveFixField || "")
-    .toLowerCase()
-    .trim();
-
-  const issues = activeFixField
-    ? allIssues.filter(([field]) =>
-        String(field || "").toLowerCase().trim() === activeFixField
-      )
-    : allIssues;
-
-  const hasRequest = allIssues.length > 0;
+  const issues = getRepFixPanelIssues(rec);
+  const hasRequest = issues.some(([, , requested]) => requested);
   const requestedItem = clean(
     rec.install_base_action_label ||
     rec.rep_fix_required ||
@@ -10550,19 +10575,19 @@ function renderRepInstallBaseFixResponsePanel(rec) {
 
       ${isOpen ? `
         <div class="rep-install-base-response-expanded">
-          ${hasRequest ? `
+          ${`
             <div class="mini" style="line-height:1.5;">
               Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
               Reason: ${escapeHtml(reason)}
             </div>
 
             <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;">
-              ${issues.map(([field, label]) => `
+              ${issues.map(([field, label, requested]) => `
                 <div>
                   <label>${escapeHtml(label)}</label>
                   <input
                     id="fix_${escapeHtml(field)}"
-                    class="install-base-fix-field-frame"
+                    class="${requested ? "install-base-fix-field-frame" : ""}"
                     value=""
                     placeholder="Enter corrected ${escapeHtml(label)}"
                     onclick="event.stopPropagation();"
@@ -10589,10 +10614,6 @@ function renderRepInstallBaseFixResponsePanel(rec) {
               >
                 Send Correction to Install Base
               </button>
-            </div>
-          ` : `
-            <div class="mini" style="line-height:1.5;">
-              This section remains available for the selected record. It will show correction fields when Install Base sends a FIX request.
             </div>
           `}
         </div>
