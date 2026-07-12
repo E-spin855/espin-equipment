@@ -8892,6 +8892,11 @@ function toggleMyEquipmentReviewPanel() {
   // Opening the records acknowledges the collapsed-panel update alert.
   if (state.myEquipmentReviewOpen) {
     state.myEquipmentReviewCollapsedUpdate = false;
+
+    const panel = $("myEquipmentReviewPanel");
+    if (panel) {
+      panel.classList.remove("equipment-review-collapsed-update");
+    }
   }
 
   const panel = $("myEquipmentReviewPanel");
@@ -16568,28 +16573,30 @@ function bindRepRowDelegation(tbody, rowHandler) {
 
 function getMyEquipmentReviewUpdateSignature() {
   const records = getMyEquipmentReviewRecords()
-    .map(rec => {
-      const copy = { ...rec };
-
-      // UI-only acknowledgement fields must not create a false new-update pulse.
-      delete copy.manager_update_seen_by_rep;
-      delete copy.install_base_response_seen_by_rep;
-      delete copy.install_base_message_seen_by_rep;
-      delete copy.rep_seen_at;
-      delete copy.last_opened_at;
-
-      return copy;
-    })
-    .sort((a, b) =>
-      String(getRecordKey(a) || a.id || "").localeCompare(
-        String(getRecordKey(b) || b.id || "")
-      )
-    );
+    .map(rec => ({
+      key: String(getRecordKey(rec) || rec.id || ""),
+      record: rec
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key));
 
   try {
     return JSON.stringify(records);
   } catch {
     return String(records.length);
+  }
+}
+
+function setCollapsedEquipmentReviewUpdateAlert(active = true) {
+  if (state.myEquipmentReviewOpen === true) return;
+
+  state.myEquipmentReviewCollapsedUpdate = active === true;
+
+  const panel = $("myEquipmentReviewPanel");
+  if (panel) {
+    panel.classList.toggle(
+      "equipment-review-collapsed-update",
+      state.myEquipmentReviewCollapsedUpdate === true
+    );
   }
 }
 
@@ -16609,7 +16616,7 @@ function refreshRepFromSync() {
     state.myEquipmentReviewOpen !== true &&
     equipmentReviewBefore !== equipmentReviewAfter
   ) {
-    state.myEquipmentReviewCollapsedUpdate = true;
+    setCollapsedEquipmentReviewUpdateAlert(true);
   }
 
   renderStats();
@@ -16673,6 +16680,10 @@ function scheduleRepSyncRender() {
   bindIncomingCommunicationFrameDismissal();
 
   window.addEventListener("storage", (e) => {
+    const collapsedEquipmentSignatureBefore =
+      state.myEquipmentReviewOpen !== true
+        ? getMyEquipmentReviewUpdateSignature()
+        : "";
     if (
       e.key === STORAGE_KEY ||
       e.key === REP_QUEUE_KEY ||
@@ -16686,6 +16697,18 @@ function scheduleRepSyncRender() {
       e.key === QUOTE_APPROVAL_PING_KEY
     ) {
       scheduleRepSyncRender();
+    }
+
+    if (state.myEquipmentReviewOpen !== true) {
+      const collapsedEquipmentSignatureAfter =
+        getMyEquipmentReviewUpdateSignature();
+
+      if (
+        collapsedEquipmentSignatureBefore !==
+        collapsedEquipmentSignatureAfter
+      ) {
+        setCollapsedEquipmentReviewUpdateAlert(true);
+      }
     }
   });
 
