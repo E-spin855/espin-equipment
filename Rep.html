@@ -10036,11 +10036,29 @@ if (outstandingFixFields.length) {
     return !(sameId || sameKey);
   });
 
-  cleanedQueue.push(updated);
+  const outboundInstallBaseResponse = {
+    ...updated,
+    key,
+    source: "Rep Response",
+    source_system: "Rep Review Page",
+    install_base_response_seen: false,
+    install_base_message_from_rep: message,
+    install_base_message_from_rep_at: now,
+    install_base_message_from_rep_by:
+      rec.assigned_rep_name || rec.rep || "Rep"
+  };
 
-  console.log("INSTALL BASE RESPONSE SENT:", updated);
+  cleanedQueue.unshift(outboundInstallBaseResponse);
 
-  localStorage.setItem(INSTALL_BASE_RESPONSE_KEY, JSON.stringify(cleanedQueue));
+  console.log(
+    "INSTALL BASE RESPONSE SENT:",
+    outboundInstallBaseResponse
+  );
+
+  localStorage.setItem(
+    INSTALL_BASE_RESPONSE_KEY,
+    JSON.stringify(cleanedQueue)
+  );
   localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, String(Date.now()));
 
   const repQueue = readArrayKey(REP_QUEUE_KEY).filter(r => {
@@ -10048,11 +10066,11 @@ if (outstandingFixFields.length) {
     const sameKey = updated.key && String(r.key || "") === String(updated.key);
     return !(sameId || sameKey || sameSyncRecord(r, updated));
   });
-  repQueue.unshift(updated);
+  repQueue.unshift(outboundInstallBaseResponse);
   writeArrayKey(REP_QUEUE_KEY, repQueue);
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
-  syncToManagerQueue(updated);
+  syncToManagerQueue(outboundInstallBaseResponse);
 
   document
     .querySelectorAll(".install-base-fix-field-frame")
