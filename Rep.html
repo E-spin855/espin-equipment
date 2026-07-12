@@ -8459,6 +8459,7 @@ function bindIncomingCommunicationFrameDismissal() {
 
         renderTable();
         renderNewProjectsTable();
+        syncCollapsedEquipmentReviewFrame();
         refreshSelectedRowUI();
         renderDetail();
       }
@@ -8891,7 +8892,7 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
-function getEquipmentReviewActiveAlertSignature() {
+function getEquipmentReviewRowAlertSignature() {
   return getMyEquipmentReviewRecords()
     .map(rec => {
       const hasUnseenManagerResponse =
@@ -8925,14 +8926,14 @@ function getEquipmentReviewActiveAlertSignature() {
         ) &&
         rec.manager_response_seen_by_rep !== true;
 
-      const active =
+      const hasAlert =
         hasUnseenManagerResponse ||
         hasUnseenHubCommunication ||
         hasUnseenFixedData ||
         hasUnseenInstallBaseUpdate ||
         hasUnseenManagerFix;
 
-      if (!active) return "";
+      if (!hasAlert) return "";
 
       return [
         String(getRecordKey(rec) || rec.id || ""),
@@ -8944,7 +8945,8 @@ function getEquipmentReviewActiveAlertSignature() {
         clean(rec.manager_response_at || ""),
         clean(rec.install_base_response_at || ""),
         clean(rec.install_base_release_at || ""),
-        clean(rec.rep_flash_at || "")
+        clean(rec.rep_flash_at || ""),
+        clean(rec.updated_at || rec.last_updated_at || "")
       ].join("|");
     })
     .filter(Boolean)
@@ -8952,28 +8954,22 @@ function getEquipmentReviewActiveAlertSignature() {
     .join("||");
 }
 
-function syncCollapsedEquipmentReviewAlert() {
+function syncCollapsedEquipmentReviewFrame() {
   const panel = $("myEquipmentReviewPanel");
-  const activeSignature = getEquipmentReviewActiveAlertSignature();
+  const activeSignature = getEquipmentReviewRowAlertSignature();
 
-  if (
+  const shouldShow =
     state.myEquipmentReviewOpen !== true &&
-    activeSignature &&
+    Boolean(activeSignature) &&
     activeSignature !==
-      state.myEquipmentReviewAcknowledgedAlertSignature
-  ) {
-    state.myEquipmentReviewCollapsedAlert = true;
-  }
+      state.myEquipmentReviewAcknowledgedAlertSignature;
 
-  if (!activeSignature) {
-    state.myEquipmentReviewCollapsedAlert = false;
-  }
+  state.myEquipmentReviewCollapsedAlert = shouldShow;
 
   if (panel) {
     panel.classList.toggle(
       "equipment-review-collapsed-alert",
-      state.myEquipmentReviewOpen !== true &&
-      state.myEquipmentReviewCollapsedAlert === true
+      shouldShow
     );
   }
 }
@@ -8987,9 +8983,10 @@ function toggleMyEquipmentReviewPanel() {
   );
 
   if (state.myEquipmentReviewOpen) {
-    state.myEquipmentReviewCollapsedAlert = false;
     state.myEquipmentReviewAcknowledgedAlertSignature =
-      getEquipmentReviewActiveAlertSignature();
+      getEquipmentReviewRowAlertSignature();
+
+    state.myEquipmentReviewCollapsedAlert = false;
 
     const panel = $("myEquipmentReviewPanel");
     if (panel) {
@@ -9010,7 +9007,7 @@ function toggleMyEquipmentReviewPanel() {
       : "Open Records";
   }
 
-  syncCollapsedEquipmentReviewAlert();
+  syncCollapsedEquipmentReviewFrame();
 }
 
 function updateMyEquipmentReviewSearch(value) {
@@ -13350,9 +13347,6 @@ function render() {
   ) {
     equipmentSearchInput.value = state.myEquipmentReviewSearch || "";
   }
-
-  syncCollapsedEquipmentReviewAlert();
-
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
@@ -13365,6 +13359,7 @@ function render() {
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
   renderTable();
+  syncCollapsedEquipmentReviewFrame();
   renderSalesRouting();
   renderDetail();
   updateAxisShareStatus();
@@ -16676,7 +16671,7 @@ function refreshRepFromSync() {
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
   renderTable();
-  syncCollapsedEquipmentReviewAlert();
+  syncCollapsedEquipmentReviewFrame();
   refreshSelectedRowUI();
 
   const active = document.activeElement;
