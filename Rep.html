@@ -145,6 +145,32 @@
       display:none!important;
     }
 
+    #myEquipmentReviewPanel.equipment-review-collapsed-alert{
+      border:2px solid rgba(65,255,156,.98)!important;
+      box-shadow:
+        0 0 0 1px rgba(65,255,156,.34),
+        0 0 24px rgba(65,255,156,.58),
+        0 0 44px rgba(65,255,156,.24)!important;
+      animation:equipmentReviewCollapsedAlertPulse 1.05s ease-in-out infinite!important;
+    }
+
+    @keyframes equipmentReviewCollapsedAlertPulse{
+      0%,100%{
+        border-color:rgba(65,255,156,.70);
+        box-shadow:
+          0 0 0 1px rgba(65,255,156,.26),
+          0 0 14px rgba(65,255,156,.30),
+          0 0 28px rgba(65,255,156,.14);
+      }
+      50%{
+        border-color:rgba(142,255,195,1);
+        box-shadow:
+          0 0 0 2px rgba(142,255,195,.56),
+          0 0 30px rgba(65,255,156,.86),
+          0 0 56px rgba(65,255,156,.32);
+      }
+    }
+
     .footer-note{
       margin-top:14px;
       font-size:12px;
@@ -5068,6 +5094,8 @@ installBaseFixResponseRecordId: "",
   repActionOpen: false,
   myEquipmentReviewOpen: true,
   myEquipmentReviewSearch: "",
+  myEquipmentReviewCollapsedAlert: false,
+  myEquipmentReviewAcknowledgedAlertSignature: "",
   showCompleted: true,
   detailUpdateFlash: {
     manager: false,
@@ -8863,6 +8891,93 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
+function getEquipmentReviewActiveAlertSignature() {
+  return getMyEquipmentReviewRecords()
+    .map(rec => {
+      const hasUnseenManagerResponse =
+        hasUnseenManagerCommunication(rec) &&
+        hasDirectIncomingManagerTarget(rec);
+
+      const hasUnseenHubCommunication =
+        hasUnseenInstallBaseCommunication(rec) &&
+        hasDirectIncomingInstallBaseTarget(rec);
+
+      const sentBackToInstallBase =
+        rec.install_base_correction_status === "corrected_by_rep" ||
+        rec.install_base_response_status === "rep_correction_sent" ||
+        rec.install_base_fix_status === "rep_reviewed";
+
+      const hasUnseenFixedData =
+        sentBackToInstallBase &&
+        rec.install_base_fixed_seen_by_rep !== true &&
+        hasDirectIncomingInstallBaseTarget(rec);
+
+      const hasUnseenInstallBaseUpdate =
+        rec.install_base_release_new === true &&
+        rec.install_base_release_seen !== true;
+
+      const hasUnseenManagerFix =
+        (
+          rec.install_base_correction_status === "corrected_by_manager" ||
+          rec.install_base_response_status === "manager_correction_sent" ||
+          rec.install_base_fix_status === "manager_reviewed" ||
+          rec.rep_flash_type === "manager_fix"
+        ) &&
+        rec.manager_response_seen_by_rep !== true;
+
+      const active =
+        hasUnseenManagerResponse ||
+        hasUnseenHubCommunication ||
+        hasUnseenFixedData ||
+        hasUnseenInstallBaseUpdate ||
+        hasUnseenManagerFix;
+
+      if (!active) return "";
+
+      return [
+        String(getRecordKey(rec) || rec.id || ""),
+        hasUnseenManagerResponse ? "manager_message" : "",
+        hasUnseenHubCommunication ? "install_base_message" : "",
+        hasUnseenFixedData ? "fixed_data" : "",
+        hasUnseenInstallBaseUpdate ? "install_base_update" : "",
+        hasUnseenManagerFix ? "manager_fix" : "",
+        clean(rec.manager_response_at || ""),
+        clean(rec.install_base_response_at || ""),
+        clean(rec.install_base_release_at || ""),
+        clean(rec.rep_flash_at || "")
+      ].join("|");
+    })
+    .filter(Boolean)
+    .sort()
+    .join("||");
+}
+
+function syncCollapsedEquipmentReviewAlert() {
+  const panel = $("myEquipmentReviewPanel");
+  const activeSignature = getEquipmentReviewActiveAlertSignature();
+
+  if (
+    state.myEquipmentReviewOpen !== true &&
+    activeSignature &&
+    activeSignature !==
+      state.myEquipmentReviewAcknowledgedAlertSignature
+  ) {
+    state.myEquipmentReviewCollapsedAlert = true;
+  }
+
+  if (!activeSignature) {
+    state.myEquipmentReviewCollapsedAlert = false;
+  }
+
+  if (panel) {
+    panel.classList.toggle(
+      "equipment-review-collapsed-alert",
+      state.myEquipmentReviewOpen !== true &&
+      state.myEquipmentReviewCollapsedAlert === true
+    );
+  }
+}
+
 function toggleMyEquipmentReviewPanel() {
   state.myEquipmentReviewOpen = state.myEquipmentReviewOpen !== true;
 
@@ -8870,6 +8985,17 @@ function toggleMyEquipmentReviewPanel() {
     "my-equipment-records-collapsed",
     state.myEquipmentReviewOpen !== true
   );
+
+  if (state.myEquipmentReviewOpen) {
+    state.myEquipmentReviewCollapsedAlert = false;
+    state.myEquipmentReviewAcknowledgedAlertSignature =
+      getEquipmentReviewActiveAlertSignature();
+
+    const panel = $("myEquipmentReviewPanel");
+    if (panel) {
+      panel.classList.remove("equipment-review-collapsed-alert");
+    }
+  }
 
   const body = $("myEquipmentReviewBody");
   const button = $("toggleMyEquipmentReviewBtn");
@@ -8883,6 +9009,8 @@ function toggleMyEquipmentReviewPanel() {
       ? "Hide Records"
       : "Open Records";
   }
+
+  syncCollapsedEquipmentReviewAlert();
 }
 
 function updateMyEquipmentReviewSearch(value) {
@@ -13222,6 +13350,9 @@ function render() {
   ) {
     equipmentSearchInput.value = state.myEquipmentReviewSearch || "";
   }
+
+  syncCollapsedEquipmentReviewAlert();
+
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
@@ -16545,6 +16676,7 @@ function refreshRepFromSync() {
   renderUnmatchedTradeInLeads();
   renderNewProjectsTable();
   renderTable();
+  syncCollapsedEquipmentReviewAlert();
   refreshSelectedRowUI();
 
   const active = document.activeElement;
