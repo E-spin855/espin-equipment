@@ -2875,6 +2875,38 @@ button.message-sent-state{
   box-shadow:0 0 14px rgba(100,116,139,.20)!important;
 }
 
+
+  /* Manager queue filters: Search + State + Rep on one line */
+  .manager-queue-toolbar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:nowrap;
+    margin:0 0 12px;
+  }
+
+  .manager-queue-toolbar input{
+    flex:1 1 auto;
+    min-width:320px;
+  }
+
+  .manager-queue-toolbar select{
+    flex:0 0 210px;
+    min-width:210px;
+  }
+
+  @media(max-width:900px){
+    .manager-queue-toolbar{
+      flex-wrap:wrap;
+    }
+
+    .manager-queue-toolbar input,
+    .manager-queue-toolbar select{
+      flex:1 1 100%;
+      min-width:0;
+    }
+  }
+
 </style>
 
 <style>
@@ -2900,6 +2932,88 @@ button.message-sent-state{
   min-width:95px!important;
 }
 </style>
+
+<style id="manager-final-rep-badge-palette">
+/* Final override: exact Rep Install Base Review colors */
+.alert-age,
+.alert-replacement{
+  background:linear-gradient(90deg,#4f46e5,#7c3aed)!important;
+  color:#f5f3ff!important;
+  border:1px solid rgba(139,92,246,.78)!important;
+  box-shadow:0 0 16px rgba(124,58,237,.28)!important;
+}
+.alert-service{
+  background:linear-gradient(90deg,#1d4ed8,#3b82f6)!important;
+  color:#eff6ff!important;
+  border:1px solid rgba(59,130,246,.78)!important;
+  box-shadow:0 0 16px rgba(59,130,246,.28)!important;
+}
+.alert-utilization{
+  background:linear-gradient(90deg,#9a4f13,#f28c28)!important;
+  color:#fff7ed!important;
+  border:1px solid rgba(251,146,60,.72)!important;
+  box-shadow:0 0 16px rgba(249,115,22,.26)!important;
+}
+.alert-capital-planning,
+.alert-planning,
+.alert-proactive{
+  background:linear-gradient(90deg,#047857,#34d399)!important;
+  color:#022c22!important;
+  border:1px solid rgba(52,211,153,.78)!important;
+  box-shadow:0 0 16px rgba(52,211,153,.26)!important;
+}
+.alert-upgrade,
+.alert-upgrade-review{
+  background:linear-gradient(90deg,#a16207,#facc15)!important;
+  color:#241800!important;
+  border:1px solid rgba(250,204,21,.80)!important;
+  box-shadow:0 0 16px rgba(250,204,21,.24)!important;
+}
+.alert-project{
+  background:linear-gradient(90deg,#0f766e,#2dd4bf)!important;
+  color:#042f2e!important;
+  border:1px solid rgba(45,212,191,.72)!important;
+  box-shadow:0 0 16px rgba(45,212,191,.24)!important;
+}
+.alert-quote{
+  background:linear-gradient(90deg,#4338ca,#818cf8)!important;
+  color:#eef2ff!important;
+  border:1px solid rgba(129,140,248,.72)!important;
+  box-shadow:0 0 16px rgba(99,102,241,.26)!important;
+}
+.alert-review,
+.alert-tradein{
+  background:linear-gradient(90deg,#0891b2,#22d3ee)!important;
+  color:#083344!important;
+  border:1px solid rgba(34,211,238,.76)!important;
+  box-shadow:0 0 16px rgba(6,182,212,.24)!important;
+}
+.alert-disposal{
+  background:linear-gradient(90deg,#b91c1c,#ef4444)!important;
+  color:#fff1f2!important;
+  border:1px solid rgba(248,113,113,.76)!important;
+  box-shadow:0 0 16px rgba(239,68,68,.26)!important;
+}
+.alert-site{
+  background:linear-gradient(90deg,#92400e,#f59e0b)!important;
+  color:#fffbeb!important;
+  border:1px solid rgba(245,158,11,.72)!important;
+  box-shadow:0 0 16px rgba(245,158,11,.22)!important;
+}
+.alert-ownership{
+  background:linear-gradient(90deg,#6d28d9,#a78bfa)!important;
+  color:#f5f3ff!important;
+  border:1px solid rgba(167,139,250,.72)!important;
+  box-shadow:0 0 16px rgba(139,92,246,.24)!important;
+}
+.alert-source-mismatch{
+  background:linear-gradient(90deg,#be185d,#f472b6)!important;
+  color:#fff1f7!important;
+  border:1px solid rgba(244,114,182,.72)!important;
+  box-shadow:0 0 16px rgba(236,72,153,.24)!important;
+}
+</style>
+
 </head>
 
 <body>
@@ -2965,19 +3079,6 @@ button.message-sent-state{
             </div>
           </div>
         </div>
-
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Assigned Reps</h2>
-            <span class="mini">Manager filter</span>
-          </div>
-
-          <div class="panel-body">
-            <div id="repMenu" class="rep-menu">
-              <div class="mini">No reps loaded.</div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div>
@@ -3000,7 +3101,33 @@ button.message-sent-state{
   </div>
 </div>
 
-          <div class="panel-body table-wrap">
+          <div class="panel-body">
+            <div class="manager-queue-toolbar">
+              <input
+                id="managerQueueSearch"
+                type="search"
+                placeholder="Search project, equipment, serial, facility, source, review, rep, territory, or status..."
+                oninput="updateManagerQueueSearch(this.value)"
+              />
+
+              <select
+                id="managerQueueStateFilter"
+                onchange="updateManagerQueueState(this.value)"
+                aria-label="Filter manager records by state"
+              >
+                <option value="">All States</option>
+              </select>
+
+              <select
+                id="managerQueueRepFilter"
+                onchange="updateManagerQueueRep(this.value)"
+                aria-label="Filter manager records by rep"
+              >
+                <option value="">All Reps</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -3023,6 +3150,7 @@ button.message-sent-state{
               </thead>
               <tbody id="tableBody"></tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -3085,6 +3213,8 @@ const state = {
   records: [],
   selectedId: null,
   selectedRep: null,
+  managerQueueSearch: "",
+  managerQueueState: "",
   timelineHighlight: null,
   correctedFieldHighlightId: null,
   managerUpdateHighlight: null,
@@ -4446,13 +4576,31 @@ function renderReviewCondition(rec) {
   let cls = "alert-badge alert-record-note";
   let shortText = first.displayType || "Review";
 
-  if (type === "service") {
+  const visibleAlertText = lower(
+    [
+      first.displayType || "",
+      first.label || "",
+      first.reason || "",
+      first.message || ""
+    ].join(" ")
+  );
+
+  if (
+    type === "service" ||
+    visibleAlertText.includes("service")
+  ) {
     cls = "alert-badge alert-service";
     shortText = "Service Coverage";
-  } else if (type === "upgrade") {
+  } else if (
+    type === "upgrade" ||
+    visibleAlertText.includes("upgrade")
+  ) {
     cls = "alert-badge alert-upgrade";
     shortText = "Upgrade";
-   } else if (type === "utilization") {
+  } else if (
+    type === "utilization" ||
+    visibleAlertText.includes("utilization")
+  ) {
     cls = "alert-badge alert-utilization";
     shortText = "Utilization";
   } else if (
@@ -4461,45 +4609,70 @@ function renderReviewCondition(rec) {
     type === "replacement" ||
     type === "age" ||
     type === "age_review" ||
-    lower(first.displayType || "").includes("age") ||
-    lower(first.label || "").includes("age") ||
-    lower(first.displayType || "").includes("replacement") ||
-    lower(first.label || "").includes("replacement")
+    visibleAlertText.includes("equipment age") ||
+    visibleAlertText.includes("replacement") ||
+    visibleAlertText.includes("end of life")
   ) {
     cls = "alert-badge alert-age";
     shortText = "Equipment Age";
   } else if (
     type === "planning" ||
-    type === "capital_planning"
+    type === "capital_planning" ||
+    visibleAlertText.includes("capital planning")
   ) {
     cls = "alert-badge alert-capital-planning";
     shortText = "Capital Planning";
   } else if (
     type === "disposal" ||
-    type === "disposition"
+    type === "disposition" ||
+    visibleAlertText.includes("dispose") ||
+    visibleAlertText.includes("disposal") ||
+    visibleAlertText.includes("disposition")
   ) {
     cls = "alert-badge alert-disposal";
-    shortText = "Disposition";
-  } else if (type === "project" || type === "project_review") {
+    shortText = "Dispose";
+  } else if (
+    type === "project" ||
+    type === "project_review" ||
+    visibleAlertText.includes("project / asset") ||
+    visibleAlertText.includes("project")
+  ) {
     cls = "alert-badge alert-project";
     shortText = "Project / Asset";
-  } else if (type === "quote" || type === "quote_review") {
+  } else if (
+    type === "quote" ||
+    type === "quote_review" ||
+    visibleAlertText.includes("quote")
+  ) {
     cls = "alert-badge alert-quote";
     shortText = "Quote";
   } else if (
     type === "tradein" ||
     type === "trade_in" ||
-    type === "review"
+    type === "review" ||
+    visibleAlertText.trim() === "review" ||
+    visibleAlertText.includes("trade-in") ||
+    visibleAlertText.includes("trade in")
   ) {
     cls = "alert-badge alert-review";
     shortText = "Review";
-  } else if (type === "site") {
+  } else if (
+    type === "site" ||
+    visibleAlertText.includes("site planning")
+  ) {
     cls = "alert-badge alert-site";
-    shortText = "Site / Account";
-  } else if (type === "ownership") {
+    shortText = "Site Planning";
+  } else if (
+    type === "ownership" ||
+    visibleAlertText.includes("ownership")
+  ) {
     cls = "alert-badge alert-ownership";
     shortText = "Ownership";
-  } else if (type === "source_mismatch" || type === "source") {
+  } else if (
+    type === "source_mismatch" ||
+    type === "source" ||
+    visibleAlertText.includes("source mismatch")
+  ) {
     cls = "alert-badge alert-source-mismatch";
     shortText = "Source Mismatch";
   }
@@ -4550,78 +4723,144 @@ function renderStats() {
   $("statSubmitted").textContent = updated;
 }
 
+function getManagerRecordState(rec) {
+  return clean(
+    rec.state ||
+    rec.site_state ||
+    rec.facility_state ||
+    rec.customer_state ||
+    rec.account_state ||
+    ""
+  ).toUpperCase();
+}
+
+function getManagerQueueSearchText(rec) {
+  return [
+    rec.oem_project_id,
+    rec.project_id,
+    rec.asset_id,
+    rec.make,
+    rec.model,
+    rec.modality,
+    rec.serial_number,
+    rec.serial,
+    rec.dom,
+    getFacility(rec),
+    rec.site_address,
+    rec.city,
+    getManagerRecordState(rec),
+    rec.zip_code,
+    getRepName(rec),
+    rec.manager_region,
+    rec.manager_territory,
+    rec.territory,
+    rec.hub_source,
+    rec.source_system,
+    rec.source,
+    rec.rep_status,
+    rec.manager_status,
+    rec.oem_review_label,
+    rec.oem_review_type,
+    rec.oem_review_reason,
+    rec.proactive_type,
+    rec.proactive_reason
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 function renderRepMenu() {
-  const el = $("repMenu");
+  const repSelect = $("managerQueueRepFilter");
+  const stateSelect = $("managerQueueStateFilter");
 
-  if (!state.records.length) {
-    el.innerHTML = `<div class="mini">No reps loaded.</div>`;
-    return;
-  }
-
-  const reps = {};
+  const repCounts = new Map();
+  const stateCounts = new Map();
 
   state.records.forEach(rec => {
-    const name = getRepName(rec);
-
-    if (!reps[name]) {
-      reps[name] = {
-        name,
-        email: getRepEmail(rec),
-        phone: getRepPhone(rec),
-        count: 0,
-        updates: 0,
-        reviews: 0,
-        completed: 0,
-        overdue: 0
-      };
+    const repName = getRepName(rec);
+    if (repName) {
+      repCounts.set(repName, (repCounts.get(repName) || 0) + 1);
     }
 
-    reps[name].count++;
-
-    if (getAlerts(rec).length) reps[name].reviews++;
-    if (rec.rep_action || rec.quote_amount || rec.manager_unseen_update) reps[name].updates++;
-    if (rec.lifecycle_completed || rec.rep_status === "completed") reps[name].completed++;
-    if (hasFollowUpOverdueBy7Days(rec)) reps[name].overdue++;
+    const stateCode = getManagerRecordState(rec);
+    if (stateCode) {
+      stateCounts.set(stateCode, (stateCounts.get(stateCode) || 0) + 1);
+    }
   });
 
-  const list = Object.values(reps).sort((a, b) => a.name.localeCompare(b.name));
+  if (repSelect) {
+    const reps = [...repCounts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]));
 
-  el.innerHTML = `
-    <button type="button" class="secondary" onclick="selectRep('')" style="margin-bottom:10px;">
-      Show All
-    </button>
+    repSelect.innerHTML = [
+      '<option value="">All Reps</option>',
+      ...reps.map(([name, count]) =>
+        `<option value="${escapeHtml(name)}">${escapeHtml(name)} (${count})</option>`
+      )
+    ].join("");
 
-    ${list.map(rep => {
-      const active = state.selectedRep === rep.name;
+    if (
+      state.selectedRep &&
+      !reps.some(([name]) => name === state.selectedRep)
+    ) {
+      state.selectedRep = null;
+    }
 
-      return `
-        <div
-          class="rep-card ${active ? "active" : ""}"
-          onclick="selectRep('${escapeJs(rep.name)}')"
-        >
-          <div class="rep-name">${escapeHtml(rep.name)}</div>
-          <div class="rep-meta">${escapeHtml(rep.email || "")}</div>
-          <div class="rep-meta">${escapeHtml(rep.phone || "")}</div>
-          <div class="rep-count">
-            ${rep.count} Records • ${rep.reviews} Review Notes • ${rep.updates} Updates
-          </div>
-          ${
-            rep.overdue
-              ? `<div class="mini" style="margin-top:8px;color:#ff9c9c;font-weight:900;">${rep.overdue} Overdue Follow-Up</div>`
-              : rep.completed
-              ? `<div class="mini" style="margin-top:8px;color:#41ff9c;font-weight:900;">${rep.completed} Completed</div>`
-              : `<div class="mini" style="margin-top:8px;">Active</div>`
-          }
-        </div>
-      `;
-    }).join("")}
-  `;
+    repSelect.value = state.selectedRep || "";
+  }
+
+  if (stateSelect) {
+    const states = [...stateCounts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    stateSelect.innerHTML = [
+      '<option value="">All States</option>',
+      ...states.map(([stateCode, count]) =>
+        `<option value="${escapeHtml(stateCode)}">${escapeHtml(stateCode)} (${count})</option>`
+      )
+    ].join("");
+
+    if (
+      state.managerQueueState &&
+      !states.some(([stateCode]) => stateCode === state.managerQueueState)
+    ) {
+      state.managerQueueState = "";
+    }
+
+    stateSelect.value = state.managerQueueState || "";
+  }
+
+  const searchInput = $("managerQueueSearch");
+  if (
+    searchInput &&
+    searchInput.value !== state.managerQueueSearch
+  ) {
+    searchInput.value = state.managerQueueSearch || "";
+  }
+}
+
+function updateManagerQueueSearch(value) {
+  state.managerQueueSearch = String(value || "").trim().toLowerCase();
+  state.selectedId = null;
+  renderTable();
+}
+
+function updateManagerQueueState(value) {
+  state.managerQueueState = clean(value).toUpperCase();
+  state.selectedId = null;
+  renderTable();
+}
+
+function updateManagerQueueRep(value) {
+  state.selectedRep = clean(value) || null;
+  state.selectedId = null;
+  renderTable();
 }
 
 function selectRep(name) {
-  state.selectedRep = name || null;
-  state.selectedId = null;
-  render();
+  updateManagerQueueRep(name);
+  renderRepMenu();
 }
 function hasUnseenManagerRelease(rec) {
   if (!rec) return false;
@@ -5232,13 +5471,25 @@ function renderTable() {
     records = records.filter(rec => getRepName(rec) === state.selectedRep);
   }
 
+  if (state.managerQueueState) {
+    records = records.filter(
+      rec => getManagerRecordState(rec) === state.managerQueueState
+    );
+  }
+
+  if (state.managerQueueSearch) {
+    records = records.filter(
+      rec => getManagerQueueSearchText(rec).includes(state.managerQueueSearch)
+    );
+  }
+
   records = records.sort((a, b) => getDisplayOrderWeight(b) - getDisplayOrderWeight(a));
 
   if (!records.length) {
     tbody.innerHTML = `
       <tr>
 	        <td colspan="15" style="color:#9db6d2;">
-          No records.
+          No matching records.
         </td>
       </tr>
     `;
