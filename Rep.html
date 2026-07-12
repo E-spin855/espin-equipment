@@ -3210,6 +3210,46 @@ button.message-sent-state{
   margin-top:0!important;
 }
 
+
+/* Rep Action directly under Facility, Financial Record to its right */
+.rep-action-financial-row{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);
+  gap:14px;
+  align-items:start;
+  width:100%;
+  margin:0 0 14px;
+}
+
+.rep-action-financial-left,
+.rep-action-financial-right{
+  min-width:0;
+  display:block;
+}
+
+.rep-action-financial-row .rep-action-main-card,
+.rep-action-financial-row .rep-financial-review-card{
+  width:100%!important;
+  height:auto!important;
+  min-height:0!important;
+  margin:0!important;
+  grid-column:auto!important;
+}
+
+.selected-record-overview:empty{
+  display:none!important;
+  margin:0!important;
+  padding:0!important;
+  min-height:0!important;
+}
+
+@media(max-width:1000px){
+  .rep-action-financial-row{
+    grid-template-columns:1fr;
+  }
+}
+
 </style>
 </head>
 
@@ -10177,15 +10217,50 @@ function renderDetail() {
 const detailGridEl = $("detailGrid");
 
 if (detailGridEl) {
+  const facilityLayout =
+    detailGridEl.querySelector(".rep-facility-review-layout");
+
   const actionCard =
     detailGridEl.querySelector(".rep-action-main-card");
+
+  const financialCard =
+    detailGridEl.querySelector(".rep-financial-review-card");
 
   const reviewCard =
     detailGridEl.querySelector(".rep-review-request-card");
 
-  // Financial Record already belongs inside the Selected Record right column.
-  // Do not move it into the Rep Action workflow layout after rendering.
-  if (actionCard && reviewCard) {
+  if (facilityLayout && actionCard && financialCard) {
+    const row = document.createElement("div");
+    row.className = "rep-action-financial-row";
+
+    const leftColumn = document.createElement("div");
+    leftColumn.className = "rep-action-financial-left";
+
+    const rightColumn = document.createElement("div");
+    rightColumn.className = "rep-action-financial-right";
+
+    facilityLayout.insertAdjacentElement("afterend", row);
+
+    row.appendChild(leftColumn);
+    row.appendChild(rightColumn);
+
+    leftColumn.appendChild(actionCard);
+    rightColumn.appendChild(financialCard);
+
+    const emptyOverview =
+      detailGridEl.querySelector(".selected-record-overview");
+
+    if (
+      emptyOverview &&
+      !emptyOverview.querySelector(
+        ".detail-card, .rep-install-base-fix-response-panel"
+      )
+    ) {
+      emptyOverview.remove();
+    }
+  }
+
+  if (actionCard && reviewCard && !reviewCard.closest(".rep-workflow-layout")) {
     const layout = document.createElement("div");
     layout.className = "rep-workflow-layout";
 
@@ -10195,12 +10270,11 @@ if (detailGridEl) {
     const rightColumn = document.createElement("div");
     rightColumn.className = "rep-workflow-right";
 
-    actionCard.parentNode.insertBefore(layout, actionCard);
+    reviewCard.parentNode.insertBefore(layout, reviewCard);
 
     layout.appendChild(leftColumn);
     layout.appendChild(rightColumn);
 
-    leftColumn.appendChild(actionCard);
     rightColumn.appendChild(reviewCard);
   }
 }
