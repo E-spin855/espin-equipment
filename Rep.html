@@ -10612,7 +10612,11 @@ function renderRepManagerCommunication(rec) {
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Manager Communication</div>
-          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
+          ${ui.composerOpen ? `
+            <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">
+              ${ui.needsResponse ? "Response needed" : "No response currently required"}
+            </div>
+          ` : ""}
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
@@ -12563,6 +12567,13 @@ function renderInstallBaseCorrectionPanel(rec) {
   const isOpen = state.installBaseCommunicationOpen === true;
   const historyOpen = state.installBaseHistoryOpen === true;
 
+  // Once the user hides this exact incoming message, remove the
+  // "Response needed" label until Communication is reopened or
+  // a newer Install Base message arrives.
+  const showNeedsResponse =
+    needsResponse &&
+    !(hiddenForThisMessage && !isOpen);
+
   const latestLabel = latestItem
     ? (lower(latestItem.sender) === "install_base" ? "Install Base" : "Rep")
     : "Install Base";
@@ -12596,11 +12607,15 @@ function renderInstallBaseCorrectionPanel(rec) {
   `;
 
   return `
-    <div class="detail-card full comm-shell ${getCommunicationFrameClass(rec, "install_base")} ${needsResponse ? "needs-rep-input" : ""}">
+    <div class="detail-card full comm-shell ${getCommunicationFrameClass(rec, "install_base")} ${showNeedsResponse ? "needs-rep-input" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Install Base Communication</div>
-          <div class="comm-status ${needsResponse ? "needs-response" : ""}">${needsResponse ? "Response needed" : "No response currently required"}</div>
+          ${showNeedsResponse ? `
+            <div class="comm-status needs-response">Response needed</div>
+          ` : (!hiddenForThisMessage ? `
+            <div class="comm-status">No response currently required</div>
+          ` : "")}
           <div class="comm-latest"><strong>${escapeHtml(latestLabel)}${latestAt ? ` · ${escapeHtml(latestAt)}` : ""}:</strong> ${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
