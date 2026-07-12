@@ -2555,6 +2555,44 @@ button.message-sent-state{
   }
 }
 
+
+/* Manager Response to Install Base — match Rep response behavior */
+.manager-install-base-fix-field-frame{
+  border:2px solid rgba(65,255,156,.95)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.28),
+    0 0 20px rgba(65,255,156,.44)!important;
+  animation:managerInstallBaseFixFieldPulse 1.05s ease-in-out infinite!important;
+}
+
+@keyframes managerInstallBaseFixFieldPulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.68);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.24),
+      0 0 12px rgba(65,255,156,.26);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.52),
+      0 0 26px rgba(65,255,156,.76);
+  }
+}
+
+.manager-install-base-response-fields{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:14px;
+}
+
+@media(max-width:900px){
+  .manager-install-base-response-fields{
+    grid-template-columns:1fr;
+  }
+}
+
 </style>
 
 <style>
@@ -5130,116 +5168,84 @@ function canonicalInstallBaseFieldName(field) {
 function getManagerInstallBaseIssueFields(rec) {
   if (!rec) return [];
 
-  const explicitManagerFields = String(
-    rec.install_base_manager_fix_request_fields ||
-    rec.install_base_fix_request_fields ||
-    rec.install_base_fix_request_field ||
-    ""
-  )
-    .split(",")
-    .map(v => canonicalInstallBaseFieldName(v))
-    .filter(Boolean);
+  const normalizeManagerFixField = field => {
+    const f = String(field || "").toLowerCase().trim();
 
-  const fields = [];
+    if (["project", "project_id", "oem_project_id", "asset_id", "equipment_id"].includes(f)) return "oem_project_id";
+    if (["make", "manufacturer", "brand"].includes(f)) return "make";
+    if (["model", "equipment_model"].includes(f)) return "model";
+    if (["modality", "equipment_modality"].includes(f)) return "modality";
+    if (["serial", "serial_number", "system_serial", "equipment_serial"].includes(f)) return "serial_number";
+    if (["dom", "year", "manufacture_year"].includes(f)) return "dom";
+    if (["site", "site_name", "facility", "facility_name", "hospital", "hospital_name", "customer", "location"].includes(f)) return "site";
+    if (["address", "street_address", "site_address"].includes(f)) return "site_address";
+    if (["city"].includes(f)) return "city";
+    if (["state"].includes(f)) return "state";
+    if (["zip", "zipcode", "zip_code", "postal_code"].includes(f)) return "zip_code";
+    if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(f)) return "manager_name";
+    if (["territory", "manager_region", "manager_territory", "region"].includes(f)) return "manager_region";
+    if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(f)) return "assigned_rep_name";
+    if (["utilization", "utilization_percent", "utilization_percentage", "use"].includes(f)) return "utilization_percent";
+    if (["source", "source_system", "record_source", "source_conflict", "source_mismatch"].includes(f)) return "source";
+    if (["duplicate", "duplicate_asset", "duplicate_review"].includes(f)) return "duplicate_asset";
 
-  const add = (key, label) => {
-    if (!fields.some(item => item.key === key)) {
-      fields.push({ key, label });
-    }
+    return f;
   };
 
-  explicitManagerFields.forEach(field => {
-    switch (field) {
-      case "rep":
-      case "assigned_rep":
-      case "assigned_rep_name":
-      case "rep_owner":
-      case "sales_rep":
-      case "sales_rep_name":
-        add("assigned_rep_name", "Rep Owner");
-        break;
+  const requested = new Set(
+    [
+      rec.install_base_manager_fix_request_fields,
+      rec.install_base_fix_request_fields,
+      rec.install_base_fix_request_field,
+      rec.install_base_issue_field
+    ]
+      .filter(Boolean)
+      .flatMap(value =>
+        String(value)
+          .split(",")
+          .map(normalizeManagerFixField)
+          .filter(Boolean)
+      )
+  );
 
-      case "territory":
-      case "manager_region":
-      case "manager_territory":
-      case "region":
-        add("manager_territory", "Territory");
-        break;
-
-      case "owner":
-      case "manager":
-      case "manager_name":
-      case "owner_group":
-      case "owner_group_name":
-        add("manager_name", "Owner Group");
-        break;
-
-      case "serial":
-      case "serial_number":
-      case "system_serial":
-        add("serial_number", "Serial Number");
-        break;
-
-      case "dom":
-      case "year":
-      case "manufacture_year":
-        add("dom", "DOM / Year");
-        break;
-
-      case "make":
-      case "manufacturer":
-        add("make", "Make");
-        break;
-
-      case "model":
-        add("model", "Model");
-        break;
-
-      case "modality":
-        add("modality", "Modality");
-        break;
-
-      case "site":
-      case "facility":
-      case "hospital":
-      case "location":
-        add("site", "Facility / Site");
-        break;
-    }
-  });
-
-  return fields;
+  return [
+    { key:"oem_project_id", label:"Project / Asset ID" },
+    { key:"make", label:"Brand / Make" },
+    { key:"model", label:"Model" },
+    { key:"modality", label:"Modality" },
+    { key:"serial_number", label:"Serial Number" },
+    { key:"dom", label:"DOM / Year" },
+    { key:"site", label:"Site / Facility" },
+    { key:"site_address", label:"Street Address" },
+    { key:"city", label:"City" },
+    { key:"state", label:"State" },
+    { key:"zip_code", label:"ZIP Code" },
+    { key:"manager_name", label:"Owner Group / Manager" },
+    { key:"manager_region", label:"Territory" },
+    { key:"assigned_rep_name", label:"Rep Owner" },
+    { key:"utilization_percent", label:"Utilization %" },
+    { key:"source", label:"Source" },
+    { key:"duplicate_asset", label:"Duplicate Asset Review" }
+  ].map(field => ({
+    ...field,
+    requested: requested.has(field.key)
+  }));
 }
 function getManagerInstallBaseFieldsForEdit(rec) {
-  const issues = getManagerInstallBaseIssueFields(rec);
-
-  const addRequiredAssignmentFields = (fields) => {
-    const next = Array.isArray(fields) ? [...fields] : [];
-    const add = (key, label) => {
-      if (!next.some(f => f.key === key)) next.push({ key, label });
-    };
-
-    add("manager_name", "Owner Group / Manager");
-    add("assigned_rep_name", "Rep Owner");
-
-    return next;
-  };
-
-  if (issues.length) return addRequiredAssignmentFields(issues);
-
-  return addRequiredAssignmentFields([
-    { key: "serial_number", label: "Serial Number" },
-    { key: "dom", label: "DOM / Year" },
-    { key: "make", label: "Make" },
-    { key: "model", label: "Model" },
-    { key: "modality", label: "Modality" },
-    { key: "site", label: "Facility / Site" }
-  ]);
+  return getManagerInstallBaseIssueFields(rec);
 }
 function getManagerInstallBaseInputValue(rec, key) {
-  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || "";
-  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.rep || "";
-  if (key === "manager_region") return rec.manager_region || rec.manager_territory || rec.territory || "";
+  if (key === "oem_project_id") return rec.oem_project_id || rec.project_id || rec.asset_id || "";
+  if (key === "manager_name") return rec.manager_name || rec.owner_group_name || rec.owner_group || "";
+  if (key === "assigned_rep_name") return rec.assigned_rep_name || rec.assigned_rep || rec.rep || rec.rep_owner || "";
+  if (key === "manager_region") return rec.manager_region || rec.manager_territory || rec.territory || rec.region || "";
+  if (key === "serial_number") return rec.serial_number || rec.serial || rec.system_serial || "";
+  if (key === "site") return rec.site || rec.facility || rec.hospital || rec.hospital_name || "";
+  if (key === "site_address") return rec.site_address || rec.street_address || rec.address || "";
+  if (key === "zip_code") return rec.zip_code || rec.postal_code || "";
+  if (key === "utilization_percent") return rec.utilization_percent || rec.utilization || "";
+  if (key === "source") return rec.source || rec.source_system || rec.record_source || "";
+  if (key === "duplicate_asset") return rec.duplicate_asset || rec.duplicate_review || "";
   return rec[key] || "";
 }
 
@@ -5351,13 +5357,6 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   if (!isManagerInstallBaseRequest(rec)) return "";
 
   const issues = getManagerInstallBaseFieldsForEdit(rec);
-  const assignmentIssues = [
-    { key: "manager_name", label: "Owner Group / Manager" },
-    { key: "assigned_rep_name", label: "Rep Owner" }
-  ];
-  const detailIssues = issues.filter(issue =>
-    !assignmentIssues.some(assignmentIssue => assignmentIssue.key === issue.key)
-  );
 
   const requestedItem =
     rec.install_base_action_label ||
@@ -5380,45 +5379,37 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
   return `
     <div class="detail-card full update-detail-card manager-install-base-correction-panel">
       <div class="k">Manager Response to Install Base</div>
-      <div class="v">Correct fields or send explanation back to Install Base</div>
 
-      <div class="mini" style="margin-top:8px;line-height:1.5;">
-        Requested item: <strong>${escapeHtml(requestedItem)}</strong><br>
-        Reason: ${escapeHtml(reason)}
+      <div class="mini" style="line-height:1.5;margin-top:8px;">
+        <strong>Requested item:</strong> ${escapeHtml(requestedItem)}<br>
+        <strong>Reason:</strong> ${escapeHtml(reason)}
       </div>
 
-      ${renderInstallBaseManagerMessage(rec)}
-
-      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Assignment / Ownership</div>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;">
-        ${assignmentIssues.map(issue => `
+      <div class="manager-install-base-response-fields">
+        ${issues.map(issue => `
           <div>
             <label>${escapeHtml(issue.label)}</label>
-            <input id="mgr_fix_${issue.key}" value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}" />
+            <input
+              id="mgr_fix_${escapeHtml(issue.key)}"
+              class="${issue.requested ? "manager-install-base-fix-field-frame" : ""}"
+              value="${escapeHtml(getManagerInstallBaseInputValue(rec, issue.key))}"
+              placeholder="Enter corrected ${escapeHtml(issue.label)}"
+              onclick="event.stopPropagation();"
+              onmousedown="event.stopPropagation();"
+              onfocus="event.stopPropagation();"
+            />
           </div>
         `).join("")}
       </div>
 
-      ${detailIssues.length ? `
-      <div class="mini" style="margin-top:14px;font-weight:900;color:#d8ebff;">Requested Fix Fields</div>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px;">
-	        ${detailIssues.map(issue => `
-	          <div>
-	            <label>${escapeHtml(issue.label)}</label>
-	            <input id="mgr_fix_${issue.key}" value="" />
-	          </div>
-	        `).join("")}
-      </div>
-      ` : ""}
-
       <label style="margin-top:14px;">Manager FIX Response to Install Base</label>
       <textarea
-  id="managerInstallBaseCorrectionNote"
-  onclick="event.stopPropagation();"
-  onmousedown="event.stopPropagation();"
-  onfocus="event.stopPropagation();"
-  placeholder="Type the corrected value requested by Install Base. Example: if Rep Owner is missing, type the rep name here."
-></textarea>
+        id="managerInstallBaseCorrectionNote"
+        onclick="event.stopPropagation();"
+        onmousedown="event.stopPropagation();"
+        onfocus="event.stopPropagation();"
+        placeholder="Enter the corrected value or a short explanation."
+      ></textarea>
 
       <div class="btns" style="margin-top:12px;">
         <button type="button" class="green" onclick="sendManagerInstallBaseCorrection('${escapeJs(rec.id)}')">
@@ -5432,7 +5423,6 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
     </div>
   `;
 }
-
 
 function hasValidAssignedRep(rec) {
   const name = String(
@@ -5478,8 +5468,30 @@ function sendManagerInstallBaseCorrection(id) {
     const cleanValue = clean(value);
     if (!fieldKey || !cleanValue) return;
 
+    const exactManagerFieldMap = {
+      oem_project_id: "project",
+      make: "make",
+      model: "model",
+      modality: "modality",
+      serial_number: "serial",
+      dom: "dom",
+      site: "site",
+      site_address: "site_address",
+      city: "city",
+      state: "state",
+      zip_code: "zip_code",
+      manager_name: "manager",
+      manager_region: "territory",
+      assigned_rep_name: "rep",
+      utilization_percent: "utilization_percent",
+      source: "source",
+      duplicate_asset: "duplicate_asset"
+    };
+
     const canonicalKey =
-      window.AxisUtils?.canonicalFieldName?.(fieldKey) || fieldKey;
+      exactManagerFieldMap[fieldKey] ||
+      window.AxisUtils?.canonicalFieldName?.(fieldKey) ||
+      fieldKey;
 
     correctedValues[fieldKey] = cleanValue;
     correctedFields[canonicalKey] = cleanValue;
@@ -5508,8 +5520,64 @@ if (["manager_name", "owner_group", "owner_group_name"].includes(canonicalKey)) 
 }
 
 // Territory is separate from Owner Group and Rep Owner.
-if (["manager_region", "manager_territory", "territory", "region"].includes(canonicalKey)) {
+if (["manager_region", "manager_territory", "territory", "region", "territory"].includes(canonicalKey)) {
   ["manager_region", "manager_territory", "territory", "region"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "project") {
+  ["oem_project_id", "project_id", "asset_id"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "serial") {
+  ["serial_number", "serial", "system_serial"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "site") {
+  ["site", "facility", "hospital", "hospital_name"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "site_address") {
+  ["site_address", "street_address", "address"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "zip_code") {
+  ["zip_code", "postal_code"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "utilization_percent") {
+  ["utilization_percent", "utilization"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "source") {
+  ["source", "source_system", "record_source"].forEach(alias => {
+    correctedValues[alias] = cleanValue;
+    correctedFields[alias] = cleanValue;
+  });
+}
+
+if (canonicalKey === "duplicate_asset") {
+  ["duplicate_asset", "duplicate_review"].forEach(alias => {
     correctedValues[alias] = cleanValue;
     correctedFields[alias] = cleanValue;
   });
@@ -5680,6 +5748,10 @@ issues.forEach(issue => {
     install_base_issue_note: "",
     install_base_rep_action_required: "",
     rep_fix_required: "",
+
+    // Clear all active Manager FIX request fields after successful submission.
+    install_base_manager_fix_request_fields: "",
+    install_base_fix_request_fields: "",
 
     manager_flash_at: now,
 manager_flash_type: "manager_fix_returned",
