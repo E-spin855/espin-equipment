@@ -3277,6 +3277,83 @@ function mergeRepResponsesIntoRecords() {
         key: getRecordKey(rec)
       }, resp);
 
+      // Preserve Manager / Install Base communication when an older Rep
+      // response packet is merged over the newer Hub record.
+      const managerHistorySources = [
+        ...(Array.isArray(rec.manager_install_base_conversation_history)
+          ? rec.manager_install_base_conversation_history
+          : []),
+        ...(Array.isArray(resp.manager_install_base_conversation_history)
+          ? resp.manager_install_base_conversation_history
+          : [])
+      ].filter(item => item && clean(item.message));
+
+      const managerHistoryMap = new Map();
+
+      managerHistorySources.forEach(item => {
+        const signature = [
+          lower(item.sender),
+          clean(item.at),
+          clean(item.message)
+        ].join("|");
+
+        if (!managerHistoryMap.has(signature)) {
+          managerHistoryMap.set(signature, item);
+        }
+      });
+
+      const mergedManagerHistory = [...managerHistoryMap.values()]
+        .sort((a, b) =>
+          (new Date(a.at || 0).getTime() || 0) -
+          (new Date(b.at || 0).getTime() || 0)
+        );
+
+      const latestManagerMessage = [...mergedManagerHistory]
+        .reverse()
+        .find(item => lower(item.sender) === "manager");
+
+      if (mergedManagerHistory.length) {
+        canonicalMerged.manager_install_base_conversation_history =
+          mergedManagerHistory;
+      }
+
+      if (latestManagerMessage) {
+        canonicalMerged.manager_message_to_install_base =
+          clean(latestManagerMessage.message);
+
+        canonicalMerged.manager_message_to_install_base_at =
+          latestManagerMessage.at || "";
+
+        canonicalMerged.manager_message_to_install_base_by =
+          latestManagerMessage.sender_label || "Manager";
+
+        canonicalMerged.manager_message_to_install_base_seen =
+          latestManagerMessage.seen_by_install_base === true;
+
+        canonicalMerged.install_base_response_from = "manager";
+        canonicalMerged.install_base_response_seen =
+          latestManagerMessage.seen_by_install_base === true;
+      } else {
+        canonicalMerged.manager_message_to_install_base =
+          rec.manager_message_to_install_base ||
+          resp.manager_message_to_install_base ||
+          "";
+
+        canonicalMerged.manager_message_to_install_base_at =
+          rec.manager_message_to_install_base_at ||
+          resp.manager_message_to_install_base_at ||
+          "";
+
+        canonicalMerged.manager_message_to_install_base_by =
+          rec.manager_message_to_install_base_by ||
+          resp.manager_message_to_install_base_by ||
+          "";
+
+        canonicalMerged.manager_message_to_install_base_seen =
+          rec.manager_message_to_install_base_seen === true ||
+          resp.manager_message_to_install_base_seen === true;
+      }
+
       String(resp.install_base_corrected_fields || "")
         .split(",")
         .map(canonicalInstallBaseFieldName)
