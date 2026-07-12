@@ -167,37 +167,6 @@
       }
     }
 
-    #myEquipmentReviewPanel.equipment-review-collapsed-attention{
-      border:2px solid rgba(255,107,107,.98)!important;
-      box-shadow:
-        0 0 0 1px rgba(255,107,107,.38),
-        0 0 26px rgba(255,77,77,.64),
-        0 0 46px rgba(255,77,77,.28)!important;
-      animation:equipmentReviewCollapsedAttentionPulse 1.05s ease-in-out infinite!important;
-    }
-
-    @keyframes equipmentReviewCollapsedAttentionPulse{
-      0%,100%{
-        border-color:rgba(255,107,107,.72);
-        box-shadow:
-          0 0 0 1px rgba(255,107,107,.28),
-          0 0 14px rgba(255,77,77,.34),
-          0 0 28px rgba(255,77,77,.16);
-      }
-      50%{
-        border-color:rgba(255,170,170,1);
-        box-shadow:
-          0 0 0 2px rgba(255,170,170,.62),
-          0 0 32px rgba(255,77,77,.92),
-          0 0 58px rgba(255,77,77,.36);
-      }
-    }
-
-    /* REP ATTENTION ALERT has priority over the green general-update frame. */
-    #myEquipmentReviewPanel.equipment-review-collapsed-attention.equipment-review-collapsed-update{
-      animation:equipmentReviewCollapsedAttentionPulse 1.05s ease-in-out infinite!important;
-    }
-
     .footer-note{
       margin-top:14px;
       font-size:12px;
@@ -5122,8 +5091,6 @@ installBaseFixResponseRecordId: "",
   myEquipmentReviewOpen: true,
   myEquipmentReviewSearch: "",
   myEquipmentReviewCollapsedUpdate: false,
-  myEquipmentReviewCollapsedAttention: false,
-  myEquipmentReviewAcknowledgedAttentionSignature: "",
   showCompleted: true,
   detailUpdateFlash: {
     manager: false,
@@ -8919,59 +8886,16 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
-function getActiveRepAttentionAlertSignature() {
-  return getMyEquipmentReviewRecords()
-    .filter(rec => isRepAttentionAlertActive(rec))
-    .map(rec => [
-      String(getRecordKey(rec) || rec.id || ""),
-      clean(rec.rep_attention_alert_configured_at || ""),
-      clean(rec.rep_attention_target_date || ""),
-      clean(rec.rep_attention_alert_type || ""),
-      clean(rec.rep_attention_months_before || ""),
-      clean(rec.rep_attention_alert_note || "")
-    ].join("|"))
-    .sort()
-    .join("||");
-}
-
-function syncCollapsedRepAttentionAlert() {
-  const panel = $("myEquipmentReviewPanel");
-  const activeSignature = getActiveRepAttentionAlertSignature();
-
-  if (
-    state.myEquipmentReviewOpen !== true &&
-    activeSignature &&
-    activeSignature !==
-      state.myEquipmentReviewAcknowledgedAttentionSignature
-  ) {
-    state.myEquipmentReviewCollapsedAttention = true;
-  }
-
-  if (panel) {
-    panel.classList.toggle(
-      "equipment-review-collapsed-attention",
-      state.myEquipmentReviewOpen !== true &&
-      state.myEquipmentReviewCollapsedAttention === true
-    );
-  }
-}
-
 function toggleMyEquipmentReviewPanel() {
   state.myEquipmentReviewOpen = state.myEquipmentReviewOpen !== true;
 
   // Opening the records acknowledges the collapsed-panel update alert.
   if (state.myEquipmentReviewOpen) {
     state.myEquipmentReviewCollapsedUpdate = false;
-    state.myEquipmentReviewCollapsedAttention = false;
-    state.myEquipmentReviewAcknowledgedAttentionSignature =
-      getActiveRepAttentionAlertSignature();
 
     const panel = $("myEquipmentReviewPanel");
     if (panel) {
-      panel.classList.remove(
-        "equipment-review-collapsed-update",
-        "equipment-review-collapsed-attention"
-      );
+      panel.classList.remove("equipment-review-collapsed-update");
     }
   }
 
@@ -8995,15 +8919,7 @@ function toggleMyEquipmentReviewPanel() {
       !state.myEquipmentReviewOpen &&
       state.myEquipmentReviewCollapsedUpdate === true
     );
-
-    panel.classList.toggle(
-      "equipment-review-collapsed-attention",
-      !state.myEquipmentReviewOpen &&
-      state.myEquipmentReviewCollapsedAttention === true
-    );
   }
-
-  syncCollapsedRepAttentionAlert();
 }
 
 function updateMyEquipmentReviewSearch(value) {
@@ -9078,15 +8994,10 @@ function getMyEquipmentReviewSearchText(rec) {
   const sorted = visibleRecords
     .map(rec => ({
       rec,
-      attentionActive: isRepAttentionAlertActive(rec),
       weight: getDisplayOrderWeight(rec, today),
       priority: getManualPriority(rec)
     }))
     .sort((a, b) => {
-      if (a.attentionActive !== b.attentionActive) {
-        return a.attentionActive ? -1 : 1;
-      }
-
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
       }
@@ -13330,15 +13241,7 @@ function render() {
       state.myEquipmentReviewOpen !== true &&
       state.myEquipmentReviewCollapsedUpdate === true
     );
-
-    equipmentPanel.classList.toggle(
-      "equipment-review-collapsed-attention",
-      state.myEquipmentReviewOpen !== true &&
-      state.myEquipmentReviewCollapsedAttention === true
-    );
   }
-
-  syncCollapsedRepAttentionAlert();
 
   if (equipmentBody) {
     equipmentBody.classList.toggle(
