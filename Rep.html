@@ -2917,6 +2917,129 @@ button.message-sent-state{
   }
 }
 
+
+/* Rep Selected Record summary matched to Manager format */
+.rep-selected-manager-summary{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);
+  gap:16px;
+  width:100%;
+  margin-bottom:2px;
+}
+
+.rep-selected-manager-summary-card{
+  min-width:0;
+  padding:24px 28px;
+  border:1px solid rgba(67,176,255,.38);
+  border-radius:18px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8,18,35,.92),
+      rgba(7,17,31,.88)
+    );
+}
+
+.rep-selected-manager-summary-label{
+  color:#9bc6ec;
+  font-size:12px;
+  font-weight:500;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+}
+
+.rep-selected-manager-summary-main{
+  margin-top:12px;
+  color:#eef6ff;
+  font-size:24px;
+  font-weight:950;
+  line-height:1.15;
+}
+
+.rep-selected-manager-summary-sub{
+  margin-top:12px;
+  color:#9db6d2;
+  font-size:16px;
+  font-weight:700;
+  line-height:1.4;
+}
+
+.selected-record-overview{
+  grid-template-columns:1fr!important;
+}
+
+.selected-record-overview-left{
+  display:none!important;
+}
+
+.selected-record-overview-right{
+  width:100%!important;
+  grid-column:1 / -1!important;
+}
+
+@media(max-width:900px){
+  .rep-selected-manager-summary{
+    grid-template-columns:1fr;
+  }
+}
+
+
+/* Collapsible Facility details in Selected Record summary */
+.rep-facility-card-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+
+.rep-facility-toggle-btn{
+  min-height:42px;
+  padding:10px 14px;
+  border:1px solid rgba(67,176,255,.34)!important;
+  background:#102340!important;
+  color:#eef6ff!important;
+  box-shadow:none!important;
+  white-space:nowrap;
+}
+
+.rep-facility-details{
+  margin-top:16px;
+  padding-top:16px;
+  border-top:1px solid rgba(88,184,255,.20);
+}
+
+.rep-facility-contact-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:12px;
+}
+
+.rep-facility-contact-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:40px;
+  padding:9px 12px;
+  border:1px solid rgba(67,176,255,.34);
+  border-radius:11px;
+  background:rgba(67,176,255,.10);
+  color:#79c8ff;
+  font-size:14px;
+  font-weight:850;
+  line-height:1.1;
+  text-decoration:none;
+}
+
+.rep-facility-contact-link:hover{
+  border-color:rgba(67,176,255,.72);
+  background:rgba(67,176,255,.20);
+  color:#d8f3ff;
+  box-shadow:0 0 14px rgba(67,176,255,.18);
+}
+
 </style>
 </head>
 
@@ -3144,7 +3267,7 @@ button.message-sent-state{
     >
       <div class="panel-head">
         <h2>Selected Record</h2>
-        <span class="mini">Raw data review → rep action log</span>
+        <span class="mini">Facility and equipment overview</span>
       </div>
 
       <div class="panel-body">
@@ -9447,6 +9570,46 @@ function toggleFinancialRecord(recordId) {
   render();
 }
 
+
+const REP_FACILITY_DETAILS_KEY = "espin_rep_facility_details_open_v1";
+
+function getRepFacilityDetailsMap() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(REP_FACILITY_DETAILS_KEY) || "{}"
+    );
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function isRepFacilityDetailsOpen(recordId) {
+  return Boolean(
+    getRepFacilityDetailsMap()[String(recordId || "")]
+  );
+}
+
+function toggleRepFacilityDetails(recordId) {
+  const id = String(recordId || "");
+  if (!id) return;
+
+  const map = getRepFacilityDetailsMap();
+
+  if (map[id]) {
+    delete map[id];
+  } else {
+    map[id] = true;
+  }
+
+  localStorage.setItem(
+    REP_FACILITY_DETAILS_KEY,
+    JSON.stringify(map)
+  );
+
+  render();
+}
+
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
@@ -9482,7 +9645,144 @@ function renderDetail() {
   const profit = netQuote - estimatedCost;
   const margin = netQuote > 0 ? Math.round((profit / netQuote) * 100) : 0;
 
+  const selectedFacilityAddress = [
+    rec.site_address || rec.street_address || rec.address || "",
+    rec.city || "",
+    rec.state || "",
+    rec.zip_code || rec.postal_code || ""
+  ]
+    .filter(Boolean)
+    .join(", ")
+    .replace(/, ([A-Z]{2}), /, ", $1 ");
+
+  const selectedEquipmentName = [
+    rec.make || "",
+    rec.model || ""
+  ]
+    .filter(Boolean)
+    .join(" ") || "Equipment record";
+
+  const selectedEquipmentMeta = [
+    rec.modality || "",
+    rec.serial_number || rec.serial || ""
+      ? `Serial: ${rec.serial_number || rec.serial || ""}`
+      : "",
+    rec.dom
+      ? `DOM: ${rec.dom}`
+      : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const selectedFacilityEmail =
+    rec.contact_email ||
+    rec.contact_email_address ||
+    rec.hospital_contact_email ||
+    rec.hospital_email ||
+    rec.facility_contact_email ||
+    rec.facility_email ||
+    rec.site_contact_email ||
+    rec.site_email ||
+    rec.customer_email ||
+    rec.email ||
+    "";
+
+  const selectedFacilityPhone =
+    rec.contact_phone ||
+    rec.facility_phone ||
+    rec.site_phone ||
+    rec.phone ||
+    "";
+
+  const facilityDetailsOpen =
+    isRepFacilityDetailsOpen(rec.id);
+
   $("detailGrid").innerHTML = `
+    <div class="rep-selected-manager-summary">
+      <div class="rep-selected-manager-summary-card">
+        <div class="rep-facility-card-head">
+          <div>
+            <div class="rep-selected-manager-summary-label">Facility</div>
+            <div class="rep-selected-manager-summary-main">
+              ${escapeHtml(rec.site || rec.facility || rec.hospital || "Unknown Facility")}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="secondary rep-facility-toggle-btn"
+            onclick="toggleRepFacilityDetails('${escapeJs(rec.id)}')"
+          >
+            ${facilityDetailsOpen ? "HIDE FACILITY DETAILS" : "OPEN FACILITY DETAILS"}
+          </button>
+        </div>
+
+        ${
+          facilityDetailsOpen
+            ? `
+              <div class="rep-facility-details">
+                <div class="rep-selected-manager-summary-sub">
+                  ${escapeHtml(selectedFacilityAddress || "Address not provided")}
+                </div>
+
+                ${
+                  selectedFacilityEmail || selectedFacilityPhone
+                    ? `
+                      <div class="rep-facility-contact-links">
+                        ${
+                          selectedFacilityEmail
+                            ? `
+                              <a
+                                class="rep-facility-contact-link"
+                                href="mailto:${escapeHtml(selectedFacilityEmail)}"
+                                onclick="event.stopPropagation();"
+                              >
+                                Email: ${escapeHtml(selectedFacilityEmail)}
+                              </a>
+                            `
+                            : ""
+                        }
+
+                        ${
+                          selectedFacilityPhone
+                            ? `
+                              <a
+                                class="rep-facility-contact-link"
+                                href="tel:${escapeHtml(
+                                  String(selectedFacilityPhone).replace(/[^0-9+]/g, "")
+                                )}"
+                                onclick="event.stopPropagation();"
+                              >
+                                ${escapeHtml(selectedFacilityPhone)}
+                              </a>
+                            `
+                            : ""
+                        }
+                      </div>
+                    `
+                    : `
+                      <div class="rep-selected-manager-summary-sub">
+                        Contact information not provided
+                      </div>
+                    `
+                }
+              </div>
+            `
+            : ""
+        }
+      </div>
+
+      <div class="rep-selected-manager-summary-card">
+        <div class="rep-selected-manager-summary-label">Equipment / Project</div>
+        <div class="rep-selected-manager-summary-main">
+          ${escapeHtml(selectedEquipmentName)}
+        </div>
+        <div class="rep-selected-manager-summary-sub">
+          ${escapeHtml(selectedEquipmentMeta || "Equipment details not provided")}
+        </div>
+      </div>
+    </div>
+
     <div class="selected-record-overview">
       <div class="selected-record-overview-left">
         <div class="detail-card">
