@@ -3478,6 +3478,31 @@ button.message-sent-state{
   align-self:flex-start!important;
 }
 
+
+/* Restored Rep Action dropdown in compact view */
+.rep-action-quick-select{
+  width:100%!important;
+  min-height:48px!important;
+  padding:11px 14px!important;
+  border:1px solid rgba(88,184,255,.28)!important;
+  border-radius:12px!important;
+  background:#081223!important;
+  color:#eef6ff!important;
+  font-size:15px!important;
+  font-weight:850!important;
+  cursor:pointer!important;
+}
+
+.rep-action-quick-select.placeholder{
+  color:#d8ebff!important;
+}
+
+.rep-action-collapsed-summary{
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+
 </style>
 </head>
 
@@ -9547,6 +9572,37 @@ function clearRepAttentionAlert() {
   showBanner("Rep attention alert cleared.");
 }
 
+
+function setRepActionQuickSelect(recordId, value) {
+  const rec = state.records.find(
+    item => String(item.id || "") === String(recordId || "")
+  );
+
+  if (!rec) return;
+
+  const hiddenSelect = document.getElementById("manualActionSelect");
+
+  if (hiddenSelect) {
+    hiddenSelect.value = String(value || "");
+    hiddenSelect.classList.toggle("placeholder", !hiddenSelect.value);
+  }
+
+  rec.rep_selected_manual_action = String(value || "");
+
+  const selectedLabel =
+    hiddenSelect?.selectedOptions?.[0]?.textContent ||
+    (value ? formatStatusText(value) : "");
+
+  rec.rep_selected_manual_action_label = selectedLabel;
+  rec.rep_action = String(value || "");
+  rec.rep_action_label = selectedLabel;
+  rec.rep_last_action_at = value ? new Date().toISOString() : "";
+
+  saveRecords();
+  syncFeedStatus(rec);
+  render();
+}
+
 function renderRegularRepAction(rec) {
   const open = state.repActionOpen === true;
 
@@ -9574,7 +9630,22 @@ function renderRegularRepAction(rec) {
             Rep-controlled action area. The rep manually selects the next action and follow-up date.
           </div>
           <div class="rep-action-collapsed-summary">
-            <strong>${escapeHtml(summaryParts.join(" · "))}</strong>
+            <select
+              id="repActionQuickSelect_${escapeHtml(rec.id)}"
+              class="rep-action-quick-select ${savedActionValue ? "" : "placeholder"}"
+              onclick="event.stopPropagation();"
+              onchange="setRepActionQuickSelect('${escapeJs(rec.id)}', this.value)"
+            >
+              <option value="">Select Action</option>
+              <option value="quote_review" ${savedActionValue === "quote_review" ? "selected" : ""}>Prepare Quote Review</option>
+              <option value="submit_quote_approval" ${savedActionValue === "submit_quote_approval" ? "selected" : ""}>Submit Quote for Approval</option>
+              <option value="open_email_draft" ${savedActionValue === "open_email_draft" ? "selected" : ""}>Open Approved Email Draft</option>
+              <option value="send_tradein_app" ${savedActionValue === "send_tradein_app" ? "selected" : ""}>Send to Trade-In App</option>
+              <option value="send_disposal_review" ${savedActionValue === "send_disposal_review" ? "selected" : ""}>Send to Disposal Review</option>
+              <option value="contact_customer" ${savedActionValue === "contact_customer" ? "selected" : ""}>Contact Customer</option>
+              <option value="schedule_follow_up" ${savedActionValue === "schedule_follow_up" ? "selected" : ""}>Schedule Follow-Up</option>
+              <option value="add_note" ${savedActionValue === "add_note" ? "selected" : ""}>Add Note</option>
+            </select>
           </div>
         </div>
         <button type="button" class="secondary rep-action-toggle-btn" onclick="toggleRepActionPanel();">
