@@ -7834,11 +7834,44 @@ function renderManagerInstallBaseCommunication(rec) {
 
 function getManagerRepCommunicationHistory(rec) {
   const items = [];
-  if (rec.rep_manager_message_at || rec.rep_manager_message_notes || rec.rep_manager_message_label || rec.rep_manager_message_action) {
+
+  const repManagerAt = clean(rec.rep_manager_message_at || "");
+  const repManagerMessage = clean(
+    rec.rep_manager_message_notes ||
+    formatReviewText(rec.rep_manager_message_label || rec.rep_manager_message_action || "")
+  );
+
+  const installBaseRepAt = clean(
+    rec.install_base_message_from_rep_at ||
+    rec.install_base_response_at ||
+    ""
+  );
+
+  const installBaseRepMessage = clean(
+    rec.install_base_message_from_rep ||
+    rec.install_base_response_message ||
+    rec.rep_response_message ||
+    ""
+  );
+
+  const isInstallBaseChannelMessage =
+    Boolean(repManagerMessage) &&
+    (
+      (repManagerAt && installBaseRepAt && repManagerAt === installBaseRepAt) ||
+      (installBaseRepMessage &&
+       lower(repManagerMessage) === lower(installBaseRepMessage))
+    );
+
+  // Keep Manager / Rep communication isolated.
+  // A Rep reply sent to Install Base must never appear in this channel.
+  if (
+    !isInstallBaseChannelMessage &&
+    (repManagerAt || repManagerMessage || rec.rep_manager_message_label || rec.rep_manager_message_action)
+  ) {
     items.push({
       sender: "rep",
-      at: rec.rep_manager_message_at || "",
-      message: clean(rec.rep_manager_message_notes || formatReviewText(rec.rep_manager_message_label || rec.rep_manager_message_action || ""))
+      at: repManagerAt,
+      message: repManagerMessage
     });
   }
   if (rec.manager_response_at || rec.manager_response_notes || rec.manager_response_action) {
