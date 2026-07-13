@@ -3492,6 +3492,26 @@ function hasUnreadMessageField(rec, pageRole, channel) {
   ] !== signature;
 }
 
+
+function acknowledgeMessageFieldByRecord(rec, pageRole, channel) {
+  if (!rec) return;
+
+  const signature =
+    getIncomingMessageSignatureForChannel(rec, pageRole, channel);
+
+  const recordKey = getMessageRecordIdentity(rec);
+
+  if (!signature || !recordKey) return;
+
+  const acknowledgements = readMessageFieldAcknowledgements();
+
+  acknowledgements[
+    `${pageRole}|${channel}|${recordKey}`
+  ] = signature;
+
+  writeMessageFieldAcknowledgements(acknowledgements);
+}
+
 function acknowledgeCommunicationField(
   event,
   recordId,
@@ -7552,6 +7572,12 @@ function toggleManagerInstallBaseCommunication(recordId) {
   state.installBaseCommunicationOpen[key] = willOpen;
 
   if (!willOpen) {
+    acknowledgeMessageFieldByRecord(
+      rec,
+      "manager",
+      "install_base"
+    );
+
     state.installBaseCommunicationDismissed[key] =
       ui.incomingSignature || true;
   } else {
@@ -7740,6 +7766,12 @@ function toggleManagerRepCommunication(recordId) {
     state.repCommunicationManuallyHidden[key] = !willOpen;
 
     if (!willOpen) {
+      acknowledgeMessageFieldByRecord(
+        rec,
+        "manager",
+        "rep"
+      );
+
       state.repCommunicationDismissed[key] = ui.incomingSignature || true;
     } else {
       state.repCommunicationDismissed[key] = "";
