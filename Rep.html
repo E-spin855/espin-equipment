@@ -11559,15 +11559,22 @@ function renderRepProximityView(rec){
         <div class="rep-proximity-head">
           <div>
             <div class="rep-proximity-title">Nearby Accounts / Proximity View</div>
+
             <div class="rep-proximity-subtitle">
               ZIP-based proximity view for authorized account records.
             </div>
+
             <div class="rep-proximity-collapsed-summary">
               A valid 5-digit ZIP code is required before nearby accounts can be displayed.
             </div>
           </div>
+
           <div class="rep-proximity-controls">
-            <button type="button" class="secondary rep-proximity-toggle-btn" onclick="toggleRepProximityView();">
+            <button
+              type="button"
+              class="secondary rep-proximity-toggle-btn"
+              onclick="toggleRepProximityView();"
+            >
               ${open ? "Hide Proximity View" : "Open Proximity View"}
             </button>
           </div>
@@ -11576,27 +11583,55 @@ function renderRepProximityView(rec){
     `;
   }
 
-  if (!censusZctaCoordinates && censusZctaLoadStatus === "not_loaded") {
+  if (
+    !censusZctaCoordinates &&
+    censusZctaLoadStatus === "not_loaded"
+  ) {
     loadCensusZctaCoordinates();
   }
 
-  const radius = Number(state.repProximityRadius || 25);
-  const nearby = getRepNearbyAccounts(rec, radius);
-  const currentName = clean(rec.site || rec.facility || rec.hospital || "Selected Account");
-  const currentAddress = getRepRecordAddress(rec);
+  const radius = Number(
+    state.repProximityRadius || 25
+  );
 
-  const loading = censusZctaLoadStatus === "loading";
-  const loadFailed = censusZctaLoadStatus === "error";
+  const nearby = getRepNearbyAccounts(
+    rec,
+    radius
+  );
+
+  const mobilePlan = readEspinMobilePlan();
+
+  const currentName = clean(
+    rec.site ||
+    rec.facility ||
+    rec.hospital ||
+    "Selected Account"
+  );
+
+  const currentAddress =
+    getRepRecordAddress(rec);
+
+  const loading =
+    censusZctaLoadStatus === "loading";
+
+  const loadFailed =
+    censusZctaLoadStatus === "error";
+
   const unsupportedZip =
     censusZctaLoadStatus === "ready" &&
     !getRepRecordCoordinates(rec);
 
   let nearbySummary = "";
 
-  if (loading || censusZctaLoadStatus === "not_loaded") {
-    nearbySummary = "Loading official U.S. Census ZIP-area coordinates…";
+  if (
+    loading ||
+    censusZctaLoadStatus === "not_loaded"
+  ) {
+    nearbySummary =
+      "Loading official U.S. Census ZIP-area coordinates…";
   } else if (loadFailed) {
-    nearbySummary = "Census ZIP coordinate data could not be loaded from the local project data file.";
+    nearbySummary =
+      "Census ZIP coordinate data could not be loaded from the local project data file.";
   } else if (unsupportedZip) {
     nearbySummary =
       `ZIP ${selectedZip} is not represented by a Census ZCTA.`;
@@ -11609,91 +11644,269 @@ function renderRepProximityView(rec){
   }
 
   return `
-    <div class="detail-card rep-proximity-card" id="repProximityView">
+    <div
+      class="detail-card rep-proximity-card"
+      id="repProximityView"
+    >
       <div class="rep-proximity-head">
         <div>
-          <div class="rep-proximity-title">Nearby Accounts / Proximity View</div>
+          <div class="rep-proximity-title">
+            Nearby Accounts / Proximity View
+          </div>
+
           <div class="rep-proximity-subtitle">
             ZIP-based proximity using U.S. Census Bureau 2025 ZCTA representative coordinates. Rep controls visit selection and routing.
           </div>
+
           <div class="rep-proximity-collapsed-summary">
             <strong>${escapeHtml(nearbySummary)}</strong><br>
-            Current location: ${escapeHtml(currentName)} · ZIP ${escapeHtml(selectedZip)}
+            Current location:
+            ${escapeHtml(currentName)}
+            · ZIP ${escapeHtml(selectedZip)}
           </div>
         </div>
+
         <div class="rep-proximity-controls">
-          <button type="button" class="secondary rep-proximity-toggle-btn" onclick="toggleRepProximityView();">
+          <button
+            type="button"
+            class="secondary rep-proximity-toggle-btn"
+            onclick="toggleRepProximityView();"
+          >
             ${open ? "Hide Proximity View" : "Open Proximity View"}
           </button>
         </div>
       </div>
 
       <div class="rep-proximity-expanded ${open ? "" : "hidden"}">
-        <div class="rep-proximity-controls" style="margin-bottom:14px;">
-          <select class="rep-proximity-radius" id="repProximityRadiusSelect" onchange="setRepProximityRadius(this.value)">
-            <option value="5" ${radius === 5 ? "selected" : ""}>5 miles</option>
-            <option value="10" ${radius === 10 ? "selected" : ""}>10 miles</option>
-            <option value="15" ${radius === 15 ? "selected" : ""}>15 miles</option>
-            <option value="25" ${radius === 25 ? "selected" : ""}>25 miles</option>
-            <option value="50" ${radius === 50 ? "selected" : ""}>50 miles</option>
+        <div
+          class="rep-proximity-controls"
+          style="margin-bottom:14px;"
+        >
+          <select
+            class="rep-proximity-radius"
+            id="repProximityRadiusSelect"
+            onchange="setRepProximityRadius(this.value)"
+          >
+            <option
+              value="5"
+              ${radius === 5 ? "selected" : ""}
+            >
+              5 miles
+            </option>
+
+            <option
+              value="10"
+              ${radius === 10 ? "selected" : ""}
+            >
+              10 miles
+            </option>
+
+            <option
+              value="15"
+              ${radius === 15 ? "selected" : ""}
+            >
+              15 miles
+            </option>
+
+            <option
+              value="25"
+              ${radius === 25 ? "selected" : ""}
+            >
+              25 miles
+            </option>
+
+            <option
+              value="50"
+              ${radius === 50 ? "selected" : ""}
+            >
+              50 miles
+            </option>
           </select>
-          <button type="button" class="secondary" onclick="openSelectedRecordInMaps()">Open in Maps</button>
+
+          <button
+            type="button"
+            class="secondary"
+            onclick="openSelectedRecordInMaps()"
+          >
+            Open in Maps
+          </button>
+
+          <button
+            type="button"
+            class="secondary"
+            onclick="window.open('/today.html', '_blank')"
+          >
+            Open Mobile App
+          </button>
+
           ${loadFailed ? `
-            <button type="button" class="secondary" onclick="retryCensusZctaCoordinates()">Retry Census Data</button>
+            <button
+              type="button"
+              class="secondary"
+              onclick="retryCensusZctaCoordinates()"
+            >
+              Retry Census Data
+            </button>
           ` : ""}
         </div>
 
         ${loadFailed ? `
           <div class="rep-proximity-item">
-            <div class="rep-proximity-name">Census ZIP data file unavailable</div>
-            <div class="rep-proximity-meta">${escapeHtml(censusZctaLoadError || "Unable to load the official dataset.")}</div>
+            <div class="rep-proximity-name">
+              Census ZIP data file unavailable
+            </div>
+
+            <div class="rep-proximity-meta">
+              ${escapeHtml(
+                censusZctaLoadError ||
+                "Unable to load the official dataset."
+              )}
+            </div>
           </div>
         ` : unsupportedZip ? `
           <div class="rep-proximity-item">
-            <div class="rep-proximity-name">ZIP ${escapeHtml(selectedZip)} is not covered by a Census ZCTA.</div>
-            <div class="rep-proximity-meta">Some USPS PO Box-only or unique ZIP codes do not correspond to a Census ZIP Code Tabulation Area.</div>
+            <div class="rep-proximity-name">
+              ZIP ${escapeHtml(selectedZip)}
+              is not covered by a Census ZCTA.
+            </div>
+
+            <div class="rep-proximity-meta">
+              Some USPS PO Box-only or unique ZIP codes do not correspond to a Census ZIP Code Tabulation Area.
+            </div>
           </div>
         ` : `
           <div class="rep-proximity-layout">
-            <div class="rep-proximity-map" aria-label="Nearby accounts map preview">
-              <div class="rep-map-label">ZIP Proximity View</div>
+            <div
+              class="rep-proximity-map"
+              aria-label="Nearby accounts map preview"
+            >
+              <div class="rep-map-label">
+                ZIP Proximity View
+              </div>
+
               <div class="rep-map-road r1"></div>
               <div class="rep-map-road r2"></div>
               <div class="rep-map-road r3"></div>
-              <div class="rep-map-pin origin" style="left:50%;top:50%;" data-label="Selected">●</div>
+
+              <div
+                class="rep-map-pin origin"
+                style="left:50%;top:50%;"
+                data-label="Selected"
+              >
+                ●
+              </div>
+
               ${renderRepProximityMapPins(nearby)}
             </div>
 
             <div class="rep-proximity-list">
               <div class="rep-proximity-current">
-                <div class="rep-proximity-name">Current Location: ${escapeHtml(currentName)}</div>
-                <div class="rep-proximity-meta">ZIP ${escapeHtml(selectedZip)}${currentAddress ? ` · ${escapeHtml(currentAddress)}` : ""}</div>
+                <div class="rep-proximity-name">
+                  Current Location:
+                  ${escapeHtml(currentName)}
+                </div>
+
+                <div class="rep-proximity-meta">
+                  ZIP ${escapeHtml(selectedZip)}
+                  ${
+                    currentAddress
+                      ? ` · ${escapeHtml(currentAddress)}`
+                      : ""
+                  }
+                </div>
               </div>
 
               ${loading ? `
                 <div class="rep-proximity-item">
-                  <div class="rep-proximity-name">Loading official Census ZIP coordinates…</div>
+                  <div class="rep-proximity-name">
+                    Loading official Census ZIP coordinates…
+                  </div>
                 </div>
               ` : nearby.length ? nearby.map((item, index) => {
-                const itemName = clean(item.rec.site || item.rec.facility || item.rec.hospital || "Account Record");
-                const itemZip = getRepRecordZip(item.rec);
-                const status = formatStatusText(item.rec.rep_status || item.rec.rep_action_label || item.rec.oem_review_label || "Open Record");
+                const itemName = clean(
+                  item.rec.site ||
+                  item.rec.facility ||
+                  item.rec.hospital ||
+                  "Account Record"
+                );
+
+                const itemZip =
+                  getRepRecordZip(item.rec);
+
+                const status = formatStatusText(
+                  item.rec.rep_status ||
+                  item.rec.rep_action_label ||
+                  item.rec.oem_review_label ||
+                  "Open Record"
+                );
+
+                const isAddedToMobile =
+                  mobilePlan.some(stop =>
+                    String(stop.id) ===
+                      String(item.rec.id) ||
+                    String(stop.recordId || "") ===
+                      String(item.rec.id)
+                  );
+
                 return `
                   <div class="rep-proximity-item">
-                    <div class="rep-proximity-name">${index + 1}. ${escapeHtml(itemName)}</div>
-                    <div class="rep-proximity-meta">ZIP ${escapeHtml(itemZip)}</div>
-                    <div class="rep-proximity-distance">Approx. ${escapeHtml(item.miles)} mi · ${escapeHtml(status)}</div>
+                    <div class="rep-proximity-name">
+                      ${index + 1}.
+                      ${escapeHtml(itemName)}
+                    </div>
+
+                    <div class="rep-proximity-meta">
+                      ZIP ${escapeHtml(itemZip)}
+                    </div>
+
+                    <div class="rep-proximity-distance">
+                      Approx.
+                      ${escapeHtml(item.miles)} mi
+                      · ${escapeHtml(status)}
+                    </div>
+
                     <div class="rep-proximity-actions">
-                      <button type="button" class="secondary" onclick="selectNearbyRepRecord('${escapeJs(item.rec.id)}')">View Record</button>
-                      <button type="button" class="secondary" onclick="openRepRecordInMaps('${escapeJs(item.rec.id)}')">Open in Maps</button>
-                      <button type="button" class="green" onclick="addRepRecordToVisitList('${escapeJs(item.rec.id)}')">Add to Visit List</button>
+                      <button
+                        type="button"
+                        class="secondary"
+                        onclick="selectNearbyRepRecord('${escapeJs(item.rec.id)}')"
+                      >
+                        View Record
+                      </button>
+
+                      <button
+                        type="button"
+                        class="secondary"
+                        onclick="openRepRecordInMaps('${escapeJs(item.rec.id)}')"
+                      >
+                        Open in Maps
+                      </button>
+
+                      <button
+                        type="button"
+                        class="${isAddedToMobile ? "secondary" : "green"}"
+                        onclick="addRepRecordToVisitList('${escapeJs(item.rec.id)}')"
+                        ${isAddedToMobile ? "disabled" : ""}
+                      >
+                        ${
+                          isAddedToMobile
+                            ? "✓ Synced to Mobile"
+                            : "Add to Visit List"
+                        }
+                      </button>
                     </div>
                   </div>
                 `;
               }).join("") : `
                 <div class="rep-proximity-item">
-                  <div class="rep-proximity-name">No nearby authorized accounts found inside ${escapeHtml(radius)} miles.</div>
-                  <div class="rep-proximity-meta">Increase the radius or confirm that the other records contain valid 5-digit ZIP codes.</div>
+                  <div class="rep-proximity-name">
+                    No nearby authorized accounts found inside
+                    ${escapeHtml(radius)} miles.
+                  </div>
+
+                  <div class="rep-proximity-meta">
+                    Increase the radius or confirm that the other records contain valid 5-digit ZIP codes.
+                  </div>
                 </div>
               `}
             </div>
@@ -11707,20 +11920,25 @@ function renderRepProximityView(rec){
         <div class="census-source-notice">
           <strong>Data source:</strong>
           U.S. Census Bureau, 2025 Gazetteer Files, national ZIP Code Tabulation Area (ZCTA) file.
+
           <a
             href="https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html"
             target="_blank"
             rel="noopener noreferrer"
-          >View official Census source</a>.
+          >
+            View official Census source
+          </a>.
+
           ZCTAs are Census-created geographic approximations of ZIP Code areas and are not exact USPS ZIP Code boundaries.
+
           ESPIN LINK is not affiliated with, sponsored by, or endorsed by the U.S. Census Bureau or the U.S. Department of Commerce.
+
           No Census Bureau seal, logo, or agency branding is used.
         </div>
       </div>
     </div>
   `;
 }
-
 function retryCensusZctaCoordinates(){
   censusZctaCoordinates = null;
   censusZctaLoadPromise = null;
@@ -11777,46 +11995,135 @@ function openRepRecordInMaps(id){
   window.open(getGoogleMapsSearchUrl(rec), "_blank", "noopener");
 }
 
-function addRepRecordToVisitList(id){
-  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
-  if (!rec) return;
+const ESPIN_MOBILE_PLAN_KEY =
+  "espin_rep_manual_day_plan_v1";
 
-  const used = new Set(
-    state.records
-      .map(item => Number(item.rep_manual_priority || item.sales_priority || 0))
-      .filter(n => Number.isFinite(n) && n > 0)
-  );
+function readEspinMobilePlan(){
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(ESPIN_MOBILE_PLAN_KEY) || "[]"
+    );
 
-  let nextPriority = 1;
-  while (used.has(nextPriority) && nextPriority < 99) nextPriority += 1;
-
-  rec.rep_manual_priority = String(nextPriority);
-  rec.sales_priority = String(nextPriority);
-  rec.priority_updated_at = new Date().toISOString();
-
-  const list = readArrayKey("espin_link_rep_visit_list");
-  const item = {
-    id: rec.id,
-    key: rec.key || getRecordKey(rec),
-    site: rec.site || rec.facility || rec.hospital || "Account Record",
-    address: getRepRecordAddress(rec),
-    manual_priority: String(nextPriority),
-    added_at: new Date().toISOString()
-  };
-
-  const next = [item, ...list.filter(existing => String(existing.id || "") !== String(item.id || ""))].slice(0, 20);
-  writeArrayKey("espin_link_rep_visit_list", next);
-
-  saveRecords();
-  renderSalesRouting();
-  renderTable();
-  renderDetail();
-  showBanner(`Added to visit list as manual route stop ${nextPriority}.`);
+    return Array.isArray(saved) ? saved : [];
+  } catch (error) {
+    console.error("Unable to read mobile visit plan.", error);
+    return [];
+  }
 }
 
+function addRepRecordToVisitList(recordId){
+  const rec = state.records.find(
+    item => String(item.id) === String(recordId)
+  );
 
-const FINANCIAL_RECORD_COLLAPSE_KEY = "espin_rep_financial_record_collapse_v1";
+  if (!rec) {
+    alert("The selected account record could not be found.");
+    return;
+  }
 
+  const plan = readEspinMobilePlan();
+
+  const stopId = String(
+    rec.id ||
+    rec.project_id ||
+    rec.oem_project_id ||
+    rec.serial_number ||
+    `visit-${Date.now()}`
+  );
+
+  const alreadyAdded = plan.some(
+    stop =>
+      String(stop.id) === stopId ||
+      String(stop.recordId || "") === String(rec.id || "")
+  );
+
+  if (alreadyAdded) {
+    alert("This account is already in the mobile visit list.");
+    return;
+  }
+
+  const facility = clean(
+    rec.site ||
+    rec.facility ||
+    rec.hospital ||
+    rec.account_name ||
+    "Unnamed Account"
+  );
+
+  const street = clean(
+    rec.site_address ||
+    rec.address ||
+    rec.facility_address ||
+    ""
+  );
+
+  const city = clean(rec.city || "");
+  const stateValue = clean(
+    rec.state ||
+    rec.state_code ||
+    rec.region_state ||
+    ""
+  );
+
+  const zip = clean(
+    rec.zip_code ||
+    rec.zip ||
+    rec.postal_code ||
+    ""
+  );
+
+  const address = [
+    street,
+    city,
+    stateValue,
+    zip
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const stop = {
+    id: stopId,
+    recordId: String(rec.id || ""),
+
+    name: facility,
+    facility: facility,
+
+    address: address,
+    city: city,
+    state: stateValue,
+    zip: zip,
+
+    time: "",
+
+    purpose: clean(
+      rec.visit_purpose ||
+      rec.rep_action_label ||
+      rec.oem_review_label ||
+      rec.install_base_review_reason ||
+      "Equipment review"
+    ),
+
+    note: "",
+
+    status: "Selected by Rep",
+
+    source: "Rep Proximity View",
+    addedAt: new Date().toISOString(),
+
+    manualOnly: true
+  };
+
+  plan.push(stop);
+
+  localStorage.setItem(
+    ESPIN_MOBILE_PLAN_KEY,
+    JSON.stringify(plan)
+  );
+
+  alert(`${facility} was added to the mobile visit list.`);
+
+  renderDetail();
+}
 function getFinancialRecordCollapseMap() {
   try {
     const parsed = JSON.parse(
