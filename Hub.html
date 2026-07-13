@@ -3770,16 +3770,23 @@ function mergeRepResponsesIntoRecords() {
       ""
     );
 
+    const explicitRepMessage =
+      rawResp.install_base_packet_type === "rep_message" ||
+      rawResp.install_base_response_status === "rep_message_sent";
+
     const correctionPacket =
-      Boolean(clean(rawResp.install_base_corrected_fields || "")) ||
+      !explicitRepMessage &&
       (
-        rawResp.corrected_fields &&
-        typeof rawResp.corrected_fields === "object" &&
-        !Array.isArray(rawResp.corrected_fields) &&
-        Object.keys(rawResp.corrected_fields).length > 0
-      ) ||
-      rawResp.install_base_correction_status === "corrected_by_rep" ||
-      rawResp.install_base_response_status === "rep_correction_sent";
+        Boolean(clean(rawResp.install_base_corrected_fields || "")) ||
+        (
+          rawResp.corrected_fields &&
+          typeof rawResp.corrected_fields === "object" &&
+          !Array.isArray(rawResp.corrected_fields) &&
+          Object.keys(rawResp.corrected_fields).length > 0
+        ) ||
+        rawResp.install_base_correction_status === "corrected_by_rep" ||
+        rawResp.install_base_response_status === "rep_correction_sent"
+      );
 
     // A returned FIX such as "dom: 2022" updates the record and
     // Install Base Review Hold. It is not a communication message.
