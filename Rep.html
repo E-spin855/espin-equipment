@@ -5618,12 +5618,34 @@ function getIncomingMessageSignatureForChannel(rec, pageRole, channel) {
     );
   }
 
-  const historySources = [
-    rec.install_base_conversation_history,
-    rec.manager_install_base_conversation_history,
-    rec.rep_manager_conversation_history,
-    rec.manager_rep_conversation_history
-  ];
+  const historySources =
+    pageRole === "rep" && channel === "manager"
+      ? [
+          rec.rep_manager_conversation_history,
+          rec.manager_rep_conversation_history
+        ]
+      : pageRole === "rep" && channel === "install_base"
+      ? [
+          rec.install_base_conversation_history
+        ]
+      : pageRole === "manager" && channel === "rep"
+      ? [
+          rec.rep_manager_conversation_history,
+          rec.manager_rep_conversation_history
+        ]
+      : pageRole === "manager" && channel === "install_base"
+      ? [
+          rec.manager_install_base_conversation_history
+        ]
+      : pageRole === "hub" && channel === "rep"
+      ? [
+          rec.install_base_conversation_history
+        ]
+      : pageRole === "hub" && channel === "manager"
+      ? [
+          rec.manager_install_base_conversation_history
+        ]
+      : [];
 
   historySources.forEach(history => {
     if (!Array.isArray(history)) return;
@@ -14167,10 +14189,18 @@ function getInstallBaseConversationHistory(rec) {
     ? rec.install_base_conversation_history.filter(item => {
         if (!item || !clean(item.message)) return false;
 
+        const sender = lower(item.sender);
+
+        // Keep this channel strictly Rep <-> Install Base.
+        // Manager messages belong only in Rep / Manager Communication.
+        if (!["rep", "install_base"].includes(sender)) {
+          return false;
+        }
+
         // Corrected FIX values belong to Install Base Review,
         // not Rep / Install Base communication.
         if (
-          lower(item.sender) === "rep" &&
+          sender === "rep" &&
           isInstallBaseFixMessage(item.message)
         ) {
           return false;
