@@ -1347,33 +1347,6 @@ tr.unread-message-row td{
       0 0 36px rgba(65,255,156,.86);
   }
 }
-
-/* New incoming message: flash the communication field itself */
-.comm-shell.incoming-message-field-frame{
-  border:3px solid rgba(65,255,156,.98)!important;
-  box-shadow:
-    0 0 0 1px rgba(65,255,156,.34),
-    0 0 26px rgba(65,255,156,.68),
-    0 0 52px rgba(65,255,156,.28)!important;
-  animation:incomingMessageFieldPulse 1.05s ease-in-out infinite!important;
-}
-
-@keyframes incomingMessageFieldPulse{
-  0%,100%{
-    border-color:rgba(65,255,156,.72);
-    box-shadow:
-      0 0 0 1px rgba(65,255,156,.24),
-      0 0 14px rgba(65,255,156,.34),
-      0 0 28px rgba(65,255,156,.14);
-  }
-  50%{
-    border-color:rgba(142,255,195,1);
-    box-shadow:
-      0 0 0 2px rgba(142,255,195,.58),
-      0 0 34px rgba(65,255,156,.92),
-      0 0 60px rgba(65,255,156,.34);
-  }
-}
 </style>
 
 <style id="hub-auto-synced-green-final">
@@ -1691,194 +1664,6 @@ function clean(v) {
 
 function lower(v) {
   return clean(v).toLowerCase();
-}
-
-
-const MESSAGE_FIELD_ACK_KEY = "espin_message_field_ack_v1";
-
-function readMessageFieldAcknowledgements() {
-  try {
-    const value = JSON.parse(
-      localStorage.getItem(MESSAGE_FIELD_ACK_KEY) || "{}"
-    );
-
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? value
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeMessageFieldAcknowledgements(value) {
-  localStorage.setItem(
-    MESSAGE_FIELD_ACK_KEY,
-    JSON.stringify(value || {})
-  );
-}
-
-function getIncomingMessageSignatureForChannel(rec, pageRole, channel) {
-  if (!rec) return "";
-
-  const candidates = [];
-
-  const add = (sender, at, message) => {
-    const cleanAt = String(at || "").trim();
-    const cleanMessage = String(message || "").trim();
-
-    if (!cleanAt || !cleanMessage) return;
-
-    candidates.push({
-      sender,
-      at: cleanAt,
-      message: cleanMessage,
-      time: new Date(cleanAt).getTime() || 0
-    });
-  };
-
-  if (pageRole === "hub" && channel === "rep") {
-    add(
-      "rep",
-      rec.install_base_message_from_rep_at ||
-        rec.install_base_response_at,
-      rec.install_base_message_from_rep ||
-        rec.install_base_response_message ||
-        rec.rep_response_message
-    );
-  }
-
-  if (pageRole === "hub" && channel === "manager") {
-    add(
-      "manager",
-      rec.manager_message_to_install_base_at,
-      rec.manager_message_to_install_base
-    );
-  }
-
-  if (pageRole === "manager" && channel === "rep") {
-    add(
-      "rep",
-      rec.rep_manager_message_at,
-      rec.rep_manager_message_notes ||
-        rec.rep_manager_message_label ||
-        rec.rep_manager_message_action
-    );
-  }
-
-  if (pageRole === "manager" && channel === "install_base") {
-    add(
-      "install_base",
-      rec.install_base_message_to_manager_at,
-      rec.install_base_message_to_manager
-    );
-  }
-
-  if (pageRole === "rep" && channel === "manager") {
-    add(
-      "manager",
-      rec.manager_response_at,
-      rec.manager_response_notes ||
-        rec.manager_response_action
-    );
-  }
-
-  if (pageRole === "rep" && channel === "install_base") {
-    add(
-      "install_base",
-      rec.install_base_message_to_rep_at ||
-        rec.install_base_request_at ||
-        rec.install_base_message_at,
-      rec.install_base_message_to_rep ||
-        rec.install_base_request_message ||
-        rec.install_base_message
-    );
-  }
-
-  const historySources = [
-    rec.install_base_conversation_history,
-    rec.manager_install_base_conversation_history,
-    rec.rep_manager_conversation_history,
-    rec.manager_rep_conversation_history
-  ];
-
-  historySources.forEach(history => {
-    if (!Array.isArray(history)) return;
-
-    history.forEach(item => {
-      const sender = String(item?.sender || "").toLowerCase();
-
-      const matches =
-        (pageRole === "hub" && channel === "rep" && sender === "rep") ||
-        (pageRole === "hub" && channel === "manager" && sender === "manager") ||
-        (pageRole === "manager" && channel === "rep" && sender === "rep") ||
-        (pageRole === "manager" && channel === "install_base" && sender === "install_base") ||
-        (pageRole === "rep" && channel === "manager" && sender === "manager") ||
-        (pageRole === "rep" && channel === "install_base" && sender === "install_base");
-
-      if (!matches) return;
-
-      add(
-        sender,
-        item.at || item.created_at || item.timestamp,
-        item.message || item.note || item.text
-      );
-    });
-  });
-
-  if (!candidates.length) return "";
-
-  candidates.sort((a, b) => b.time - a.time);
-  const latest = candidates[0];
-
-  return [latest.sender, latest.at, latest.message].join("|");
-}
-
-function hasUnreadMessageField(rec, pageRole, channel) {
-  const signature =
-    getIncomingMessageSignatureForChannel(rec, pageRole, channel);
-
-  const recordKey = getMessageRecordIdentity(rec);
-
-  if (!signature || !recordKey) return false;
-
-  const acknowledgements = readMessageFieldAcknowledgements();
-
-  return acknowledgements[
-    `${pageRole}|${channel}|${recordKey}`
-  ] !== signature;
-}
-
-function acknowledgeCommunicationField(
-  event,
-  recordId,
-  pageRole,
-  channel
-) {
-  const rec = state.records.find(
-    item => String(item.id || "") === String(recordId || "")
-  );
-
-  if (!rec) return;
-
-  const signature =
-    getIncomingMessageSignatureForChannel(rec, pageRole, channel);
-
-  const recordKey = getMessageRecordIdentity(rec);
-
-  if (signature && recordKey) {
-    const acknowledgements = readMessageFieldAcknowledgements();
-
-    acknowledgements[
-      `${pageRole}|${channel}|${recordKey}`
-    ] = signature;
-
-    writeMessageFieldAcknowledgements(acknowledgements);
-  }
-
-  const card = event?.currentTarget || event?.target?.closest(".comm-shell");
-  if (card) {
-    card.classList.remove("incoming-message-field-frame");
-  }
 }
 
 const MESSAGE_ROW_ACK_KEY = "espin_message_row_ack_v1";
@@ -4018,11 +3803,13 @@ function mergeRepResponsesIntoRecords() {
       ? rawResp.install_base_conversation_history.filter(item => {
           if (!item || !clean(item.message)) return false;
 
-          // Remove the generated field:value FIX entry from Rep communication.
+          // Remove every generated field:value FIX entry from Rep communication.
           if (
-            correctionPacket &&
             lower(item.sender) === "rep" &&
-            clean(item.message) === rawRepMessage
+            (
+              clean(item.message) === rawRepMessage && correctionPacket ||
+              isRepFixMessageText(item.message)
+            )
           ) {
             return false;
           }
@@ -6357,9 +6144,30 @@ function getInstallBaseReplyDraft(recordId) {
   return state.installBaseReplyDrafts[String(recordId || "")] || "";
 }
 
+function isRepFixMessageText(value) {
+  const message = clean(value);
+
+  if (!message) return false;
+
+  return /^(dom|year|manufacture year|make|brand|model|modality|serial|serial number|site|facility|hospital|territory|region|rep|rep owner|assigned rep|owner group|manager|project|project id|asset id)\s*[:=]\s*.+$/i.test(message);
+}
+
 function getInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.install_base_conversation_history)
-    ? rec.install_base_conversation_history.filter(item => item && clean(item.message))
+    ? rec.install_base_conversation_history.filter(item => {
+        if (!item || !clean(item.message)) return false;
+
+        // Returned FIX values belong in Install Base Review Hold,
+        // never in Rep / Install Base communication.
+        if (
+          lower(item.sender) === "rep" &&
+          isRepFixMessageText(item.message)
+        ) {
+          return false;
+        }
+
+        return true;
+      })
     : [];
 
   return [...history].sort((a, b) => {
@@ -6435,7 +6243,7 @@ function getHubRepCommunicationUi(rec) {
   const history = getInstallBaseConversationHistory(rec);
   const latest = history[history.length - 1] || null;
 
-  const legacyRepResponse = clean(
+  const rawLegacyRepResponse = clean(
     rec.install_base_response_message ||
     rec.install_base_response_note ||
     rec.rep_response_message ||
@@ -6445,6 +6253,11 @@ function getHubRepCommunicationUi(rec) {
     rec.rep_notes ||
     ""
   );
+
+  const legacyRepResponse =
+    isRepFixMessageText(rawLegacyRepResponse)
+      ? ""
+      : rawLegacyRepResponse;
 
   const latestSender = latest ? lower(latest.sender) : "";
   const latestSignature = latest ? [clean(latest.sender), clean(latest.at), clean(latest.message)].join("|") : "";
@@ -6540,10 +6353,7 @@ function renderRepResponseCard(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender) === "rep" ? "Rep" : "Install Base")}: ${ui.latest.message}`
     : (latestRepText ? `Rep: ${latestRepText}` : "No messages yet.");
   return `
-    <div
-      class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""} ${hasUnreadMessageField(rec, "hub", "rep") ? "incoming-message-field-frame" : ""}"
-      onclick="acknowledgeCommunicationField(event, '${escapeJs(rec.id || "")}', 'hub', 'rep')"
-    >
+    <div class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Install Base / Rep Communication</div>
@@ -6862,10 +6672,7 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div
-      class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""} ${hasUnreadMessageField(rec, "hub", "manager") ? "incoming-message-field-frame" : ""}"
-      onclick="acknowledgeCommunicationField(event, '${escapeJs(rec.id || "")}', 'hub', 'manager')"
-    >
+    <div class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Install Base / Manager Communication</div>
