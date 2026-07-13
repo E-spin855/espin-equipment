@@ -1311,16 +1311,6 @@ button.message-sent-state{
 }
 
 </style>
-
-<style id="hub-auto-synced-green-final">
-.badge-released{
-  background:linear-gradient(90deg,#16845a,#55d6a0)!important;
-  color:#041d15!important;
-  border:1px solid rgba(110,231,183,.72)!important;
-  box-shadow:0 0 16px rgba(52,211,153,.26)!important;
-}
-</style>
-
 </head>
 
 <body>
@@ -1691,142 +1681,7 @@ function formatManualRouteTarget(value) {
 
   return "Manual Review";
 }
-
-function getHubReturnedFixFields(rec) {
-  const fields = new Set();
-
-  String(rec?.install_base_latest_fix_fields || rec?.install_base_corrected_fields || "")
-    .split(",")
-    .map(canonicalInstallBaseFieldName)
-    .filter(Boolean)
-    .forEach(field => fields.add(field));
-
-  const correctedObjects = [
-    rec?.corrected_fields,
-    rec?.corrected_values,
-    rec?.install_base_corrected_values,
-    rec?.corrected_field_values,
-    rec?.install_base_corrected_field_values
-  ].filter(obj => obj && typeof obj === "object" && !Array.isArray(obj));
-
-  correctedObjects.forEach(obj => {
-    Object.keys(obj)
-      .map(canonicalInstallBaseFieldName)
-      .filter(Boolean)
-      .forEach(field => fields.add(field));
-  });
-
-  return [...fields];
-}
-
-function getHubReviewLabelForCorrectedField(fieldName, rec) {
-  const field = canonicalInstallBaseFieldName(fieldName);
-
-  if (["dom", "year", "manufacture_year"].includes(field)) {
-    return "Equipment Age";
-  }
-
-  if (["service", "service_coverage", "contract_status"].includes(field)) {
-    return "Service Coverage";
-  }
-
-  if (["utilization", "usage"].includes(field)) {
-    return "Utilization";
-  }
-
-  if (["capital_planning", "planning"].includes(field)) {
-    return "Capital Planning";
-  }
-
-  if (["site", "facility", "hospital", "location"].includes(field)) {
-    return "Site / Account";
-  }
-
-  if (["project", "project_id", "oem_project_id", "asset_id"].includes(field)) {
-    return "Project / Asset";
-  }
-
-  if (
-    [
-      "rep",
-      "assigned_rep",
-      "assigned_rep_name",
-      "rep_owner",
-      "owner_name",
-      "sales_rep",
-      "sales_rep_name",
-      "owner",
-      "manager",
-      "manager_name",
-      "owner_group",
-      "owner_group_name",
-      "territory",
-      "manager_region",
-      "manager_territory",
-      "region"
-    ].includes(field)
-  ) {
-    return getResolvedHubInstallBaseReviewLabel(rec);
-  }
-
-  return "Asset Status";
-}
-
-function getHubLatestFixReviewLabel(rec) {
-  const latestFields = getHubReturnedFixFields(rec);
-  if (!latestFields.length) return "";
-
-  const latestField = canonicalInstallBaseFieldName(
-    rec?.install_base_latest_fix_field ||
-    latestFields[latestFields.length - 1]
-  );
-
-  return getHubReviewLabelForCorrectedField(latestField, rec);
-}
-
-function getHubLatestFixReviewReason(rec) {
-  const latestFields = getHubReturnedFixFields(rec);
-  if (!latestFields.length) return "";
-
-  const latestField = canonicalInstallBaseFieldName(
-    rec?.install_base_latest_fix_field ||
-    latestFields[latestFields.length - 1]
-  );
-
-  const sourceLabel =
-    lower(rec?.install_base_latest_fix_source) === "manager"
-      ? "manager"
-      : "rep";
-
-  const label = getHubReviewLabelForCorrectedField(latestField, rec);
-
-  if (label === "Equipment Age") {
-    const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
-    const age = ageFromDom(dom);
-
-    if (dom && age !== null && age !== undefined && age !== "") {
-      return `Equipment age review based on DOM ${dom} (${age} years), corrected by ${sourceLabel}.`;
-    }
-
-    if (dom) {
-      return `Equipment age review based on DOM ${dom}, corrected by ${sourceLabel}.`;
-    }
-
-    return `Equipment age review based on the field corrected by ${sourceLabel}.`;
-  }
-
-  const fieldLabel = getHubFixDisplayLabel(latestField);
-
-  return `${label} review based on corrected ${fieldLabel}, updated by ${sourceLabel}.`;
-}
-
 function getHubInstallBaseReviewReason(rec) {
-  const latestFixReason = getHubLatestFixReviewReason(rec);
-
-  if (latestFixReason) {
-    return latestFixReason;
-  }
-
   const label = formatInstallBaseReviewLabel(rec);
   const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
   const age = ageFromDom(dom);
@@ -1853,22 +1708,16 @@ function getHubInstallBaseReviewReason(rec) {
     oldReasonLower.includes("territory") ||
     oldReasonLower.includes("missing");
 
-  // Once the requested ownership / territory / rep FIX has been returned,
-  // do not keep showing the old missing-field reason in Install Base Review Hold.
-  if (oldReasonIsAssignmentFix && isHubOwnershipReviewResolved(rec)) {
-    if (label === "Equipment Age") {
-      if (dom && age !== null && age !== undefined && age !== "") {
-        return `Equipment age review based on DOM ${dom} (${age} years).`;
-      }
-
-      if (dom) {
-        return `Equipment age review based on DOM ${dom}.`;
-      }
-
-      return "Equipment age review.";
+  if (label === "Equipment Age" && oldReasonIsAssignmentFix) {
+    if (dom && age !== null && age !== undefined && age !== "") {
+      return `Equipment age review based on DOM ${dom} (${age} years).`;
     }
 
-    return `${label} review.`;
+    if (dom) {
+      return `Equipment age review based on DOM ${dom}.`;
+    }
+
+    return "Equipment age review.";
   }
 
   if (oldReason) return oldReason;
@@ -2110,12 +1959,6 @@ function getResolvedHubInstallBaseReviewLabel(rec) {
   return "Asset Status";
 }
 function formatInstallBaseReviewLabel(rec) {
-  const latestFixLabel = getHubLatestFixReviewLabel(rec);
-
-  if (latestFixLabel) {
-    return latestFixLabel;
-  }
-
   if (isHubOwnershipReviewResolved(rec)) {
     return getResolvedHubInstallBaseReviewLabel(rec);
   }
@@ -3259,13 +3102,7 @@ function getStatusHtml(rec) {
   completed: "badge-completed",
   utilization: "badge-utilization"
 }[status.type] || "badge-staged";
-
-  const visibleReviewLabel = status.label || status.type || cls;
-  const unifiedClass = getUnifiedInstallBaseReviewBadgeClass(
-    visibleReviewLabel
-  );
-
-  return `<span class="badge ${unifiedClass}">${escapeHtml(status.label)}</span>`;
+  return `<span class="badge ${getUnifiedInstallBaseReviewBadgeClass(cls)}">${escapeHtml(status.label)}</span>`;
 }
 function getRowActionHtml(rec) {
   return `
@@ -3321,7 +3158,6 @@ function loadRecords() {
 
   mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
-  state.records = state.records.map(mergeInstallManagerTextIntoHubRecord);
 }
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
@@ -3539,7 +3375,7 @@ function mergeRepResponsesIntoRecords() {
   let changed = false;
 
   responses.forEach(rawResp => {
-    const rawRepMessage = clean(
+    const repMessage = clean(
       rawResp.install_base_message_from_rep ||
       rawResp.install_base_response_message ||
       rawResp.install_base_response_note ||
@@ -3547,21 +3383,6 @@ function mergeRepResponsesIntoRecords() {
       rawResp.response_message ||
       ""
     );
-
-    const correctionPacket =
-      Boolean(clean(rawResp.install_base_corrected_fields || "")) ||
-      (
-        rawResp.corrected_fields &&
-        typeof rawResp.corrected_fields === "object" &&
-        !Array.isArray(rawResp.corrected_fields) &&
-        Object.keys(rawResp.corrected_fields).length > 0
-      ) ||
-      rawResp.install_base_correction_status === "corrected_by_rep" ||
-      rawResp.install_base_response_status === "rep_correction_sent";
-
-    // A returned FIX such as "dom: 2022" updates the record and
-    // Install Base Review Hold. It is not a communication message.
-    const repMessage = correctionPacket ? "" : rawRepMessage;
 
     const repMessageAt =
       rawResp.install_base_message_from_rep_at ||
@@ -3578,20 +3399,9 @@ function mergeRepResponsesIntoRecords() {
     );
 
     const existingHistory = Array.isArray(rawResp.install_base_conversation_history)
-      ? rawResp.install_base_conversation_history.filter(item => {
-          if (!item || !clean(item.message)) return false;
-
-          // Remove the generated field:value FIX entry from Rep communication.
-          if (
-            correctionPacket &&
-            lower(item.sender) === "rep" &&
-            clean(item.message) === rawRepMessage
-          ) {
-            return false;
-          }
-
-          return true;
-        })
+      ? rawResp.install_base_conversation_history.filter(
+          item => item && clean(item.message)
+        )
       : [];
 
     const alreadyInHistory = Boolean(
@@ -3637,15 +3447,7 @@ function mergeRepResponsesIntoRecords() {
       install_base_response_at:
         repMessageAt || rawResp.install_base_response_at || "",
       install_base_response_seen:
-        correctionPacket
-          ? true
-          : (repMessage ? false : rawResp.install_base_response_seen === true),
-      install_base_response_seen_at:
-        correctionPacket
-          ? (rawResp.install_base_response_seen_at || new Date().toISOString())
-          : (rawResp.install_base_response_seen_at || ""),
-      install_base_show_communication:
-        correctionPacket ? false : rawResp.install_base_show_communication,
+        repMessage ? false : rawResp.install_base_response_seen === true,
       install_base_conversation_history: normalizedHistory
     };
 
@@ -3767,31 +3569,6 @@ function mergeRepResponsesIntoRecords() {
           }
         });
 
-      if (correctionPacket) {
-        canonicalMerged.install_base_message_from_rep = "";
-        canonicalMerged.install_base_response_message = "";
-        canonicalMerged.install_base_response_note = "";
-        canonicalMerged.rep_response_message = "";
-        canonicalMerged.response_message = "";
-        canonicalMerged.install_base_response_seen = true;
-        canonicalMerged.install_base_response_seen_at =
-          canonicalMerged.install_base_response_seen_at ||
-          new Date().toISOString();
-
-        canonicalMerged.install_base_conversation_history =
-          (Array.isArray(canonicalMerged.install_base_conversation_history)
-            ? canonicalMerged.install_base_conversation_history
-            : []
-          ).filter(item =>
-            !(
-              item &&
-              lower(item.sender) === "rep" &&
-              clean(item.message) === rawRepMessage
-            )
-          );
-
-      }
-
       const returnedFields = new Set(
         String(resp.install_base_corrected_fields || "")
           .split(",")
@@ -3808,45 +3585,6 @@ function mergeRepResponsesIntoRecords() {
           returnedFields.add(canonicalInstallBaseFieldName(field));
         });
       }
-
-      const returnedFieldList = [...returnedFields].filter(Boolean);
-
-      const responseFrom = lower(
-        resp.install_base_response_from ||
-        resp.install_base_correction_from ||
-        (
-          resp.install_base_correction_status === "corrected_by_manager" ||
-          resp.install_base_response_status === "manager_correction_sent"
-            ? "manager"
-            : "rep"
-        )
-      );
-
-      const latestReturnedField =
-        returnedFieldList[returnedFieldList.length - 1] || "";
-
-      canonicalMerged.install_base_latest_fix_fields =
-        returnedFieldList.join(",");
-
-      canonicalMerged.install_base_latest_fix_field =
-        latestReturnedField;
-
-      canonicalMerged.install_base_latest_fix_source =
-        responseFrom === "manager" ? "manager" : "rep";
-
-      canonicalMerged.install_base_latest_fix_at =
-        resp.install_base_correction_at ||
-        resp.install_base_response_at ||
-        new Date().toISOString();
-
-      canonicalMerged.install_base_latest_fix_by =
-        clean(
-          resp.install_base_response_by ||
-          resp.manager_name ||
-          resp.assigned_rep_name ||
-          resp.rep ||
-          (responseFrom === "manager" ? "Manager" : "Rep")
-        );
 
       const removeReturnedFields = value =>
         String(value || "")
@@ -3953,27 +3691,6 @@ install_base_response_seen_at:
       const responseSource = responseFrom === "manager" ? "Manager Response" : "Rep Response";
       const responseSourceSystem = responseFrom === "manager" ? "Manager Review Page" : "Rep Review Page";
 
-      const insertedFields = new Set(
-        String(resp.install_base_corrected_fields || "")
-          .split(",")
-          .map(canonicalInstallBaseFieldName)
-          .filter(Boolean)
-      );
-
-      if (
-        resp.corrected_fields &&
-        typeof resp.corrected_fields === "object" &&
-        !Array.isArray(resp.corrected_fields)
-      ) {
-        Object.keys(resp.corrected_fields).forEach(field => {
-          insertedFields.add(canonicalInstallBaseFieldName(field));
-        });
-      }
-
-      const insertedFieldList = [...insertedFields].filter(Boolean);
-      const insertedLatestField =
-        insertedFieldList[insertedFieldList.length - 1] || "";
-
       const insertedResponse = applyHubReturnedCorrection({
         ...resp,
         id: resp.id || uuid(),
@@ -3981,23 +3698,7 @@ install_base_response_seen_at:
         source: resp.source || responseSource,
         source_system: resp.source_system || responseSourceSystem,
         install_base_response_seen: resp.install_base_response_seen === true,
-        install_base_response_seen_at: resp.install_base_response_seen_at || "",
-        install_base_latest_fix_fields: insertedFieldList.join(","),
-        install_base_latest_fix_field: insertedLatestField,
-        install_base_latest_fix_source:
-          responseFrom === "manager" ? "manager" : "rep",
-        install_base_latest_fix_at:
-          resp.install_base_correction_at ||
-          resp.install_base_response_at ||
-          new Date().toISOString(),
-        install_base_latest_fix_by:
-          clean(
-            resp.install_base_response_by ||
-            resp.manager_name ||
-            resp.assigned_rep_name ||
-            resp.rep ||
-            (responseFrom === "manager" ? "Manager" : "Rep")
-          )
+        install_base_response_seen_at: resp.install_base_response_seen_at || ""
       }, resp);
       state.records.unshift(insertedResponse);
       changed = true;
@@ -5631,15 +5332,11 @@ completionUnseen ? "install-base-response-flash" : ""
 <td>${renderHubFieldValue(rec, "dom", rec.dom)}</td>
 
 <td>
-  ${
-    wasInstallBaseFieldCorrected(rec, "dom")
-      ? `
-        <div class="corrected-field-value">
-          ${escapeHtml(ageFromDom(rec.dom) || "-")}
-        </div>
-      `
-      : escapeHtml(ageFromDom(rec.dom) || "-")
-  }
+  ${renderInstallBaseCorrectedValue(
+    rec,
+    "dom",
+    escapeHtml(ageFromDom(rec.dom) || "-")
+  )}
 </td>
 
 	      <td>${getStatusHtml(rec)}</td>
@@ -5683,10 +5380,9 @@ function selectRecord(id) {
   const changingRecords =
     previousRec && String(previousRec.id || "") !== String(id || "");
 
-  // Clicking another row also acknowledges the prior row.
+  // Clicking to another row acknowledges the prior row's temporary update.
   if (changingRecords) {
     markRepResponseSeen(previousRec);
-
     if (hasActualInstallBaseCorrection(previousRec)) {
       markInstallBaseCorrectedFieldsSeen(previousRec);
     }
@@ -5694,34 +5390,21 @@ function selectRecord(id) {
 
   state.selectedId = id;
 
-  const rec = state.records.find(
-    r => String(r.id || "") === String(id || "")
-  );
+  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
 
-  if (!rec) {
-    render();
-    return;
-  }
-
-  // Capture communication state before marking the row as seen,
-  // so a newly received message can still open automatically.
-  const repUiBeforeSeen = getHubRepCommunicationUi(rec);
-
-  // Clicking the green row itself now clears every row-level green frame.
-  if (hasActualInstallBaseCorrection(rec)) {
+  // When a FIX arrives from Rep, clicking that row clears the Hub green alert
+  // immediately. Text-message communication behavior remains unchanged.
+  if (rec && hasActualInstallBaseCorrection(rec)) {
     markInstallBaseCorrectedFieldsSeen(rec);
   }
 
-  if (
-    rec.install_base_response_at &&
-    rec.install_base_response_seen !== true
-  ) {
-    markRepResponseSeen(rec);
-  }
+  const updatedRec = state.records.find(r => String(r.id || "") === String(id || ""));
+  const repUi = updatedRec ? getHubRepCommunicationUi(updatedRec) : null;
 
-  // Keep the communication panel opening for a newly received message,
-  // but remove the green row frame immediately on the row click.
-  if (repUiBeforeSeen?.needsResponse) {
+  // If a new text message arrived from Rep, clicking that row opens the
+  // Rep communication field immediately. The green frame remains until
+  // Hide Communication is pressed, which already marks the message seen.
+  if (repUi?.needsResponse) {
     state.repCommunicationOpen[String(id || "")] = true;
   }
 
@@ -6016,22 +5699,12 @@ function getHubRepCommunicationUi(rec) {
     rec.hub_rep_ack_signature !== incomingSignature
   );
 
-  const fixOnlyResponse = isHubRepFixOnlyResponse(rec);
-
   const composerOpen = Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, id)
     ? state.repCommunicationOpen[id]
-    : (fixOnlyResponse ? false : needsResponse);
+    : needsResponse;
   const historyOpen = state.repHistoryOpen[id] === true;
 
-  return {
-    history,
-    latest,
-    legacyRepResponse,
-    needsResponse: fixOnlyResponse ? false : needsResponse,
-    composerOpen,
-    historyOpen,
-    fixOnlyResponse
-  };
+  return { history, latest, legacyRepResponse, needsResponse, composerOpen, historyOpen };
 }
 
 function toggleHubRepCommunication(recordId) {
@@ -6067,28 +5740,6 @@ function toggleHubRepHistory(recordId) {
   const current = state.repHistoryOpen[String(recordId || "")] === true;
   state.repHistoryOpen[String(recordId || "")] = !current;
   render();
-}
-
-function isHubRepFixOnlyResponse(rec) {
-  if (!rec || !hasActualInstallBaseCorrection(rec)) return false;
-
-  const history = getInstallBaseConversationHistory(rec);
-  const genuineRepMessages = history.filter(item =>
-    item &&
-    lower(item.sender) === "rep" &&
-    clean(item.message)
-  );
-
-  const legacyMessage = clean(
-    rec.install_base_message_from_rep ||
-    rec.install_base_response_message ||
-    rec.install_base_response_note ||
-    rec.rep_response_message ||
-    rec.response_message ||
-    ""
-  );
-
-  return genuineRepMessages.length === 0 && !legacyMessage;
 }
 
 function renderRepResponseCard(rec) {
@@ -6162,107 +5813,6 @@ function renderRepResponseCard(rec) {
 }
 
 
-
-const INSTALL_MANAGER_CHAT_KEY = "espin_install_manager_text_v1";
-
-function readInstallManagerTextChannel() {
-  try {
-    const data = JSON.parse(localStorage.getItem(INSTALL_MANAGER_CHAT_KEY) || "[]");
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function appendInstallManagerText(rec, sender, message, senderLabel) {
-  const messages = readInstallManagerTextChannel();
-  messages.push({
-    id: "im_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
-    record_key: getRecordKey(rec),
-    record_id: String(rec?.id || ""),
-    sender,
-    sender_label: senderLabel,
-    message: clean(message),
-    at: new Date().toISOString()
-  });
-  localStorage.setItem(INSTALL_MANAGER_CHAT_KEY, JSON.stringify(messages));
-  localStorage.setItem("espin_install_manager_text_ping_v1", String(Date.now()));
-}
-
-function mergeInstallManagerTextIntoHubRecord(rec) {
-  if (!rec) return rec;
-
-  const recordKey = getRecordKey(rec);
-  const recordId = String(rec.id || "");
-
-  const channel = readInstallManagerTextChannel()
-    .filter(item =>
-      item &&
-      clean(item.message) &&
-      (
-        (recordKey && clean(item.record_key) === recordKey) ||
-        (recordId && clean(item.record_id) === recordId)
-      )
-    )
-    .sort((a, b) =>
-      (new Date(a.at || 0).getTime() || 0) -
-      (new Date(b.at || 0).getTime() || 0)
-    );
-
-  if (!channel.length) {
-    return {
-      ...rec,
-      manager_install_base_conversation_history: [],
-      install_base_message_to_manager: "",
-      install_base_message_to_manager_at: "",
-      install_base_message_to_manager_by: "",
-      manager_message_to_install_base: "",
-      manager_message_to_install_base_at: "",
-      manager_message_to_install_base_by: "",
-      manager_message_to_install_base_seen: true
-    };
-  }
-
-  const map = new Map();
-
-  channel.forEach(item => {
-    const signature = [
-      clean(item.id),
-      lower(item.sender),
-      clean(item.at),
-      clean(item.message)
-    ].join("|");
-    if (!map.has(signature)) map.set(signature, item);
-  });
-
-  const history = [...map.values()].sort((a, b) =>
-    (new Date(a.at || 0).getTime() || 0) -
-    (new Date(b.at || 0).getTime() || 0)
-  );
-
-  const latestInstallBase = [...history].reverse()
-    .find(item => lower(item.sender) === "install_base");
-  const latestManager = [...history].reverse()
-    .find(item => lower(item.sender) === "manager");
-
-  return {
-    ...rec,
-    manager_install_base_conversation_history: history,
-    install_base_message_to_manager:
-      latestInstallBase?.message || rec.install_base_message_to_manager || "",
-    install_base_message_to_manager_at:
-      latestInstallBase?.at || rec.install_base_message_to_manager_at || "",
-    manager_message_to_install_base:
-      latestManager?.message || rec.manager_message_to_install_base || "",
-    manager_message_to_install_base_at:
-      latestManager?.at || rec.manager_message_to_install_base_at || "",
-    manager_message_to_install_base_by:
-      latestManager?.sender_label || rec.manager_message_to_install_base_by || "Manager",
-    manager_message_to_install_base_seen:
-      latestManager ? false : rec.manager_message_to_install_base_seen
-  };
-}
-
 function getManagerInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.manager_install_base_conversation_history)
     ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
@@ -6276,101 +5826,58 @@ function getHubManagerDraft(recordId) {
   return state.managerMessageDrafts[String(recordId || "")] || "";
 }
 function sendInstallBaseMessageToManager(recordId) {
-  const rec = state.records.find(
-    r => String(r.id || "") === String(recordId || "")
-  );
+  const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
   if (!rec) return;
-
   const input = document.getElementById("installBaseMessageToManager");
   const message = clean(input?.value);
-
   if (!message) {
     alert("Enter a message to the manager before sending.");
     return;
   }
-
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+  const history = getManagerInstallBaseConversationHistory(rec);
+  const item = {
+    id: "install_base_manager_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
+    sender: "install_base",
+    sender_label: "Install Base",
+    message,
+    at: now,
+    seen_by_manager: false
+  };
+  const update = {
+    manager_install_base_conversation_history: [...history, item],
+    install_base_message_to_manager: message,
+    install_base_message_to_manager_at: now,
+    install_base_message_to_manager_by: "Install Base",
+    install_base_message_to_manager_seen: false,
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: "install_base_message",
+    manager_flash_text: "New message from Install Base"
+  };
+  state.records = state.records.map(r => sameRecord(r, rec) || getRecordKey(r)===key ? {...r,...update} : r);
 
-  // Exactly one message is written to the dedicated Install Base / Manager channel.
-  appendInstallManagerText(rec, "install_base", message, "Install Base");
-
-  // Keep the Manager queue record available, but do not add another history item.
-  const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
+  const managerQueue = readQueue(MANAGER_QUEUE_KEY,{});
   const ownerName = getOwnerName(rec);
-
-  if (!Array.isArray(managerQueue[ownerName])) {
-    managerQueue[ownerName] = [];
-  }
-
-  let matched = false;
-
-  managerQueue[ownerName] = managerQueue[ownerName].map(item => {
-    if (!sameRecord(item, rec) && getRecordKey(item) !== key) {
-      return item;
-    }
-
-    matched = true;
-
-    return {
-      ...item,
-      install_base_message_to_manager: message,
-      install_base_message_to_manager_at: now,
-      install_base_message_to_manager_by: "Install Base",
-      install_base_message_to_manager_seen: false,
-      manager_unseen_update: true,
-      manager_flash_at: now,
-      manager_flash_type: "install_base_message",
-      manager_flash_text: "New message from Install Base"
-    };
+  if (!managerQueue[ownerName]) managerQueue[ownerName]=[];
+  let matched=false;
+  managerQueue[ownerName]=managerQueue[ownerName].map(r=>{
+    if (!sameRecord(r,rec) && getRecordKey(r)!==key) return r;
+    matched=true;
+    return {...r,...update};
   });
-
-  if (!matched) {
-    managerQueue[ownerName].push({
-      ...rec,
-      key,
-      install_base_message_to_manager: message,
-      install_base_message_to_manager_at: now,
-      install_base_message_to_manager_by: "Install Base",
-      install_base_message_to_manager_seen: false,
-      manager_unseen_update: true,
-      manager_flash_at: now,
-      manager_flash_type: "install_base_message",
-      manager_flash_text: "New message from Install Base"
-    });
-  }
-
+  if(!matched) managerQueue[ownerName].push({...rec,...update,key});
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-
-  state.records = state.records.map(item =>
-    sameRecord(item, rec)
-      ? mergeInstallManagerTextIntoHubRecord({
-          ...item,
-          install_base_message_to_manager: message,
-          install_base_message_to_manager_at: now,
-          install_base_message_to_manager_by: "Install Base"
-        })
-      : item
-  );
-
-  if (input) input.value = "";
-
-  state.managerMessageDrafts[String(recordId || "")] = "";
-  state.managerCommunicationOpen[String(recordId || "")] = false;
-
+  state.managerMessageDrafts[String(recordId||"")] = "";
+  state.managerCommunicationOpen[String(recordId||"")] = false;
   saveRecords();
-
-  flashHubMessageSentButton(
-    `sendInstallBaseMessageToManagerBtn_${rec.id || ""}`,
-    "Message Sent"
-  );
-
+  flashHubMessageSentButton(`sendInstallBaseMessageToManagerBtn_${rec.id || ""}`, "Message Sent");
   window.setTimeout(() => {
-    loadRecords();
     render();
-    showBanner("Message sent to Manager.");
-  }, 150);
+    showBanner("Message sent to Manager Review.");
+  }, 350);
 }
 function getHubManagerCommunicationUi(rec) {
   const id = String(rec?.id || "");
@@ -6722,8 +6229,6 @@ window.addEventListener("storage", e => {
     e.key === INSTALL_BASE_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_PING_KEY ||
-    e.key === INSTALL_MANAGER_CHAT_KEY ||
-    e.key === "espin_install_manager_text_ping_v1" ||
     e.key === "axis_install_base_records_ping_v1" ||
     e.key === "axis_install_base_sync_ping_v1"
   ) {
@@ -6752,12 +6257,6 @@ document.addEventListener("DOMContentLoaded", init);
 function getUnifiedInstallBaseReviewBadgeClass(labelOrType) {
   const value = String(labelOrType || "").toLowerCase();
 
-  if (
-    value.includes("auto-synced") ||
-    value.includes("auto synced")
-  ) return "badge-released";
-
-  if (value.includes("sync hold")) return "badge-source";
   if (value.includes("equipment age") || value.includes("lifecycle") || value.includes("replacement")) return "badge-age";
   if (value.includes("service")) return "badge-service";
   if (value.includes("utilization")) return "badge-utilization";
@@ -6767,13 +6266,11 @@ function getUnifiedInstallBaseReviewBadgeClass(labelOrType) {
   if (value.includes("quote")) return "badge-quote";
   if (value.includes("trade") || value === "review") return "badge-review";
   if (value.includes("dispose") || value.includes("disposal") || value.includes("disposition")) return "badge-disposal";
-  if (value.includes("end of support") || value.includes("support")) return "badge-support";
   if (value.includes("ownership")) return "badge-ownership";
   if (value.includes("source")) return "badge-source";
   if (value.includes("site")) return "badge-site";
   if (value.includes("data")) return "badge-data-check";
   if (value.includes("record note") || value.includes("note")) return "badge-record-note";
-  if (value.includes("asset status") || value === "ready") return "badge-asset-status";
   return "badge-review-notice";
 }
 </script>
