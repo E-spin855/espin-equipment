@@ -4774,6 +4774,24 @@ tr.unread-message-row td{
       0 0 60px rgba(65,255,156,.34);
   }
 }
+
+/* Keep Rep / Manager and Rep / Install Base communication headers identical */
+.rep-vertical-stack > .comm-shell .comm-toolbar{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:14px!important;
+  align-items:start!important;
+}
+
+.rep-vertical-stack > .comm-shell .comm-heading{
+  width:100%!important;
+  min-width:0!important;
+}
+
+.rep-vertical-stack > .comm-shell .comm-actions{
+  width:100%!important;
+  justify-content:flex-start!important;
+}
 </style>
 
 <style id="census-source-notice-style">
@@ -5634,26 +5652,6 @@ function hasUnreadMessageField(rec, pageRole, channel) {
   return acknowledgements[
     `${pageRole}|${channel}|${recordKey}`
   ] !== signature;
-}
-
-
-function acknowledgeMessageFieldByRecord(rec, pageRole, channel) {
-  if (!rec) return;
-
-  const signature =
-    getIncomingMessageSignatureForChannel(rec, pageRole, channel);
-
-  const recordKey = getMessageRecordIdentity(rec);
-
-  if (!signature || !recordKey) return;
-
-  const acknowledgements = readMessageFieldAcknowledgements();
-
-  acknowledgements[
-    `${pageRole}|${channel}|${recordKey}`
-  ] = signature;
-
-  writeMessageFieldAcknowledgements(acknowledgements);
 }
 
 function acknowledgeCommunicationField(
@@ -11594,17 +11592,9 @@ function toggleRepManagerCommunication(recordId) {
   state.managerCommunicationOpen[key] = willOpen;
 
   // Closing communication marks the latest incoming message as read and clears the green frame.
-  if (!willOpen) {
-    acknowledgeMessageFieldByRecord(
-      rec,
-      "rep",
-      "manager"
-    );
-
-    if (ui.latest && lower(ui.latest.sender) === "manager") {
-      markIncomingCommunicationSeen(rec.id || recordId);
-      state.managerCommunicationFrameActive = false;
-    }
+  if (!willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
+    markIncomingCommunicationSeen(rec.id || recordId);
+    state.managerCommunicationFrameActive = false;
   }
 
   renderTable();
@@ -13896,12 +13886,6 @@ if (willOpen) {
   state.installBaseCommunicationDismissedId = "";
   state.installBaseCommunicationDismissedSignature = "";
   } else {
-    acknowledgeMessageFieldByRecord(
-      rec,
-      "rep",
-      "install_base"
-    );
-
     // Closing communication marks the latest incoming request/message as read
     // before saving the dismissal signature. This keeps the hidden status tied
     // to the final updated message state.
