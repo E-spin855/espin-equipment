@@ -3311,6 +3311,166 @@ function saveRecords() {
   localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
 }
 
+function mergeManagerMessagesIntoInstallBase() {
+  const rawQueue = readQueue(MANAGER_QUEUE_KEY, {});
+  const incoming = [];
+
+  if (Array.isArray(rawQueue)) {
+    incoming.push(...rawQueue);
+  } else if (rawQueue && typeof rawQueue === "object") {
+    Object.values(rawQueue).forEach(group => {
+      if (Array.isArray(group)) incoming.push(...group);
+    });
+  }
+
+  if (!incoming.length) return false;
+
+  let changed = false;
+
+  incoming.forEach(managerRec => {
+    const managerHistory = Array.isArray(
+      managerRec.manager_install_base_conversation_history
+    )
+      ? managerRec.manager_install_base_conversation_history.filter(
+          item => item && clean(item.message)
+        )
+      : [];
+
+    const directManagerMessage = clean(
+      managerRec.manager_message_to_install_base ||
+      managerRec.manager_install_base_message ||
+      managerRec.install_base_message_from_manager ||
+      managerRec.install_base_response_from_manager ||
+      ""
+    );
+
+    const directManagerAt = clean(
+      managerRec.manager_message_to_install_base_at ||
+      managerRec.manager_install_base_message_at ||
+      managerRec.install_base_message_from_manager_at ||
+      managerRec.install_base_response_from_manager_at ||
+      ""
+    );
+
+    const directManagerBy = clean(
+      managerRec.manager_message_to_install_base_by ||
+      managerRec.manager_name ||
+      managerRec.owner_group_name ||
+      "Manager"
+    );
+
+    if (directManagerMessage) {
+      const exists = managerHistory.some(item =>
+        lower(item.sender) === "manager" &&
+        clean(item.message) === directManagerMessage &&
+        clean(item.at) === directManagerAt
+      );
+
+      if (!exists) {
+        managerHistory.push({
+          id:
+            "manager_" +
+            Date.now() +
+            "_" +
+            Math.random().toString(36).slice(2, 8),
+          sender: "manager",
+          sender_label: directManagerBy,
+          message: directManagerMessage,
+          at: directManagerAt || new Date().toISOString(),
+          seen_by_install_base: false
+        });
+      }
+    }
+
+    if (!managerHistory.length) return;
+
+    state.records = state.records.map(rec => {
+      if (!sameRecord(rec, managerRec)) return rec;
+
+      const existingHistory = Array.isArray(
+        rec.manager_install_base_conversation_history
+      )
+        ? rec.manager_install_base_conversation_history.filter(
+            item => item && clean(item.message)
+          )
+        : [];
+
+      const historyMap = new Map();
+
+      [...existingHistory, ...managerHistory].forEach(item => {
+        const signature = [
+          lower(item.sender),
+          clean(item.at),
+          clean(item.message)
+        ].join("|");
+
+        if (!historyMap.has(signature)) {
+          historyMap.set(signature, item);
+        }
+      });
+
+      const mergedHistory = [...historyMap.values()].sort(
+        (a, b) =>
+          (new Date(a.at || 0).getTime() || 0) -
+          (new Date(b.at || 0).getTime() || 0)
+      );
+
+      const latestManagerMessage = [...mergedHistory]
+        .reverse()
+        .find(item => lower(item.sender) === "manager");
+
+      if (!latestManagerMessage) return rec;
+
+      const latestSignature = [
+        lower(latestManagerMessage.sender),
+        clean(latestManagerMessage.at),
+        clean(latestManagerMessage.message)
+      ].join("|");
+
+      const currentSignature = [
+        "manager",
+        clean(rec.manager_message_to_install_base_at),
+        clean(rec.manager_message_to_install_base)
+      ].join("|");
+
+      if (
+        latestSignature === currentSignature &&
+        rec.manager_install_base_conversation_history?.length ===
+          mergedHistory.length
+      ) {
+        return rec;
+      }
+
+      changed = true;
+
+      return {
+        ...rec,
+        manager_install_base_conversation_history: mergedHistory,
+        manager_message_to_install_base:
+          clean(latestManagerMessage.message),
+        manager_message_to_install_base_at:
+          latestManagerMessage.at || "",
+        manager_message_to_install_base_by:
+          latestManagerMessage.sender_label || directManagerBy || "Manager",
+        manager_message_to_install_base_seen:
+          latestManagerMessage.seen_by_install_base === true,
+        manager_unseen_update:
+          latestManagerMessage.seen_by_install_base !== true,
+        manager_flash_at:
+          latestManagerMessage.at || new Date().toISOString(),
+        manager_flash_type: "manager_message",
+        manager_flash_text: "New message from Manager"
+      };
+    });
+  });
+
+  if (changed) {
+    saveRecords();
+  }
+
+  return changed;
+}
+
 function loadRecords() {
   try {
     const raw = JSON.parse(localStorage.getItem(INSTALL_BASE_KEY) || "[]");
@@ -3321,6 +3481,7 @@ function loadRecords() {
 
   mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
+  mergeManagerMessagesIntoInstallBase();
 }
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
@@ -6574,6 +6735,8 @@ window.addEventListener("storage", e => {
   if (
     e.key === INSTALL_BASE_RESPONSE_KEY ||
     e.key === INSTALL_BASE_RESPONSE_PING_KEY ||
+    e.key === MANAGER_QUEUE_KEY ||
+    e.key === "axis_manager_sync_ping_v1" ||
     e.key === INSTALL_BASE_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_PING_KEY ||
