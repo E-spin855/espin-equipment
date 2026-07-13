@@ -10977,7 +10977,10 @@ const updated = {
     install_base_response_by: rec.assigned_rep_name || rec.rep || "Rep",
     install_base_response_at: now,
     install_base_response_seen: false,
-    install_base_conversation_history: [...existingConversationHistory, repConversationItem],
+
+    // FIX packets update Install Base Review only.
+    // They do not create Rep / Install Base communication history.
+    install_base_conversation_history: existingConversationHistory,
 
     install_base_correction_status: "corrected_by_rep",
     install_base_correction_note: message,
@@ -13948,9 +13951,30 @@ function getInstallBaseRepActionRequired(rec) {
     `Confirm or correct the requested Install Base information for ${equipment}.`;
 }
 
+function isInstallBaseFixMessage(value) {
+  const message = clean(value);
+
+  if (!message) return false;
+
+  return /^(dom|year|manufacture year|make|brand|model|modality|serial|serial number|site|facility|hospital|territory|region|rep|rep owner|assigned rep|owner group|manager|project|project id|asset id)\s*[:=]\s*.+$/i.test(message);
+}
+
 function getInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.install_base_conversation_history)
-    ? rec.install_base_conversation_history.filter(item => item && clean(item.message))
+    ? rec.install_base_conversation_history.filter(item => {
+        if (!item || !clean(item.message)) return false;
+
+        // Corrected FIX values belong to Install Base Review,
+        // not Rep / Install Base communication.
+        if (
+          lower(item.sender) === "rep" &&
+          isInstallBaseFixMessage(item.message)
+        ) {
+          return false;
+        }
+
+        return true;
+      })
     : [];
 
   return [...history].sort((a, b) => {
@@ -14041,13 +14065,18 @@ function buildInstallBaseMiniTimeline(rec) {
       });
     });
   } else {
-    const repResponse = clean(
+    const rawRepResponse = clean(
       rec.install_base_response_message ||
       rec.install_base_response_note ||
       rec.rep_response_message ||
       rec.install_base_correction_note ||
       ""
     );
+
+    const repResponse =
+      isInstallBaseFixMessage(rawRepResponse)
+        ? ""
+        : rawRepResponse;
 
     if (repResponse) {
       items.push({
