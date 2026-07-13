@@ -10222,6 +10222,124 @@ const existingConversationHistory = getInstallBaseConversationHistory(rec);
     seen_by_install_base: false
   };
 
+  /*
+    A typed response with no corrected FIX inputs is normal
+    Rep / Install Base communication. Do not mark it as a data correction.
+  */
+  if (fixedInputs.length === 0 && typedMessage) {
+    const communicationUpdate = {
+      ...rec,
+      key,
+      install_base_message_from_rep: typedMessage,
+      install_base_message_from_rep_at: now,
+      install_base_message_from_rep_by:
+        rec.assigned_rep_name || rec.rep || "Rep",
+
+      install_base_response_message: typedMessage,
+      install_base_response_note: typedMessage,
+      rep_response_message: typedMessage,
+      response_message: typedMessage,
+      install_base_response_by:
+        rec.assigned_rep_name || rec.rep || "Rep",
+      install_base_response_at: now,
+      install_base_response_seen: false,
+      install_base_response_seen_at: "",
+
+      install_base_conversation_history: [
+        ...existingConversationHistory,
+        repConversationItem
+      ],
+
+      install_base_show_communication: true,
+      install_base_response_from: "rep",
+
+      // Preserve any prior correction state, but do not create a new FIX packet.
+      install_base_correction_status:
+        rec.install_base_correction_status || "",
+      install_base_corrected_fields:
+        rec.install_base_corrected_fields || "",
+      corrected_fields:
+        rec.corrected_fields || {}
+    };
+
+    state.records = state.records.map(r => {
+      const sameId =
+        String(r.id || "") === String(communicationUpdate.id || "");
+      const sameKey =
+        communicationUpdate.key &&
+        String(r.key || "") === String(communicationUpdate.key);
+
+      return sameId || sameKey ? communicationUpdate : r;
+    });
+
+    saveRecords();
+
+    let responseQueue = [];
+
+    try {
+      responseQueue = JSON.parse(
+        localStorage.getItem(INSTALL_BASE_RESPONSE_KEY) || "[]"
+      );
+
+      if (!Array.isArray(responseQueue)) {
+        responseQueue = [];
+      }
+    } catch {
+      responseQueue = [];
+    }
+
+    const cleanedQueue = responseQueue.filter(r => {
+      const sameId =
+        String(r.id || "") === String(communicationUpdate.id || "");
+      const sameKey =
+        communicationUpdate.key &&
+        String(r.key || "") === String(communicationUpdate.key);
+
+      return !(sameId || sameKey);
+    });
+
+    const outboundMessage = {
+      ...communicationUpdate,
+      source: "Rep Response",
+      source_system: "Rep Review Page",
+
+      // Explicit packet type lets Hub distinguish messages from FIX returns.
+      install_base_packet_type: "rep_message",
+      install_base_response_status: "rep_message_sent",
+
+      install_base_message_from_rep: typedMessage,
+      install_base_message_from_rep_at: now,
+      install_base_message_from_rep_by:
+        rec.assigned_rep_name || rec.rep || "Rep",
+
+      install_base_response_seen: false
+    };
+
+    cleanedQueue.unshift(outboundMessage);
+
+    localStorage.setItem(
+      INSTALL_BASE_RESPONSE_KEY,
+      JSON.stringify(cleanedQueue)
+    );
+
+    localStorage.setItem(
+      INSTALL_BASE_RESPONSE_PING_KEY,
+      String(Date.now())
+    );
+
+    if (messageEl) {
+      messageEl.value = "";
+    }
+
+    window.lastInstallBaseFixReason = "";
+    state.installBaseFixResponseOpen = false;
+    state.installBaseFixResponseRecordId = "";
+
+    renderDetail();
+    alert("Response sent to Install Base.");
+    return;
+  }
+
   const normalizeCorrectedFieldName = (rawKey) => {
     const k = String(rawKey || "")
       .toLowerCase()
