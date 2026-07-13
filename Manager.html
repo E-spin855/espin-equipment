@@ -3956,6 +3956,15 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
 }
 
 function hasUnreadMessageRow(rec, pageRole) {
+  // On Manager, row highlighting must come only from the two dedicated
+  // Manager communication channels. Rep <-> Install Base messages are excluded.
+  if (pageRole === "manager") {
+    return (
+      hasUnreadMessageField(rec, "manager", "rep") ||
+      hasUnreadMessageField(rec, "manager", "install_base")
+    );
+  }
+
   const signature = getLatestIncomingMessageSignature(rec, pageRole);
   const recordKey = getMessageRecordIdentity(rec);
 
@@ -5803,6 +5812,17 @@ function shouldManagerRowFlash(rec) {
   if (isHubRepOnlyTextExchange(rec)) return false;
 
   const flashType = lower(rec.manager_flash_type || "");
+
+  // A generic rep_message flag can be copied during a Rep / Install Base
+  // exchange. Do not flash the Manager row unless a dedicated Manager
+  // communication channel actually contains an unread message.
+  if (
+    flashType === "rep_message" &&
+    !hasUnreadMessageField(rec, "manager", "rep") &&
+    !hasUnreadMessageField(rec, "manager", "install_base")
+  ) {
+    return false;
+  }
 
   const isRealRepUpdate =
     rec.manager_unseen_update === true &&
