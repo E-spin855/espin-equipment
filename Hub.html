@@ -1916,6 +1916,13 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
 }
 
 function hasUnreadMessageRow(rec, pageRole) {
+  if (pageRole === "hub") {
+    const repUi = getHubRepCommunicationUi(rec);
+    const managerUi = getHubManagerCommunicationUi(rec);
+
+    return Boolean(repUi.needsResponse || managerUi.needsResponse);
+  }
+
   const signature = getLatestIncomingMessageSignature(rec, pageRole);
   const recordKey = getMessageRecordIdentity(rec);
 
@@ -6281,10 +6288,85 @@ function isRepFixMessageText(value) {
   return /^(dom|year|manufacture year|make|brand|model|modality|serial|serial number|site|facility|hospital|territory|region|rep|rep owner|assigned rep|owner group|manager|project|project id|asset id)\s*[:=]\s*.+$/i.test(message);
 }
 
+function getRepManagerChannelSignatures(rec) {
+  const signatures = new Set();
+
+  [
+    rec?.rep_manager_conversation_history,
+    rec?.manager_rep_conversation_history
+  ].forEach(history => {
+    if (!Array.isArray(history)) return;
+
+    history.forEach(item => {
+      const sender = lower(item?.sender);
+      const at = clean(item?.at || item?.created_at || item?.timestamp);
+      const message = clean(item?.message || item?.note || item?.text);
+
+      if (!sender || !message) return;
+
+      signatures.add([sender, at, message].join("|"));
+      signatures.add([sender, "", message].join("|"));
+    });
+  });
+
+  const directRepMessage = clean(
+    rec?.rep_manager_message_notes ||
+    rec?.rep_manager_message_label ||
+    rec?.rep_manager_message_action ||
+    ""
+  );
+
+  if (directRepMessage) {
+    signatures.add([
+      "rep",
+      clean(rec?.rep_manager_message_at),
+      directRepMessage
+    ].join("|"));
+    signatures.add(["rep", "", directRepMessage].join("|"));
+  }
+
+  const directManagerMessage = clean(
+    rec?.manager_response_notes ||
+    rec?.manager_response_action ||
+    ""
+  );
+
+  if (directManagerMessage) {
+    signatures.add([
+      "manager",
+      clean(rec?.manager_response_at),
+      directManagerMessage
+    ].join("|"));
+    signatures.add(["manager", "", directManagerMessage].join("|"));
+  }
+
+  return signatures;
+}
+
+function isRepManagerChannelItem(rec, item) {
+  const sender = lower(item?.sender);
+  const at = clean(item?.at || item?.created_at || item?.timestamp);
+  const message = clean(item?.message || item?.note || item?.text);
+
+  if (!sender || !message) return false;
+
+  const signatures = getRepManagerChannelSignatures(rec);
+
+  return (
+    signatures.has([sender, at, message].join("|")) ||
+    signatures.has([sender, "", message].join("|"))
+  );
+}
+
 function getInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.install_base_conversation_history)
     ? rec.install_base_conversation_history.filter(item => {
         if (!item || !clean(item.message)) return false;
+
+        // Rep / Manager messages are separate and must never appear in Hub communication.
+        if (isRepManagerChannelItem(rec, item)) {
+          return false;
+        }
 
         // Returned FIX values belong in Install Base Review Hold,
         // never in Rep / Install Base communication.
@@ -6647,7 +6729,11 @@ function mergeInstallManagerTextIntoHubRecord(rec) {
 
 function getManagerInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.manager_install_base_conversation_history)
-    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
+    ? rec.manager_install_base_conversation_history.filter(item =>
+        item &&
+        clean(item.message) &&
+        !isRepManagerChannelItem(rec, item)
+      )
     : [];
   return [...history].sort((a,b) => (new Date(a.at||0).getTime()||0) - (new Date(b.at||0).getTime()||0));
 }
