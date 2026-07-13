@@ -14309,7 +14309,16 @@ function renderInstallBaseCorrectionPanel(rec) {
   }
 
   const isOpen = state.installBaseCommunicationOpen === true;
-  const historyOpen = state.installBaseHistoryOpen === true;
+
+  // Do not keep an empty history panel open after FIX-only activity
+  // has been removed from communication.
+  const historyOpen =
+    historyCount > 0 &&
+    state.installBaseHistoryOpen === true;
+
+  if (historyCount === 0) {
+    state.installBaseHistoryOpen = false;
+  }
 
   // Once the user hides this exact incoming message, remove the
   // "Response needed" label until Communication is reopened or
@@ -14377,7 +14386,9 @@ function renderInstallBaseCorrectionPanel(rec) {
         </div>
         <div class="comm-actions">
           <button type="button" class="${isOpen ? "green" : "secondary"}" onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}')">${isOpen ? "Hide Communication" : "Open Communication"}</button>
-          <button type="button" class="secondary" onclick="toggleInstallBaseHistory()">${historyOpen ? "Hide History" : `View History (${historyCount})`}</button>
+          ${historyCount > 0 ? `
+            <button type="button" class="secondary" onclick="toggleInstallBaseHistory()">${historyOpen ? "Hide History" : `View History (${historyCount})`}</button>
+          ` : ""}
         </div>
       </div>
 
