@@ -6824,12 +6824,9 @@ function mergeInstallManagerTextIntoManagerRecord(rec) {
 
   if (!channel.length) return rec;
 
-  const existing = Array.isArray(rec.manager_install_base_conversation_history)
-    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
-    : [];
-
   const map = new Map();
-  [...existing, ...channel].forEach(item => {
+
+  channel.forEach(item => {
     const signature = [
       clean(item.id),
       lower(item.sender),
@@ -6884,57 +6881,85 @@ function getManagerInstallBaseConversationHistory(rec) {
 function sendManagerMessageToInstallBase() {
   const rec = findSelectedRecord();
   if (!rec) return;
+
   const input = $("managerMessageToInstallBase");
   const message = clean(input?.value);
+
   if (!message) {
     alert("Enter a message to Install Base before sending.");
     return;
   }
+
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
 
+  // Exactly one message is written to the dedicated Install Base / Manager channel.
   appendInstallManagerText(rec, "manager", message, MANAGER_NAME);
 
-  const history = getManagerInstallBaseConversationHistory(rec);
-  const item = {
-    id: "manager_install_base_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
-    sender: "manager",
-    sender_label: MANAGER_NAME,
-    message,
-    at: now,
-    seen_by_install_base: false
-  };
-  const update = {
-    manager_install_base_conversation_history: [...history, item],
-    manager_message_to_install_base: message,
-    manager_message_to_install_base_at: now,
-    manager_message_to_install_base_by: MANAGER_NAME,
-    manager_message_to_install_base_seen: false,
-    install_base_response_at: now,
-    install_base_response_from: "manager",
-    install_base_response_seen: false
-  };
-
-  state.records = state.records.map(r => sameRecord(r,rec) || getRecordKey(r)===key ? {...r,...update} : r);
-  writeManagerQueueRecord({...rec,...update,key});
-
+  // Keep the Install Base record available, but do not add another history item.
   const installBase = readArrayKey(INSTALL_BASE_KEY);
-  let matched=false;
-  const updatedInstallBase = installBase.map(r=>{
-    if (!sameRecord(r,rec) && getRecordKey(r)!==key) return r;
-    matched=true;
-    return {...r,...update};
+  let matched = false;
+
+  const updatedInstallBase = installBase.map(item => {
+    if (!sameRecord(item, rec) && getRecordKey(item) !== key) {
+      return item;
+    }
+
+    matched = true;
+
+    return {
+      ...item,
+      manager_message_to_install_base: message,
+      manager_message_to_install_base_at: now,
+      manager_message_to_install_base_by: MANAGER_NAME,
+      manager_message_to_install_base_seen: false
+    };
   });
-  if(!matched) updatedInstallBase.push({...rec,...update,key});
-  localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(updatedInstallBase));
-  localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
-  input.value="";
+
+  if (!matched) {
+    updatedInstallBase.push({
+      ...rec,
+      key,
+      manager_message_to_install_base: message,
+      manager_message_to_install_base_at: now,
+      manager_message_to_install_base_by: MANAGER_NAME,
+      manager_message_to_install_base_seen: false
+    });
+  }
+
+  localStorage.setItem(
+    INSTALL_BASE_KEY,
+    JSON.stringify(updatedInstallBase)
+  );
+  localStorage.setItem(
+    "axis_install_base_sync_ping_v1",
+    String(Date.now())
+  );
+
+  state.records = state.records.map(item =>
+    sameRecord(item, rec)
+      ? mergeInstallManagerTextIntoManagerRecord({
+          ...item,
+          manager_message_to_install_base: message,
+          manager_message_to_install_base_at: now,
+          manager_message_to_install_base_by: MANAGER_NAME
+        })
+      : item
+  );
+
+  if (input) input.value = "";
+
   state.installBaseCommunicationOpen[String(rec.id || "")] = false;
-  flashManagerMessageSentButton("sendManagerInstallBaseMessageBtn", "Message Sent");
+
+  flashManagerMessageSentButton(
+    "sendManagerInstallBaseMessageBtn",
+    "Message Sent"
+  );
+
   window.setTimeout(() => {
     render();
     showBanner("Message sent to Install Base.");
-  }, 350);
+  }, 150);
 }
 function getManagerInstallBaseIncomingSignature(rec) {
   const history = getManagerInstallBaseConversationHistory(rec);

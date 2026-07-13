@@ -6211,12 +6211,9 @@ function mergeInstallManagerTextIntoHubRecord(rec) {
 
   if (!channel.length) return rec;
 
-  const existing = Array.isArray(rec.manager_install_base_conversation_history)
-    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
-    : [];
-
   const map = new Map();
-  [...existing, ...channel].forEach(item => {
+
+  channel.forEach(item => {
     const signature = [
       clean(item.id),
       lower(item.sender),
@@ -6267,61 +6264,101 @@ function getHubManagerDraft(recordId) {
   return state.managerMessageDrafts[String(recordId || "")] || "";
 }
 function sendInstallBaseMessageToManager(recordId) {
-  const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+  const rec = state.records.find(
+    r => String(r.id || "") === String(recordId || "")
+  );
   if (!rec) return;
+
   const input = document.getElementById("installBaseMessageToManager");
   const message = clean(input?.value);
+
   if (!message) {
     alert("Enter a message to the manager before sending.");
     return;
   }
+
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
 
+  // Exactly one message is written to the dedicated Install Base / Manager channel.
   appendInstallManagerText(rec, "install_base", message, "Install Base");
 
-  const history = getManagerInstallBaseConversationHistory(rec);
-  const item = {
-    id: "install_base_manager_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
-    sender: "install_base",
-    sender_label: "Install Base",
-    message,
-    at: now,
-    seen_by_manager: false
-  };
-  const update = {
-    manager_install_base_conversation_history: [...history, item],
-    install_base_message_to_manager: message,
-    install_base_message_to_manager_at: now,
-    install_base_message_to_manager_by: "Install Base",
-    install_base_message_to_manager_seen: false,
-    manager_unseen_update: true,
-    manager_flash_at: now,
-    manager_flash_type: "install_base_message",
-    manager_flash_text: "New message from Install Base"
-  };
-  state.records = state.records.map(r => sameRecord(r, rec) || getRecordKey(r)===key ? {...r,...update} : r);
-
-  const managerQueue = readQueue(MANAGER_QUEUE_KEY,{});
+  // Keep the Manager queue record available, but do not add another history item.
+  const managerQueue = readQueue(MANAGER_QUEUE_KEY, {});
   const ownerName = getOwnerName(rec);
-  if (!managerQueue[ownerName]) managerQueue[ownerName]=[];
-  let matched=false;
-  managerQueue[ownerName]=managerQueue[ownerName].map(r=>{
-    if (!sameRecord(r,rec) && getRecordKey(r)!==key) return r;
-    matched=true;
-    return {...r,...update};
+
+  if (!Array.isArray(managerQueue[ownerName])) {
+    managerQueue[ownerName] = [];
+  }
+
+  let matched = false;
+
+  managerQueue[ownerName] = managerQueue[ownerName].map(item => {
+    if (!sameRecord(item, rec) && getRecordKey(item) !== key) {
+      return item;
+    }
+
+    matched = true;
+
+    return {
+      ...item,
+      install_base_message_to_manager: message,
+      install_base_message_to_manager_at: now,
+      install_base_message_to_manager_by: "Install Base",
+      install_base_message_to_manager_seen: false,
+      manager_unseen_update: true,
+      manager_flash_at: now,
+      manager_flash_type: "install_base_message",
+      manager_flash_text: "New message from Install Base"
+    };
   });
-  if(!matched) managerQueue[ownerName].push({...rec,...update,key});
+
+  if (!matched) {
+    managerQueue[ownerName].push({
+      ...rec,
+      key,
+      install_base_message_to_manager: message,
+      install_base_message_to_manager_at: now,
+      install_base_message_to_manager_by: "Install Base",
+      install_base_message_to_manager_seen: false,
+      manager_unseen_update: true,
+      manager_flash_at: now,
+      manager_flash_type: "install_base_message",
+      manager_flash_text: "New message from Install Base"
+    });
+  }
+
   localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
-  state.managerMessageDrafts[String(recordId||"")] = "";
-  state.managerCommunicationOpen[String(recordId||"")] = false;
+
+  state.records = state.records.map(item =>
+    sameRecord(item, rec)
+      ? mergeInstallManagerTextIntoHubRecord({
+          ...item,
+          install_base_message_to_manager: message,
+          install_base_message_to_manager_at: now,
+          install_base_message_to_manager_by: "Install Base"
+        })
+      : item
+  );
+
+  if (input) input.value = "";
+
+  state.managerMessageDrafts[String(recordId || "")] = "";
+  state.managerCommunicationOpen[String(recordId || "")] = false;
+
   saveRecords();
-  flashHubMessageSentButton(`sendInstallBaseMessageToManagerBtn_${rec.id || ""}`, "Message Sent");
+
+  flashHubMessageSentButton(
+    `sendInstallBaseMessageToManagerBtn_${rec.id || ""}`,
+    "Message Sent"
+  );
+
   window.setTimeout(() => {
+    loadRecords();
     render();
-    showBanner("Message sent to Manager Review.");
-  }, 350);
+    showBanner("Message sent to Manager.");
+  }, 150);
 }
 function getHubManagerCommunicationUi(rec) {
   const id = String(rec?.id || "");
