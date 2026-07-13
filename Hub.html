@@ -5396,9 +5396,10 @@ function selectRecord(id) {
   const changingRecords =
     previousRec && String(previousRec.id || "") !== String(id || "");
 
-  // Clicking to another row acknowledges the prior row's temporary update.
+  // Clicking another row also acknowledges the prior row.
   if (changingRecords) {
     markRepResponseSeen(previousRec);
+
     if (hasActualInstallBaseCorrection(previousRec)) {
       markInstallBaseCorrectedFieldsSeen(previousRec);
     }
@@ -5406,21 +5407,34 @@ function selectRecord(id) {
 
   state.selectedId = id;
 
-  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+  const rec = state.records.find(
+    r => String(r.id || "") === String(id || "")
+  );
 
-  // When a FIX arrives from Rep, clicking that row clears the Hub green alert
-  // immediately. Text-message communication behavior remains unchanged.
-  if (rec && hasActualInstallBaseCorrection(rec)) {
+  if (!rec) {
+    render();
+    return;
+  }
+
+  // Capture communication state before marking the row as seen,
+  // so a newly received message can still open automatically.
+  const repUiBeforeSeen = getHubRepCommunicationUi(rec);
+
+  // Clicking the green row itself now clears every row-level green frame.
+  if (hasActualInstallBaseCorrection(rec)) {
     markInstallBaseCorrectedFieldsSeen(rec);
   }
 
-  const updatedRec = state.records.find(r => String(r.id || "") === String(id || ""));
-  const repUi = updatedRec ? getHubRepCommunicationUi(updatedRec) : null;
+  if (
+    rec.install_base_response_at &&
+    rec.install_base_response_seen !== true
+  ) {
+    markRepResponseSeen(rec);
+  }
 
-  // If a new text message arrived from Rep, clicking that row opens the
-  // Rep communication field immediately. The green frame remains until
-  // Hide Communication is pressed, which already marks the message seen.
-  if (repUi?.needsResponse) {
+  // Keep the communication panel opening for a newly received message,
+  // but remove the green row frame immediately on the row click.
+  if (repUiBeforeSeen?.needsResponse) {
     state.repCommunicationOpen[String(id || "")] = true;
   }
 
