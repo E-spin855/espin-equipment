@@ -3113,7 +3113,6 @@ function mergeWonProjectsFromRepIntoInstallBase() {
     localStorage.setItem(INSTALL_BASE_KEY, JSON.stringify(state.records));
     localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
 
-    const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
     const correctedByRecord = new Map();
 
     responses.forEach(resp => {
@@ -3179,83 +3178,7 @@ function mergeRepResponsesIntoRecords() {
   const responses = readArrayKey(INSTALL_BASE_RESPONSE_KEY);
   let changed = false;
 
-  responses.forEach(rawResp => {
-    const repMessage = clean(
-      rawResp.install_base_message_from_rep ||
-      rawResp.install_base_response_message ||
-      rawResp.install_base_response_note ||
-      rawResp.rep_response_message ||
-      rawResp.response_message ||
-      ""
-    );
-
-    const repMessageAt =
-      rawResp.install_base_message_from_rep_at ||
-      rawResp.install_base_response_at ||
-      rawResp.install_base_correction_at ||
-      "";
-
-    const repMessageBy = clean(
-      rawResp.install_base_message_from_rep_by ||
-      rawResp.install_base_response_by ||
-      rawResp.assigned_rep_name ||
-      rawResp.rep ||
-      "Rep"
-    );
-
-    const existingHistory = Array.isArray(rawResp.install_base_conversation_history)
-      ? rawResp.install_base_conversation_history.filter(
-          item => item && clean(item.message)
-        )
-      : [];
-
-    const alreadyInHistory = Boolean(
-      repMessage &&
-      existingHistory.some(item =>
-        lower(item.sender) === "rep" &&
-        clean(item.message) === repMessage &&
-        clean(item.at) === clean(repMessageAt)
-      )
-    );
-
-    const normalizedHistory =
-      repMessage && !alreadyInHistory
-        ? [
-            ...existingHistory,
-            {
-              id:
-                "rep_" +
-                Date.now() +
-                "_" +
-                Math.random().toString(36).slice(2, 8),
-              sender: "rep",
-              sender_label: repMessageBy,
-              message: repMessage,
-              at: repMessageAt || new Date().toISOString(),
-              seen_by_install_base: false
-            }
-          ]
-        : existingHistory;
-
-    const resp = {
-      ...rawResp,
-      install_base_response_message:
-        repMessage || rawResp.install_base_response_message || "",
-      install_base_response_note:
-        repMessage || rawResp.install_base_response_note || "",
-      rep_response_message:
-        repMessage || rawResp.rep_response_message || "",
-      response_message:
-        repMessage || rawResp.response_message || "",
-      install_base_response_by:
-        repMessageBy || rawResp.install_base_response_by || "Rep",
-      install_base_response_at:
-        repMessageAt || rawResp.install_base_response_at || "",
-      install_base_response_seen:
-        repMessage ? false : rawResp.install_base_response_seen === true,
-      install_base_conversation_history: normalizedHistory
-    };
-
+  responses.forEach(resp => {
     const respKey = getRecordKey(resp);
     if (!respKey) return;
 
@@ -3276,83 +3199,6 @@ function mergeRepResponsesIntoRecords() {
         ...resp,
         key: getRecordKey(rec)
       }, resp);
-
-      // Preserve Manager / Install Base communication when an older Rep
-      // response packet is merged over the newer Hub record.
-      const managerHistorySources = [
-        ...(Array.isArray(rec.manager_install_base_conversation_history)
-          ? rec.manager_install_base_conversation_history
-          : []),
-        ...(Array.isArray(resp.manager_install_base_conversation_history)
-          ? resp.manager_install_base_conversation_history
-          : [])
-      ].filter(item => item && clean(item.message));
-
-      const managerHistoryMap = new Map();
-
-      managerHistorySources.forEach(item => {
-        const signature = [
-          lower(item.sender),
-          clean(item.at),
-          clean(item.message)
-        ].join("|");
-
-        if (!managerHistoryMap.has(signature)) {
-          managerHistoryMap.set(signature, item);
-        }
-      });
-
-      const mergedManagerHistory = [...managerHistoryMap.values()]
-        .sort((a, b) =>
-          (new Date(a.at || 0).getTime() || 0) -
-          (new Date(b.at || 0).getTime() || 0)
-        );
-
-      const latestManagerMessage = [...mergedManagerHistory]
-        .reverse()
-        .find(item => lower(item.sender) === "manager");
-
-      if (mergedManagerHistory.length) {
-        canonicalMerged.manager_install_base_conversation_history =
-          mergedManagerHistory;
-      }
-
-      if (latestManagerMessage) {
-        canonicalMerged.manager_message_to_install_base =
-          clean(latestManagerMessage.message);
-
-        canonicalMerged.manager_message_to_install_base_at =
-          latestManagerMessage.at || "";
-
-        canonicalMerged.manager_message_to_install_base_by =
-          latestManagerMessage.sender_label || "Manager";
-
-        canonicalMerged.manager_message_to_install_base_seen =
-          latestManagerMessage.seen_by_install_base === true;
-
-        canonicalMerged.install_base_response_from = "manager";
-        canonicalMerged.install_base_response_seen =
-          latestManagerMessage.seen_by_install_base === true;
-      } else {
-        canonicalMerged.manager_message_to_install_base =
-          rec.manager_message_to_install_base ||
-          resp.manager_message_to_install_base ||
-          "";
-
-        canonicalMerged.manager_message_to_install_base_at =
-          rec.manager_message_to_install_base_at ||
-          resp.manager_message_to_install_base_at ||
-          "";
-
-        canonicalMerged.manager_message_to_install_base_by =
-          rec.manager_message_to_install_base_by ||
-          resp.manager_message_to_install_base_by ||
-          "";
-
-        canonicalMerged.manager_message_to_install_base_seen =
-          rec.manager_message_to_install_base_seen === true ||
-          resp.manager_message_to_install_base_seen === true;
-      }
 
       String(resp.install_base_corrected_fields || "")
         .split(",")
@@ -3509,12 +3355,6 @@ install_base_response_seen_at:
       changed = true;
     }
   });
-
-  if (changed) {
-    saveRecords();
-  }
-
-  return changed;
 }
 
 function markRepResponseSeen(rec) {
@@ -5555,16 +5395,18 @@ function renderRepResponseCard(rec) {
   const latestText = ui.latest
     ? `${ui.latest.sender_label || (lower(ui.latest.sender) === "rep" ? "Rep" : "Install Base")}: ${ui.latest.message}`
     : (latestRepText ? `Rep: ${latestRepText}` : "No messages yet.");
+  const hasUnseenRepResponse = Boolean(
+    latestRepText && rec.install_base_response_seen !== true && rec.install_base_fixed_seen_by_install_base !== true
+  );
+
   return `
-    <div class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""}">
+    <div class="detail-card comm-shell ${ui.composerOpen && hasUnseenRepResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Install Base / Rep Communication</div>
-          ${ui.composerOpen ? `
-            <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">
-              ${ui.needsResponse ? "Response needed" : "No response currently required"}
-            </div>
-          ` : ""}
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">
+            ${ui.needsResponse ? "Response needed" : "No response currently required"}
+          </div>
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
@@ -5731,15 +5573,11 @@ function renderManagerInstallBaseCommunication(rec) {
     ? `${ui.latest.sender_label || (lower(ui.latest.sender)==="manager" ? "Manager" : "Install Base")}: ${ui.latest.message}`
     : "No messages yet.";
   return `
-    <div class="detail-card comm-shell ${ui.needsResponse ? "communication-update-frame" : ""}">
+    <div class="detail-card comm-shell ${ui.composerOpen && ui.needsResponse ? "communication-update-frame" : ""}">
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Install Base / Manager Communication</div>
-          ${ui.composerOpen ? `
-            <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">
-              ${ui.needsResponse ? "Response needed" : "No response currently required"}
-            </div>
-          ` : ""}
+          <div class="comm-status ${ui.needsResponse ? "needs-response" : ""}">${ui.needsResponse ? "Response needed" : "No response currently required"}</div>
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
