@@ -10616,6 +10616,136 @@ function getInstallBaseIssues(rec) {
   ]);
 }
 
+
+function sendRepMessageToInstallBase(id) {
+  const rec = state.records.find(
+    r => String(r.id || "") === String(id || "")
+  );
+
+  if (!rec) return;
+
+  const messageEl = document.getElementById(
+    "installBaseCorrectionNote"
+  );
+
+  const message = clean(messageEl?.value || "");
+
+  if (!message) {
+    alert("Type a message to Install Base before sending.");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const key = rec.key || getRecordKey(rec);
+  const history = getInstallBaseConversationHistory(rec);
+
+  const item = {
+    id:
+      "rep_message_" +
+      Date.now() +
+      "_" +
+      Math.random().toString(36).slice(2, 8),
+    sender: "rep",
+    sender_label:
+      rec.assigned_rep_name ||
+      rec.rep ||
+      "Rep",
+    message,
+    at: now,
+    seen_by_install_base: false
+  };
+
+  const updated = {
+    ...rec,
+    key,
+
+    install_base_message_from_rep: message,
+    install_base_message_from_rep_at: now,
+    install_base_message_from_rep_by:
+      rec.assigned_rep_name ||
+      rec.rep ||
+      "Rep",
+
+    install_base_response_message: message,
+    install_base_response_note: message,
+    rep_response_message: message,
+    response_message: message,
+    install_base_response_by:
+      rec.assigned_rep_name ||
+      rec.rep ||
+      "Rep",
+    install_base_response_at: now,
+    install_base_response_seen: false,
+    install_base_response_seen_at: "",
+
+    install_base_conversation_history: [
+      ...history,
+      item
+    ],
+
+    install_base_packet_type: "rep_message",
+    install_base_response_status: "rep_message_sent",
+    install_base_response_from: "rep",
+    install_base_show_communication: true
+  };
+
+  state.records = state.records.map(r => {
+    const sameId =
+      String(r.id || "") === String(updated.id || "");
+    const sameKey =
+      updated.key &&
+      String(r.key || "") === String(updated.key);
+
+    return sameId || sameKey ? updated : r;
+  });
+
+  saveRecords();
+
+  let queue = [];
+
+  try {
+    queue = JSON.parse(
+      localStorage.getItem(INSTALL_BASE_RESPONSE_KEY) || "[]"
+    );
+
+    if (!Array.isArray(queue)) queue = [];
+  } catch {
+    queue = [];
+  }
+
+  const cleanedQueue = queue.filter(r => {
+    const sameId =
+      String(r.id || "") === String(updated.id || "");
+    const sameKey =
+      updated.key &&
+      String(r.key || "") === String(updated.key);
+
+    return !(sameId || sameKey);
+  });
+
+  cleanedQueue.unshift(updated);
+
+  localStorage.setItem(
+    INSTALL_BASE_RESPONSE_KEY,
+    JSON.stringify(cleanedQueue)
+  );
+
+  localStorage.setItem(
+    INSTALL_BASE_RESPONSE_PING_KEY,
+    String(Date.now())
+  );
+
+  if (messageEl) messageEl.value = "";
+
+  state.installBaseCommunicationOpen = false;
+  state.installBaseHistoryOpen = false;
+
+  renderTable();
+  renderNewProjectsTable();
+  refreshSelectedRowUI();
+  renderDetail();
+}
+
 function sendInstallBaseCorrection(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -14032,7 +14162,7 @@ function renderInstallBaseReplyCard(rec) {
       <button
         type="button"
         class="green send-message-glow"
-        onclick="sendInstallBaseCorrection('${escapeJs(rec.id)}')"
+        onclick="sendRepMessageToInstallBase('${escapeJs(rec.id)}')"
       >
         Send Message to Install Base
       </button>
@@ -14287,9 +14417,7 @@ function renderInstallBaseCorrectionPanel(rec) {
   const needsResponse = installBaseCommunicationNeedsResponse(rec);
   const latestItem = getLatestInstallBaseCommunicationItem(rec);
   const history = getInstallBaseConversationHistory(rec);
-  const historyCount = history.length || (
-    clean(rec.install_base_response_message || rec.install_base_reply_to_rep || "") ? 1 : 0
-  );
+  const historyCount = history.length;
 
   // Incoming unanswered communication opens automatically, unless the user
   // explicitly hid this exact message. A newer incoming message opens it again.
