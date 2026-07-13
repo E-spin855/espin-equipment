@@ -13712,22 +13712,8 @@ function getInstallBaseIncomingSignature(rec) {
     ].join("|");
   }
 
-  return [
-    clean(
-      rec.install_base_rep_action_required ||
-      rec.rep_fix_required ||
-      rec.install_base_clarification_reason ||
-      rec.axis_clarification_reason ||
-      rec.install_base_issue_field ||
-      ""
-    ),
-    clean(
-      rec.install_base_issue_reason ||
-      rec.install_base_action_reason ||
-      rec.install_base_issue_note ||
-      ""
-    )
-  ].join("|");
+  // FIX requests are part of Install Base Review, not communication.
+  return "";
 }
 
 function toggleInstallBaseCommunication(id = "") {
@@ -13813,10 +13799,8 @@ function installBaseCommunicationNeedsResponse(rec) {
     return lower(latest.sender) === "install_base" && rec.rep_install_base_ack_signature !== signature;
   }
 
-  if (!hasExplicitInstallBaseRepRequest(rec)) return false;
-
-  const requestSignature = getInstallBaseIncomingSignature(rec);
-  return Boolean(requestSignature) && rec.rep_install_base_ack_signature !== requestSignature;
+  // A FIX request must never create a communication response-needed state.
+  return false;
 }
 function getLatestInstallBaseCommunicationItem(rec) {
   const history = getInstallBaseConversationHistory(rec);
@@ -13832,13 +13816,19 @@ function getLatestInstallBaseCommunicationItem(rec) {
     };
   }
 
-  const repMessage = clean(
+  const rawRepMessage = clean(
     rec.install_base_response_message ||
     rec.install_base_response_note ||
     rec.rep_response_message ||
     rec.install_base_correction_note ||
     ""
   );
+
+  const repMessage =
+    isInstallBaseFixMessage(rawRepMessage)
+      ? ""
+      : rawRepMessage;
+
   if (repMessage) {
     return {
       sender: "rep",
@@ -14332,10 +14322,20 @@ function renderInstallBaseCorrectionPanel(rec) {
     ? (lower(latestItem.sender) === "install_base" ? "Install Base" : "Rep")
     : "Install Base";
 
-  const latestText = latestItem?.message || reviewActionRequired;
-  const latestAt = latestItem?.at
-    ? new Date(latestItem.at).toLocaleString()
-    : "";
+  const rawLatestText = latestItem?.message || "";
+  const latestText =
+    isInstallBaseFixMessage(rawLatestText)
+      ? ""
+      : rawLatestText;
+
+  const communicationNeedsResponse =
+    Boolean(latestText) &&
+    showNeedsResponse;
+
+  const latestAt =
+    latestText && latestItem?.at
+      ? new Date(latestItem.at).toLocaleString()
+      : "";
 
   const requestHtml = `
     <div style="margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,216,77,.58);background:rgba(255,216,77,.10);">
@@ -14368,12 +14368,12 @@ function renderInstallBaseCorrectionPanel(rec) {
       <div class="comm-toolbar">
         <div class="comm-heading">
           <div class="comm-title">Rep / Install Base Communication</div>
-          ${showNeedsResponse ? `
+          ${communicationNeedsResponse ? `
             <div class="comm-status needs-response">Response needed</div>
-          ` : (!hiddenForThisMessage ? `
-            <div class="comm-status">No response currently required</div>
-          ` : "")}
-          <div class="comm-latest"><strong>${escapeHtml(latestLabel)}${latestAt ? ` · ${escapeHtml(latestAt)}` : ""}:</strong> ${escapeHtml(latestText)}</div>
+          ` : ""}
+          ${latestText ? `
+            <div class="comm-latest"><strong>${escapeHtml(latestLabel)}${latestAt ? ` · ${escapeHtml(latestAt)}` : ""}:</strong> ${escapeHtml(latestText)}</div>
+          ` : ""}
         </div>
         <div class="comm-actions">
           <button type="button" class="${isOpen ? "green" : "secondary"}" onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}')">${isOpen ? "Hide Communication" : "Open Communication"}</button>
