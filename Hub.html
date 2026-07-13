@@ -3311,166 +3311,6 @@ function saveRecords() {
   localStorage.setItem("axis_install_base_sync_ping_v1", String(Date.now()));
 }
 
-function mergeManagerMessagesIntoInstallBase() {
-  const rawQueue = readQueue(MANAGER_QUEUE_KEY, {});
-  const incoming = [];
-
-  if (Array.isArray(rawQueue)) {
-    incoming.push(...rawQueue);
-  } else if (rawQueue && typeof rawQueue === "object") {
-    Object.values(rawQueue).forEach(group => {
-      if (Array.isArray(group)) incoming.push(...group);
-    });
-  }
-
-  if (!incoming.length) return false;
-
-  let changed = false;
-
-  incoming.forEach(managerRec => {
-    const managerHistory = Array.isArray(
-      managerRec.manager_install_base_conversation_history
-    )
-      ? managerRec.manager_install_base_conversation_history.filter(
-          item => item && clean(item.message)
-        )
-      : [];
-
-    const directManagerMessage = clean(
-      managerRec.manager_message_to_install_base ||
-      managerRec.manager_install_base_message ||
-      managerRec.install_base_message_from_manager ||
-      managerRec.install_base_response_from_manager ||
-      ""
-    );
-
-    const directManagerAt = clean(
-      managerRec.manager_message_to_install_base_at ||
-      managerRec.manager_install_base_message_at ||
-      managerRec.install_base_message_from_manager_at ||
-      managerRec.install_base_response_from_manager_at ||
-      ""
-    );
-
-    const directManagerBy = clean(
-      managerRec.manager_message_to_install_base_by ||
-      managerRec.manager_name ||
-      managerRec.owner_group_name ||
-      "Manager"
-    );
-
-    if (directManagerMessage) {
-      const exists = managerHistory.some(item =>
-        lower(item.sender) === "manager" &&
-        clean(item.message) === directManagerMessage &&
-        clean(item.at) === directManagerAt
-      );
-
-      if (!exists) {
-        managerHistory.push({
-          id:
-            "manager_" +
-            Date.now() +
-            "_" +
-            Math.random().toString(36).slice(2, 8),
-          sender: "manager",
-          sender_label: directManagerBy,
-          message: directManagerMessage,
-          at: directManagerAt || new Date().toISOString(),
-          seen_by_install_base: false
-        });
-      }
-    }
-
-    if (!managerHistory.length) return;
-
-    state.records = state.records.map(rec => {
-      if (!sameRecord(rec, managerRec)) return rec;
-
-      const existingHistory = Array.isArray(
-        rec.manager_install_base_conversation_history
-      )
-        ? rec.manager_install_base_conversation_history.filter(
-            item => item && clean(item.message)
-          )
-        : [];
-
-      const historyMap = new Map();
-
-      [...existingHistory, ...managerHistory].forEach(item => {
-        const signature = [
-          lower(item.sender),
-          clean(item.at),
-          clean(item.message)
-        ].join("|");
-
-        if (!historyMap.has(signature)) {
-          historyMap.set(signature, item);
-        }
-      });
-
-      const mergedHistory = [...historyMap.values()].sort(
-        (a, b) =>
-          (new Date(a.at || 0).getTime() || 0) -
-          (new Date(b.at || 0).getTime() || 0)
-      );
-
-      const latestManagerMessage = [...mergedHistory]
-        .reverse()
-        .find(item => lower(item.sender) === "manager");
-
-      if (!latestManagerMessage) return rec;
-
-      const latestSignature = [
-        lower(latestManagerMessage.sender),
-        clean(latestManagerMessage.at),
-        clean(latestManagerMessage.message)
-      ].join("|");
-
-      const currentSignature = [
-        "manager",
-        clean(rec.manager_message_to_install_base_at),
-        clean(rec.manager_message_to_install_base)
-      ].join("|");
-
-      if (
-        latestSignature === currentSignature &&
-        rec.manager_install_base_conversation_history?.length ===
-          mergedHistory.length
-      ) {
-        return rec;
-      }
-
-      changed = true;
-
-      return {
-        ...rec,
-        manager_install_base_conversation_history: mergedHistory,
-        manager_message_to_install_base:
-          clean(latestManagerMessage.message),
-        manager_message_to_install_base_at:
-          latestManagerMessage.at || "",
-        manager_message_to_install_base_by:
-          latestManagerMessage.sender_label || directManagerBy || "Manager",
-        manager_message_to_install_base_seen:
-          latestManagerMessage.seen_by_install_base === true,
-        manager_unseen_update:
-          latestManagerMessage.seen_by_install_base !== true,
-        manager_flash_at:
-          latestManagerMessage.at || new Date().toISOString(),
-        manager_flash_type: "manager_message",
-        manager_flash_text: "New message from Manager"
-      };
-    });
-  });
-
-  if (changed) {
-    saveRecords();
-  }
-
-  return changed;
-}
-
 function loadRecords() {
   try {
     const raw = JSON.parse(localStorage.getItem(INSTALL_BASE_KEY) || "[]");
@@ -3481,7 +3321,7 @@ function loadRecords() {
 
   mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
-  mergeManagerMessagesIntoInstallBase();
+  state.records = state.records.map(mergeInstallManagerTextIntoHubRecord);
 }
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
@@ -6322,6 +6162,98 @@ function renderRepResponseCard(rec) {
 }
 
 
+
+const INSTALL_MANAGER_CHAT_KEY = "espin_install_manager_text_v1";
+
+function readInstallManagerTextChannel() {
+  try {
+    const data = JSON.parse(localStorage.getItem(INSTALL_MANAGER_CHAT_KEY) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendInstallManagerText(rec, sender, message, senderLabel) {
+  const messages = readInstallManagerTextChannel();
+  messages.push({
+    id: "im_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    record_key: getRecordKey(rec),
+    record_id: String(rec?.id || ""),
+    sender,
+    sender_label: senderLabel,
+    message: clean(message),
+    at: new Date().toISOString()
+  });
+  localStorage.setItem(INSTALL_MANAGER_CHAT_KEY, JSON.stringify(messages));
+  localStorage.setItem("espin_install_manager_text_ping_v1", String(Date.now()));
+}
+
+function mergeInstallManagerTextIntoHubRecord(rec) {
+  if (!rec) return rec;
+
+  const recordKey = getRecordKey(rec);
+  const recordId = String(rec.id || "");
+
+  const channel = readInstallManagerTextChannel()
+    .filter(item =>
+      item &&
+      clean(item.message) &&
+      (
+        (recordKey && clean(item.record_key) === recordKey) ||
+        (recordId && clean(item.record_id) === recordId)
+      )
+    )
+    .sort((a, b) =>
+      (new Date(a.at || 0).getTime() || 0) -
+      (new Date(b.at || 0).getTime() || 0)
+    );
+
+  if (!channel.length) return rec;
+
+  const existing = Array.isArray(rec.manager_install_base_conversation_history)
+    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
+    : [];
+
+  const map = new Map();
+  [...existing, ...channel].forEach(item => {
+    const signature = [
+      clean(item.id),
+      lower(item.sender),
+      clean(item.at),
+      clean(item.message)
+    ].join("|");
+    if (!map.has(signature)) map.set(signature, item);
+  });
+
+  const history = [...map.values()].sort((a, b) =>
+    (new Date(a.at || 0).getTime() || 0) -
+    (new Date(b.at || 0).getTime() || 0)
+  );
+
+  const latestInstallBase = [...history].reverse()
+    .find(item => lower(item.sender) === "install_base");
+  const latestManager = [...history].reverse()
+    .find(item => lower(item.sender) === "manager");
+
+  return {
+    ...rec,
+    manager_install_base_conversation_history: history,
+    install_base_message_to_manager:
+      latestInstallBase?.message || rec.install_base_message_to_manager || "",
+    install_base_message_to_manager_at:
+      latestInstallBase?.at || rec.install_base_message_to_manager_at || "",
+    manager_message_to_install_base:
+      latestManager?.message || rec.manager_message_to_install_base || "",
+    manager_message_to_install_base_at:
+      latestManager?.at || rec.manager_message_to_install_base_at || "",
+    manager_message_to_install_base_by:
+      latestManager?.sender_label || rec.manager_message_to_install_base_by || "Manager",
+    manager_message_to_install_base_seen:
+      latestManager ? false : rec.manager_message_to_install_base_seen
+  };
+}
+
 function getManagerInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.manager_install_base_conversation_history)
     ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
@@ -6345,6 +6277,9 @@ function sendInstallBaseMessageToManager(recordId) {
   }
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+
+  appendInstallManagerText(rec, "install_base", message, "Install Base");
+
   const history = getManagerInstallBaseConversationHistory(rec);
   const item = {
     id: "install_base_manager_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
@@ -6735,11 +6670,11 @@ window.addEventListener("storage", e => {
   if (
     e.key === INSTALL_BASE_RESPONSE_KEY ||
     e.key === INSTALL_BASE_RESPONSE_PING_KEY ||
-    e.key === MANAGER_QUEUE_KEY ||
-    e.key === "axis_manager_sync_ping_v1" ||
     e.key === INSTALL_BASE_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_KEY ||
     e.key === INSTALL_BASE_FINAL_SYNC_PING_KEY ||
+    e.key === INSTALL_MANAGER_CHAT_KEY ||
+    e.key === "espin_install_manager_text_ping_v1" ||
     e.key === "axis_install_base_records_ping_v1" ||
     e.key === "axis_install_base_sync_ping_v1"
   ) {

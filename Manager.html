@@ -3449,10 +3449,13 @@ function isManagerRepActionUpdate(rec) {
 function shouldManagerAcceptHubRecord(rec) {
   if (!rec) return false;
 
-  // Direct Install Base → Manager communication must always be accepted,
-  // even when the equipment record itself is still on Sync Hold.
+  /*
+    A direct Install Base → Manager message must always reach the
+    Manager workspace, even when the equipment record is still on
+    Sync Hold or has missing fields.
+  */
   const hasInstallBaseManagerMessage = Boolean(
-    clean(rec.install_base_message_to_manager || "") ||
+    clean(rec.install_base_message_to_manager) ||
     (
       Array.isArray(rec.manager_install_base_conversation_history) &&
       rec.manager_install_base_conversation_history.some(item =>
@@ -6772,6 +6775,106 @@ const secondaryItems = [
   }
 }
 
+
+const INSTALL_MANAGER_CHAT_KEY = "espin_install_manager_text_v1";
+
+function readInstallManagerTextChannel() {
+  try {
+    const data = JSON.parse(localStorage.getItem(INSTALL_MANAGER_CHAT_KEY) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function appendInstallManagerText(rec, sender, message, senderLabel) {
+  const messages = readInstallManagerTextChannel();
+  messages.push({
+    id: "im_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    record_key: getRecordKey(rec),
+    record_id: String(rec?.id || ""),
+    sender,
+    sender_label: senderLabel,
+    message: clean(message),
+    at: new Date().toISOString()
+  });
+  localStorage.setItem(INSTALL_MANAGER_CHAT_KEY, JSON.stringify(messages));
+  localStorage.setItem("espin_install_manager_text_ping_v1", String(Date.now()));
+}
+
+function mergeInstallManagerTextIntoManagerRecord(rec) {
+  if (!rec) return rec;
+
+  const recordKey = getRecordKey(rec);
+  const recordId = String(rec.id || "");
+
+  const channel = readInstallManagerTextChannel()
+    .filter(item =>
+      item &&
+      clean(item.message) &&
+      (
+        (recordKey && clean(item.record_key) === recordKey) ||
+        (recordId && clean(item.record_id) === recordId)
+      )
+    )
+    .sort((a, b) =>
+      (new Date(a.at || 0).getTime() || 0) -
+      (new Date(b.at || 0).getTime() || 0)
+    );
+
+  if (!channel.length) return rec;
+
+  const existing = Array.isArray(rec.manager_install_base_conversation_history)
+    ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
+    : [];
+
+  const map = new Map();
+  [...existing, ...channel].forEach(item => {
+    const signature = [
+      clean(item.id),
+      lower(item.sender),
+      clean(item.at),
+      clean(item.message)
+    ].join("|");
+    if (!map.has(signature)) map.set(signature, item);
+  });
+
+  const history = [...map.values()].sort((a, b) =>
+    (new Date(a.at || 0).getTime() || 0) -
+    (new Date(b.at || 0).getTime() || 0)
+  );
+
+  const latestInstallBase = [...history].reverse()
+    .find(item => lower(item.sender) === "install_base");
+  const latestManager = [...history].reverse()
+    .find(item => lower(item.sender) === "manager");
+
+  return {
+    ...rec,
+    manager_install_base_conversation_history: history,
+    install_base_message_to_manager:
+      latestInstallBase?.message || rec.install_base_message_to_manager || "",
+    install_base_message_to_manager_at:
+      latestInstallBase?.at || rec.install_base_message_to_manager_at || "",
+    install_base_message_to_manager_by:
+      latestInstallBase?.sender_label || "Install Base",
+    install_base_message_to_manager_seen:
+      latestInstallBase
+        ? rec.manager_install_base_ack_signature === [
+            clean(latestInstallBase.id),
+            clean(latestInstallBase.at),
+            clean(latestInstallBase.message)
+          ].join("|")
+        : rec.install_base_message_to_manager_seen,
+    manager_message_to_install_base:
+      latestManager?.message || rec.manager_message_to_install_base || "",
+    manager_message_to_install_base_at:
+      latestManager?.at || rec.manager_message_to_install_base_at || "",
+    manager_message_to_install_base_by:
+      latestManager?.sender_label || rec.manager_message_to_install_base_by || MANAGER_NAME
+  };
+}
+
 function getManagerInstallBaseConversationHistory(rec) {
   const history = Array.isArray(rec?.manager_install_base_conversation_history)
     ? rec.manager_install_base_conversation_history.filter(item => item && clean(item.message))
@@ -6789,6 +6892,9 @@ function sendManagerMessageToInstallBase() {
   }
   const now = new Date().toISOString();
   const key = getRecordKey(rec);
+
+  appendInstallManagerText(rec, "manager", message, MANAGER_NAME);
+
   const history = getManagerInstallBaseConversationHistory(rec);
   const item = {
     id: "manager_install_base_" + Date.now() + "_" + Math.random().toString(36).slice(2,8),
@@ -6932,7 +7038,6 @@ function getManagerInstallBaseCommunicationUi(rec) {
 
   if (unseenHubMessage) {
     state.installBaseCommunicationOpen[id] = true;
-    state.installBaseCommunicationDismissed[id] = "";
   }
 
   const historyOpen = state.installBaseHistoryOpen[id] === true;
@@ -8685,7 +8790,9 @@ const MANAGER_SYNC_KEYS = [
   INSTALL_BASE_FINAL_SYNC_KEY,
   INSTALL_BASE_FINAL_SYNC_PING_KEY,
   QUOTE_APPROVAL_KEY,
-  QUOTE_APPROVAL_SYNC_KEY
+  QUOTE_APPROVAL_SYNC_KEY,
+  INSTALL_MANAGER_CHAT_KEY,
+  "espin_install_manager_text_ping_v1"
 ];
 
 let managerStorageSignature = "";
@@ -8756,20 +8863,7 @@ function render() {
   // 1. clean auto-synced records, or
   // 2. the exact record manually routed to Manager.
   const installBaseRecords = readArrayKey(INSTALL_BASE_KEY)
-    .filter(rec =>
-      shouldManagerAcceptHubRecord(rec) ||
-      Boolean(
-        clean(rec.install_base_message_to_manager || "") ||
-        (
-          Array.isArray(rec.manager_install_base_conversation_history) &&
-          rec.manager_install_base_conversation_history.some(item =>
-            item &&
-            lower(item.sender) === "install_base" &&
-            clean(item.message)
-          )
-        )
-      )
-    );
+    .filter(shouldManagerAcceptHubRecord);
 
   const installBaseResponses =
     readArrayKey(INSTALL_BASE_RESPONSE_KEY);
@@ -8789,7 +8883,9 @@ function render() {
 
   // Explicit Manager routing must have final priority.
   managerQueue
-).filter(rec => {
+)
+.map(mergeInstallManagerTextIntoManagerRecord)
+.filter(rec => {
     if (!rec) return false;
 
     // Always preserve Rep activity and normal Manager records.
