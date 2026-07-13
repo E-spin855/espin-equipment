@@ -1,10 +1,12 @@
 # Third-Party License Texts
 
-This file preserves third-party open-source license texts for licenses identified in production dependency reports.
+This document covers third-party components included in or directly used by the distributed production application.
 
-This project itself remains private/proprietary and is not licensed under these third-party licenses.
+Development-only tooling is tracked separately in `licenses-development.sanitized.json`.
 
-Package-specific dependency names, versions, license identifiers, repository links, and copyright metadata are tracked separately in `licenses.json`.
+The ESPIN LINK application itself remains private/proprietary and is not licensed under these third-party licenses.
+
+Package-specific dependency names, versions, license identifiers, and repository links for production components are tracked in `licenses-production.sanitized.json`.
 
 ## MIT License
 
@@ -28,17 +30,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-## jsPDF
-
-Package: jspdf  
-Version: 2.5.1  
-License: MIT  
-Repository: https://github.com/parallax/jsPDF  
-Source used: https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js  
-
-jsPDF is used to generate quote PDFs in the browser.
-
 ## Apache License 2.0
+
 Apache-2.0 dependencies are tracked in `licenses.json`.
 
 The full Apache License 2.0 text follows.
@@ -248,7 +241,7 @@ The full Apache License 2.0 text follows.
 
 ## Apache NOTICE Handling
 
-Where an Apache-2.0 dependency includes an upstream NOTICE file, applicable NOTICE contents should be preserved in the third-party notices supplied with the distributed application.
+Where an Apache-2.0 dependency includes an upstream NOTICE file, applicable NOTICE contents must be preserved in the third-party notices supplied with the distributed application. A copy of the Apache License 2.0 must also accompany redistributed Apache-2.0 components.
 
 No direct modification of Apache-licensed third-party package source files is currently recorded in this project.
 
@@ -385,11 +378,11 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ## Dependency Evidence
 
-The package-by-package dependency license report is retained separately in:
+The package-by-package production dependency license report is retained separately in:
 
-- `licenses.json`
+- `licenses-production.sanitized.json`
 
 This file should be kept together with:
 
-- `licenses.json`
+- `licenses-production.sanitized.json`
 - `THIRD_PARTY_NOTICES.md`

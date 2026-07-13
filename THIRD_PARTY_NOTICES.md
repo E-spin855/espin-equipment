@@ -1,94 +1,89 @@
 # Third-Party Notices
 
-This project is private/proprietary software. Third-party open-source dependency license details are tracked in `licenses.json`.
+This project is private/proprietary software. Third-party open-source dependency license details for the distributed production application are tracked in `licenses-production.sanitized.json`.
 
-This notice file exists to preserve third-party license notice tracking for production dependencies and browser CDN references.
+Development-only tooling is tracked separately in `licenses-development.sanitized.json`.
+
+This notice file preserves third-party license notices for production dependencies and browser-loaded libraries.
 
 ## Production npm License Summary
 
-Production npm dependency license evidence is tracked in `licenses.json`.
-
 | License | Notice Handling |
 |---|---|
-| MIT | Retain copyright notice and permission notice. |
-| Apache-2.0 | Retain copyright, patent, trademark, attribution notices; include Apache License 2.0 text or reference; include upstream NOTICE contents when applicable. |
-| ISC | Retain copyright notice, permission notice, and warranty disclaimer. |
-| BSD-3-Clause | Retain copyright notice, conditions, and disclaimer; do not imply endorsement. |
-| BSD-2-Clause | Retain copyright notice, conditions, and disclaimer. |
+| MIT | Retain the applicable copyright notice and permission notice. |
+| Apache-2.0 | Include a copy of the Apache License 2.0 and preserve applicable copyright, attribution, trademark, patent, and upstream NOTICE content. |
+| ISC | Retain the applicable copyright notice, permission notice, and warranty disclaimer. |
+| BSD-3-Clause | Retain the copyright notice, conditions, and disclaimer; do not imply endorsement. |
+| BSD-2-Clause | Retain the copyright notice, conditions, and disclaimer. |
 | BlueOak-1.0.0 | Provide recipients the license text or a link to the license. |
-| 0BSD | Listed for tracking; permissive public-domain-style license. |
-| UNLICENSED | Owner application only; private/proprietary app. |
+| 0BSD | Preserve the applicable license text when distributed with the component. |
+| UNLICENSED | Applies only to the owner application, which remains private/proprietary. |
 
-## Full License References
+## Browser-Loaded Libraries
 
-The full license texts for third-party dependencies should be preserved through `licenses.json`, upstream package metadata, package tarballs, and the official license references below.
+The following browser libraries are referenced directly by static HTML files and therefore may not appear in `package.json`, `package-lock.json`, or npm-generated reports.
 
-### MIT License
+| Library | Version | Source Pattern | Use | License |
+|---|---:|---|---|---|
+| SheetJS / XLSX | 0.18.5 | jsDelivr or approved local copy | CSV/XLS/XLSX import and export | Apache-2.0 |
+| jsPDF | 2.5.1 | jsDelivr or approved local copy | PDF generation | MIT |
+| JSZip | 3.10.1 | jsDelivr or approved local copy | Reading ZIP archives, including Census Gazetteer downloads | MIT |
 
-MIT-licensed dependencies require retaining the copyright notice and permission notice.
+For release consistency, browser-library URLs should use exact pinned versions or approved local copies.
 
-License text:
-https://opensource.org/license/mit
+## Public Data Sources
 
-### Apache License 2.0
+Public datasets are documented separately in `ESPIN_LINK_Attributions_and_Data_Sources_v1.0.pdf`.
 
-Apache-2.0 licensed dependencies require retaining applicable copyright, patent, trademark, attribution notices, including the Apache License 2.0 text or reference, and including upstream NOTICE file contents when applicable.
+## Preserved Upstream NOTICE Content
 
-Apache License 2.0:
-https://www.apache.org/licenses/LICENSE-2.0
+The following upstream NOTICE content was found for the production dependency `bare-path` and is preserved below.
 
-Apache guidance:
-https://www.apache.org/legal/apply-license.html
+```text
+Third-Party NOTICE Files Found
 
-No direct modification of Apache-licensed third-party package source files is currently recorded in this project.
+Repository: espin-equipment
 
-### ISC License
+The following third-party dependency NOTICE file was found in node_modules and is preserved below:
 
-ISC-licensed dependencies require retaining the copyright notice, permission notice, and disclaimer.
+node_modules/bare-path/NOTICE
 
-License text:
-https://opensource.org/license/isc-license-txt
+----- node_modules/bare-path/NOTICE -----
+Copyright 2023 Holepunch Inc
 
-### BSD-3-Clause License
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-BSD-3-Clause licensed dependencies require retaining the copyright notice, conditions, and disclaimer. The names of copyright holders or contributors may not be used to endorse or promote products without prior written permission.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-License text:
-https://opensource.org/license/bsd-3-clause
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
-### BSD-2-Clause License
+---
 
-BSD-2-Clause licensed dependencies require retaining the copyright notice, conditions, and disclaimer.
+Copyright Joyent, Inc. and other Node contributors.
 
-License text:
-https://opensource.org/license/bsd-2-clause
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the
+following conditions:
 
-### BlueOak Model License 1.0.0
-
-BlueOak-licensed dependencies require providing recipients the license text or a link to the license.
-
-License text:
-https://blueoakcouncil.org/license/1.0.0
-
-### 0BSD License
-
-0BSD dependencies are tracked in `licenses.json`.
-
-License text:
-https://opensource.org/license/0bsd
-
-## Browser CDN References
-
-The following third-party browser scripts may be loaded directly by static HTML demo files and may not appear in `package.json`, `package-lock.json`, or `licenses.json`.
-
-| Library | Source | Use | License Tracking Notes |
-|---|---|---|---|
-| SheetJS / XLSX | jsDelivr CDN: xlsx/dist/xlsx.full.min.js | Browser-based CSV/XLS/XLSX upload and export in demo HTML files | Track separately from npm dependencies because it is referenced directly in HTML. Confirm license before commercial production use. |
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+```
 
 ## Current Compliance Position
 
-- `licenses.json` is the machine-readable production dependency license report.
-- `THIRD_PARTY_NOTICES.md` is the human-readable third-party notice record.
-- Browser CDN references are tracked separately because they may not appear in npm dependency reports.
-- No GPL, AGPL, or LGPL license match was found in the reviewed license report.
-- This document is an operational compliance aid, not legal advice.
+- `licenses-production.sanitized.json` is the machine-readable production dependency license inventory.
+- `licenses-development.sanitized.json` tracks development-only tooling separately.
+- `THIRD_PARTY_LICENSES_CORRECTED.md` preserves the standard license texts used by production dependencies.
+- This file preserves upstream NOTICE content and directly referenced browser libraries.
+- No GPL, AGPL, or LGPL license was identified in the reviewed production dependency inventory.
+- This document is an operational compliance aid and not a formal legal opinion.
