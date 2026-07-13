@@ -3449,6 +3449,27 @@ function isManagerRepActionUpdate(rec) {
 function shouldManagerAcceptHubRecord(rec) {
   if (!rec) return false;
 
+  /*
+    A direct Install Base → Manager message must always reach the
+    Manager workspace, even when the equipment record is still on
+    Sync Hold or has missing fields.
+  */
+  const hasInstallBaseManagerMessage = Boolean(
+    clean(rec.install_base_message_to_manager) ||
+    (
+      Array.isArray(rec.manager_install_base_conversation_history) &&
+      rec.manager_install_base_conversation_history.some(item =>
+        item &&
+        lower(item.sender) === "install_base" &&
+        clean(item.message)
+      )
+    )
+  );
+
+  if (hasInstallBaseManagerMessage) {
+    return true;
+  }
+
   const repOriginated = Boolean(
     rec.rep_loaded_from_upload === true ||
     rec.rep_owned_install_base === true ||
@@ -6912,6 +6933,10 @@ function getManagerInstallBaseCommunicationUi(rec) {
     ? true
     : (manualState === undefined ? needsResponse : manualState === true);
 
+  if (unseenHubMessage) {
+    state.installBaseCommunicationOpen[id] = true;
+  }
+
   const historyOpen = state.installBaseHistoryOpen[id] === true;
 
   return {
@@ -7923,15 +7948,10 @@ function syncManagerResponseToRep(updatedRec) {
     manager_response_at: now,
     manager_response_by: MANAGER_NAME,
 
-    // This is a Manager → Rep message, not an Install Base update.
-    // Rep page already detects it through manager_response_seen_by_rep.
-    rep_unseen_update: false,
+    rep_unseen_update: true,
     rep_flash_at: now,
     rep_flash_type: "manager_response",
-    rep_flash_text: "New message from Manager",
-
-    manager_response_target: "rep",
-    communication_target: "rep",
+    rep_flash_text: "Manager response saved",
 
     source: "Manager Review Page",
     hub_source: updatedRec.hub_source || "Manager Review Page"
