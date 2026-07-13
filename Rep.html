@@ -11391,48 +11391,45 @@ async function loadCensusZctaCoordinates(){
     censusZctaLoadStatus = "loading";
     censusZctaLoadError = "";
 
-    if (typeof JSZip === "undefined") {
-      throw new Error("ZIP reader library is unavailable.");
-    }
-
     const response = await fetch(CENSUS_ZCTA_GAZETTEER_URL, {
       method: "GET",
-      mode: "cors",
       cache: "force-cache"
     });
 
     if (!response.ok) {
       throw new Error(
-        `Census ZCTA download failed with status ${response.status}.`
+        `Census ZCTA data file failed with status ${response.status}.`
       );
     }
 
-    const archiveBuffer = await response.arrayBuffer();
-    const archive = await JSZip.loadAsync(archiveBuffer);
-    const fileNames = Object.keys(archive.files);
-    const gazetteerName = fileNames.find(name =>
-      /Gaz_zcta_national\.txt$/i.test(name)
-    ) || fileNames.find(name => /\.txt$/i.test(name));
+    const gazetteerText = await response.text();
 
-    if (!gazetteerName) {
-      throw new Error("The Census ZCTA text file was not found in the archive.");
-    }
+    censusZctaCoordinates =
+      parseCensusZctaGazetteer(gazetteerText);
 
-    const gazetteerText = await archive.files[gazetteerName].async("text");
-    censusZctaCoordinates = parseCensusZctaGazetteer(gazetteerText);
     censusZctaLoadStatus = "ready";
-    cacheCensusZctaCoordinates(censusZctaCoordinates);
+
+    cacheCensusZctaCoordinates(
+      censusZctaCoordinates
+    );
 
     return censusZctaCoordinates;
   })()
     .catch(error => {
       censusZctaLoadStatus = "error";
-      censusZctaLoadError = error?.message || String(error);
-      console.error("Unable to load Census ZCTA coordinates.", error);
+      censusZctaLoadError =
+        error?.message || String(error);
+
+      console.error(
+        "Unable to load Census ZCTA coordinates.",
+        error
+      );
+
       return null;
     })
     .finally(() => {
       censusZctaLoadPromise = null;
+
       try {
         renderDetail();
       } catch {}
@@ -11440,7 +11437,6 @@ async function loadCensusZctaCoordinates(){
 
   return censusZctaLoadPromise;
 }
-
 function getRepRecordCoordinates(rec){
   const zip = getRepRecordZip(rec);
 
