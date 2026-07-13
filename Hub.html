@@ -1691,7 +1691,142 @@ function formatManualRouteTarget(value) {
 
   return "Manual Review";
 }
+
+function getHubReturnedFixFields(rec) {
+  const fields = new Set();
+
+  String(rec?.install_base_latest_fix_fields || rec?.install_base_corrected_fields || "")
+    .split(",")
+    .map(canonicalInstallBaseFieldName)
+    .filter(Boolean)
+    .forEach(field => fields.add(field));
+
+  const correctedObjects = [
+    rec?.corrected_fields,
+    rec?.corrected_values,
+    rec?.install_base_corrected_values,
+    rec?.corrected_field_values,
+    rec?.install_base_corrected_field_values
+  ].filter(obj => obj && typeof obj === "object" && !Array.isArray(obj));
+
+  correctedObjects.forEach(obj => {
+    Object.keys(obj)
+      .map(canonicalInstallBaseFieldName)
+      .filter(Boolean)
+      .forEach(field => fields.add(field));
+  });
+
+  return [...fields];
+}
+
+function getHubReviewLabelForCorrectedField(fieldName, rec) {
+  const field = canonicalInstallBaseFieldName(fieldName);
+
+  if (["dom", "year", "manufacture_year"].includes(field)) {
+    return "Equipment Age";
+  }
+
+  if (["service", "service_coverage", "contract_status"].includes(field)) {
+    return "Service Coverage";
+  }
+
+  if (["utilization", "usage"].includes(field)) {
+    return "Utilization";
+  }
+
+  if (["capital_planning", "planning"].includes(field)) {
+    return "Capital Planning";
+  }
+
+  if (["site", "facility", "hospital", "location"].includes(field)) {
+    return "Site / Account";
+  }
+
+  if (["project", "project_id", "oem_project_id", "asset_id"].includes(field)) {
+    return "Project / Asset";
+  }
+
+  if (
+    [
+      "rep",
+      "assigned_rep",
+      "assigned_rep_name",
+      "rep_owner",
+      "owner_name",
+      "sales_rep",
+      "sales_rep_name",
+      "owner",
+      "manager",
+      "manager_name",
+      "owner_group",
+      "owner_group_name",
+      "territory",
+      "manager_region",
+      "manager_territory",
+      "region"
+    ].includes(field)
+  ) {
+    return getResolvedHubInstallBaseReviewLabel(rec);
+  }
+
+  return "Asset Status";
+}
+
+function getHubLatestFixReviewLabel(rec) {
+  const latestFields = getHubReturnedFixFields(rec);
+  if (!latestFields.length) return "";
+
+  const latestField = canonicalInstallBaseFieldName(
+    rec?.install_base_latest_fix_field ||
+    latestFields[latestFields.length - 1]
+  );
+
+  return getHubReviewLabelForCorrectedField(latestField, rec);
+}
+
+function getHubLatestFixReviewReason(rec) {
+  const latestFields = getHubReturnedFixFields(rec);
+  if (!latestFields.length) return "";
+
+  const latestField = canonicalInstallBaseFieldName(
+    rec?.install_base_latest_fix_field ||
+    latestFields[latestFields.length - 1]
+  );
+
+  const sourceLabel =
+    lower(rec?.install_base_latest_fix_source) === "manager"
+      ? "manager"
+      : "rep";
+
+  const label = getHubReviewLabelForCorrectedField(latestField, rec);
+
+  if (label === "Equipment Age") {
+    const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+    const age = ageFromDom(dom);
+
+    if (dom && age !== null && age !== undefined && age !== "") {
+      return `Equipment age review based on DOM ${dom} (${age} years), corrected by ${sourceLabel}.`;
+    }
+
+    if (dom) {
+      return `Equipment age review based on DOM ${dom}, corrected by ${sourceLabel}.`;
+    }
+
+    return `Equipment age review based on the field corrected by ${sourceLabel}.`;
+  }
+
+  const fieldLabel = getHubFixDisplayLabel(latestField);
+
+  return `${label} review based on corrected ${fieldLabel}, updated by ${sourceLabel}.`;
+}
+
 function getHubInstallBaseReviewReason(rec) {
+  const latestFixReason = getHubLatestFixReviewReason(rec);
+
+  if (latestFixReason) {
+    return latestFixReason;
+  }
+
   const label = formatInstallBaseReviewLabel(rec);
   const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
   const age = ageFromDom(dom);
@@ -1975,6 +2110,12 @@ function getResolvedHubInstallBaseReviewLabel(rec) {
   return "Asset Status";
 }
 function formatInstallBaseReviewLabel(rec) {
+  const latestFixLabel = getHubLatestFixReviewLabel(rec);
+
+  if (latestFixLabel) {
+    return latestFixLabel;
+  }
+
   if (isHubOwnershipReviewResolved(rec)) {
     return getResolvedHubInstallBaseReviewLabel(rec);
   }
@@ -3608,6 +3749,45 @@ function mergeRepResponsesIntoRecords() {
         });
       }
 
+      const returnedFieldList = [...returnedFields].filter(Boolean);
+
+      const responseFrom = lower(
+        resp.install_base_response_from ||
+        resp.install_base_correction_from ||
+        (
+          resp.install_base_correction_status === "corrected_by_manager" ||
+          resp.install_base_response_status === "manager_correction_sent"
+            ? "manager"
+            : "rep"
+        )
+      );
+
+      const latestReturnedField =
+        returnedFieldList[returnedFieldList.length - 1] || "";
+
+      canonicalMerged.install_base_latest_fix_fields =
+        returnedFieldList.join(",");
+
+      canonicalMerged.install_base_latest_fix_field =
+        latestReturnedField;
+
+      canonicalMerged.install_base_latest_fix_source =
+        responseFrom === "manager" ? "manager" : "rep";
+
+      canonicalMerged.install_base_latest_fix_at =
+        resp.install_base_correction_at ||
+        resp.install_base_response_at ||
+        new Date().toISOString();
+
+      canonicalMerged.install_base_latest_fix_by =
+        clean(
+          resp.install_base_response_by ||
+          resp.manager_name ||
+          resp.assigned_rep_name ||
+          resp.rep ||
+          (responseFrom === "manager" ? "Manager" : "Rep")
+        );
+
       const removeReturnedFields = value =>
         String(value || "")
           .split(",")
@@ -3713,6 +3893,27 @@ install_base_response_seen_at:
       const responseSource = responseFrom === "manager" ? "Manager Response" : "Rep Response";
       const responseSourceSystem = responseFrom === "manager" ? "Manager Review Page" : "Rep Review Page";
 
+      const insertedFields = new Set(
+        String(resp.install_base_corrected_fields || "")
+          .split(",")
+          .map(canonicalInstallBaseFieldName)
+          .filter(Boolean)
+      );
+
+      if (
+        resp.corrected_fields &&
+        typeof resp.corrected_fields === "object" &&
+        !Array.isArray(resp.corrected_fields)
+      ) {
+        Object.keys(resp.corrected_fields).forEach(field => {
+          insertedFields.add(canonicalInstallBaseFieldName(field));
+        });
+      }
+
+      const insertedFieldList = [...insertedFields].filter(Boolean);
+      const insertedLatestField =
+        insertedFieldList[insertedFieldList.length - 1] || "";
+
       const insertedResponse = applyHubReturnedCorrection({
         ...resp,
         id: resp.id || uuid(),
@@ -3720,7 +3921,23 @@ install_base_response_seen_at:
         source: resp.source || responseSource,
         source_system: resp.source_system || responseSourceSystem,
         install_base_response_seen: resp.install_base_response_seen === true,
-        install_base_response_seen_at: resp.install_base_response_seen_at || ""
+        install_base_response_seen_at: resp.install_base_response_seen_at || "",
+        install_base_latest_fix_fields: insertedFieldList.join(","),
+        install_base_latest_fix_field: insertedLatestField,
+        install_base_latest_fix_source:
+          responseFrom === "manager" ? "manager" : "rep",
+        install_base_latest_fix_at:
+          resp.install_base_correction_at ||
+          resp.install_base_response_at ||
+          new Date().toISOString(),
+        install_base_latest_fix_by:
+          clean(
+            resp.install_base_response_by ||
+            resp.manager_name ||
+            resp.assigned_rep_name ||
+            resp.rep ||
+            (responseFrom === "manager" ? "Manager" : "Rep")
+          )
       }, resp);
       state.records.unshift(insertedResponse);
       changed = true;
