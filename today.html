@@ -356,13 +356,11 @@ label{
 </div>
 <div class="container">
 
-<div class="alert">Today’s manually synced visit plan is ready.</div>
-
 <div class="card">
   <div class="row">
     <div>
       <div class="sub">Rep</div>
-      <div class="meta" id="repName">Lisa Tran</div>
+      <div class="meta" id="repName">—</div>
     </div>
     <div>
       <div class="sub">Stops</div>
@@ -370,9 +368,7 @@ label{
     </div>
   </div>
   <div class="badges">
-    <span class="badge green">Manual Plan</span>
-    <span class="badge" id="reminderCount">Prototype Sync</span>
-    <span class="badge yellow">Demo Only</span>
+    <span class="badge green" id="syncStatus">Waiting for Rep sync</span>
   </div>
 </div>
 
@@ -383,9 +379,6 @@ label{
 <div class="card" id="planList"></div>
 
 <div class="safe">Rep controls stop selection, order, timing, reminders, and navigation. ESPIN LINK does not optimize routes or recommend stops.</div>
-<div class="safe">
-  Prototype demonstration only. This page shows how an account manually selected on the Rep page can appear in the mobile companion. Secure login, cross-device synchronization, notifications, calling, and email are not enabled.
-</div>
 
 
 
@@ -419,7 +412,14 @@ function loadMobilePlan(){
       purpose: String(stop.purpose || "Equipment review"),
       note: String(stop.note || ""),
       status: String(stop.status || "Selected by Rep"),
-      source: String(stop.source || "Rep Proximity View")
+      source: String(stop.source || "Rep Proximity View"),
+      repName: String(
+        stop.repName ||
+        stop.rep_name ||
+        stop.assigned_rep_name ||
+        stop.rep ||
+        ""
+      )
     }));
   }catch(error){
     console.error("Unable to load the mobile visit plan.", error);
@@ -529,6 +529,21 @@ function renderMobilePlan(){
   document.getElementById("stopCount").textContent =
     String(PLAN.length);
 
+  const repNameEl = document.getElementById("repName");
+  const syncStatusEl = document.getElementById("syncStatus");
+  const syncedRepName = PLAN.find(stop => stop.repName)?.repName || "";
+
+  if(repNameEl){
+    repNameEl.textContent = syncedRepName || "—";
+  }
+
+  if(syncStatusEl){
+    syncStatusEl.textContent =
+      PLAN.length
+        ? "Synced from Rep page"
+        : "Waiting for Rep sync";
+  }
+
   document.getElementById("planList").innerHTML =
     PLAN.length
       ? PLAN.map((s, i) => stopHtml(s, i, i === 0)).join("")
@@ -544,10 +559,15 @@ function renderMobilePlan(){
 document.addEventListener("DOMContentLoaded", renderMobilePlan);
 
 window.addEventListener("storage", event => {
-  if(event.key === MOBILE_PLAN_KEY){
+  if(
+    event.key === MOBILE_PLAN_KEY ||
+    event.key === "espin_rep_manual_day_plan_ping_v1"
+  ){
     renderMobilePlan();
   }
 });
+
+window.addEventListener("focus", renderMobilePlan);
 </script>
 </body>
 </html>
