@@ -6016,12 +6016,22 @@ function getHubRepCommunicationUi(rec) {
     rec.hub_rep_ack_signature !== incomingSignature
   );
 
+  const fixOnlyResponse = isHubRepFixOnlyResponse(rec);
+
   const composerOpen = Object.prototype.hasOwnProperty.call(state.repCommunicationOpen, id)
     ? state.repCommunicationOpen[id]
-    : needsResponse;
+    : (fixOnlyResponse ? false : needsResponse);
   const historyOpen = state.repHistoryOpen[id] === true;
 
-  return { history, latest, legacyRepResponse, needsResponse, composerOpen, historyOpen };
+  return {
+    history,
+    latest,
+    legacyRepResponse,
+    needsResponse: fixOnlyResponse ? false : needsResponse,
+    composerOpen,
+    historyOpen,
+    fixOnlyResponse
+  };
 }
 
 function toggleHubRepCommunication(recordId) {
@@ -6082,13 +6092,6 @@ function isHubRepFixOnlyResponse(rec) {
 }
 
 function renderRepResponseCard(rec) {
-  // A Rep FIX updates Install Base Review Hold and must not open
-  // Install Base / Rep Communication.
-  if (isHubRepFixOnlyResponse(rec)) {
-    state.repCommunicationOpen[String(rec?.id || "")] = false;
-    return "";
-  }
-
   const ui = getHubRepCommunicationUi(rec);
   const requestText = getOriginalRepRequest(rec);
   const latestRepItem = [...ui.history].reverse().find(item => lower(item.sender) === "rep");
