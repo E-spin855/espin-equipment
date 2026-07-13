@@ -3449,13 +3449,10 @@ function isManagerRepActionUpdate(rec) {
 function shouldManagerAcceptHubRecord(rec) {
   if (!rec) return false;
 
-  /*
-    A direct Install Base → Manager message must always reach the
-    Manager workspace, even when the equipment record is still on
-    Sync Hold or has missing fields.
-  */
+  // Direct Install Base → Manager communication must always be accepted,
+  // even when the equipment record itself is still on Sync Hold.
   const hasInstallBaseManagerMessage = Boolean(
-    clean(rec.install_base_message_to_manager) ||
+    clean(rec.install_base_message_to_manager || "") ||
     (
       Array.isArray(rec.manager_install_base_conversation_history) &&
       rec.manager_install_base_conversation_history.some(item =>
@@ -6935,6 +6932,7 @@ function getManagerInstallBaseCommunicationUi(rec) {
 
   if (unseenHubMessage) {
     state.installBaseCommunicationOpen[id] = true;
+    state.installBaseCommunicationDismissed[id] = "";
   }
 
   const historyOpen = state.installBaseHistoryOpen[id] === true;
@@ -8758,7 +8756,20 @@ function render() {
   // 1. clean auto-synced records, or
   // 2. the exact record manually routed to Manager.
   const installBaseRecords = readArrayKey(INSTALL_BASE_KEY)
-    .filter(shouldManagerAcceptHubRecord);
+    .filter(rec =>
+      shouldManagerAcceptHubRecord(rec) ||
+      Boolean(
+        clean(rec.install_base_message_to_manager || "") ||
+        (
+          Array.isArray(rec.manager_install_base_conversation_history) &&
+          rec.manager_install_base_conversation_history.some(item =>
+            item &&
+            lower(item.sender) === "install_base" &&
+            clean(item.message)
+          )
+        )
+      )
+    );
 
   const installBaseResponses =
     readArrayKey(INSTALL_BASE_RESPONSE_KEY);
