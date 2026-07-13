@@ -3538,7 +3538,7 @@ function mergeRepResponsesIntoRecords() {
   let changed = false;
 
   responses.forEach(rawResp => {
-    const repMessage = clean(
+    const rawRepMessage = clean(
       rawResp.install_base_message_from_rep ||
       rawResp.install_base_response_message ||
       rawResp.install_base_response_note ||
@@ -3546,6 +3546,21 @@ function mergeRepResponsesIntoRecords() {
       rawResp.response_message ||
       ""
     );
+
+    const correctionPacket =
+      Boolean(clean(rawResp.install_base_corrected_fields || "")) ||
+      (
+        rawResp.corrected_fields &&
+        typeof rawResp.corrected_fields === "object" &&
+        !Array.isArray(rawResp.corrected_fields) &&
+        Object.keys(rawResp.corrected_fields).length > 0
+      ) ||
+      rawResp.install_base_correction_status === "corrected_by_rep" ||
+      rawResp.install_base_response_status === "rep_correction_sent";
+
+    // A returned FIX such as "dom: 2022" updates the record and
+    // Install Base Review Hold. It is not a communication message.
+    const repMessage = correctionPacket ? "" : rawRepMessage;
 
     const repMessageAt =
       rawResp.install_base_message_from_rep_at ||
@@ -3562,9 +3577,20 @@ function mergeRepResponsesIntoRecords() {
     );
 
     const existingHistory = Array.isArray(rawResp.install_base_conversation_history)
-      ? rawResp.install_base_conversation_history.filter(
-          item => item && clean(item.message)
-        )
+      ? rawResp.install_base_conversation_history.filter(item => {
+          if (!item || !clean(item.message)) return false;
+
+          // Remove the generated field:value FIX entry from Rep communication.
+          if (
+            correctionPacket &&
+            lower(item.sender) === "rep" &&
+            clean(item.message) === rawRepMessage
+          ) {
+            return false;
+          }
+
+          return true;
+        })
       : [];
 
     const alreadyInHistory = Boolean(
@@ -3610,7 +3636,15 @@ function mergeRepResponsesIntoRecords() {
       install_base_response_at:
         repMessageAt || rawResp.install_base_response_at || "",
       install_base_response_seen:
-        repMessage ? false : rawResp.install_base_response_seen === true,
+        correctionPacket
+          ? true
+          : (repMessage ? false : rawResp.install_base_response_seen === true),
+      install_base_response_seen_at:
+        correctionPacket
+          ? (rawResp.install_base_response_seen_at || new Date().toISOString())
+          : (rawResp.install_base_response_seen_at || ""),
+      install_base_show_communication:
+        correctionPacket ? false : rawResp.install_base_show_communication,
       install_base_conversation_history: normalizedHistory
     };
 
@@ -3731,6 +3765,32 @@ function mergeRepResponsesIntoRecords() {
             }
           }
         });
+
+      if (correctionPacket) {
+        canonicalMerged.install_base_message_from_rep = "";
+        canonicalMerged.install_base_response_message = "";
+        canonicalMerged.install_base_response_note = "";
+        canonicalMerged.rep_response_message = "";
+        canonicalMerged.response_message = "";
+        canonicalMerged.install_base_response_seen = true;
+        canonicalMerged.install_base_response_seen_at =
+          canonicalMerged.install_base_response_seen_at ||
+          new Date().toISOString();
+
+        canonicalMerged.install_base_conversation_history =
+          (Array.isArray(canonicalMerged.install_base_conversation_history)
+            ? canonicalMerged.install_base_conversation_history
+            : []
+          ).filter(item =>
+            !(
+              item &&
+              lower(item.sender) === "rep" &&
+              clean(item.message) === rawRepMessage
+            )
+          );
+
+        state.repCommunicationOpen[String(canonicalMerged.id || "")] = false;
+      }
 
       const returnedFields = new Set(
         String(resp.install_base_corrected_fields || "")
@@ -5999,7 +6059,36 @@ function toggleHubRepHistory(recordId) {
   render();
 }
 
+function isHubRepFixOnlyResponse(rec) {
+  if (!rec || !hasActualInstallBaseCorrection(rec)) return false;
+
+  const history = getInstallBaseConversationHistory(rec);
+  const genuineRepMessages = history.filter(item =>
+    item &&
+    lower(item.sender) === "rep" &&
+    clean(item.message)
+  );
+
+  const legacyMessage = clean(
+    rec.install_base_message_from_rep ||
+    rec.install_base_response_message ||
+    rec.install_base_response_note ||
+    rec.rep_response_message ||
+    rec.response_message ||
+    ""
+  );
+
+  return genuineRepMessages.length === 0 && !legacyMessage;
+}
+
 function renderRepResponseCard(rec) {
+  // A Rep FIX updates Install Base Review Hold and must not open
+  // Install Base / Rep Communication.
+  if (isHubRepFixOnlyResponse(rec)) {
+    state.repCommunicationOpen[String(rec?.id || "")] = false;
+    return "";
+  }
+
   const ui = getHubRepCommunicationUi(rec);
   const requestText = getOriginalRepRequest(rec);
   const latestRepItem = [...ui.history].reverse().find(item => lower(item.sender) === "rep");
