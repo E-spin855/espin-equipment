@@ -8,6 +8,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="assets/js/axis-utils.js"></script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -4710,6 +4711,31 @@ button.message-sent-state{
 }
 
 </style>
+
+<style id="census-source-notice-style">
+.census-source-notice{
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid rgba(88,184,255,.24);
+  border-radius:13px;
+  background:rgba(67,176,255,.065);
+  color:#b9cee3;
+  font-size:11px;
+  line-height:1.5;
+}
+.census-source-notice strong{
+  color:#d8ebff;
+}
+.census-source-notice a{
+  color:#79c8ff;
+  font-weight:850;
+  text-decoration:none;
+}
+.census-source-notice a:hover{
+  text-decoration:underline;
+}
+</style>
+
 </head>
 
 <body>
@@ -11228,28 +11254,249 @@ function hasRepLocationData(rec){
   );
 }
 
-function repDistanceSeed(value){
-  const s = String(value || "");
-  return s.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+const CENSUS_ZCTA_GAZETTEER_URL =
+  "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2025_Gazetteer/2025_Gaz_zcta_national.zip";
+
+const CENSUS_ZCTA_CACHE_KEY = "espin_census_2025_zcta_coordinates_v1";
+
+let censusZctaCoordinates = null;
+let censusZctaLoadPromise = null;
+let censusZctaLoadStatus = "not_loaded";
+let censusZctaLoadError = "";
+
+function normalizeRepZip(value){
+  const match = String(value || "").trim().match(/\b(\d{5})(?:-\d{4})?\b/);
+  return match ? match[1] : "";
+}
+
+function getRepRecordZip(rec){
+  return normalizeRepZip(
+    rec?.zip_code ||
+    rec?.zip ||
+    rec?.postal_code ||
+    rec?.site_zip ||
+    rec?.facility_zip ||
+    ""
+  );
+}
+
+function parseCensusZctaGazetteer(textValue){
+  const lines = String(textValue || "")
+    .split(/\r?\n/)
+    .filter(Boolean);
+
+  if (!lines.length) {
+    throw new Error("The Census ZCTA Gazetteer file was empty.");
+  }
+
+  const headers = lines[0]
+    .split("|")
+    .map(value => String(value || "").trim().toUpperCase());
+
+  const zipIndex = headers.findIndex(header =>
+    ["GEOID", "GEOID20", "ZCTA5CE20", "ZCTA5"].includes(header)
+  );
+  const latIndex = headers.findIndex(header =>
+    ["INTPTLAT", "INTPTLAT20"].includes(header)
+  );
+  const lngIndex = headers.findIndex(header =>
+    ["INTPTLONG", "INTPTLON", "INTPTLONG20", "INTPTLON20"].includes(header)
+  );
+
+  if (zipIndex < 0 || latIndex < 0 || lngIndex < 0) {
+    throw new Error(
+      "The Census ZCTA Gazetteer columns could not be identified."
+    );
+  }
+
+  const coordinates = {};
+
+  for (let index = 1; index < lines.length; index += 1) {
+    const parts = lines[index].split("|");
+    const zip = normalizeRepZip(parts[zipIndex]);
+    const lat = Number(parts[latIndex]);
+    const lng = Number(parts[lngIndex]);
+
+    if (
+      zip &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 &&
+      Math.abs(lng) <= 180
+    ) {
+      coordinates[zip] = [lat, lng];
+    }
+  }
+
+  if (!Object.keys(coordinates).length) {
+    throw new Error("No usable Census ZCTA coordinates were found.");
+  }
+
+  return coordinates;
+}
+
+function readCachedCensusZctaCoordinates(){
+  try {
+    const cached = localStorage.getItem(CENSUS_ZCTA_CACHE_KEY);
+    if (!cached) return null;
+
+    const parsed = JSON.parse(cached);
+    if (
+      parsed &&
+      parsed.coordinates &&
+      typeof parsed.coordinates === "object"
+    ) {
+      return parsed.coordinates;
+    }
+  } catch (error) {
+    console.warn("Unable to read cached Census ZCTA data.", error);
+  }
+
+  return null;
+}
+
+function cacheCensusZctaCoordinates(coordinates){
+  try {
+    localStorage.setItem(
+      CENSUS_ZCTA_CACHE_KEY,
+      JSON.stringify({
+        source: "U.S. Census Bureau, 2025 Gazetteer Files, national ZCTA file",
+        source_url: "https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html",
+        dataset_year: "2025",
+        cached_at: new Date().toISOString(),
+        coordinates
+      })
+    );
+  } catch (error) {
+    console.warn(
+      "Census ZCTA data loaded but could not be cached locally.",
+      error
+    );
+  }
+}
+
+async function loadCensusZctaCoordinates(){
+  if (censusZctaCoordinates) return censusZctaCoordinates;
+  if (censusZctaLoadPromise) return censusZctaLoadPromise;
+
+  censusZctaLoadPromise = (async () => {
+    const cached = readCachedCensusZctaCoordinates();
+
+    if (cached) {
+      censusZctaCoordinates = cached;
+      censusZctaLoadStatus = "ready";
+      return censusZctaCoordinates;
+    }
+
+    censusZctaLoadStatus = "loading";
+    censusZctaLoadError = "";
+
+    if (typeof JSZip === "undefined") {
+      throw new Error("ZIP reader library is unavailable.");
+    }
+
+    const response = await fetch(CENSUS_ZCTA_GAZETTEER_URL, {
+      method: "GET",
+      mode: "cors",
+      cache: "force-cache"
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Census ZCTA download failed with status ${response.status}.`
+      );
+    }
+
+    const archiveBuffer = await response.arrayBuffer();
+    const archive = await JSZip.loadAsync(archiveBuffer);
+    const fileNames = Object.keys(archive.files);
+    const gazetteerName = fileNames.find(name =>
+      /Gaz_zcta_national\.txt$/i.test(name)
+    ) || fileNames.find(name => /\.txt$/i.test(name));
+
+    if (!gazetteerName) {
+      throw new Error("The Census ZCTA text file was not found in the archive.");
+    }
+
+    const gazetteerText = await archive.files[gazetteerName].async("text");
+    censusZctaCoordinates = parseCensusZctaGazetteer(gazetteerText);
+    censusZctaLoadStatus = "ready";
+    cacheCensusZctaCoordinates(censusZctaCoordinates);
+
+    return censusZctaCoordinates;
+  })()
+    .catch(error => {
+      censusZctaLoadStatus = "error";
+      censusZctaLoadError = error?.message || String(error);
+      console.error("Unable to load Census ZCTA coordinates.", error);
+      return null;
+    })
+    .finally(() => {
+      censusZctaLoadPromise = null;
+      try {
+        renderDetail();
+      } catch {}
+    });
+
+  return censusZctaLoadPromise;
+}
+
+function getRepRecordCoordinates(rec){
+  const zip = getRepRecordZip(rec);
+
+  if (
+    !zip ||
+    !censusZctaCoordinates ||
+    !censusZctaCoordinates[zip]
+  ) {
+    return null;
+  }
+
+  return censusZctaCoordinates[zip];
+}
+
+function calculateRepDistanceMiles(originCoords, candidateCoords){
+  if (!originCoords || !candidateCoords) return null;
+
+  const [lat1, lon1] = originCoords;
+  const [lat2, lon2] = candidateCoords;
+
+  const toRadians = degrees => degrees * Math.PI / 180;
+  const earthRadiusMiles = 3958.7613;
+
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) *
+    Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  const centralAngle = 2 * Math.atan2(
+    Math.sqrt(a),
+    Math.sqrt(1 - a)
+  );
+
+  return earthRadiusMiles * centralAngle;
 }
 
 function estimateRepProximityMiles(origin, candidate){
-  const originZip = clean(origin.zip_code || origin.zip || "");
-  const candZip = clean(candidate.zip_code || candidate.zip || "");
-  const originCity = lower(origin.city || "");
-  const candCity = lower(candidate.city || "");
-  const originState = lower(origin.state || "");
-  const candState = lower(candidate.state || "");
-  const seed = repDistanceSeed((candidate.id || candidate.key || candidate.site || "") + originZip);
+  const originCoords = getRepRecordCoordinates(origin);
+  const candidateCoords = getRepRecordCoordinates(candidate);
 
-  if (originZip && candZip && originZip === candZip) return Number((1.2 + (seed % 28) / 10).toFixed(1));
-  if (originCity && candCity && originCity === candCity) return Number((3.5 + (seed % 55) / 10).toFixed(1));
-  if (originState && candState && originState === candState) return Number((8 + (seed % 380) / 10).toFixed(1));
-  return Number((42 + (seed % 520) / 10).toFixed(1));
+  const distance = calculateRepDistanceMiles(
+    originCoords,
+    candidateCoords
+  );
+
+  if (distance == null) return null;
+
+  return Number(distance.toFixed(1));
 }
 
 function getRepNearbyAccounts(rec, radiusMiles = 25){
-  if (!rec || !hasRepLocationData(rec)) return [];
+  if (!rec || !getRepRecordZip(rec) || !censusZctaCoordinates) return [];
 
   const currentRep = clean(
     rec.assigned_rep_name ||
@@ -11261,7 +11508,7 @@ function getRepNearbyAccounts(rec, radiusMiles = 25){
   return state.records
     .filter(item => item && String(item.id || "") !== String(rec.id || ""))
     .filter(item => item.project_type !== "new_project_record")
-    .filter(item => hasRepLocationData(item))
+    .filter(item => Boolean(getRepRecordZip(item)))
     .filter(item => {
       const itemRep = clean(
         item.assigned_rep_name ||
@@ -11276,6 +11523,7 @@ function getRepNearbyAccounts(rec, radiusMiles = 25){
       rec: item,
       miles: estimateRepProximityMiles(rec, item)
     }))
+    .filter(item => Number.isFinite(item.miles))
     .filter(item => item.miles <= Number(radiusMiles || 25))
     .sort((a, b) => a.miles - b.miles)
     .slice(0, 6);
@@ -11307,18 +11555,19 @@ function renderRepProximityMapPins(nearby){
 
 function renderRepProximityView(rec){
   const open = state.repProximityOpen === true;
+  const selectedZip = getRepRecordZip(rec);
 
-  if (!rec || !hasRepLocationData(rec)) {
+  if (!rec || !selectedZip) {
     return `
       <div class="detail-card rep-proximity-card" id="repProximityView">
         <div class="rep-proximity-head">
           <div>
             <div class="rep-proximity-title">Nearby Accounts / Proximity View</div>
             <div class="rep-proximity-subtitle">
-              Manual map-assist view for authorized account records near the selected appointment or project location.
+              ZIP-based proximity view for authorized account records.
             </div>
             <div class="rep-proximity-collapsed-summary">
-              Location data is needed before nearby account records can be displayed.
+              A valid 5-digit ZIP code is required before nearby accounts can be displayed.
             </div>
           </div>
           <div class="rep-proximity-controls">
@@ -11327,24 +11576,41 @@ function renderRepProximityView(rec){
             </button>
           </div>
         </div>
-
-        <div class="rep-proximity-expanded ${open ? "" : "hidden"}">
-          <div class="rep-proximity-item">
-            <div class="rep-proximity-name">No location fields available for this selected record.</div>
-            <div class="rep-proximity-meta">Add city/state, ZIP, or address data to use the manual proximity view.</div>
-          </div>
-        </div>
       </div>
     `;
+  }
+
+  if (!censusZctaCoordinates && censusZctaLoadStatus === "not_loaded") {
+    loadCensusZctaCoordinates();
   }
 
   const radius = Number(state.repProximityRadius || 25);
   const nearby = getRepNearbyAccounts(rec, radius);
   const currentName = clean(rec.site || rec.facility || rec.hospital || "Selected Account");
   const currentAddress = getRepRecordAddress(rec);
-  const nearbySummary = nearby.length
-    ? `${nearby.length} nearby authorized account${nearby.length === 1 ? "" : "s"} inside ${radius} miles.`
-    : `No nearby authorized accounts found inside ${radius} miles.`;
+
+  const loading = censusZctaLoadStatus === "loading";
+  const loadFailed = censusZctaLoadStatus === "error";
+  const unsupportedZip =
+    censusZctaLoadStatus === "ready" &&
+    !getRepRecordCoordinates(rec);
+
+  let nearbySummary = "";
+
+  if (loading || censusZctaLoadStatus === "not_loaded") {
+    nearbySummary = "Loading official U.S. Census ZIP-area coordinates…";
+  } else if (loadFailed) {
+    nearbySummary = "Census ZIP coordinate data could not be loaded.";
+  } else if (unsupportedZip) {
+    nearbySummary =
+      `ZIP ${selectedZip} is not represented by a Census ZCTA.`;
+  } else if (nearby.length) {
+    nearbySummary =
+      `${nearby.length} nearby authorized account${nearby.length === 1 ? "" : "s"} inside ${radius} miles.`;
+  } else {
+    nearbySummary =
+      `No nearby authorized accounts found inside ${radius} miles.`;
+  }
 
   return `
     <div class="detail-card rep-proximity-card" id="repProximityView">
@@ -11352,11 +11618,11 @@ function renderRepProximityView(rec){
         <div>
           <div class="rep-proximity-title">Nearby Accounts / Proximity View</div>
           <div class="rep-proximity-subtitle">
-            Manual map-assist view for authorized account records near the selected appointment or project location. Rep controls visit selection and routing.
+            ZIP-based proximity using U.S. Census Bureau 2025 ZCTA representative coordinates. Rep controls visit selection and routing.
           </div>
           <div class="rep-proximity-collapsed-summary">
             <strong>${escapeHtml(nearbySummary)}</strong><br>
-            Current location: ${escapeHtml(currentName)}${currentAddress ? ` · ${escapeHtml(currentAddress)}` : ""}
+            Current location: ${escapeHtml(currentName)} · ZIP ${escapeHtml(selectedZip)}
           </div>
         </div>
         <div class="rep-proximity-controls">
@@ -11376,59 +11642,107 @@ function renderRepProximityView(rec){
             <option value="50" ${radius === 50 ? "selected" : ""}>50 miles</option>
           </select>
           <button type="button" class="secondary" onclick="openSelectedRecordInMaps()">Open in Maps</button>
+          ${loadFailed ? `
+            <button type="button" class="secondary" onclick="retryCensusZctaCoordinates()">Retry Census Data</button>
+          ` : ""}
         </div>
 
-        <div class="rep-proximity-layout">
-          <div class="rep-proximity-map" aria-label="Nearby accounts map preview">
-            <div class="rep-map-label">Account Proximity View</div>
-            <div class="rep-map-road r1"></div>
-            <div class="rep-map-road r2"></div>
-            <div class="rep-map-road r3"></div>
-            <div class="rep-map-pin origin" style="left:50%;top:50%;" data-label="Selected">●</div>
-            ${renderRepProximityMapPins(nearby)}
+        ${loadFailed ? `
+          <div class="rep-proximity-item">
+            <div class="rep-proximity-name">Census ZIP data unavailable</div>
+            <div class="rep-proximity-meta">${escapeHtml(censusZctaLoadError || "Unable to load the official dataset.")}</div>
           </div>
-
-          <div class="rep-proximity-list">
-            <div class="rep-proximity-current">
-              <div class="rep-proximity-name">Current Location: ${escapeHtml(currentName)}</div>
-              <div class="rep-proximity-meta">${escapeHtml(currentAddress || "Address not provided")}</div>
+        ` : unsupportedZip ? `
+          <div class="rep-proximity-item">
+            <div class="rep-proximity-name">ZIP ${escapeHtml(selectedZip)} is not covered by a Census ZCTA.</div>
+            <div class="rep-proximity-meta">Some USPS PO Box-only or unique ZIP codes do not correspond to a Census ZIP Code Tabulation Area.</div>
+          </div>
+        ` : `
+          <div class="rep-proximity-layout">
+            <div class="rep-proximity-map" aria-label="Nearby accounts map preview">
+              <div class="rep-map-label">ZIP Proximity View</div>
+              <div class="rep-map-road r1"></div>
+              <div class="rep-map-road r2"></div>
+              <div class="rep-map-road r3"></div>
+              <div class="rep-map-pin origin" style="left:50%;top:50%;" data-label="Selected">●</div>
+              ${renderRepProximityMapPins(nearby)}
             </div>
 
-            ${nearby.length ? nearby.map((item, index) => {
-              const itemName = clean(item.rec.site || item.rec.facility || item.rec.hospital || "Account Record");
-              const itemAddress = getRepRecordAddress(item.rec);
-              const status = formatStatusText(item.rec.rep_status || item.rec.rep_action_label || item.rec.oem_review_label || "Open Record");
-              return `
-                <div class="rep-proximity-item">
-                  <div class="rep-proximity-name">${index + 1}. ${escapeHtml(itemName)}</div>
-                  <div class="rep-proximity-meta">${escapeHtml(itemAddress || "Location available")}</div>
-                  <div class="rep-proximity-distance">Approx. ${escapeHtml(item.miles)} mi · ${escapeHtml(status)}</div>
-                  <div class="rep-proximity-actions">
-                    <button type="button" class="secondary" onclick="selectNearbyRepRecord('${escapeJs(item.rec.id)}')">View Record</button>
-                    <button type="button" class="secondary" onclick="openRepRecordInMaps('${escapeJs(item.rec.id)}')">Open in Maps</button>
-                    <button type="button" class="green" onclick="addRepRecordToVisitList('${escapeJs(item.rec.id)}')">Add to Visit List</button>
-                  </div>
-                </div>
-              `;
-            }).join("") : `
-              <div class="rep-proximity-item">
-                <div class="rep-proximity-name">No nearby authorized accounts found inside ${escapeHtml(radius)} miles.</div>
-                <div class="rep-proximity-meta">Increase the radius or confirm location fields are populated.</div>
+            <div class="rep-proximity-list">
+              <div class="rep-proximity-current">
+                <div class="rep-proximity-name">Current Location: ${escapeHtml(currentName)}</div>
+                <div class="rep-proximity-meta">ZIP ${escapeHtml(selectedZip)}${currentAddress ? ` · ${escapeHtml(currentAddress)}` : ""}</div>
               </div>
-            `}
+
+              ${loading ? `
+                <div class="rep-proximity-item">
+                  <div class="rep-proximity-name">Loading official Census ZIP coordinates…</div>
+                </div>
+              ` : nearby.length ? nearby.map((item, index) => {
+                const itemName = clean(item.rec.site || item.rec.facility || item.rec.hospital || "Account Record");
+                const itemZip = getRepRecordZip(item.rec);
+                const status = formatStatusText(item.rec.rep_status || item.rec.rep_action_label || item.rec.oem_review_label || "Open Record");
+                return `
+                  <div class="rep-proximity-item">
+                    <div class="rep-proximity-name">${index + 1}. ${escapeHtml(itemName)}</div>
+                    <div class="rep-proximity-meta">ZIP ${escapeHtml(itemZip)}</div>
+                    <div class="rep-proximity-distance">Approx. ${escapeHtml(item.miles)} mi · ${escapeHtml(status)}</div>
+                    <div class="rep-proximity-actions">
+                      <button type="button" class="secondary" onclick="selectNearbyRepRecord('${escapeJs(item.rec.id)}')">View Record</button>
+                      <button type="button" class="secondary" onclick="openRepRecordInMaps('${escapeJs(item.rec.id)}')">Open in Maps</button>
+                      <button type="button" class="green" onclick="addRepRecordToVisitList('${escapeJs(item.rec.id)}')">Add to Visit List</button>
+                    </div>
+                  </div>
+                `;
+              }).join("") : `
+                <div class="rep-proximity-item">
+                  <div class="rep-proximity-name">No nearby authorized accounts found inside ${escapeHtml(radius)} miles.</div>
+                  <div class="rep-proximity-meta">Increase the radius or confirm that the other records contain valid 5-digit ZIP codes.</div>
+                </div>
+              `}
+            </div>
           </div>
-        </div>
+        `}
 
         <div class="rep-proximity-disclaimer">
-          Distances are approximate and based on available record location fields. This view does not optimize routes, rank accounts, recommend visits, or automatically schedule activity.
+          Distances are straight-line estimates between U.S. Census Bureau ZCTA representative points. They are not exact address-to-address or driving distances. This view does not optimize routes, rank accounts, recommend visits, or automatically schedule activity.
+        </div>
+
+        <div class="census-source-notice">
+          <strong>Data source:</strong>
+          U.S. Census Bureau, 2025 Gazetteer Files, national ZIP Code Tabulation Area (ZCTA) file.
+          <a
+            href="https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.html"
+            target="_blank"
+            rel="noopener noreferrer"
+          >View official Census source</a>.
+          ZCTAs are Census-created geographic approximations of ZIP Code areas and are not exact USPS ZIP Code boundaries.
+          ESPIN LINK is not affiliated with, sponsored by, or endorsed by the U.S. Census Bureau or the U.S. Department of Commerce.
+          No Census Bureau seal, logo, or agency branding is used.
         </div>
       </div>
     </div>
   `;
 }
 
+function retryCensusZctaCoordinates(){
+  censusZctaCoordinates = null;
+  censusZctaLoadPromise = null;
+  censusZctaLoadStatus = "not_loaded";
+  censusZctaLoadError = "";
+  loadCensusZctaCoordinates();
+}
+
 function toggleRepProximityView(){
   state.repProximityOpen = state.repProximityOpen !== true;
+
+  if (
+    state.repProximityOpen &&
+    censusZctaLoadStatus === "not_loaded"
+  ) {
+    loadCensusZctaCoordinates();
+  }
+
   renderDetail();
 }
 
