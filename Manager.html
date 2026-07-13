@@ -3238,6 +3238,82 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="compact-communication-display-final">
+.comm-shell{
+  padding:14px 16px!important;
+}
+
+.comm-toolbar{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:14px!important;
+  padding:12px 14px!important;
+}
+
+.comm-heading{
+  min-width:0!important;
+  width:100%!important;
+}
+
+.comm-title{
+  margin-bottom:8px!important;
+  font-size:11px!important;
+  font-weight:950!important;
+  letter-spacing:.12em!important;
+}
+
+.comm-status{
+  display:none!important;
+}
+
+.comm-latest{
+  margin:0!important;
+  padding:11px 14px!important;
+  min-height:44px!important;
+  display:flex!important;
+  align-items:center!important;
+  border:1px solid rgba(88,184,255,.48)!important;
+  border-radius:12px!important;
+  background:rgba(56,189,248,.11)!important;
+  color:#f7fbff!important;
+  font-size:15px!important;
+  font-weight:950!important;
+  line-height:1.35!important;
+}
+
+.comm-actions{
+  display:flex!important;
+  flex-wrap:nowrap!important;
+  gap:10px!important;
+  align-items:center!important;
+}
+
+.comm-actions button{
+  min-height:44px!important;
+  padding:10px 14px!important;
+  white-space:nowrap!important;
+  font-size:13px!important;
+}
+
+.comm-composer,
+.comm-history{
+  margin-top:12px!important;
+  padding:14px!important;
+}
+
+@media(max-width:900px){
+  .comm-toolbar{
+    grid-template-columns:1fr!important;
+  }
+
+  .comm-actions{
+    flex-wrap:wrap!important;
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -3560,13 +3636,38 @@ function getIncomingMessageSignatureForChannel(rec, pageRole, channel) {
   }
 
   if (pageRole === "manager" && channel === "rep") {
-    add(
-      "rep",
-      rec.rep_manager_message_at,
+    const repManagerAt = clean(rec.rep_manager_message_at || "");
+    const repManagerMessage = clean(
       rec.rep_manager_message_notes ||
-        rec.rep_manager_message_label ||
-        rec.rep_manager_message_action
+      rec.rep_manager_message_label ||
+      rec.rep_manager_message_action ||
+      ""
     );
+
+    const installBaseRepAt = clean(
+      rec.install_base_message_from_rep_at ||
+      rec.install_base_response_at ||
+      ""
+    );
+
+    const installBaseRepMessage = clean(
+      rec.install_base_message_from_rep ||
+      rec.install_base_response_message ||
+      rec.rep_response_message ||
+      ""
+    );
+
+    const isInstallBaseChannelMessage =
+      Boolean(repManagerMessage) &&
+      (
+        (repManagerAt && installBaseRepAt && repManagerAt === installBaseRepAt) ||
+        (installBaseRepMessage &&
+         lower(repManagerMessage) === lower(installBaseRepMessage))
+      );
+
+    if (!isInstallBaseChannelMessage) {
+      add("rep", repManagerAt, repManagerMessage);
+    }
   }
 
   if (pageRole === "manager" && channel === "install_base") {
@@ -8015,7 +8116,7 @@ function renderManagerRepCommunication(rec) {
     : "No messages yet.";
   return `
     <div
-      class="detail-card full comm-shell ${(ui.needsResponse && !ui.dismissed) || ui.selectedRepTextFrame ? "communication-update-frame" : ""} ${hasUnreadMessageField(rec, "manager", "rep") ? "incoming-message-field-frame" : ""}"
+      class="detail-card full comm-shell ${ui.needsResponse && !ui.dismissed ? "communication-update-frame" : ""} ${hasUnreadMessageField(rec, "manager", "rep") ? "incoming-message-field-frame" : ""}"
       onclick="acknowledgeCommunicationField(event, '${escapeJs(recordId)}', 'manager', 'rep')"
     >
       <div class="comm-toolbar">
