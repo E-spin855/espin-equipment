@@ -6991,9 +6991,58 @@ function normalizeOemReviewLabelForRep(rec) {
     ownershipContext.includes("manager region") ||
     ownershipContext.includes("owner group");
 
+  const managerCorrectedFields = [
+    rec.install_base_latest_fix_field,
+    rec.install_base_latest_fix_fields,
+    rec.install_base_corrected_fields,
+    rec.manager_corrected_field,
+    rec.manager_corrected_fields,
+    ...Object.keys(
+      rec.corrected_fields && typeof rec.corrected_fields === "object"
+        ? rec.corrected_fields
+        : {}
+    ),
+    ...Object.keys(
+      rec.corrected_values && typeof rec.corrected_values === "object"
+        ? rec.corrected_values
+        : {}
+    )
+  ]
+    .flatMap(value => String(value || "").split(","))
+    .map(value => lower(value))
+    .filter(Boolean);
+
+  const managerFixedRepName = managerCorrectedFields.some(field =>
+    [
+      "rep",
+      "assigned_rep",
+      "assigned rep",
+      "assigned_rep_name",
+      "assigned rep name",
+      "rep_owner",
+      "rep owner",
+      "rep_name",
+      "rep name",
+      "sales_rep",
+      "sales rep"
+    ].includes(field)
+  );
+
+  const managerFixedTerritory = managerCorrectedFields.some(field =>
+    [
+      "territory",
+      "manager_region",
+      "manager region",
+      "manager_territory",
+      "manager territory",
+      "owner_group",
+      "owner group"
+    ].includes(field)
+  );
+
   const ownershipResolved =
-    (isRepOwnerIssue && hasValidAssignedRep(rec)) ||
-    (isTerritoryIssue && hasValidAssignedTerritory(rec));
+    ((isRepOwnerIssue || managerFixedRepName) && hasValidAssignedRep(rec)) ||
+    ((isTerritoryIssue || managerFixedTerritory) && hasValidAssignedTerritory(rec));
 
   if (ownershipResolved) {
     const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
