@@ -11871,18 +11871,62 @@ function getRepManagerCommunicationUi(rec) {
   const manualOpen = state.managerCommunicationOpen[id];
   return { history, latest, needsResponse, composerOpen: manualOpen === undefined ? needsResponse : manualOpen === true, historyOpen: state.managerHistoryOpen[id] === true };
 }
-function toggleRepManagerCommunication(recordId) {
+function toggleRepManagerCommunication(recordId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   const rec = state.records.find(r => String(r.id || r.key || getRecordKey(r)) === String(recordId || "")) || findSelectedRecord();
   if (!rec) return;
+
   const ui = getRepManagerCommunicationUi(rec);
   const willOpen = !ui.composerOpen;
   const key = String(recordId || rec.id || rec.key || getRecordKey(rec));
   state.managerCommunicationOpen[key] = willOpen;
 
-  // Closing communication marks the latest incoming message as read and clears the green frame.
+  // Closing communication marks the latest Manager message as read immediately.
   if (!willOpen && ui.latest && lower(ui.latest.sender) === "manager") {
-    markIncomingCommunicationSeen(rec.id || recordId);
+    const latestSignature = [
+      clean(ui.latest.sender),
+      clean(ui.latest.at),
+      clean(ui.latest.message)
+    ].join("|");
+
+    const now = new Date().toISOString();
+
+    state.records = state.records.map(item => {
+      const sameId = String(item.id || "") === String(rec.id || "");
+      const sameKey = rec.key && String(item.key || "") === String(rec.key || "");
+      if (!sameId && !sameKey) return item;
+
+      return {
+        ...item,
+        rep_manager_ack_signature: latestSignature,
+        manager_response_seen_by_rep: true,
+        manager_unseen_update: false,
+        manager_alert_seen: true,
+        manager_flash_type: "",
+        manager_message_seen_at: now
+      };
+    });
+
+    const updatedRec = state.records.find(item =>
+      String(item.id || item.key || getRecordKey(item)) === String(recordId || "")
+    );
+
+    if (updatedRec) {
+      const signature = getIncomingMessageSignatureForChannel(updatedRec, "rep", "manager");
+      const recordKey = getMessageRecordIdentity(updatedRec);
+      if (signature && recordKey) {
+        const acknowledgements = readMessageFieldAcknowledgements();
+        acknowledgements[`rep|manager|${recordKey}`] = signature;
+        writeMessageFieldAcknowledgements(acknowledgements);
+      }
+    }
+
     state.managerCommunicationFrameActive = false;
+    saveRecords();
   }
 
   renderTable();
@@ -12199,7 +12243,7 @@ function renderRepManagerCommunication(rec) {
           <div class="comm-latest">${escapeHtml(latestText)}</div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${ui.composerOpen ? "green" : "secondary"}" onclick="toggleRepManagerCommunication('${escapeJs(recordId)}')">${ui.composerOpen ? "Hide Communication" : "Open Communication"}</button>
+          <button type="button" class="${ui.composerOpen ? "green" : "secondary"}" onclick="toggleRepManagerCommunication('${escapeJs(recordId)}', event)">${ui.composerOpen ? "Hide Communication" : "Open Communication"}</button>
           <button type="button" class="secondary" onclick="toggleRepManagerHistory('${escapeJs(recordId)}')">${ui.historyOpen ? "Hide History" : `View History (${ui.history.length})`}</button>
         </div>
       </div>
