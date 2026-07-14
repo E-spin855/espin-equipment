@@ -5866,26 +5866,84 @@ function isCompletedRecord(rec) {
 }
 
 function espinRecordViewType(rec) {
-  const projectType = String(rec?.project_type || rec?.axis_parent_project_type || "").trim().toLowerCase();
-  const sourceText = [
-    rec?.source, rec?.source_system, rec?.hub_source, rec?.record_origin,
-    rec?.project_source, rec?.install_base_source
-  ].map(v => String(v || "").trim().toLowerCase()).join(" ");
-  const projectId = String(rec?.oem_project_id || rec?.project_id || rec?.asset_id || rec?.id || "").trim().toLowerCase();
+  if (!rec) return "install_base";
 
-  const repProject = Boolean(
-    projectType === "new_project_record" ||
-    projectType === "new_sales_project" ||
-    rec?.rep_created_new_project === true ||
-    rec?.new_project_badge === true ||
-    rec?.is_new_project === true ||
-    projectId.startsWith("new-") ||
-    sourceText.includes("new espin link project") ||
-    sourceText.includes("new axis project") ||
-    sourceText.includes("new project intake") ||
-    sourceText.includes("rep won project")
+  // Rep-uploaded equipment is still installed equipment, not a new project.
+  if (isHubRepOriginatedRecord(rec)) return "install_base";
+
+  const projectType = String(
+    rec.project_type ||
+    rec.axis_parent_project_type ||
+    rec.install_base_sync_type ||
+    rec.oem_review_type ||
+    rec.review_type ||
+    ""
+  ).trim().toLowerCase();
+
+  const sourceText = [
+    rec.source,
+    rec.source_system,
+    rec.hub_source,
+    rec.record_origin,
+    rec.project_source,
+    rec.install_base_source,
+    rec.status,
+    rec.review_status,
+    rec.install_base_lifecycle_status,
+    rec.oem_review_label,
+    rec.review_label
+  ].map(v => String(v || "").trim().toLowerCase()).join(" ");
+
+  const projectId = String(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    rec.id ||
+    ""
+  ).trim().toLowerCase();
+
+  const projectFlags = Boolean(
+    rec.rep_created_new_project === true ||
+    rec.new_project_badge === true ||
+    rec.is_new_project === true ||
+    rec.install_base_lifecycle_entry === true ||
+    rec.install_base_received_from_rep === true ||
+    rec.lifecycle_project === true
   );
-  return repProject ? "project" : "install_base";
+
+  const projectTypeMatch = [
+    "new_project_record",
+    "new_sales_project",
+    "won_project_lifecycle_entry",
+    "project",
+    "active_project",
+    "replacement_project",
+    "installation_project",
+    "removal_project",
+    "disposal_project"
+  ].includes(projectType);
+
+  const projectSourceMatch = [
+    "new espin link project",
+    "new axis project",
+    "new project intake",
+    "rep-created project",
+    "rep created project",
+    "rep won project",
+    "won project",
+    "project won",
+    "lifecycle active",
+    "active project"
+  ].some(marker => sourceText.includes(marker));
+
+  const projectIdMatch =
+    projectId.startsWith("new-") ||
+    projectId.startsWith("project-") ||
+    projectId.startsWith("proj-");
+
+  return (projectFlags || projectTypeMatch || projectSourceMatch || projectIdMatch)
+    ? "project"
+    : "install_base";
 }
 
 function espinRecordYear(rec) {
@@ -6029,13 +6087,20 @@ function renderTable() {
   renderHubAdvancedFilters();
   const records = getFilteredRecords();
 
+  const viewLabel =
+    state.recordView === "install_base"
+      ? "Install Base"
+      : state.recordView === "project"
+        ? "Rep-Created Projects"
+        : "All Records";
+
   $("tableTitle").textContent = state.selectedOwner
-    ? `${state.selectedOwner} Install Base`
-    : "Install Base Review";
+    ? `${state.selectedOwner} — ${viewLabel}`
+    : viewLabel;
 
   $("tableSubtitle").textContent = state.selectedOwner
     ? "Filtered owner group"
-    : "All records";
+    : `${records.length} matching record${records.length === 1 ? "" : "s"}`;
 
   if (!records.length) {
     tbody.innerHTML = `
