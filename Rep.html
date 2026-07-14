@@ -8566,6 +8566,25 @@ if (
 function syncFeedStatus(rec) {
   if (!rec) return;
 
+  // Every Rep action sent through this function must create a fresh,
+  // unread Manager update so the Manager row receives its green frame.
+  const now = new Date().toISOString();
+
+  rec.manager_visible = true;
+  rec.manager_unseen_update = true;
+  rec.manager_alert_seen = false;
+  rec.manager_update_seen_at = "";
+  rec.manager_flash_at = now;
+  rec.manager_flash_type =
+    rec.manager_flash_type ||
+    rec.rep_action ||
+    "rep_update";
+  rec.manager_flash_text =
+    rec.manager_flash_text ||
+    rec.rep_action_label ||
+    rec.rep_selected_action_label ||
+    "Rep updated record";
+
   const managerPacket = buildManagerSyncPacket(rec);
   const localPacket = buildRepLocalPacket({
     ...rec,
@@ -9117,6 +9136,7 @@ function getSalesRoutingRecords() {
 function updateLeadPriority(id, value) {
   const cleanValue = String(value || '').trim();
   const selectedPriority = cleanValue ? String(Number(cleanValue)) : '';
+  const now = new Date().toISOString();
 
   state.records = state.records.map(rec => {
     const sameRecord = String(rec.id || '') === String(id || '');
@@ -9127,7 +9147,17 @@ function updateLeadPriority(id, value) {
         ...rec,
         rep_manual_priority: selectedPriority,
         sales_priority: selectedPriority,
-        priority_updated_at: selectedPriority ? new Date().toISOString() : ''
+        priority_updated_at: selectedPriority ? now : '',
+        rep_last_action_at: now,
+        manager_visible: true,
+        manager_unseen_update: true,
+        manager_alert_seen: false,
+        manager_update_seen_at: "",
+        manager_flash_at: now,
+        manager_flash_type: "rep_priority_updated",
+        manager_flash_text: selectedPriority
+          ? `Rep set manual priority ${selectedPriority}`
+          : "Rep cleared manual priority"
       };
     }
 
@@ -9143,6 +9173,15 @@ function updateLeadPriority(id, value) {
   });
 
   saveRecords();
+
+  const updatedRecord = state.records.find(
+    rec => String(rec.id || "") === String(id || "")
+  );
+
+  if (updatedRecord) {
+    syncFeedStatus(updatedRecord);
+  }
+
   renderStats();
   renderRepMenu();
   renderFollowUpAlertCenter();
@@ -12306,10 +12345,21 @@ function saveRepAttentionAlert() {
   rec.rep_attention_target_date = targetDate;
   rec.rep_attention_months_before = monthsBefore;
   rec.rep_attention_alert_note = note;
-  rec.rep_attention_alert_configured_at = new Date().toISOString();
-  rec.rep_attention_alert_dismissed_at = "";
+  const now = new Date().toISOString();
 
-  saveRecords();
+  rec.rep_attention_alert_configured_at = now;
+  rec.rep_attention_alert_dismissed_at = "";
+  rec.rep_last_action_at = now;
+
+  rec.manager_visible = true;
+  rec.manager_unseen_update = true;
+  rec.manager_alert_seen = false;
+  rec.manager_update_seen_at = "";
+  rec.manager_flash_at = now;
+  rec.manager_flash_type = "rep_attention_alert_updated";
+  rec.manager_flash_text = "Rep updated attention alert";
+
+  syncFeedStatus(rec);
   renderStats();
   renderFollowUpAlertCenter();
   renderTable();
@@ -15332,6 +15382,7 @@ function saveInstallBaseFix(id) {
         } catch (_) {}
       }
 
+      syncFeedStatus(rec);
       render();
 
       const newTab = window.open("about:blank", "_blank");
@@ -16335,7 +16386,7 @@ manufacture_year: projectDOM,
       state.selectedId = assignedRecord.id;
 
       saveRecords();
-      syncToManagerQueue(assignedRecord);
+      syncFeedStatus(assignedRecord);
       closeNewProjectModal();
       render();
       showBanner("New project created and saved.");
