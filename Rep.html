@@ -5700,18 +5700,63 @@ function getSelectedRepParts() {
   };
 }
 
-function assignToSelectedRepIfNeeded(rec) {
+function resolveCurrentRepIdentity() {
   const selected = getSelectedRepParts();
-  if (!selected.full || selected.full === "Unassigned") return rec;
 
-  const hasRep = clean(rec.sales_rep_first || rec.sales_rep_last || rec.assigned_rep_name || rec.rep_owner || rec.rep_name);
+  if (selected.full && selected.full !== "Unassigned") {
+    return selected;
+  }
+
+  const availableRepNames = Array.from(
+    new Set(
+      (state.records || [])
+        .map(rec => clean(getRecordRepName(rec)))
+        .filter(name => name && name !== "Unassigned")
+    )
+  );
+
+  if (availableRepNames.length === 1) {
+    const full = availableRepNames[0];
+    const parts = full.split(/\s+/).filter(Boolean);
+
+    state.selectedRep = full;
+
+    return {
+      first: parts[0] || "",
+      last: parts.slice(1).join(" ") || "",
+      full
+    };
+  }
+
+  return { first: "", last: "", full: "" };
+}
+
+function assignToSelectedRepIfNeeded(rec) {
+  const selected = resolveCurrentRepIdentity();
+
+  if (!selected.full) return rec;
+
+  const hasRep = clean(
+    rec.sales_rep_first ||
+    rec.sales_rep_last ||
+    rec.assigned_rep_name ||
+    rec.rep_owner ||
+    rec.rep_name ||
+    rec.rep ||
+    rec.sales_rep_name
+  );
+
   if (hasRep) return rec;
 
   return {
     ...rec,
     sales_rep_first: selected.first,
     sales_rep_last: selected.last,
-    assigned_rep_name: selected.full
+    assigned_rep_name: selected.full,
+    rep: selected.full,
+    rep_name: selected.full,
+    sales_rep_name: selected.full,
+    rep_owner: selected.full
   };
 }
 
@@ -7489,6 +7534,16 @@ install_base_review_reason: originalInstallBaseReviewReason,
   mergeInstallBaseQueueIntoRepRecords();
 
   const routedRecords = state.records.filter(rec => {
+    const isRepCreated =
+      rec?.rep_added_install_base === true ||
+      rec?.rep_owned_install_base === true ||
+      rec?.record_origin === "rep_owned_install_base" ||
+      rec?.install_base_release_status === "rep_local_record";
+
+    if (isRepCreated) {
+      return true;
+    }
+
     const complete = isRepRoutingComplete(rec);
 
     if (!complete && String(rec.id) === String(state.selectedId)) {
@@ -16262,6 +16317,15 @@ showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
         return;
       }
 
+      const currentRep = resolveCurrentRepIdentity();
+
+      if (!currentRep.full) {
+        alert(
+          "Select the Rep before creating this record. The record was not saved."
+        );
+        return;
+      }
+
       const now = new Date().toISOString();
       const stateValue = clean($("ownIbState")?.value || "");
       const selectedTerritory = clean(
@@ -16275,6 +16339,13 @@ showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
         key: `REP-${Date.now()}-${serial}`,
         source: "Rep Added Install Base",
         oem_project_id: `MY-IB-${Date.now()}`,
+        sales_rep_first: currentRep.first,
+        sales_rep_last: currentRep.last,
+        assigned_rep_name: currentRep.full,
+        rep: currentRep.full,
+        rep_name: currentRep.full,
+        sales_rep_name: currentRep.full,
+        rep_owner: currentRep.full,
         make,
         model,
         modality,
