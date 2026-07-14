@@ -5707,28 +5707,33 @@ function resolveCurrentRepIdentity() {
     return selected;
   }
 
-  const availableRepNames = Array.from(
-    new Set(
-      (state.records || [])
-        .map(rec => clean(getRecordRepName(rec)))
-        .filter(name => name && name !== "Unassigned")
-    )
-  );
+  // This is a single-Rep workspace. When no Rep has been explicitly selected,
+  // use the most common valid Rep identity already present in the workspace.
+  const repCounts = new Map();
 
-  if (availableRepNames.length === 1) {
-    const full = availableRepNames[0];
-    const parts = full.split(/\s+/).filter(Boolean);
+  (state.records || []).forEach(rec => {
+    const name = clean(getRecordRepName(rec));
 
-    state.selectedRep = full;
+    if (!name || name === "Unassigned") return;
 
-    return {
-      first: parts[0] || "",
-      last: parts.slice(1).join(" ") || "",
-      full
-    };
+    repCounts.set(name, (repCounts.get(name) || 0) + 1);
+  });
+
+  const full = [...repCounts.entries()]
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+
+  if (!full) {
+    return { first: "", last: "", full: "" };
   }
 
-  return { first: "", last: "", full: "" };
+  const parts = full.split(/\s+/).filter(Boolean);
+  state.selectedRep = full;
+
+  return {
+    first: parts[0] || "",
+    last: parts.slice(1).join(" ") || "",
+    full
+  };
 }
 
 function assignToSelectedRepIfNeeded(rec) {
@@ -16269,6 +16274,8 @@ showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
     }
 
     function openOwnInstallBaseModal() {
+      resolveCurrentRepIdentity();
+
       [
         "ownIbCustomer",
         "ownIbStreet",
@@ -16321,7 +16328,7 @@ showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
 
       if (!currentRep.full) {
         alert(
-          "Select the Rep before creating this record. The record was not saved."
+          "No Rep identity is available in this workspace. Load or assign at least one Rep record before creating an install-base record."
         );
         return;
       }
