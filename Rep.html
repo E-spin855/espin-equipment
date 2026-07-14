@@ -7461,12 +7461,30 @@ install_base_review_reason: originalInstallBaseReviewReason,
     sharedRecords
   );
 
-  state.records = combinedRecords.filter(rec =>
-    isRepRoutingComplete(rec) &&
-    rec.install_base_released_to !== "manager" &&
-    rec.release_destination !== "manager" &&
-    rec.manager_visible !== true
-  );
+  state.records = combinedRecords.filter(rec => {
+    const isRepCreated =
+      rec?.rep_added_install_base === true ||
+      rec?.rep_owned_install_base === true ||
+      rec?.record_origin === "rep_owned_install_base" ||
+      rec?.install_base_release_status === "rep_local_record";
+
+    if (isRepCreated) {
+      rec.rep_visible = true;
+      rec.rep_hidden = false;
+      rec.manager_only = false;
+      rec.release_destination = "rep";
+      rec.install_base_released_to = "rep";
+      rec.project_type = "equipment_review_record";
+      return true;
+    }
+
+    return (
+      isRepRoutingComplete(rec) &&
+      rec.install_base_released_to !== "manager" &&
+      rec.release_destination !== "manager" &&
+      rec.manager_visible !== true
+    );
+  });
 
   mergeInstallBaseQueueIntoRepRecords();
 
@@ -8040,17 +8058,17 @@ if (combinedRepFixFields.length) {
     isRepOwnedInstallBaseRecord(normalizedExisting) ||
     isRepOwnedInstallBaseRecord(normalizedIncoming)
   ) {
+    merged.rep_added_install_base = true;
+    merged.rep_owned_install_base = true;
+    merged.record_origin = "rep_owned_install_base";
     merged.rep_visible = true;
     merged.rep_hidden = false;
     merged.manager_only = false;
+    merged.manager_visible = false;
     merged.release_destination = "rep";
     merged.install_base_released_to = "rep";
-    merged.install_base_release_status =
-      merged.install_base_release_status || "rep_local_record";
-    merged.project_type =
-      merged.project_type === "new_project_record"
-        ? "equipment_review_record"
-        : (merged.project_type || "equipment_review_record");
+    merged.install_base_release_status = "rep_local_record";
+    merged.project_type = "equipment_review_record";
   }
 
   // Preserve existing rep/manager/Hub conversations while still accepting new Hub messages.
@@ -15725,7 +15743,28 @@ function saveRepDataResponse(){
   render();
 }
     function visibleToRep(rec) {
-  return rec.release_destination !== "manager" && rec.manager_only !== true;
+  if (!rec) return false;
+
+  const isRepCreated =
+    rec.rep_added_install_base === true ||
+    rec.rep_owned_install_base === true ||
+    rec.record_origin === "rep_owned_install_base" ||
+    rec.install_base_release_status === "rep_local_record";
+
+  if (isRepCreated) {
+    rec.rep_visible = true;
+    rec.rep_hidden = false;
+    rec.manager_only = false;
+    rec.release_destination = "rep";
+    rec.install_base_released_to = "rep";
+    rec.project_type = "equipment_review_record";
+    return true;
+  }
+
+  return (
+    rec.release_destination !== "manager" &&
+    rec.manager_only !== true
+  );
 }
 function hideCompletedRepProjects() {
   const rec = state.records.find(
