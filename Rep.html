@@ -8012,6 +8012,25 @@ if (combinedRepFixFields.length) {
     if (hasMergeValue(normalizedExisting[field])) merged[field] = normalizedExisting[field];
   });
 
+  // A record created in the Rep workspace must remain visible in that
+  // workspace even after Manager/Hub synchronization packets merge back.
+  if (
+    isRepOwnedInstallBaseRecord(normalizedExisting) ||
+    isRepOwnedInstallBaseRecord(normalizedIncoming)
+  ) {
+    merged.rep_visible = true;
+    merged.rep_hidden = false;
+    merged.manager_only = false;
+    merged.release_destination = "rep";
+    merged.install_base_released_to = "rep";
+    merged.install_base_release_status =
+      merged.install_base_release_status || "rep_local_record";
+    merged.project_type =
+      merged.project_type === "new_project_record"
+        ? "equipment_review_record"
+        : (merged.project_type || "equipment_review_record");
+  }
+
   // Preserve existing rep/manager/Hub conversations while still accepting new Hub messages.
   merged.install_base_conversation_history = mergeConversationHistory(
     normalizedExisting.install_base_conversation_history,
@@ -16198,6 +16217,12 @@ showBanner("Uploaded records loaded on Rep and synced to Hub and Manager.");
         install_base_released_to: "rep",
         release_destination: "rep",
         rep_visible: true,
+        rep_hidden: false,
+        manager_only: false,
+        project_type: "equipment_review_record",
+        record_origin: "rep_owned_install_base",
+        release_destination: "rep",
+        install_base_released_to: "rep",
         install_base_visible: true,
         install_base_received_from_rep: true,
         install_base_received_from_rep_at: now,
@@ -16214,22 +16239,49 @@ manager_flash_text: "Rep added install-base record",
       });
 
       const upsertResult = upsertRepWorkspaceRecord(rec);
-     // Rep-created records must sync to both Hub and Manager.
-syncRepOwnedRecordToInstallBase(upsertResult.record, "rep_added_install_base");
 
-syncToManagerQueue({
-  ...upsertResult.record,
-  manager_visible: true,
-  manager_unseen_update: true,
-  manager_alert_seen: false,
-  manager_update_seen_at: "",
-  manager_flash_at: now,
-  manager_flash_type: "rep_added_install_base",
-  manager_flash_text: "Rep added install-base record"
-});
+      // Save into the Rep workspace first so the new row appears immediately.
       state.selectedId = upsertResult.record.id;
       saveRecords();
       closeOwnInstallBaseModal();
+      render();
+
+      // Then sync copies to Hub and Manager.
+      syncRepOwnedRecordToInstallBase(
+        upsertResult.record,
+        "rep_added_install_base"
+      );
+
+      syncToManagerQueue({
+        ...upsertResult.record,
+        manager_visible: true,
+        manager_unseen_update: true,
+        manager_alert_seen: false,
+        manager_update_seen_at: "",
+        manager_flash_at: now,
+        manager_flash_type: "rep_added_install_base",
+        manager_flash_text: "Rep added install-base record"
+      });
+
+      // Reassert the protected Rep-local copy after cross-page synchronization.
+      const localIndex = state.records.findIndex(item =>
+        String(item.id || "") === String(upsertResult.record.id || "")
+      );
+
+      if (localIndex >= 0) {
+        state.records[localIndex] = {
+          ...state.records[localIndex],
+          rep_visible: true,
+          rep_hidden: false,
+          manager_only: false,
+          project_type: "equipment_review_record",
+          release_destination: "rep",
+          install_base_released_to: "rep"
+        };
+      }
+
+      state.selectedId = upsertResult.record.id;
+      saveRecords();
       render();
       showBanner(upsertResult.merged
         ? "My install-base entry merged into the existing workspace record."
