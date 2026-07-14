@@ -13460,41 +13460,156 @@ function readEspinMobilePlan(){
   }
 }
 
-function addRepRecordToVisitList(id){
-  const rec = state.records.find(r => String(r.id || "") === String(id || ""));
-  if (!rec) return;
-
-  const used = new Set(
-    state.records
-      .map(item => Number(item.rep_manual_priority || item.sales_priority || 0))
-      .filter(n => Number.isFinite(n) && n > 0)
+function addRepRecordToVisitList(recordId){
+  const rec = state.records.find(
+    item => String(item.id) === String(recordId)
   );
 
-  let nextPriority = 1;
-  while (used.has(nextPriority) && nextPriority < 99) nextPriority += 1;
+  if (!rec) {
+    alert("The selected account record could not be found.");
+    return;
+  }
 
-  rec.rep_manual_priority = String(nextPriority);
-  rec.sales_priority = String(nextPriority);
-  rec.priority_updated_at = new Date().toISOString();
+  const plan = readEspinMobilePlan();
 
-  const list = readArrayKey("espin_link_rep_visit_list");
-  const item = {
-    id: rec.id,
-    key: rec.key || getRecordKey(rec),
-    site: rec.site || rec.facility || rec.hospital || "Account Record",
-    address: getRepRecordAddress(rec),
-    manual_priority: String(nextPriority),
-    added_at: new Date().toISOString()
+  const stopId = String(
+    rec.id ||
+    rec.project_id ||
+    rec.oem_project_id ||
+    rec.serial_number ||
+    `visit-${Date.now()}`
+  );
+
+  const alreadyAdded = plan.some(
+    stop =>
+      String(stop.id) === stopId ||
+      String(stop.recordId || "") === String(rec.id || "")
+  );
+
+  if (alreadyAdded) {
+    alert("This account is already in the mobile visit list.");
+    return;
+  }
+
+  const facility = clean(
+    rec.site ||
+    rec.facility ||
+    rec.hospital ||
+    rec.account_name ||
+    "Unnamed Account"
+  );
+
+  const street = clean(
+    rec.site_address ||
+    rec.address ||
+    rec.facility_address ||
+    ""
+  );
+
+  const city = clean(rec.city || "");
+  const stateValue = clean(
+    rec.state ||
+    rec.state_code ||
+    rec.region_state ||
+    ""
+  );
+
+  const zip = clean(
+    rec.zip_code ||
+    rec.zip ||
+    rec.postal_code ||
+    ""
+  );
+
+  const address = [
+    street,
+    city,
+    stateValue,
+    zip
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const stop = {
+    id: stopId,
+    recordId: String(rec.id || ""),
+
+    name: facility,
+    facility: facility,
+
+    address: address,
+    city: city,
+    state: stateValue,
+    zip: zip,
+
+    time: "",
+
+    purpose: clean(
+      rec.visit_purpose ||
+      rec.rep_action_label ||
+      rec.oem_review_label ||
+      rec.install_base_review_reason ||
+      "Equipment review"
+    ),
+
+    note: "",
+
+    status: "Selected by Rep",
+
+    source: "Rep Proximity View",
+    addedAt: new Date().toISOString(),
+
+    repName: clean(
+      rec.assigned_rep_name ||
+      rec.rep_name ||
+      rec.rep ||
+      rec.rep_owner ||
+      ""
+    ),
+
+    projectId: clean(
+      rec.project_id ||
+      rec.oem_project_id ||
+      rec.id ||
+      ""
+    ),
+
+    make: clean(rec.make || rec.brand || ""),
+    model: clean(rec.model || ""),
+    modality: clean(rec.modality || ""),
+    serialNumber: clean(
+      rec.serial_number ||
+      rec.serial ||
+      ""
+    ),
+
+    manualOnly: true
   };
 
-  const next = [item, ...list.filter(existing => String(existing.id || "") !== String(item.id || ""))].slice(0, 20);
-  writeArrayKey("espin_link_rep_visit_list", next);
+  plan.push(stop);
 
-  saveRecords();
-  renderSalesRouting();
-  renderTable();
+  localStorage.setItem(
+    ESPIN_MOBILE_PLAN_KEY,
+    JSON.stringify(plan)
+  );
+
+  localStorage.setItem(
+    "espin_rep_manual_day_plan_ping_v1",
+    String(Date.now())
+  );
+
   renderDetail();
-  showBanner(`Added to visit list as manual route stop ${nextPriority}.`);
+
+  // Open Today immediately after the record is written.
+  const todayWindow = window.open(
+    "today.html",
+    "_blank",
+    "noopener"
+  );
+
+  if (!todayWindow) {
+    window.location.href = "today.html";
+  }
 }
 function getFinancialRecordCollapseMap() {
   try {
