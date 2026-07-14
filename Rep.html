@@ -10178,7 +10178,29 @@ function hasAnyEquipmentReviewAlert(rec) {
   );
 }
 
-  function renderTable() {
+  function hasUnseenHubFixRequest(rec) {
+  if (!rec) return false;
+
+  const isHubFix =
+    lower(rec.install_base_sync_type).includes("fix_request_to_rep") ||
+    lower(rec.rep_flash_type) === "install_base_fix_request" ||
+    lower(rec.rep_new_update_type) === "install_base_fix_request" ||
+    Boolean(clean(rec.install_base_fix_request_id));
+
+  if (!isHubFix) return false;
+
+  return (
+    rec.install_base_fix_seen_by_rep !== true &&
+    (
+      rec.rep_unseen_update === true ||
+      rec.rep_new_update === true ||
+      Boolean(clean(rec.install_base_fix_request_at)) ||
+      Boolean(clean(rec.rep_flash_at))
+    )
+  );
+}
+
+function renderTable() {
   const tbody = $("tableBody");
 
   renderMyEquipmentReviewStateFilter();
@@ -10220,11 +10242,16 @@ function hasAnyEquipmentReviewAlert(rec) {
   const sorted = visibleRecords
     .map(rec => ({
       rec,
+      hasHubFix: hasUnseenHubFixRequest(rec),
       hasAlert: hasAnyEquipmentReviewAlert(rec),
       weight: getDisplayOrderWeight(rec, today),
       priority: getManualPriority(rec)
     }))
     .sort((a, b) => {
+      if (a.hasHubFix !== b.hasHubFix) {
+        return a.hasHubFix ? -1 : 1;
+      }
+
       if (a.hasAlert !== b.hasAlert) {
         return a.hasAlert ? -1 : 1;
       }
@@ -10259,6 +10286,10 @@ function hasAnyEquipmentReviewAlert(rec) {
     const hasUnseenInstallBaseUpdate =
       rec.install_base_release_new === true &&
       rec.install_base_release_seen !== true;
+
+    const hasUnseenHubFix =
+      hasUnseenHubFixRequest(rec);
+
 const hasUnseenManagerFix =
   (
     rec.install_base_correction_status === "corrected_by_manager" ||
@@ -10278,7 +10309,8 @@ const hasUnseenManagerFix =
 
       hasUnseenInstallBaseUpdate ||
 hasUnseenFixedData ||
-hasUnseenManagerFix
+hasUnseenManagerFix ||
+hasUnseenHubFix
   ? "rep-new-row-flash"
   : "",
 
@@ -18559,6 +18591,10 @@ function markRepRowUpdateSeen(id) {
     rec.install_base_fixed_seen_by_rep !== true ||
     rec.manager_response_seen_by_rep !== true ||
     rec.rep_unseen_update === true ||
+    (
+      rec.install_base_fix_seen_by_rep !== true &&
+      Boolean(clean(rec.install_base_fix_request_id))
+    ) ||
     Boolean(rec.rep_flash_at) ||
     Boolean(rec.rep_flash_type) ||
     rec.rep_status === "new" ||
@@ -18591,6 +18627,9 @@ function markRepRowUpdateSeen(id) {
       manager_response_seen_at: now,
 
       rep_unseen_update: false,
+      rep_new_update: false,
+      install_base_fix_seen_by_rep: true,
+      install_base_fix_seen_at: now,
       rep_flash_at: "",
       rep_flash_type: "",
 
@@ -18647,6 +18686,9 @@ function markRepRowUpdateSeen(id) {
       manager_response_seen_at: now,
 
       rep_unseen_update: false,
+      rep_new_update: false,
+      install_base_fix_seen_by_rep: true,
+      install_base_fix_seen_at: now,
       rep_flash_at: "",
       rep_flash_type: "",
 
