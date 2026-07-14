@@ -1683,8 +1683,8 @@ tr.unread-message-row td{
 
 
 <script>
-// PATCH Hub 106: source-accurate import and exception display.
-// Hub shows FIX only for actual blank source fields or explicit source conflicts.
+// PATCH Hub 107: source-authoritative FIX display.
+// Hub shows FIX only when the source explicitly declares the field as missing/error.
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
@@ -2601,36 +2601,76 @@ function isDuplicateAsset(rec) {
   }).length > 1;
 }
 
+
+function getSourceDeclaredFixFields(rec) {
+  if (!rec) return [];
+
+  const declared = new Set();
+  const add = value => {
+    String(value || "")
+      .split(/[;,|]/)
+      .map(v => canonicalInstallBaseFieldName(v.trim()))
+      .filter(Boolean)
+      .forEach(v => declared.add(v));
+  };
+
+  // Explicit source/import columns. The Hub does not infer errors from blanks.
+  [
+    rec.missing_fields,
+    rec.missing_field,
+    rec.error_fields,
+    rec.error_field,
+    rec.fix_fields,
+    rec.fix_field,
+    rec.data_error_fields,
+    rec.data_quality_fields,
+    rec.source_missing_fields,
+    rec.axis_missing_fields,
+    rec.install_base_issue_field,
+    rec.install_base_original_issue_field,
+    rec.install_base_fix_request_field
+  ].forEach(add);
+
+  // Preserve FIX requests already created inside ESPIN LINK.
+  add(rec.install_base_field_fix_sent_fields);
+
+  return [...declared];
+}
+
+function sourceDeclaresFixForField(rec, fieldName) {
+  const field = canonicalInstallBaseFieldName(fieldName);
+  const aliasMap = {
+    project: ["project", "project_id", "oem_project_id", "asset_id", "equipment_id"],
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial", "serial_number", "system_serial"],
+    dom: ["dom", "year", "manufacture_year"],
+    site: ["site", "site_name", "facility", "hospital", "location"],
+    rep: ["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "sales_rep", "sales_rep_name"],
+    owner: ["owner", "manager", "manager_name", "owner_group", "owner_group_name"],
+    territory: ["territory", "manager_region", "manager_territory", "region"]
+  };
+  const aliases = (aliasMap[field] || [field]).map(canonicalInstallBaseFieldName);
+  return getSourceDeclaredFixFields(rec).some(v => aliases.includes(v));
+}
+
 function getDataExceptions(rec) {
   const issues = [];
 
-  // Source-accurate validation only: a FIX may appear only when the imported
-  // or pushed record actually contains a blank required field, or when the
-  // source explicitly flags a conflict. Do not infer errors from notes, labels,
-  // review text, age, utilization, or other Hub-generated interpretation.
-  const requiredFields = [
-    ["project", clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id), "Missing Project / Asset ID", "missing"],
-    ["make", clean(rec.make || rec.manufacturer || rec.brand), "Missing Brand", "missing"],
-    ["modality", clean(rec.modality), "Missing Modality", "missing"],
-    ["model", clean(rec.model), "Missing Model", "missing"],
-    ["serial", clean(rec.serial_number || rec.serial || rec.system_serial), "Missing Serial", "missing"],
-    ["dom", clean(rec.dom || rec.year || rec.manufacture_year), "Missing DOM", "missing"],
-    ["site", clean(rec.site || rec.site_name || rec.facility || rec.hospital || rec.location), "Missing Site", "missing"],
-    ["rep", clean(getHubRepOwnerValue(rec)), "Missing Rep Owner", "owner"],
-    ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || rec.manager), "Missing Owner Group", "owner"],
-    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || rec.region), "Missing Territory", "owner"]
-  ];
-
-  requiredFields.forEach(([field, value, label, type]) => {
-    if (isBlankHubField(value, field)) {
-      issues.push({ type, label, field });
-    }
+  // Source-authoritative behavior: the Hub only displays FIX for fields that
+  // the imported/pushed record explicitly declares as erroneous or missing.
+  getSourceDeclaredFixFields(rec).forEach(field => {
+    const canonical = canonicalInstallBaseFieldName(field);
+    const ownerFields = ["rep", "owner", "territory"];
+    issues.push({
+      type: ownerFields.includes(canonical) ? "owner" : "missing",
+      label: `Missing ${getHubFixDisplayLabel(canonical)}`,
+      field: canonical
+    });
   });
 
-  if (
-    lower(rec.source_conflict) === "yes" ||
-    lower(rec.conflict) === "yes"
-  ) {
+  if (lower(rec.source_conflict) === "yes" || lower(rec.conflict) === "yes") {
     issues.push({ type: "source", label: "Source Conflict", field: "source_conflict" });
   }
 
@@ -2956,12 +2996,15 @@ function renderHubFieldValue(rec, fieldName, rawValue, fallbackHtml = "-") {
   const correctedHtml = renderInstallBaseCorrectedValue(rec, fieldName, normalHtml);
 
   if (correctedHtml !== normalHtml) return correctedHtml;
-  if (isHubUnresolvedFixField(rec, fieldName)) return getHubMissingFixCellHtml(rec, fieldName);
-  if (isFixedByRep(rec)) return normalHtml;
-  if (!fieldIsBlank) return normalHtml;
+  if (sourceDeclaresFixForField(rec, fieldName) && !wasHubFieldCorrectionReturned(rec, fieldName)) {
+    return getHubMissingFixCellHtml(rec, fieldName);
+  }
 
-  return getHubMissingFixCellHtml(rec, fieldName);
+  // A blank value by itself is displayed as blank/"-". The Hub does not
+  // decide that it is an error unless the source explicitly declares it.
+  return normalHtml;
 }
+
 function wasHubTerritorySpecificallyRequested(rec) {
   if (!rec) return false;
 
@@ -2993,25 +3036,11 @@ function wasHubTerritorySpecificallyRequested(rec) {
 
 function renderHubTerritoryCell(rec) {
   const territoryValue = clean(
-    rec.manager_region ||
-    rec.manager_territory ||
-    rec.territory ||
-    ""
+    rec.manager_region || rec.manager_territory || rec.territory || rec.region || ""
   );
-
-  if (
-    wasHubTerritorySpecificallyRequested(rec) &&
-    !wasHubFieldCorrectionReturned(rec, "territory")
-  ) {
-    return getHubMissingFixCellHtml(rec, "territory");
-  }
-
-  if (wasHubTerritorySpecificallyRequested(rec)) {
-    return renderHubFieldValue(rec, "territory", territoryValue);
-  }
-
   return renderHubFieldValue(rec, "territory", territoryValue);
 }
+
 function wasHubOwnerGroupSpecificallyRequested(rec) {
   if (!rec) return false;
 
@@ -3051,45 +3080,13 @@ function wasHubOwnerGroupSpecificallyRequested(rec) {
 }
 
 function renderHubOwnerGroupCell(rec) {
-  const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
-
-  if (
-    wasHubOwnerGroupSpecificallyRequested(rec) &&
-    !wasHubFieldCorrectionReturned(rec, "owner")
-  ) {
-    return getHubMissingFixCellHtml(rec, "owner");
-  }
-
-  if (wasHubOwnerGroupSpecificallyRequested(rec)) {
-    return renderHubFieldValue(rec, "owner", ownerValue);
-  }
-
-  if (isBlankHubField(ownerValue, "owner")) {
-    if (isFixedByRep(rec)) return escapeHtml("-");
-    return getHubMissingFixCellHtml(rec, "owner");
-  }
-
-  return escapeHtml(ownerValue);
+  const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || rec.manager || "");
+  return renderHubFieldValue(rec, "owner", ownerValue);
 }
-function getMissingHubFields(rec) {
-  // Read only the actual values supplied in the record. The Hub must not
-  // manufacture missing-field conditions from review prose or defaults.
-  const fields = [
-    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id],
-    ["make", rec.make || rec.manufacturer || rec.brand],
-    ["model", rec.model],
-    ["modality", rec.modality],
-    ["serial", rec.serial_number || rec.serial || rec.system_serial],
-    ["dom", rec.dom || rec.year || rec.manufacture_year],
-    ["site", rec.site || rec.site_name || rec.facility || rec.hospital || rec.location],
-    ["rep", getHubRepOwnerValue(rec)],
-    ["owner", rec.manager_name || rec.owner_group_name || rec.owner_group || rec.manager],
-    ["territory", rec.manager_region || rec.manager_territory || rec.territory || rec.region]
-  ];
 
-  return fields
-    .filter(([field, value]) => isBlankHubField(value, field))
-    .map(([field]) => field);
+function getMissingHubFields(rec) {
+  // Return only source-declared FIX fields. Blank values alone are not errors.
+  return getSourceDeclaredFixFields(rec);
 }
 
 function isRealHubOwnerValue(value) {
