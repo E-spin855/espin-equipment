@@ -3458,6 +3458,54 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="manager-rep-action-update-highlights">
+.manager-action-history-update-frame{
+  position:relative;
+  border:3px solid rgba(65,255,156,.98)!important;
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.34),
+    0 0 26px rgba(65,255,156,.62),
+    0 0 48px rgba(65,255,156,.24)!important;
+  animation:managerRepActionHistoryPulse 1.05s ease-in-out infinite!important;
+}
+
+.manager-action-history-update-frame::after{
+  content:"NEW REP ACTION";
+  position:absolute;
+  top:-11px;
+  right:16px;
+  z-index:20;
+  padding:4px 10px;
+  border:1px solid rgba(142,255,195,.94);
+  border-radius:999px;
+  background:#123d2d;
+  color:#caffdf;
+  font-size:9px;
+  font-weight:950;
+  letter-spacing:.10em;
+  box-shadow:0 0 14px rgba(65,255,156,.48);
+  pointer-events:none;
+}
+
+@keyframes managerRepActionHistoryPulse{
+  0%,100%{
+    border-color:rgba(65,255,156,.72);
+    box-shadow:
+      0 0 0 1px rgba(65,255,156,.26),
+      0 0 16px rgba(65,255,156,.34),
+      0 0 28px rgba(65,255,156,.14);
+  }
+  50%{
+    border-color:rgba(142,255,195,1);
+    box-shadow:
+      0 0 0 2px rgba(142,255,195,.58),
+      0 0 32px rgba(65,255,156,.88),
+      0 0 56px rgba(65,255,156,.30);
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -4876,6 +4924,96 @@ function hasFollowUpOverdueBy7Days(rec) {
   return lastRepAction <= followUpDate;
 }
 
+const MANAGER_REP_ACTION_HISTORY_SEEN_KEY =
+  "espin_manager_rep_action_history_seen_v1";
+
+function getLatestRepActionHistorySignature(rec) {
+  const history = Array.isArray(rec?.rep_action_history)
+    ? rec.rep_action_history
+    : [];
+
+  const latest = history
+    .filter(item => item && clean(item.label || item.action))
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.at || a.date || a.timestamp || 0).getTime();
+      const bTime = new Date(b.at || b.date || b.timestamp || 0).getTime();
+      return bTime - aTime;
+    })[0];
+
+  if (latest) {
+    return [
+      clean(latest.at || latest.date || latest.timestamp),
+      clean(latest.action),
+      clean(latest.label),
+      clean(latest.follow_up_date || latest.followUpDate)
+    ].join("|");
+  }
+
+  if (clean(rec?.rep_last_action_at)) {
+    return [
+      clean(rec.rep_last_action_at),
+      clean(rec.rep_action),
+      clean(
+        rec.rep_action_label ||
+        rec.rep_selected_action_label ||
+        getRepActionLabel(rec.rep_action)
+      ),
+      clean(rec.rep_follow_up_date || rec.next_action_date)
+    ].join("|");
+  }
+
+  return "";
+}
+
+function readManagerRepActionHistorySeen() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(MANAGER_REP_ACTION_HISTORY_SEEN_KEY) || "{}"
+    );
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getManagerRepActionHistoryRecordKey(rec) {
+  return String(
+    rec?.id ||
+    rec?.key ||
+    getRecordKey(rec) ||
+    ""
+  );
+}
+
+function hasUnseenManagerRepActionHistory(rec) {
+  const recordKey = getManagerRepActionHistoryRecordKey(rec);
+  const signature = getLatestRepActionHistorySignature(rec);
+
+  if (!recordKey || !signature) return false;
+
+  const seen = readManagerRepActionHistorySeen();
+  return seen[recordKey] !== signature;
+}
+
+function acknowledgeManagerRepActionHistory(rec) {
+  const recordKey = getManagerRepActionHistoryRecordKey(rec);
+  const signature = getLatestRepActionHistorySignature(rec);
+
+  if (!recordKey || !signature) return;
+
+  const seen = readManagerRepActionHistorySeen();
+  seen[recordKey] = signature;
+
+  try {
+    localStorage.setItem(
+      MANAGER_REP_ACTION_HISTORY_SEEN_KEY,
+      JSON.stringify(seen)
+    );
+  } catch (_) {}
+}
+
 function toggleManagerRepActionHistory(button) {
   const card = button?.closest(".manager-followup-card");
   const body = card?.querySelector(".manager-action-history-body");
@@ -4887,7 +5025,13 @@ function toggleManagerRepActionHistory(button) {
   if (willOpen) {
     body.removeAttribute("hidden");
     card.classList.add("history-open");
+    card.classList.remove("manager-action-history-update-frame");
     button.textContent = "Hide History";
+
+    const rec = findSelectedRecord();
+    if (rec) {
+      acknowledgeManagerRepActionHistory(rec);
+    }
   } else {
     body.setAttribute("hidden", "");
     card.classList.remove("history-open");
@@ -8908,7 +9052,11 @@ function renderDetail() {
   </div>
 
   <div
-    class="${repFollowUpCardClass} manager-followup-card"
+    class="${repFollowUpCardClass} manager-followup-card ${
+      hasUnseenManagerRepActionHistory(rec)
+        ? "manager-action-history-update-frame"
+        : ""
+    }"
     style="
       border:2px solid rgba(65,255,156,.48);
       background:rgba(65,255,156,.07);
@@ -8998,6 +9146,10 @@ ${
         `
         : ``
     }
+
+  <div class="section-title yellow">
+  Financial Record
+</div>
 
 <div class="manager-financial-row">
   <div class="detail-card" style="grid-column:1 / -1;">
