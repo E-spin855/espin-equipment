@@ -5318,6 +5318,31 @@ tr.unread-message-row td{
              >
                <option value="">All States</option>
              </select>
+
+          <select id="repRecordViewFilter" onchange="updateRepRecordView(this.value)" aria-label="Filter by record type">
+            <option value="">All Records</option>
+            <option value="install_base">Install Base</option>
+            <option value="project">Rep-Created Projects</option>
+          </select>
+          <select id="repModalityFilter" onchange="updateRepModality(this.value)" aria-label="Filter by modality">
+            <option value="">All Modalities</option>
+          </select>
+          <select id="repDomFilter" onchange="updateRepDom(this.value)" aria-label="Filter by date of manufacture">
+            <option value="">All DOM</option>
+            <option value="before_2010">Before 2010</option>
+            <option value="2010_2014">2010–2014</option>
+            <option value="2015_2019">2015–2019</option>
+            <option value="2020_plus">2020+</option>
+            <option value="unknown">Unknown DOM</option>
+          </select>
+          <select id="repAgeFilter" onchange="updateRepAge(this.value)" aria-label="Filter by equipment age">
+            <option value="">All Ages</option>
+            <option value="0_4">0–4 Years</option>
+            <option value="5_9">5–9 Years</option>
+            <option value="10_14">10–14 Years</option>
+            <option value="15_plus">15+ Years</option>
+            <option value="unknown">Unknown Age</option>
+          </select>
            </div>
 
            <div class="table-wrap" id="myEquipmentReviewTableWrap">
@@ -5783,6 +5808,10 @@ installBaseFixResponseRecordId: "",
   myEquipmentReviewOpen: true,
   myEquipmentReviewSearch: "",
   myEquipmentReviewState: "",
+  repRecordView: "",
+  repModality: "",
+  repDom: "",
+  repAge: "",
   myEquipmentReviewCollapsedUpdate: false,
   showCompleted: true,
   detailUpdateFlash: {
@@ -9083,7 +9112,82 @@ function syncFinalOutcomeToInstallBase(rec, outcome, notes = "") {
       };
     }
 
-    function renderStats() {
+    
+function espinRecordViewType(rec) {
+  const projectType = String(rec?.project_type || rec?.axis_parent_project_type || "").trim().toLowerCase();
+  const sourceText = [
+    rec?.source, rec?.source_system, rec?.hub_source, rec?.record_origin,
+    rec?.project_source, rec?.install_base_source
+  ].map(v => String(v || "").trim().toLowerCase()).join(" ");
+  const projectId = String(rec?.oem_project_id || rec?.project_id || rec?.asset_id || rec?.id || "").trim().toLowerCase();
+
+  const repProject = Boolean(
+    projectType === "new_project_record" ||
+    projectType === "new_sales_project" ||
+    rec?.rep_created_new_project === true ||
+    rec?.new_project_badge === true ||
+    rec?.is_new_project === true ||
+    projectId.startsWith("new-") ||
+    sourceText.includes("new espin link project") ||
+    sourceText.includes("new axis project") ||
+    sourceText.includes("new project intake") ||
+    sourceText.includes("rep won project")
+  );
+  return repProject ? "project" : "install_base";
+}
+
+function espinRecordYear(rec) {
+  const raw = String(rec?.dom || rec?.manufacture_year || rec?.year || "").trim();
+  const match = raw.match(/(?:19|20)\d{2}/);
+  return match ? Number(match[0]) : 0;
+}
+
+function espinRecordAge(rec) {
+  const year = espinRecordYear(rec);
+  return year ? new Date().getFullYear() - year : -1;
+}
+
+function espinMatchesDashboardFilters(rec, values) {
+  const view = values.view || "";
+  const modality = String(values.modality || "").trim().toUpperCase();
+  const dom = values.dom || "";
+  const age = values.age || "";
+
+  if (view && espinRecordViewType(rec) !== view) return false;
+  if (modality && String(rec?.modality || "").trim().toUpperCase() !== modality) return false;
+
+  const year = espinRecordYear(rec);
+  if (dom === "before_2010" && !(year && year < 2010)) return false;
+  if (dom === "2010_2014" && !(year >= 2010 && year <= 2014)) return false;
+  if (dom === "2015_2019" && !(year >= 2015 && year <= 2019)) return false;
+  if (dom === "2020_plus" && !(year >= 2020)) return false;
+  if (dom === "unknown" && year) return false;
+
+  const recordAge = espinRecordAge(rec);
+  if (age === "0_4" && !(recordAge >= 0 && recordAge <= 4)) return false;
+  if (age === "5_9" && !(recordAge >= 5 && recordAge <= 9)) return false;
+  if (age === "10_14" && !(recordAge >= 10 && recordAge <= 14)) return false;
+  if (age === "15_plus" && !(recordAge >= 15)) return false;
+  if (age === "unknown" && recordAge >= 0) return false;
+
+  return true;
+}
+
+function updateRepRecordView(value){ state.repRecordView=String(value||""); state.selectedId=null; renderTable(); }
+function updateRepModality(value){ state.repModality=String(value||"").toUpperCase(); state.selectedId=null; renderTable(); }
+function updateRepDom(value){ state.repDom=String(value||""); state.selectedId=null; renderTable(); }
+function updateRepAge(value){ state.repAge=String(value||""); state.selectedId=null; renderTable(); }
+function renderRepAdvancedFilters(){
+  const modalitySelect=$("repModalityFilter");
+  if(modalitySelect){
+    const modalities=[...new Set(state.records.map(r=>String(r.modality||"").trim().toUpperCase()).filter(Boolean))].sort();
+    modalitySelect.innerHTML='<option value="">All Modalities</option>'+modalities.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("");
+    modalitySelect.value=state.repModality||"";
+  }
+  [["repRecordViewFilter",state.repRecordView],["repDomFilter",state.repDom],["repAgeFilter",state.repAge]].forEach(([id,val])=>{const el=$(id);if(el)el.value=val||"";});
+}
+
+function renderStats() {
       const total = state.records.length;
       const today = todayISO();
       let ready = 0;
@@ -10439,6 +10543,7 @@ function renderTable() {
   const tbody = $("tableBody");
 
   renderMyEquipmentReviewStateFilter();
+  renderRepAdvancedFilters();
 
   let visibleRecords = getMyEquipmentReviewRecords();
 
@@ -10461,6 +10566,13 @@ function renderTable() {
       rec => getEquipmentRecordState(rec) === selectedState
     );
   }
+
+  visibleRecords = visibleRecords.filter(rec => espinMatchesDashboardFilters(rec, {
+    view: state.repRecordView,
+    modality: state.repModality,
+    dom: state.repDom,
+    age: state.repAge
+  }));
 
   if (!visibleRecords.length) {
     tbody.innerHTML =
