@@ -10513,11 +10513,66 @@ function renderRepStatusCell(rec) {
   }
 
   if (status === "clarification_needed") {
-    return `
-      <span class="pill pending">
-        ${escapeHtml(rec.rep_action_label || "Fix Data")}
-      </span>
-    `;
+    const correctedAssignmentFields = [
+      rec.install_base_latest_fix_field,
+      rec.install_base_latest_fix_fields,
+      rec.install_base_corrected_fields,
+      rec.manager_corrected_field,
+      rec.manager_corrected_fields,
+      ...Object.keys(
+        rec.corrected_fields && typeof rec.corrected_fields === "object"
+          ? rec.corrected_fields
+          : {}
+      ),
+      ...Object.keys(
+        rec.corrected_values && typeof rec.corrected_values === "object"
+          ? rec.corrected_values
+          : {}
+      )
+    ]
+      .flatMap(value => String(value || "").split(","))
+      .map(value => lower(value))
+      .filter(Boolean);
+
+    const repNameWasCorrected = correctedAssignmentFields.some(field =>
+      [
+        "rep",
+        "assigned_rep",
+        "assigned rep",
+        "assigned_rep_name",
+        "assigned rep name",
+        "rep_owner",
+        "rep owner",
+        "rep_name",
+        "rep name",
+        "sales_rep",
+        "sales rep"
+      ].includes(field)
+    );
+
+    const territoryWasCorrected = correctedAssignmentFields.some(field =>
+      [
+        "territory",
+        "manager_region",
+        "manager region",
+        "manager_territory",
+        "manager territory",
+        "owner_group",
+        "owner group"
+      ].includes(field)
+    );
+
+    const assignmentCorrectionResolved =
+      (repNameWasCorrected && hasValidAssignedRep(rec)) ||
+      (territoryWasCorrected && hasValidAssignedTerritory(rec));
+
+    if (!assignmentCorrectionResolved) {
+      return `
+        <span class="pill pending">
+          ${escapeHtml(rec.rep_action_label || "Fix Data")}
+        </span>
+      `;
+    }
   }
 
   return `
