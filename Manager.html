@@ -6192,6 +6192,42 @@ function markManagerRepAddedRecordSeen(recOrId) {
   localStorage.setItem(MANAGER_REP_ADDED_SEEN_KEY, JSON.stringify(seen));
 }
 
+function hasNewRepActionSinceManagerViewed(rec) {
+  if (!rec) return false;
+
+  const history = Array.isArray(rec.rep_action_history)
+    ? rec.rep_action_history
+    : [];
+
+  const latestHistoryTime = history.reduce((latest, item) => {
+    const value = new Date(
+      item?.at ||
+      item?.date ||
+      item?.timestamp ||
+      0
+    ).getTime();
+
+    return Number.isFinite(value) && value > latest
+      ? value
+      : latest;
+  }, 0);
+
+  const latestRepUpdateTime = Math.max(
+    latestHistoryTime,
+    new Date(rec.rep_last_action_at || 0).getTime() || 0,
+    new Date(rec.rep_manager_message_at || 0).getTime() || 0,
+    new Date(rec.priority_updated_at || 0).getTime() || 0,
+    new Date(rec.rep_attention_alert_configured_at || 0).getTime() || 0
+  );
+
+  if (!latestRepUpdateTime) return false;
+
+  const managerSeenTime =
+    new Date(rec.manager_update_seen_at || 0).getTime() || 0;
+
+  return latestRepUpdateTime > managerSeenTime;
+}
+
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
 
@@ -6222,20 +6258,39 @@ function shouldManagerRowFlash(rec) {
   }
 
   const isRealRepUpdate =
-    rec.manager_unseen_update === true &&
-    [
-      "rep_update",
-      "rep_message",
-      "rep_action",
-      "new_project_created",
-      "follow_up",
-      "completed",
-      "quote_created",
-      "quote_sent",
-      "tradein_sync",
-      "rep_upload",
-      "rep_added_install_base"
-    ].includes(flashType);
+    (
+      rec.manager_unseen_update === true ||
+      hasNewRepActionSinceManagerViewed(rec)
+    ) &&
+    (
+      [
+        "rep_update",
+        "rep_message",
+        "rep_action",
+        "new_project_created",
+        "follow_up",
+        "completed",
+        "quote_created",
+        "quote_sent",
+        "tradein_sync",
+        "rep_upload",
+        "rep_added_install_base",
+        "contact_customer",
+        "schedule_follow_up",
+        "add_note",
+        "mark_reviewed",
+        "prepare_quote_review",
+        "submit_quote_for_approval",
+        "open_approved_email_draft",
+        "send_to_trade_in_app",
+        "send_to_disposal_review",
+        "complete_project",
+        "remove_from_my_view",
+        "rep_priority_updated",
+        "rep_attention_alert_updated"
+      ].includes(flashType) ||
+      hasNewRepActionSinceManagerViewed(rec)
+    );
 
   const isAutomaticHubRefresh =
     rec.install_base_release_status === "auto_synced" ||
