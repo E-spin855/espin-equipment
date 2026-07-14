@@ -12477,7 +12477,7 @@ function hasRepLocationData(rec){
 const CENSUS_ZCTA_GAZETTEER_URL =
   "/data/2025_Gaz_zcta_national.txt";
 
-const CENSUS_ZCTA_CACHE_KEY = "espin_census_2025_zcta_coordinates_v1";
+const CENSUS_ZCTA_CACHE_KEY = "espin_census_2025_zcta_coordinates_v2";
 
 let censusZctaCoordinates = null;
 let censusZctaLoadPromise = null;
@@ -12490,12 +12490,23 @@ function normalizeRepZip(value){
 }
 
 function getRepRecordZip(rec){
-  return normalizeRepZip(
+  const directZip = normalizeRepZip(
     rec?.zip_code ||
     rec?.zip ||
     rec?.postal_code ||
     rec?.site_zip ||
     rec?.facility_zip ||
+    ""
+  );
+
+  if (directZip) return directZip;
+
+  // Some uploaded records contain the ZIP only inside the full address field.
+  return normalizeRepZip(
+    rec?.site_address ||
+    rec?.address ||
+    rec?.street_address ||
+    rec?.facility_address ||
     ""
   );
 }
@@ -12714,27 +12725,13 @@ function estimateRepProximityMiles(origin, candidate){
 function getRepNearbyAccounts(rec, radiusMiles = 25){
   if (!rec || !getRepRecordZip(rec) || !censusZctaCoordinates) return [];
 
-  const currentRep = clean(
-    rec.assigned_rep_name ||
-    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}` ||
-    rec.rep ||
-    ""
-  ).toLowerCase();
-
+  // This is already a single-rep workspace. Do not filter nearby records again
+  // by Rep Name because small naming differences can incorrectly hide valid
+  // nearby accounts such as Kirkland and Bellevue.
   return state.records
     .filter(item => item && String(item.id || "") !== String(rec.id || ""))
     .filter(item => item.project_type !== "new_project_record")
     .filter(item => Boolean(getRepRecordZip(item)))
-    .filter(item => {
-      const itemRep = clean(
-        item.assigned_rep_name ||
-        `${item.sales_rep_first || ""} ${item.sales_rep_last || ""}` ||
-        item.rep ||
-        ""
-      ).toLowerCase();
-
-      return !currentRep || !itemRep || itemRep === currentRep;
-    })
     .map(item => ({
       rec: item,
       miles: estimateRepProximityMiles(rec, item)
