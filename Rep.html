@@ -14243,30 +14243,63 @@ function getInstallBaseIncomingSignature(rec) {
   return "";
 }
 
-function toggleInstallBaseCommunication(id = "") {
+function toggleInstallBaseCommunication(id = "", event = null) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   if (id) state.selectedId = String(id);
 
-  const rec = state.records.find(r => String(r.id || "") === String(state.selectedId || ""));
-  const willOpen = !state.installBaseCommunicationOpen;
+  const rec = state.records.find(
+    r => String(r.id || "") === String(state.selectedId || "")
+  );
 
+  const willOpen = !state.installBaseCommunicationOpen;
   state.installBaseCommunicationOpen = willOpen;
 
-if (willOpen) {
-  state.installBaseActiveFixField = "";
-  state.installBaseCommunicationDismissedId = "";
-  state.installBaseCommunicationDismissedSignature = "";
+  if (willOpen) {
+    state.installBaseActiveFixField = "";
+    state.installBaseCommunicationDismissedId = "";
+    state.installBaseCommunicationDismissedSignature = "";
   } else {
-    // Closing communication marks the latest incoming request/message as read
-    // before saving the dismissal signature. This keeps the hidden status tied
-    // to the final updated message state.
     if (rec) {
+      acknowledgeCommunicationField(
+        {
+          currentTarget:
+            event?.currentTarget?.closest(".comm-shell") ||
+            event?.target?.closest(".comm-shell") ||
+            null
+        },
+        rec.id || state.selectedId,
+        "rep",
+        "install_base"
+      );
+
       markIncomingCommunicationSeen(rec.id || state.selectedId);
-      state.installBaseCommunicationFrameActive = false;
     }
 
-    state.installBaseCommunicationDismissedId = String(state.selectedId || "");
+    state.installBaseCommunicationFrameActive = false;
+    state.installBaseCommunicationDismissedId =
+      String(state.selectedId || "");
+
+    const refreshedRec = state.records.find(
+      r => String(r.id || "") === String(state.selectedId || "")
+    );
+
     state.installBaseCommunicationDismissedSignature =
-      getInstallBaseIncomingSignature(rec);
+      getInstallBaseIncomingSignature(refreshedRec || rec);
+
+    const card =
+      event?.currentTarget?.closest(".comm-shell") ||
+      event?.target?.closest(".comm-shell");
+
+    if (card) {
+      card.classList.remove(
+        "communication-update-frame",
+        "incoming-message-field-frame"
+      );
+    }
   }
 
   renderTable();
@@ -14920,7 +14953,7 @@ function renderInstallBaseCorrectionPanel(rec) {
           </div>
         </div>
         <div class="comm-actions">
-          <button type="button" class="${isOpen ? "green" : "secondary"}" onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}')">${isOpen ? "Hide Communication" : "Open Communication"}</button>
+          <button type="button" class="${isOpen ? "green" : "secondary"}" onclick="toggleInstallBaseCommunication('${escapeJs(rec.id)}', event)">${isOpen ? "Hide Communication" : "Open Communication"}</button>
           <button type="button" class="secondary" onclick="toggleInstallBaseHistory()">${historyOpen ? "Hide History" : `View History (${historyCount})`}</button>
         </div>
       </div>
