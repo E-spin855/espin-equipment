@@ -6278,8 +6278,93 @@ function hasNewRepActionSinceManagerViewed(rec) {
   return latestRepUpdateTime > managerSeenTime;
 }
 
+const MANAGER_REP_ROW_SEEN_KEY =
+  "espin_manager_rep_row_seen_v1";
+
+function getManagerRepRowUpdateSignature(rec) {
+  if (!rec) return "";
+
+  const history = Array.isArray(rec.rep_action_history)
+    ? rec.rep_action_history
+    : [];
+
+  const latestHistory = history
+    .filter(item => item && (item.at || item.date || item.timestamp))
+    .slice()
+    .sort((a, b) =>
+      new Date(b.at || b.date || b.timestamp || 0).getTime() -
+      new Date(a.at || a.date || a.timestamp || 0).getTime()
+    )[0];
+
+  return [
+    clean(latestHistory?.at || latestHistory?.date || latestHistory?.timestamp),
+    clean(latestHistory?.action),
+    clean(latestHistory?.label),
+    clean(rec.rep_last_action_at),
+    clean(rec.manager_flash_at),
+    clean(rec.manager_flash_type),
+    clean(rec.manager_flash_text),
+    rec.manager_unseen_update === true ? "1" : "0"
+  ].join("|");
+}
+
+function readManagerRepRowSeenMap() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MANAGER_REP_ROW_SEEN_KEY) || "{}"
+    );
+
+    return value && typeof value === "object" ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getManagerRepRowRecordKey(rec) {
+  return String(
+    rec?.id ||
+    rec?.key ||
+    getRecordKey(rec) ||
+    ""
+  );
+}
+
+function hasUnseenManagerRepRowUpdate(rec) {
+  const recordKey = getManagerRepRowRecordKey(rec);
+  const signature = getManagerRepRowUpdateSignature(rec);
+
+  if (!recordKey || !signature.replace(/\|/g, "")) return false;
+
+  const seenMap = readManagerRepRowSeenMap();
+  return seenMap[recordKey] !== signature;
+}
+
+function acknowledgeManagerRepRowUpdate(rec) {
+  const recordKey = getManagerRepRowRecordKey(rec);
+  const signature = getManagerRepRowUpdateSignature(rec);
+
+  if (!recordKey || !signature.replace(/\|/g, "")) return;
+
+  const seenMap = readManagerRepRowSeenMap();
+  seenMap[recordKey] = signature;
+
+  try {
+    localStorage.setItem(
+      MANAGER_REP_ROW_SEEN_KEY,
+      JSON.stringify(seenMap)
+    );
+  } catch (_) {}
+}
+
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
+
+  if (
+    hasUnseenManagerRepRowUpdate(rec) &&
+    !isHubRepOnlyTextExchange(rec)
+  ) {
+    return true;
+  }
 
   // Every record added from the Rep workspace flashes until that exact row
   // is clicked. This does not depend on manager_unseen_update being supplied.
@@ -10316,8 +10401,13 @@ if (tableBody) {
       String(item.id || item.key || getRecordKey(item) || "") === String(clickedId)
     );
 
-    if (clickedRecord && isRepAddedManagerRecord(clickedRecord)) {
-      markManagerRepAddedRecordSeen(clickedRecord);
+    if (clickedRecord) {
+      acknowledgeManagerRepRowUpdate(clickedRecord);
+
+      if (isRepAddedManagerRecord(clickedRecord)) {
+        markManagerRepAddedRecordSeen(clickedRecord);
+      }
+
       row.classList.remove("manager-row-flash");
     }
 
