@@ -2068,13 +2068,14 @@ td:nth-child(11) .manager-waiting-badge{
   display:grid!important;
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
   gap:14px!important;
-  align-items:stretch!important;
+  align-items:start!important;
 }
 
 .manager-workflow-secondary > .detail-card{
   width:100%!important;
   min-width:0!important;
-  height:100%!important;
+  height:auto!important;
+  align-self:start!important;
   margin:0!important;
   grid-column:auto!important;
 }
@@ -3388,6 +3389,53 @@ tr.unread-message-row td{
   background:rgba(7,17,31,.58);
   color:#9db6d2;
   font-size:13px;
+}
+</style>
+
+
+<style id="manager-collapsible-action-history">
+.manager-action-history-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.manager-action-history-head .k{
+  margin:0!important;
+}
+
+.manager-action-history-toggle{
+  min-width:132px;
+  min-height:40px;
+  padding:9px 13px;
+  white-space:nowrap;
+}
+
+.manager-action-history-body[hidden]{
+  display:none!important;
+}
+
+.manager-action-history-body{
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid rgba(88,184,255,.18);
+}
+
+.manager-followup-card{
+  height:auto!important;
+  min-height:0!important;
+  align-self:start!important;
+}
+
+.manager-workflow-secondary{
+  align-items:start!important;
+}
+
+.manager-workflow-secondary > *{
+  height:auto!important;
+  min-height:0!important;
+  align-self:start!important;
 }
 </style>
 
@@ -4807,6 +4855,25 @@ function hasFollowUpOverdueBy7Days(rec) {
   if (!lastRepAction || isNaN(lastRepAction.getTime())) return true;
 
   return lastRepAction <= followUpDate;
+}
+
+function toggleManagerRepActionHistory(button) {
+  const card = button?.closest(".manager-followup-card");
+  const body = card?.querySelector(".manager-action-history-body");
+
+  if (!card || !body) return;
+
+  const willOpen = body.hasAttribute("hidden");
+
+  if (willOpen) {
+    body.removeAttribute("hidden");
+    card.classList.add("history-open");
+    button.textContent = "Hide History";
+  } else {
+    body.setAttribute("hidden", "");
+    card.classList.remove("history-open");
+    button.textContent = "Open History";
+  }
 }
 
 function getManagerRepActionHistory(rec) {
@@ -8828,7 +8895,17 @@ function renderDetail() {
       background:rgba(65,255,156,.07);
     "
   >
-    <div class="k">Rep Action History</div>
+    <div class="manager-action-history-head">
+      <div class="k">Rep Action History</div>
+
+      <button
+        type="button"
+        class="secondary manager-action-history-toggle"
+        onclick="toggleManagerRepActionHistory(this)"
+      >
+        Open History
+      </button>
+    </div>
 
     ${
       getFollowUpDate(rec)
@@ -8841,7 +8918,9 @@ function renderDetail() {
         : ""
     }
 
-    ${renderManagerRepActionHistory(rec)}
+    <div class="manager-action-history-body" hidden>
+      ${renderManagerRepActionHistory(rec)}
+    </div>
   </div>
 
 </div>
