@@ -2031,26 +2031,19 @@ function flashHubMessageSentButton(buttonId, sentText = "Message Sent") {
 }
 
 function isAutoSyncEligible(rec) {
-  const value = lower(rec.axis_auto_sync_eligible);
+  if (!rec) return false;
 
-  if (value !== "no") return true;
+  // Clean records always auto-sync. Hub may only hold a record when the
+  // imported/pushed source explicitly declares an unresolved FIX or conflict.
+  const unresolvedSourceFix = getSourceDeclaredFixFields(rec).some(field =>
+    !wasHubFieldCorrectionReturned(rec, field)
+  );
 
-  const hasManualHoldReason = Boolean(clean(
-    rec.axis_manual_route_target ||
-    rec.axis_clarification_reason ||
-    rec.install_base_clarification_reason ||
-    rec.install_base_issue_reason ||
-    rec.install_base_action_reason ||
-    rec.install_base_issue_note ||
-    rec.conflict_notes ||
-    rec.source_notes ||
-    rec.source_conflict_notes ||
-    rec.source_conflict ||
-    rec.conflict ||
-    ""
-  ));
+  const explicitSourceConflict =
+    lower(rec.source_conflict) === "yes" ||
+    lower(rec.conflict) === "yes";
 
-  return getMissingHubFields(rec).length === 0 && !hasManualHoldReason;
+  return !unresolvedSourceFix && !explicitSourceConflict;
 }
 
 function getManualRouteTarget(rec) {
@@ -3297,67 +3290,11 @@ function getHubReviewStatusTypeFromLabel(label) {
 function hubRecordHasVisibleFix(rec) {
   if (!rec) return false;
 
-  const standardFields = [
-    ["project", rec.oem_project_id || rec.project_id || rec.asset_id],
-    ["make", rec.make || rec.manufacturer || rec.brand],
-    ["model", rec.model || rec.equipment_model],
-    ["modality", rec.modality || rec.equipment_modality],
-    ["serial", rec.serial_number || rec.serial || rec.system_serial],
-    ["dom", rec.dom || rec.year || rec.manufacture_year],
-    [
-      "site",
-      rec.site ||
-      rec.site_name ||
-      rec.facility ||
-      rec.facility_name ||
-      rec.hospital ||
-      rec.hospital_name
-    ],
-    ["rep", getHubRepOwnerValue(rec)]
-  ];
-
-  const hasStandardFix = standardFields.some(([field, value]) => {
-    if (wasHubFieldCorrectionReturned(rec, field)) {
-      return false;
-    }
-
-    return (
-      isBlankHubField(value, field) ||
-      isHubUnresolvedFixField(rec, field)
-    );
-  });
-
-  if (hasStandardFix) return true;
-
-  const ownerValue = clean(
-    rec.manager_name ||
-    rec.owner_group_name ||
-    rec.owner_group ||
-    ""
+  // Do not infer FIX from blank cells. Only an explicit source-defined FIX
+  // or an unresolved FIX already sent inside ESPIN LINK may display.
+  return getSourceDeclaredFixFields(rec).some(field =>
+    !wasHubFieldCorrectionReturned(rec, field)
   );
-
-  const territoryValue = clean(
-    rec.manager_region ||
-    rec.manager_territory ||
-    rec.territory ||
-    ""
-  );
-
-  const ownerFixVisible =
-    !wasHubFieldCorrectionReturned(rec, "owner") &&
-    (
-      isBlankHubField(ownerValue, "owner") ||
-      wasHubOwnerGroupSpecificallyRequested(rec)
-    );
-
-  const territoryFixVisible =
-    !wasHubFieldCorrectionReturned(rec, "territory") &&
-    (
-      isBlankHubField(territoryValue, "territory") ||
-      wasHubTerritorySpecificallyRequested(rec)
-    );
-
-  return ownerFixVisible || territoryFixVisible;
 }
 function getReviewStatus(rec) {
   if (isCompletedByRep(rec)) {
@@ -5071,27 +5008,16 @@ function updateReleaseButtonVisibility(rec) {
 function hasPendingHubFix(rec) {
   if (!rec) return false;
 
-  // If the Hub still sees any data exception or missing field,
-  // the record must stay on Hub and must not auto-sync.
-  if (getMissingHubFields(rec).length) return true;
-  if (getDataExceptions(rec).length) return true;
+  const unresolvedSourceFix = getSourceDeclaredFixFields(rec).some(field =>
+    !wasHubFieldCorrectionReturned(rec, field)
+  );
 
-  const fixFields = [
-    "project",
-    "make",
-    "model",
-    "modality",
-    "serial",
-    "dom",
-    "site",
-    "owner",
-    "territory",
-    "rep"
-  ];
+  const explicitSourceConflict =
+    lower(rec.source_conflict) === "yes" ||
+    lower(rec.conflict) === "yes";
 
-  return fixFields.some(field => isHubUnresolvedFixField(rec, field));
+  return unresolvedSourceFix || explicitSourceConflict;
 }
-
 function getRoutingBlockingFields(rec) {
   return getMissingHubFields(rec).filter(field => {
     const normalized = canonicalInstallBaseFieldName(field);
