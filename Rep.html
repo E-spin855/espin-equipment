@@ -8610,10 +8610,117 @@ function buildRepOwnedInstallBasePacket(rec, reason = "rep_update") {
   };
 }
 
-function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
-  if (!isRepOwnedInstallBaseRecord(rec)) return;
 
-  const packet = buildRepOwnedInstallBasePacket(rec, reason);
+function getRepOwnedActiveFixFields(rec) {
+  if (!rec) return [];
+
+  const isBlank = value => {
+    const text = String(value ?? "").trim().toLowerCase();
+    return !text || ["-", "n/a", "na", "none", "null", "unknown", "other"].includes(text);
+  };
+
+  const fields = [];
+  const add = field => { if (!fields.includes(field)) fields.push(field); };
+
+  if (isBlank(rec.oem_project_id || rec.project_id || rec.asset_id)) add("project");
+  if (isBlank(rec.make || rec.manufacturer || rec.brand)) add("make");
+  if (isBlank(rec.model)) add("model");
+  if (isBlank(rec.modality)) add("modality");
+  if (isBlank(rec.serial_number || rec.serial)) add("serial");
+  if (isBlank(rec.dom || rec.manufacture_year || rec.year)) add("dom");
+  if (isBlank(rec.site || rec.site_name || rec.facility || rec.facility_name || rec.hospital_name)) add("site");
+  if (isBlank(rec.territory || rec.manager_territory || rec.manager_region || rec.region)) add("territory");
+  if (isBlank(rec.assigned_rep_name || rec.assigned_rep || rec.rep_owner || rec.sales_rep_name || rec.sales_rep)) add("rep");
+
+  [
+    rec.install_base_rep_fix_request_fields,
+    rec.install_base_fix_request_fields,
+    rec.install_base_issue_field,
+    rec.install_base_fix_request_field
+  ]
+    .filter(Boolean)
+    .flatMap(value => String(value).split(","))
+    .map(value => normalizeCorrectedFieldName(value))
+    .filter(Boolean)
+    .forEach(add);
+
+  return fields.filter(field => {
+    const corrected = String(rec.install_base_corrected_fields || "")
+      .split(",")
+      .map(value => normalizeCorrectedFieldName(value))
+      .filter(Boolean);
+    return !corrected.includes(field);
+  });
+}
+
+function removeRepOwnedRecordFromDownstreamQueues(rec) {
+  const packet = buildRepOwnedInstallBasePacket(rec, "fix_hold");
+
+  let installBaseRecords = readArrayKey(INSTALL_BASE_KEY)
+    .filter(item => !sameWorkspaceEquipmentRecord(item, packet));
+  writeArrayKey(INSTALL_BASE_KEY, installBaseRecords);
+
+  let responseQueue = readArrayKey(INSTALL_BASE_RESPONSE_KEY)
+    .filter(item => !sameWorkspaceEquipmentRecord(item, packet));
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, responseQueue);
+
+  let finalSyncRecords = readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY)
+    .filter(item => !sameWorkspaceEquipmentRecord(item, packet));
+  writeArrayKey(INSTALL_BASE_FINAL_SYNC_KEY, finalSyncRecords);
+
+  let managerQueue = {};
+  try {
+    managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (!managerQueue || typeof managerQueue !== "object" || Array.isArray(managerQueue)) managerQueue = {};
+  } catch {
+    managerQueue = {};
+  }
+
+  Object.keys(managerQueue).forEach(name => {
+    managerQueue[name] = (Array.isArray(managerQueue[name]) ? managerQueue[name] : [])
+      .filter(item => !sameSyncRecord(item, packet));
+  });
+  localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+}
+
+function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
+  if (!isRepOwnedInstallBaseRecord(rec)) return false;
+
+  const activeFixFields = getRepOwnedActiveFixFields(rec);
+
+  if (activeFixFields.length) {
+    const updated = {
+      ...rec,
+      install_base_has_open_issue: true,
+      install_base_fix_request_fields: activeFixFields.join(","),
+      install_base_issue_field: activeFixFields.join(","),
+      rep_fix_required: "Install Base FIX",
+      rep_status: "clarification_needed",
+      rep_action: "fix_install_base_data",
+      rep_action_label: "Install Base FIX",
+      install_base_release_status: "fix_needed",
+      install_base_sync_type: "fix_hold",
+      install_base_visible: false,
+      manager_visible: false
+    };
+
+    state.records = state.records.map(item =>
+      sameWorkspaceEquipmentRecord(item, updated) ? updated : item
+    );
+    saveRecords();
+    removeRepOwnedRecordFromDownstreamQueues(updated);
+    return false;
+  }
+
+  const packet = buildRepOwnedInstallBasePacket({
+    ...rec,
+    install_base_has_open_issue: false,
+    install_base_fix_request_fields: "",
+    install_base_issue_field: "",
+    rep_fix_required: "",
+    install_base_release_status: "ready_for_sync",
+    install_base_sync_type: "clean_sync"
+  }, reason);
   const managerPacket = {
     ...packet,
     manager_visible: true,
@@ -8662,6 +8769,8 @@ function syncRepOwnedRecordToInstallBase(rec, reason = "rep_update") {
   } catch {
     window.dispatchEvent(new Event("rep_feed_update"));
   }
+
+  return true;
 }
 
 function buildRepLocalPacket(rec) {
