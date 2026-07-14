@@ -5668,8 +5668,23 @@ function getRecordRepName(rec) {
 }
 
 function recordMatchesSelectedRep(rec) {
+  if (!rec) return false;
+
+  // Records created from this Rep page always belong in this Rep's table.
+  // Do not let later Hub/Manager aliases or an exact-name mismatch hide them.
+  if (
+    rec.rep_added_install_base === true ||
+    rec.rep_owned_install_base === true ||
+    rec.record_origin === "rep_owned_install_base" ||
+    rec.install_base_release_status === "rep_local_record"
+  ) {
+    return true;
+  }
+
   if (!state.selectedRep) return true;
-  return getRecordRepName(rec) === state.selectedRep;
+
+  return clean(getRecordRepName(rec)).toLowerCase() ===
+    clean(state.selectedRep).toLowerCase();
 }
 
 function getSelectedRepParts() {
@@ -9176,7 +9191,25 @@ function isRepNewProjectIntakeRecord(rec) {
 
 function getMyEquipmentReviewRecords() {
   let records = state.records
-    .filter(recordMatchesSelectedRep)
+    .filter(rec => {
+      const isRepCreated =
+        rec?.rep_added_install_base === true ||
+        rec?.rep_owned_install_base === true ||
+        rec?.record_origin === "rep_owned_install_base" ||
+        rec?.install_base_release_status === "rep_local_record";
+
+      if (isRepCreated) {
+        rec.rep_visible = true;
+        rec.rep_hidden = false;
+        rec.manager_only = false;
+        rec.release_destination = "rep";
+        rec.install_base_released_to = "rep";
+        rec.project_type = "equipment_review_record";
+        return true;
+      }
+
+      return recordMatchesSelectedRep(rec);
+    })
     .filter(rec => !isRepNewProjectIntakeRecord(rec));
 
   if (!state.showCompleted) {
