@@ -1683,6 +1683,8 @@ tr.unread-message-row td{
 
 
 <script>
+// PATCH Hub 106: source-accurate import and exception display.
+// Hub shows FIX only for actual blank source fields or explicit source conflicts.
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
@@ -2506,7 +2508,7 @@ function formatInstallBaseReviewLabel(rec) {
     rec.proactive_reason ||
     rec.install_base_action_label ||
     rec.install_base_issue_type ||
-    "Manual Clarification"
+    "Asset Status"
   );
 
   return label
@@ -2602,130 +2604,39 @@ function isDuplicateAsset(rec) {
 function getDataExceptions(rec) {
   const issues = [];
 
-  if (!clean(rec.oem_project_id || rec.asset_id)) {
-    issues.push({ type: "missing", label: "Missing Project / Asset ID" });
-  }
+  // Source-accurate validation only: a FIX may appear only when the imported
+  // or pushed record actually contains a blank required field, or when the
+  // source explicitly flags a conflict. Do not infer errors from notes, labels,
+  // review text, age, utilization, or other Hub-generated interpretation.
+  const requiredFields = [
+    ["project", clean(rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id), "Missing Project / Asset ID", "missing"],
+    ["make", clean(rec.make || rec.manufacturer || rec.brand), "Missing Brand", "missing"],
+    ["modality", clean(rec.modality), "Missing Modality", "missing"],
+    ["model", clean(rec.model), "Missing Model", "missing"],
+    ["serial", clean(rec.serial_number || rec.serial || rec.system_serial), "Missing Serial", "missing"],
+    ["dom", clean(rec.dom || rec.year || rec.manufacture_year), "Missing DOM", "missing"],
+    ["site", clean(rec.site || rec.site_name || rec.facility || rec.hospital || rec.location), "Missing Site", "missing"],
+    ["rep", clean(getHubRepOwnerValue(rec)), "Missing Rep Owner", "owner"],
+    ["owner", clean(rec.manager_name || rec.owner_group_name || rec.owner_group || rec.manager), "Missing Owner Group", "owner"],
+    ["territory", clean(rec.manager_region || rec.manager_territory || rec.territory || rec.region), "Missing Territory", "owner"]
+  ];
 
-  if (!clean(rec.make)) {
-    issues.push({ type: "missing", label: "Missing Brand" });
-  }
-
-  if (!clean(rec.modality) || lower(rec.modality) === "other") {
-    issues.push({ type: "missing", label: "Missing Modality" });
-  }
-
-  if (!clean(rec.model)) {
-    issues.push({ type: "missing", label: "Missing Model" });
-  }
-
-  if (!clean(rec.serial_number || rec.serial)) {
-    issues.push({ type: "missing", label: "Missing Serial" });
-  }
-
-  if (!clean(rec.dom)) {
-    issues.push({ type: "missing", label: "Missing DOM" });
-  }
-
-  if (!clean(rec.site) || rec.site === "Unknown Site") {
-    issues.push({ type: "missing", label: "Missing Site" });
-  }
-
-  const requestText = [
-    rec.axis_clarification_reason,
-    rec.install_base_clarification_reason,
-    rec.install_base_original_issue_field,
-    rec.install_base_fix_request_field,
-    rec.install_base_issue_field,
-    rec.install_base_corrected_fields,
-    rec.install_base_issue_type,
-    rec.install_base_issue_reason,
-    rec.install_base_action_label,
-    rec.install_base_action_reason,
-    rec.install_base_issue_note,
-    rec.oem_review_reason,
-    rec.review_reason,
-    rec.proactive_reason,
-    rec.rep_action_required,
-    rec.conflict_notes
-  ].join(" ").toLowerCase();
-
-  const repOwnerRequested =
-    requestText.includes("assigned rep") ||
-    requestText.includes("rep owner") ||
-    requestText.includes("rep name") ||
-    requestText.includes("sales rep") ||
-    requestText.includes("missing rep");
-
-  const ownerGroupRequested =
-    requestText.includes("owner group") ||
-    requestText.includes("manager assignment") ||
-    requestText.includes("manager owner") ||
-    requestText.includes("missing owner group");
-
-  const territoryRequested =
-    requestText.includes("territory") ||
-    requestText.includes("manager_region") ||
-    requestText.includes("manager territory") ||
-    requestText.includes("assigned territory");
-
-  const repOwnerWasCorrected = wasHubFieldCorrectionReturned(rec, "rep");
-  const ownerGroupWasCorrected = wasHubFieldCorrectionReturned(rec, "owner");
-  const territoryWasCorrected = wasHubFieldCorrectionReturned(rec, "territory");
-
-  if (repOwnerRequested && !repOwnerWasCorrected) {
-    issues.push({ type: "owner", label: "Missing Rep Owner" });
-  } else if (!repOwnerRequested && !getHubRepOwnerValue(rec)) {
-    issues.push({ type: "owner", label: "Missing Rep Owner" });
-  }
-
-  const ownerValue = clean(rec.manager_name || rec.owner_group_name || rec.owner_group || "");
-
-  if (ownerGroupRequested && !ownerGroupWasCorrected) {
-    issues.push({ type: "owner", label: "Missing Owner Group" });
-  } else if (
-    !ownerGroupRequested &&
-    (
-      !ownerValue ||
-      isBlankHubField(ownerValue, "owner")
-    )
-  ) {
-    issues.push({ type: "owner", label: "Missing Owner Group" });
-  }
-
-  const actualTerritoryValue = clean(
-    rec.manager_region ||
-    rec.manager_territory ||
-    rec.territory ||
-    ""
-  );
-
-  if (territoryRequested && !territoryWasCorrected) {
-    issues.push({ type: "owner", label: "Missing Territory" });
-  } else if (
-    !territoryRequested &&
-    (
-      !actualTerritoryValue ||
-      isBlankHubField(actualTerritoryValue, "territory") ||
-      getOwnerTerritory(rec) === "Unassigned Territory"
-    )
-  ) {
-    issues.push({ type: "owner", label: "Missing Territory" });
-  }
+  requiredFields.forEach(([field, value, label, type]) => {
+    if (isBlankHubField(value, field)) {
+      issues.push({ type, label, field });
+    }
+  });
 
   if (
     lower(rec.source_conflict) === "yes" ||
-    lower(rec.conflict) === "yes" ||
-    lower(rec.install_base_issue_type || "").includes("mismatch")
+    lower(rec.conflict) === "yes"
   ) {
-    issues.push({ type: "source", label: "Source Conflict" });
-  }
-
-  if (isDuplicateAsset(rec)) {
-    issues.push({ type: "source", label: "Duplicate Asset" });
+    issues.push({ type: "source", label: "Source Conflict", field: "source_conflict" });
   }
 
   return issues;
 }
+
 function hasActualInstallBaseCorrection(rec) {
   if (!rec) return false;
 
@@ -3099,7 +3010,7 @@ function renderHubTerritoryCell(rec) {
     return renderHubFieldValue(rec, "territory", territoryValue);
   }
 
-  return renderHubFieldValue(rec, "territory", getOwnerTerritory(rec));
+  return renderHubFieldValue(rec, "territory", territoryValue);
 }
 function wasHubOwnerGroupSpecificallyRequested(rec) {
   if (!rec) return false;
@@ -3161,12 +3072,24 @@ function renderHubOwnerGroupCell(rec) {
   return escapeHtml(ownerValue);
 }
 function getMissingHubFields(rec) {
-  if (window.AxisUtils?.getMissingInstallBaseFields) {
-    return window.AxisUtils.getMissingInstallBaseFields(rec);
-  }
+  // Read only the actual values supplied in the record. The Hub must not
+  // manufacture missing-field conditions from review prose or defaults.
+  const fields = [
+    ["project", rec.oem_project_id || rec.project_id || rec.asset_id || rec.equipment_id],
+    ["make", rec.make || rec.manufacturer || rec.brand],
+    ["model", rec.model],
+    ["modality", rec.modality],
+    ["serial", rec.serial_number || rec.serial || rec.system_serial],
+    ["dom", rec.dom || rec.year || rec.manufacture_year],
+    ["site", rec.site || rec.site_name || rec.facility || rec.hospital || rec.location],
+    ["rep", getHubRepOwnerValue(rec)],
+    ["owner", rec.manager_name || rec.owner_group_name || rec.owner_group || rec.manager],
+    ["territory", rec.manager_region || rec.manager_territory || rec.territory || rec.region]
+  ];
 
-  return ["project", "make", "model", "modality", "serial", "dom", "site", "rep", "manager"]
-    .filter(field => isBlankHubField(getSharedInstallBaseFieldValue(rec, field), field));
+  return fields
+    .filter(([field, value]) => isBlankHubField(value, field))
+    .map(([field]) => field);
 }
 
 function isRealHubOwnerValue(value) {
@@ -5426,29 +5349,28 @@ function parseWorkbook(file) {
         obj.serial_number ||
         obj.serial;
 
-      const demoOwner = getDemoOwner(seed, obj.state);
-
+      // Source-accurate import: never invent manager or territory values.
       const managerName =
         obj.manager_name ||
         obj.assigned_manager_name ||
         obj.regional_manager ||
         obj.manager ||
         obj.owner_group_name ||
-        demoOwner.name;
+        "";
 
       const managerEmail =
         obj.manager_email ||
         obj.assigned_manager_email ||
         obj.regional_manager_email ||
         obj.owner_group_email ||
-        demoOwner.email;
+        "";
 
       const managerRegion =
         obj.manager_region ||
         obj.manager_territory ||
         obj.region ||
         obj.territory ||
-        demoOwner.territory;
+        "";
 
       const projectId =
         obj.oem_project_id ||
@@ -5479,7 +5401,7 @@ function parseWorkbook(file) {
         obj.site_address ||
         obj.address ||
         `${obj.city || ""} ${obj.state || ""}`.trim() ||
-        "Unknown Site";
+        "";
 
     const cleanInstallBaseAsk = String(
   obj.rep_fix_required ||
@@ -5547,7 +5469,7 @@ utilization_percent:
           obj.rep_name ||
           obj.assigned_rep_name ||
           obj.rep_owner ||
-          "Unassigned",
+          "",
 
         assigned_rep_email:
           obj.sales_rep_email ||
