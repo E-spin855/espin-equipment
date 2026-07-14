@@ -4685,18 +4685,68 @@ const repUpdateTypes = [
   "completed",
   "quote_created",
   "quote_sent",
-  "tradein_sync"
+  "tradein_sync",
+  "rep_upload",
+  "rep_added_install_base",
+  "new_project_created",
+  "contact_customer",
+  "schedule_follow_up",
+  "add_note",
+  "mark_reviewed",
+  "prepare_quote_review",
+  "submit_quote_for_approval",
+  "open_approved_email_draft",
+  "send_to_trade_in_app",
+  "send_to_disposal_review",
+  "complete_project",
+  "remove_from_my_view",
+  "rep_priority_updated",
+  "rep_attention_alert_updated"
 ];
+
+const incomingRepHistory = Array.isArray(rec.rep_action_history)
+  ? rec.rep_action_history
+  : [];
+
+const latestIncomingRepActionAt = incomingRepHistory.reduce(
+  (latest, item) => {
+    const value = new Date(
+      item?.at ||
+      item?.date ||
+      item?.timestamp ||
+      0
+    ).getTime();
+
+    return Number.isFinite(value) && value > latest
+      ? value
+      : latest;
+  },
+  0
+);
+
+const previousSeenTime =
+  new Date(previouslySeenAt || 0).getTime() || 0;
+
+const incomingUpdateTime = Math.max(
+  new Date(incomingUpdateAt || 0).getTime() || 0,
+  latestIncomingRepActionAt,
+  new Date(rec.rep_last_action_at || 0).getTime() || 0,
+  new Date(rec.rep_manager_message_at || 0).getTime() || 0,
+  new Date(rec.priority_updated_at || 0).getTime() || 0,
+  new Date(rec.rep_attention_alert_configured_at || 0).getTime() || 0
+);
+
+const incomingFlashType = lower(rec.manager_flash_type || "");
 
 const isFreshRepUpdate =
   !hubRepOnlyTextExchange &&
-  rec.manager_unseen_update === true &&
-  repUpdateTypes.includes(lower(rec.manager_flash_type)) &&
   (
-    !previouslySeenAt ||
-    !incomingUpdateAt ||
-    new Date(incomingUpdateAt).getTime() >
-      new Date(previouslySeenAt).getTime()
+    rec.manager_unseen_update === true ||
+    incomingUpdateTime > previousSeenTime
+  ) &&
+  (
+    repUpdateTypes.includes(incomingFlashType) ||
+    incomingUpdateTime > previousSeenTime
   );
 
 const repFixSeen =
@@ -6304,6 +6354,8 @@ function shouldManagerRowFlash(rec) {
 
   return Boolean(
     isRealRepUpdate ||
+    hasNewRepActionSinceManagerViewed(rec) ||
+    rec.manager_unseen_update === true ||
     isManagerRepFixUnseen(rec) ||
     hasUnseenManagerRelease(rec) ||
     hasFollowUpOverdueBy7Days(rec) ||
