@@ -13622,9 +13622,6 @@ function addRepRecordToVisitList(recordId){
     window.location.href = "today.html";
   }
 }
-const FINANCIAL_RECORD_COLLAPSE_KEY =
-  "espin_rep_financial_record_collapse_v1";
-
 function getFinancialRecordCollapseMap() {
   try {
     const parsed = JSON.parse(
@@ -13642,12 +13639,7 @@ function isFinancialRecordCollapsed(recordId) {
   );
 }
 
-function toggleFinancialRecord(recordId, event) {
-  if (event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
+function toggleFinancialRecord(recordId) {
   const id = String(recordId || "");
   if (!id) return;
 
@@ -13664,7 +13656,7 @@ function toggleFinancialRecord(recordId, event) {
     JSON.stringify(map)
   );
 
-  renderDetail();
+  render();
 }
 
 
@@ -14018,7 +14010,7 @@ function renderDetail() {
         <button
           type="button"
           class="secondary financial-record-toggle"
-          onclick="toggleFinancialRecord('${escapeJs(rec.id)}', event)"
+          onclick="toggleFinancialRecord('${escapeJs(rec.id)}')"
         >
           ${isFinancialRecordCollapsed(rec.id) ? "Open" : "Hide"}
         </button>
@@ -14104,8 +14096,7 @@ function renderDetail() {
     </div>
 
     ${
-      rec.tradein_sync_received &&
-      rec.external_tradein_status !== "applied_to_quote"
+      rec.tradein_sync_received
         ? `
           <div class="detail-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
             <div class="k">Associated Trade-In Equipment</div>
@@ -15471,8 +15462,11 @@ function saveInstallBaseFix(id) {
       ).toLowerCase();
 
       const handoffUrl = new URL(
-        "https://espin-medical-app.vercel.app//install-projects.html"
+        "https://espin-medical-app.vercel.app/EspinConnectHandoff.html"
       );
+
+      handoffUrl.searchParams.set("project_type", "install");
+      handoffUrl.searchParams.set("handoff", "installation_project");
 
       handoffUrl.searchParams.set(
         "project_name",
@@ -17353,7 +17347,6 @@ queue.unshift(updated);
       rec.trade_in_credit = externalValue;
       rec.external_tradein_status = "applied_to_quote";
       rec.external_tradein_applied_at = new Date().toISOString();
-      rec.tradein_reference_card_hidden = true;
 
       const quoteAmount = Number(rec.quote_amount || 0);
       const estimatedCost = Number(rec.quote_estimated_cost || 0);
