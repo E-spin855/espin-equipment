@@ -6559,10 +6559,46 @@ function renderReviewSignalCell(rec) {
       rec.rep_status === "clarification_needed" ||
       rec.install_base_sync_type === "manual_clarification";
 
+    const clarificationContext = lower(
+      [
+        rec.axis_clarification_reason,
+        rec.install_base_clarification_reason,
+        rec.install_base_issue_reason,
+        rec.install_base_action_reason,
+        rec.install_base_issue_note,
+        rec.oem_review_reason,
+        rec.review_reason,
+        rec.manager_review_request
+      ].filter(Boolean).join(" ")
+    );
+
+    const assignmentNowResolved =
+      (
+        (
+          clarificationContext.includes("rep name") ||
+          clarificationContext.includes("rep owner") ||
+          clarificationContext.includes("assigned rep")
+        ) &&
+        hasValidAssignedRep(rec)
+      ) ||
+      (
+        (
+          clarificationContext.includes("territory") ||
+          clarificationContext.includes("manager region") ||
+          clarificationContext.includes("owner group")
+        ) &&
+        hasValidAssignedTerritory(rec)
+      );
+
     const fixed =
       rec.install_base_correction_status === "corrected_by_rep" ||
       rec.install_base_fix_status === "rep_reviewed" ||
-      rec.install_base_response_status === "rep_correction_sent";
+      rec.install_base_response_status === "rep_correction_sent" ||
+      rec.install_base_correction_status === "corrected_by_manager" ||
+      rec.install_base_fix_status === "manager_reviewed" ||
+      rec.install_base_response_status === "manager_correction_sent" ||
+      rec.install_base_response_from === "manager" ||
+      assignmentNowResolved;
 
    const label =
   isManualClarification && !fixed
@@ -6991,58 +7027,9 @@ function normalizeOemReviewLabelForRep(rec) {
     ownershipContext.includes("manager region") ||
     ownershipContext.includes("owner group");
 
-  const managerCorrectedFields = [
-    rec.install_base_latest_fix_field,
-    rec.install_base_latest_fix_fields,
-    rec.install_base_corrected_fields,
-    rec.manager_corrected_field,
-    rec.manager_corrected_fields,
-    ...Object.keys(
-      rec.corrected_fields && typeof rec.corrected_fields === "object"
-        ? rec.corrected_fields
-        : {}
-    ),
-    ...Object.keys(
-      rec.corrected_values && typeof rec.corrected_values === "object"
-        ? rec.corrected_values
-        : {}
-    )
-  ]
-    .flatMap(value => String(value || "").split(","))
-    .map(value => lower(value))
-    .filter(Boolean);
-
-  const managerFixedRepName = managerCorrectedFields.some(field =>
-    [
-      "rep",
-      "assigned_rep",
-      "assigned rep",
-      "assigned_rep_name",
-      "assigned rep name",
-      "rep_owner",
-      "rep owner",
-      "rep_name",
-      "rep name",
-      "sales_rep",
-      "sales rep"
-    ].includes(field)
-  );
-
-  const managerFixedTerritory = managerCorrectedFields.some(field =>
-    [
-      "territory",
-      "manager_region",
-      "manager region",
-      "manager_territory",
-      "manager territory",
-      "owner_group",
-      "owner group"
-    ].includes(field)
-  );
-
   const ownershipResolved =
-    ((isRepOwnerIssue || managerFixedRepName) && hasValidAssignedRep(rec)) ||
-    ((isTerritoryIssue || managerFixedTerritory) && hasValidAssignedTerritory(rec));
+    (isRepOwnerIssue && hasValidAssignedRep(rec)) ||
+    (isTerritoryIssue && hasValidAssignedTerritory(rec));
 
   if (ownershipResolved) {
     const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
@@ -7275,14 +7262,46 @@ if (
 }
     const fixLabel = getInstallBaseFixLabel(incoming);
 
+  const incomingClarificationContext = lower(
+    [
+      incoming.axis_clarification_reason,
+      incoming.install_base_clarification_reason,
+      incoming.install_base_issue_reason,
+      incoming.install_base_action_reason,
+      incoming.install_base_issue_note,
+      incoming.oem_review_reason,
+      incoming.review_reason,
+      incoming.manager_review_request
+    ].filter(Boolean).join(" ")
+  );
+
+  const assignmentNowResolved =
+    (
+      (
+        incomingClarificationContext.includes("rep name") ||
+        incomingClarificationContext.includes("rep owner") ||
+        incomingClarificationContext.includes("assigned rep")
+      ) &&
+      hasValidAssignedRep(incoming)
+    ) ||
+    (
+      (
+        incomingClarificationContext.includes("territory") ||
+        incomingClarificationContext.includes("manager region") ||
+        incomingClarificationContext.includes("owner group")
+      ) &&
+      hasValidAssignedTerritory(incoming)
+    );
+
   const alreadyFixed =
-  incoming.install_base_correction_status === "corrected_by_rep" ||
-  incoming.install_base_fix_status === "rep_reviewed" ||
-  incoming.install_base_response_status === "rep_correction_sent" ||
-  incoming.install_base_correction_status === "corrected_by_manager" ||
-  incoming.install_base_response_status === "manager_correction_sent" ||
-  incoming.install_base_fix_status === "manager_reviewed" ||
-  incoming.install_base_response_from === "manager";
+    incoming.install_base_correction_status === "corrected_by_rep" ||
+    incoming.install_base_fix_status === "rep_reviewed" ||
+    incoming.install_base_response_status === "rep_correction_sent" ||
+    incoming.install_base_correction_status === "corrected_by_manager" ||
+    incoming.install_base_response_status === "manager_correction_sent" ||
+    incoming.install_base_fix_status === "manager_reviewed" ||
+    incoming.install_base_response_from === "manager" ||
+    assignmentNowResolved;
 
 const isIncomingManagerFix = Boolean(
   incoming.install_base_correction_status === "corrected_by_manager" ||
