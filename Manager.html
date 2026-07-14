@@ -3314,6 +3314,83 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="manager-rep-action-history-style">
+.manager-current-followup{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:14px 0;
+  padding:12px 14px;
+  border:1px solid rgba(255,216,77,.34);
+  border-radius:14px;
+  background:rgba(255,216,77,.07);
+}
+.manager-current-followup > span:first-child{
+  color:#ffe890;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.manager-rep-action-list{
+  display:grid;
+  gap:10px;
+  margin-top:14px;
+}
+.manager-rep-action-item{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  gap:12px;
+  align-items:start;
+  padding:12px 14px;
+  border:1px solid rgba(88,184,255,.22);
+  border-radius:14px;
+  background:rgba(7,17,31,.72);
+}
+.manager-rep-action-number{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:1px solid rgba(65,255,156,.52);
+  background:rgba(65,255,156,.12);
+  color:#caffdf;
+  font-size:12px;
+  font-weight:950;
+}
+.manager-rep-action-label{
+  color:#eef6ff;
+  font-size:15px;
+  font-weight:950;
+  line-height:1.35;
+}
+.manager-rep-action-date{
+  margin-top:4px;
+  color:#9edcff;
+  font-size:12px;
+  font-weight:850;
+}
+.manager-rep-action-followup{
+  margin-top:6px;
+  color:#ffe890;
+  font-size:12px;
+  font-weight:900;
+}
+.manager-rep-action-empty{
+  margin-top:14px;
+  padding:14px;
+  border:1px solid rgba(88,184,255,.18);
+  border-radius:14px;
+  background:rgba(7,17,31,.58);
+  color:#9db6d2;
+  font-size:13px;
+}
+</style>
+
 </head>
 
 <body>
@@ -4730,6 +4807,96 @@ function hasFollowUpOverdueBy7Days(rec) {
   if (!lastRepAction || isNaN(lastRepAction.getTime())) return true;
 
   return lastRepAction <= followUpDate;
+}
+
+function getManagerRepActionHistory(rec) {
+  const history = Array.isArray(rec?.rep_action_history)
+    ? rec.rep_action_history
+        .filter(item => item && clean(item.label || item.action))
+        .map(item => ({
+          at: clean(item.at || item.date || item.timestamp),
+          action: clean(item.action),
+          label: clean(item.label || getRepActionLabel(item.action)),
+          followUpDate: clean(item.follow_up_date || item.followUpDate),
+          by: clean(item.by || item.rep || "Rep")
+        }))
+    : [];
+
+  if (!history.length && clean(rec?.rep_last_action_at)) {
+    history.push({
+      at: clean(rec.rep_last_action_at),
+      action: clean(rec.rep_action),
+      label: clean(
+        rec.rep_action_label ||
+        rec.rep_selected_action_label ||
+        getRepActionLabel(rec.rep_action)
+      ),
+      followUpDate: clean(rec.rep_follow_up_date || rec.next_action_date),
+      by: clean(rec.assigned_rep_name || "Rep")
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+
+  history.forEach(item => {
+    const signature = [
+      item.at,
+      item.action,
+      item.label,
+      item.followUpDate
+    ].join("|");
+
+    if (!seen.has(signature)) {
+      seen.add(signature);
+      deduped.push(item);
+    }
+  });
+
+  return deduped.sort((a, b) => {
+    const aTime = new Date(a.at || 0).getTime();
+    const bTime = new Date(b.at || 0).getTime();
+    return aTime - bTime;
+  });
+}
+
+function renderManagerRepActionHistory(rec) {
+  const history = getManagerRepActionHistory(rec);
+
+  if (!history.length) {
+    return `
+      <div class="manager-rep-action-empty">
+        No Rep actions recorded yet.
+      </div>
+    `;
+  }
+
+  return `
+    <div class="manager-rep-action-list">
+      ${history.map((item, index) => {
+        const parsed = new Date(item.at);
+        const displayDate =
+          item.at && !isNaN(parsed.getTime())
+            ? parsed.toLocaleString()
+            : (item.at || "Current");
+
+        const followUp = item.followUpDate
+          ? `<div class="manager-rep-action-followup">Follow-up: ${escapeHtml(item.followUpDate)}</div>`
+          : "";
+
+        return `
+          <div class="manager-rep-action-item">
+            <div class="manager-rep-action-number">${index + 1}</div>
+            <div class="manager-rep-action-content">
+              <div class="manager-rep-action-label">${escapeHtml(item.label || "Rep updated record")}</div>
+              <div class="manager-rep-action-date">${escapeHtml(displayDate)}</div>
+              ${followUp}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderFollowUpDatePill(rec) {
@@ -8654,59 +8821,28 @@ function renderDetail() {
 
   </div>
 
-  ${
-    !completed && getFollowUpDate(rec)
-      ? `
-        <div
-          class="${repFollowUpCardClass} manager-followup-card"
-          style="
-            border:2px solid rgba(65,255,156,.48);
-            background:rgba(65,255,156,.07);
-          "
-        >
-          <div class="k">Rep Follow-Up Date</div>
+  <div
+    class="${repFollowUpCardClass} manager-followup-card"
+    style="
+      border:2px solid rgba(65,255,156,.48);
+      background:rgba(65,255,156,.07);
+    "
+  >
+    <div class="k">Rep Action History</div>
 
-          <div
-            class="v"
-            style="margin-top:8px;"
-          >
+    ${
+      getFollowUpDate(rec)
+        ? `
+          <div class="manager-current-followup">
+            <span>Current Follow-Up</span>
             ${renderFollowUpDatePill(rec)}
           </div>
+        `
+        : ""
+    }
 
-          <div
-            class="mini"
-            style="
-              margin-top:10px;
-              font-size:13px;
-              line-height:1.45;
-            "
-          >
-            Follow-up date entered through the rep or manager workflow.
-          </div>
-        </div>
-      `
-    : `
-  <div class="detail-card manager-followup-card">
-    <div class="k">Rep Follow-Up Date</div>
-
-    <div
-      class="v"
-      style="
-        margin-top:14px;
-        color:#d8ebff;
-        font-size:16px;
-        font-weight:850;
-      "
-    >
-      No follow-up date set
-    </div>
-
-        <div class="mini">
-      The manager will see the date here when the rep schedules a follow-up.
-    </div>
+    ${renderManagerRepActionHistory(rec)}
   </div>
-`
-  }
 
 </div>
 <!-- END MANAGER REVIEW ROW -->
