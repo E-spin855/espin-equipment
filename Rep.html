@@ -5226,6 +5226,69 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="financial-record-span-layout">
+/* Financial Record spans the combined height of Review Reason + Rep Action. */
+.rep-financial-span-row{
+  grid-column:1 / -1!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:16px!important;
+  align-items:stretch!important;
+  width:100%!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-left{
+  display:grid!important;
+  grid-template-rows:auto auto!important;
+  gap:16px!important;
+  align-content:start!important;
+  height:100%!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-right{
+  display:flex!important;
+  height:100%!important;
+  align-self:stretch!important;
+}
+
+.rep-financial-span-row .selected-oem-review-reason,
+.rep-financial-span-row .rep-action-main-card{
+  width:100%!important;
+  margin:0!important;
+  height:auto!important;
+  min-height:0!important;
+}
+
+.rep-financial-span-row .rep-financial-review-card{
+  width:100%!important;
+  height:100%!important;
+  min-height:100%!important;
+  margin:0!important;
+  align-self:stretch!important;
+  justify-content:flex-start!important;
+  padding:20px!important;
+}
+
+/* Expanded financial content uses the available height cleanly. */
+.rep-financial-span-row .financial-record-body{
+  flex:1 1 auto!important;
+  width:100%!important;
+}
+
+@media(max-width:1000px){
+  .rep-financial-span-row{
+    grid-template-columns:1fr!important;
+  }
+
+  .rep-financial-span-row > .rep-action-financial-right,
+  .rep-financial-span-row .rep-financial-review-card{
+    height:auto!important;
+    min-height:0!important;
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -14383,7 +14446,7 @@ function renderDetail() {
           class="secondary financial-record-toggle"
           onclick="toggleFinancialRecord('${escapeJs(rec.id)}')"
         >
-          ${isFinancialRecordCollapsed(rec.id) ? "Open" : "Hide"}
+          ${isFinancialRecordCollapsed(rec.id) ? "Hide Records" : "Open Records"}
         </button>
       </div>
       ${
@@ -14519,8 +14582,11 @@ if (detailGridEl) {
     detailGridEl.querySelector(".rep-review-request-card");
 
   if (facilityLayout && actionCard && financialCard) {
+    const reviewReasonCard =
+      detailGridEl.querySelector(".selected-oem-review-reason");
+
     const row = document.createElement("div");
-    row.className = "rep-action-financial-row";
+    row.className = "rep-action-financial-row rep-financial-span-row";
 
     const leftColumn = document.createElement("div");
     leftColumn.className = "rep-action-financial-left";
@@ -14532,6 +14598,11 @@ if (detailGridEl) {
 
     row.appendChild(leftColumn);
     row.appendChild(rightColumn);
+
+    // Keep Install Base Review Reason directly above Rep Action on the left.
+    if (reviewReasonCard) {
+      leftColumn.appendChild(reviewReasonCard);
+    }
 
     leftColumn.appendChild(actionCard);
     rightColumn.appendChild(financialCard);
