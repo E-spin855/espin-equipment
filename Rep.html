@@ -8216,11 +8216,39 @@ function upsertRepWorkspaceRecord(incoming, options = {}) {
 function buildManagerSyncPacket(rec) {
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
+  const currentRep = resolveCurrentRepIdentity();
+  const existingRepName = clean(
+    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+    rec.assigned_rep_name ||
+    rec.assigned_rep ||
+    rec.rep_owner ||
+    rec.rep_owner_name ||
+    rec.rep_name ||
+    rec.sales_rep_name ||
+    rec.sales_rep ||
+    rec.rep ||
+    ""
+  );
+  const repName = existingRepName || currentRep.full || "Unassigned";
+  const repParts = repName.split(/\s+/).filter(Boolean);
+  const repFirst = clean(rec.sales_rep_first || currentRep.first || repParts[0] || "");
+  const repLast = clean(rec.sales_rep_last || currentRep.last || repParts.slice(1).join(" ") || "");
 
   return {
     ...rec,
     key,
     id: rec.id || key,
+    sales_rep_first: repFirst,
+    sales_rep_last: repLast,
+    sales_rep_name: repName,
+    sales_rep: repName,
+    assigned_rep_name: repName,
+    assigned_rep: repName,
+    rep_owner: repName,
+    rep_owner_name: repName,
+    rep_name: repName,
+    rep: repName,
+    owner_name: repName,
 
     manager_visible: true,
     manager_unseen_update: true,
