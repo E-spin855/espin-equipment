@@ -6610,13 +6610,25 @@ function isManagerInstallBaseFieldRequested(rec, fieldName) {
   return requestedFields.some(field => aliases.includes(field));
 }
 
+function isManagerFieldPersistentlyCorrected(rec, fieldName) {
+  if (!isManagerRecordFixed(rec)) return false;
+
+  const fixedFields = managerCorrectedFieldsList(rec);
+
+  const aliases = getManagerInstallBaseFieldAliases(fieldName);
+
+  return fixedFields.some(field =>
+    aliases.includes(normalizeCorrectedFieldName(field))
+  );
+}
+
 function hasUnresolvedManagerInstallBaseIssues(rec) {
   if (!isManagerOpenInstallBaseFixRequest(rec)) return false;
 
   return getManagerInstallBaseIssueFields(rec).some(issue =>
     issue.requested === true &&
     isManagerInstallBaseFieldRequested(rec, issue.key) &&
-    !wasManagerFieldCorrected(rec, issue.key)
+    !isManagerFieldPersistentlyCorrected(rec, issue.key)
   );
 }
 
@@ -6708,7 +6720,7 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
 
   if (
     isManagerInstallBaseFieldRequested(rec, fieldName) &&
-    !wasManagerFieldCorrected(rec, fieldName)
+    !isManagerFieldPersistentlyCorrected(rec, fieldName)
   ) {
     return renderManagerFixButton(
       rec,
@@ -9934,6 +9946,15 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
       readArrayKey(STORAGE_KEY),
       readManagerQueueRecords()
     );
+  }
+
+  // Persist row-highlight acknowledgement after the record's update flags
+  // are cleared. Otherwise the signature changes during this click and the
+  // green frame immediately returns on the next render.
+  acknowledgeManagerRepRowUpdate(updated);
+
+  if (isRepAddedManagerRecord(updated)) {
+    markManagerRepAddedRecordSeen(updated);
   }
 
 state.selectedId = updated.id;
