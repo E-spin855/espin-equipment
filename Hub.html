@@ -5957,14 +5957,43 @@ function renderTable() {
     return;
   }
 
+  const getHubCorrectionTimestamp = rec => {
+    const values = [
+      rec?.install_base_response_at,
+      rec?.install_base_latest_fix_at,
+      rec?.install_base_corrected_at,
+      rec?.manager_response_at,
+      rec?.updated_at
+    ]
+      .map(value => new Date(value || 0).getTime())
+      .filter(value => Number.isFinite(value) && value > 0);
+
+    return values.length ? Math.max(...values) : 0;
+  };
+
   const sorted = [...records].sort((a, b) => {
+    const correctedA = isFixedByRep(a) || isFixedByManager(a) ? 1 : 0;
+    const correctedB = isFixedByRep(b) || isFixedByManager(b) ? 1 : 0;
+
+    // Corrected records always stay above every non-corrected record.
+    if (correctedB !== correctedA) return correctedB - correctedA;
+
+    // Most recently corrected record appears first within the corrected group.
+    if (correctedA && correctedB) {
+      const correctionTimeDifference =
+        getHubCorrectionTimestamp(b) - getHubCorrectionTimestamp(a);
+
+      if (correctionTimeDifference !== 0) return correctionTimeDifference;
+    }
+
     const responseA = a.install_base_response_at && !a.install_base_response_seen ? 1 : 0;
     const responseB = b.install_base_response_at && !b.install_base_response_seen ? 1 : 0;
     if (responseB !== responseA) return responseB - responseA;
 
-   const aa = isFixedByRep(a) ? 0 : getDataExceptions(a).length;
-const bb = isFixedByRep(b) ? 0 : getDataExceptions(b).length;
-if (bb !== aa) return bb - aa;
+    const aa = getDataExceptions(a).length;
+    const bb = getDataExceptions(b).length;
+    if (bb !== aa) return bb - aa;
+
     return String(a.site || "").localeCompare(String(b.site || ""));
   });
 
