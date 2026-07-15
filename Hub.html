@@ -1494,6 +1494,111 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="espin-red-hot-service-alert">
+.red-hot-inline-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:96px;
+  min-height:34px;
+  margin:3px auto;
+  padding:7px 10px;
+  border:2px solid rgba(255,120,120,.98);
+  border-radius:11px;
+  background:linear-gradient(90deg,#6f0710,#b90d1d,#ff3347);
+  color:#fff;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  box-shadow:0 0 22px rgba(255,51,71,.60);
+}
+
+tr.red-hot-row{
+  outline:3px solid rgba(255,51,71,.98)!important;
+  outline-offset:-3px;
+  box-shadow:
+    inset 6px 0 0 rgba(255,51,71,.98),
+    0 0 0 1px rgba(255,51,71,.46),
+    0 0 28px rgba(255,51,71,.58)!important;
+}
+
+tr.red-hot-row-pulse{
+  animation:redHotServicePulse 1s ease-in-out infinite!important;
+}
+
+@keyframes redHotServicePulse{
+  0%,100%{
+    outline-color:rgba(255,51,71,.72);
+    box-shadow:
+      inset 6px 0 0 rgba(255,51,71,.82),
+      0 0 0 1px rgba(255,51,71,.30),
+      0 0 16px rgba(255,51,71,.30);
+  }
+  50%{
+    outline-color:rgba(255,150,160,1);
+    box-shadow:
+      inset 6px 0 0 rgba(255,120,135,1),
+      0 0 0 2px rgba(255,120,135,.62),
+      0 0 38px rgba(255,51,71,.88);
+  }
+}
+
+.red-hot-service-card{
+  grid-column:1 / -1!important;
+  width:100%;
+  padding:18px 20px;
+  border:3px solid rgba(255,51,71,.95);
+  border-radius:16px;
+  background:
+    radial-gradient(circle at top left,rgba(255,51,71,.22),transparent 38%),
+    linear-gradient(135deg,rgba(90,7,17,.94),rgba(28,8,19,.96));
+  box-shadow:
+    0 0 0 1px rgba(255,120,135,.30),
+    0 0 30px rgba(255,51,71,.48);
+}
+
+.red-hot-service-title{
+  color:#fff;
+  font-size:20px;
+  font-weight:950;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.red-hot-service-reason{
+  margin-top:10px;
+  color:#fff2f3;
+  font-size:17px;
+  font-weight:900;
+  line-height:1.4;
+}
+
+.red-hot-service-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  margin-top:13px;
+}
+
+.red-hot-service-meta span{
+  display:inline-flex;
+  padding:7px 10px;
+  border:1px solid rgba(255,180,188,.36);
+  border-radius:999px;
+  background:rgba(20,5,10,.48);
+  color:#ffd8dc;
+  font-size:12px;
+  font-weight:850;
+}
+
+.red-hot-acknowledged{
+  color:#ffced3;
+  font-weight:900;
+}
+</style>
+
 </head>
 
 <body>
@@ -5952,6 +6057,87 @@ function selectOwner(name) {
   render();
 }
 
+
+function espinTruthy(value) {
+  return value === true || value === "true" || value === 1 || value === "1" ||
+    String(value || "").trim().toLowerCase() === "yes";
+}
+
+function isRedHotServiceAlert(rec) {
+  if (!rec) return false;
+
+  const status = String(rec.red_hot_status || "active").trim().toLowerCase();
+  const resolved =
+    Boolean(String(rec.service_resolved_at || "").trim()) ||
+    ["resolved","closed","restored"].includes(status);
+
+  return espinTruthy(rec.red_hot_alert) && !resolved;
+}
+
+function renderRedHotInlineBadge(rec) {
+  return isRedHotServiceAlert(rec)
+    ? `<div class="red-hot-inline-badge">🔥 RED HOT</div>`
+    : "";
+}
+
+function getRedHotElapsedDays(rec) {
+  const raw = rec?.equipment_down_at || rec?.equipment_down_date || "";
+  const downAt = new Date(raw);
+  if (!raw || Number.isNaN(downAt.getTime())) return "";
+  return Math.max(0, Math.floor((Date.now() - downAt.getTime()) / 86400000));
+}
+
+function renderRedHotServiceCard(rec, audience = "viewer") {
+  if (!isRedHotServiceAlert(rec)) return "";
+
+  const elapsed = getRedHotElapsedDays(rec);
+  const target = Number(rec.oem_service_target_days || rec.service_target_days || 7);
+  const reason = String(
+    rec.red_hot_reason ||
+    `Equipment remains down beyond the OEM ${target}-day restoration standard.`
+  );
+
+  const acknowledged = espinTruthy(rec.red_hot_acknowledged);
+  const repControls = audience === "rep"
+    ? `
+      <div class="btns" style="margin-top:14px;">
+        <button
+          type="button"
+          class="red"
+          onclick="acknowledgeRedHotAlert('${escapeJs(rec.id || rec.key || "")}', event)"
+          ${acknowledged ? "disabled" : ""}
+        >
+          ${acknowledged ? "Acknowledged" : "Acknowledge"}
+        </button>
+        <button
+          type="button"
+          class="secondary"
+          onclick="event.stopPropagation(); document.querySelector('.rep-action-main-card, .rep-action-only-card')?.scrollIntoView({behavior:'smooth',block:'center'});"
+        >
+          Open Rep Action
+        </button>
+      </div>
+    `
+    : "";
+
+  return `
+    <div class="red-hot-service-card">
+      <div class="red-hot-service-title">🔥 RED HOT — Customer Intervention Required</div>
+      <div class="red-hot-service-reason">${escapeHtml(reason)}</div>
+      <div class="red-hot-service-meta">
+        <span>Equipment status: ${escapeHtml(rec.equipment_operational_status || "Down")}</span>
+        <span>Down: ${escapeHtml(elapsed === "" ? "Date supplied by OEM" : `${elapsed} days`)}</span>
+        <span>OEM standard: ${escapeHtml(String(target))} days</span>
+        <span>Service status: ${escapeHtml(rec.service_status || "Unable to Restore")}</span>
+        <span>Source: ${escapeHtml(rec.red_hot_source || "OEM Service")}</span>
+      </div>
+      ${acknowledged ? `<div class="red-hot-acknowledged" style="margin-top:12px;">Acknowledged by Rep</div>` : ""}
+      ${repControls}
+    </div>
+  `;
+}
+
+
 function renderTable() {
   const tbody = $("tableBody");
   renderHubAdvancedFilters();
@@ -5998,6 +6184,10 @@ function renderTable() {
   };
 
   const sorted = [...records].sort((a, b) => {
+    const redHotA = isRedHotServiceAlert(a) ? 1 : 0;
+    const redHotB = isRedHotServiceAlert(b) ? 1 : 0;
+    if (redHotB !== redHotA) return redHotB - redHotA;
+
     const correctedA = isFixedByRep(a) || isFixedByManager(a) ? 1 : 0;
     const correctedB = isFixedByRep(b) || isFixedByManager(b) ? 1 : 0;
 
@@ -6036,6 +6226,7 @@ const completionUnseen =
   rec.install_base_response_seen !== true;
 
 const rowClass = [
+  isRedHotServiceAlert(rec) ? "red-hot-row red-hot-row-pulse" : "",
   String(state.selectedId) === String(rec.id) ? "selected" : "",
 rec.install_base_response_at && !rec.install_base_response_seen && !fixedByRep
   ? "install-base-message-row-frame"
@@ -7032,6 +7223,7 @@ function renderDetail() {
   detail.classList.remove("hidden");
 
   grid.innerHTML = `
+    ${renderRedHotServiceCard(rec, "hub")}
     ${renderFixedDataCard(rec)}
 
     ${!isAutoSyncEligible(rec) ? `
