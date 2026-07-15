@@ -6959,14 +6959,17 @@ function isCompletedManagerRecord(rec) {
   );
 }
 function renderManagerRepOwnerCell(rec) {
-  if (isManagerInstallBaseFieldRequested(rec, "rep")) {
-    return renderManagerFixButton(rec, getManagerFixBadgeLabel(rec, "rep"));
-  }
-
   const repOwner = String(
     rec.assigned_rep_name ||
-    rec.rep ||
+    rec.assigned_rep ||
+    rec.rep_owner ||
+    rec.rep_owner_name ||
     rec.sales_rep_name ||
+    rec.sales_rep ||
+    rec.rep_name ||
+    rec.rep ||
+    rec.owner_name ||
+    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
     ""
   ).trim();
 
@@ -6982,24 +6985,24 @@ function renderManagerRepOwnerCell(rec) {
     "-"
   ].includes(normalized);
 
+  // Source/synced Rep identity always wins over any stale FIX request.
   if (!isMissing) {
-    return renderManagerFixOrValue(
+    return renderManagerCorrectedValue(
       rec,
       "rep",
       escapeHtml(repOwner)
     );
   }
 
-  // Only show FIX while this is an unresolved Install Base request.
-  // After Manager sends correction back, do not let a stale empty owner copy
-  // keep showing the yellow FIX button.
-  if (!isManagerInstallBaseRequest(rec)) {
-    return `<span class="mini">-</span>`;
+  // Only show Awaiting Rep Fix when the Rep identity is genuinely absent.
+  if (
+    isManagerInstallBaseFieldRequested(rec, "rep") ||
+    isManagerFieldAwaitingRepFix(rec, "rep")
+  ) {
+    return `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`;
   }
 
-  const id = rec.id || getRecordKey(rec) || "";
-
-  return renderManagerFixButton({ ...rec, id }, getManagerFixBadgeLabel(rec, "rep"));
+  return `<span class="mini">-</span>`;
 }
 
 function renderRepStatus(rec) {
