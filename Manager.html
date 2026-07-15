@@ -6766,19 +6766,82 @@ function getManagerFixBadgeLabel(rec, fieldName) {
   return `FIX ${label}`;
 }
 
+function getManagerExplicitFixFields(rec) {
+  const fields = new Set();
+
+  const addField = value => {
+    const field = normalizeCorrectedFieldName(value);
+    if (field) fields.add(field);
+  };
+
+  [
+    rec?.missing_fields,
+    rec?.error_fields,
+    rec?.fix_fields,
+    rec?.requested_fix_fields,
+    rec?.install_base_issue_fields,
+    rec?.install_base_fix_fields
+  ].forEach(value => {
+    if (Array.isArray(value)) {
+      value.forEach(addField);
+      return;
+    }
+
+    String(value || "")
+      .split(/[,|;]/)
+      .map(item => item.trim())
+      .filter(Boolean)
+      .forEach(addField);
+  });
+
+  getManagerInstallBaseIssueFields(rec).forEach(issue => addField(issue.key));
+
+  const reason = lower(
+    rec?.axis_clarification_reason ||
+    rec?.install_base_clarification_reason ||
+    rec?.install_base_issue_reason ||
+    rec?.oem_review_reason ||
+    rec?.review_reason ||
+    rec?.rep_action_required ||
+    ""
+  );
+
+  const reasonMap = {
+    make: ["make", "manufacturer", "brand"],
+    model: ["model"],
+    modality: ["modality"],
+    serial: ["serial"],
+    dom: ["dom", "date of manufacture", "manufacture year"],
+    site: ["site", "facility"],
+    rep: ["rep owner", "rep name", "assigned rep"]
+  };
+
+  Object.entries(reasonMap).forEach(([field, terms]) => {
+    if (
+      reason.includes("missing") &&
+      terms.some(term => reason.includes(term))
+    ) {
+      fields.add(field);
+    }
+  });
+
+  return fields;
+}
+
 function isManagerFieldAwaitingRepFix(rec, fieldName) {
   if (!rec || isManagerFieldPersistentlyCorrected(rec, fieldName)) return false;
 
+  const field = normalizeCorrectedFieldName(fieldName);
   const aliases = getManagerInstallBaseFieldAliases(fieldName)
     .map(normalizeCorrectedFieldName);
 
-  const requested = getManagerInstallBaseIssueFields(rec).some(issue =>
-    aliases.includes(normalizeCorrectedFieldName(issue.key))
-  );
+  const explicitFields = getManagerExplicitFixFields(rec);
+  const requested =
+    explicitFields.has(field) ||
+    aliases.some(alias => explicitFields.has(alias)) ||
+    isManagerInstallBaseFieldRequested(rec, fieldName);
 
-  if (!requested && !isManagerInstallBaseFieldRequested(rec, fieldName)) {
-    return false;
-  }
+  if (!requested) return false;
 
   const route = lower(
     rec.axis_manual_route_target ||
@@ -6789,11 +6852,9 @@ function isManagerFieldAwaitingRepFix(rec, fieldName) {
     ""
   );
 
-  const managerOwned = aliases.some(alias =>
-    ["territory", "manager", "owner"].includes(alias)
-  );
-
-  return route === "rep" || (!route && !managerOwned);
+  // After Territory removal, source-data corrections shown in the Manager
+  // table are Rep-owned unless explicitly routed to Manager.
+  return route !== "manager";
 }
 
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
@@ -6823,8 +6884,20 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     );
   }
 
-  if (fieldName === "modality" && textValue.toUpperCase() === "OTHER") {
-    return "-";
+  // A missing modality must never appear as the normalization fallback OTHER.
+  // When the source explicitly requested a Rep correction, show the waiting
+  // status until the corrected value arrives.
+  if (
+    fieldName === "modality" &&
+    (!textValue || textValue === "-" || textValue.toUpperCase() === "OTHER")
+  ) {
+    return isManagerFieldAwaitingRepFix(rec, fieldName)
+      ? `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`
+      : "-";
+  }
+
+  if ((!textValue || textValue === "-") && isManagerFieldAwaitingRepFix(rec, fieldName)) {
+    return `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`;
   }
 
   return textValue && textValue !== "-"
