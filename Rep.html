@@ -11305,20 +11305,48 @@ function syncResolvedRedHotRecordEverywhere(resolvedRecord) {
   ];
 
   keysToUpdate.forEach(key => {
-    let records = [];
+    let parsed;
 
     try {
-      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
-      records = Array.isArray(parsed) ? parsed : [];
+      parsed = JSON.parse(localStorage.getItem(key) || "null");
     } catch (_) {
-      records = [];
+      parsed = null;
     }
 
-    if (!records.length) return;
+    // Most workspace stores are arrays.
+    if (Array.isArray(parsed)) {
+      const updated = parsed.map(applyResolution);
+      localStorage.setItem(key, JSON.stringify(updated));
+      return;
+    }
 
-    const updated = records.map(applyResolution);
-    localStorage.setItem(key, JSON.stringify(updated));
+    // Manager queue is an object of manager-name buckets.
+    if (parsed && typeof parsed === "object") {
+      const updatedBuckets = {};
+
+      Object.entries(parsed).forEach(([bucketName, bucketRecords]) => {
+        updatedBuckets[bucketName] = Array.isArray(bucketRecords)
+          ? bucketRecords.map(applyResolution)
+          : bucketRecords;
+      });
+
+      localStorage.setItem(key, JSON.stringify(updatedBuckets));
+    }
   });
+
+  const resolutionPacket = {
+    ...resolvedRecord,
+    red_hot_alert: false,
+    red_hot_status: "Resolved",
+    service_status: "Restored",
+    service_resolved_at: resolvedAt,
+    red_hot_resolved_at: resolvedAt
+  };
+
+  localStorage.setItem(
+    "espin_red_hot_resolution_packet_v1",
+    JSON.stringify(resolutionPacket)
+  );
 
   const ping = String(Date.now());
 
@@ -11328,7 +11356,8 @@ function syncResolvedRedHotRecordEverywhere(resolvedRecord) {
     INSTALL_BASE_RESPONSE_PING_KEY,
     INSTALL_BASE_FINAL_SYNC_PING_KEY,
     MANAGER_SYNC_KEY,
-    REP_SYNC_KEY
+    REP_SYNC_KEY,
+    "espin_red_hot_resolution_ping_v1"
   ].forEach(key => {
     localStorage.setItem(key, ping);
 
