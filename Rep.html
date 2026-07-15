@@ -5289,6 +5289,40 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="rep-response-active-projects-swap">
+.rep-response-under-action{
+  grid-column:1 / -1!important;
+  width:100%!important;
+  margin:0 0 14px!important;
+}
+
+.rep-response-under-action > .rep-install-base-fix-response-panel{
+  width:100%!important;
+  grid-column:1 / -1!important;
+}
+
+.rep-response-only-row > .selected-record-active-projects{
+  width:100%!important;
+  grid-column:1 / -1!important;
+  margin:0!important;
+}
+</style>
+
+
+<style id="financial-record-strong-toggle-fix">
+.rep-financial-review-card .financial-record-toggle{
+  position:relative!important;
+  z-index:20!important;
+  pointer-events:auto!important;
+}
+
+.rep-financial-review-card .financial-record-body.hidden,
+.rep-financial-review-card .financial-record-collapsed-summary.hidden{
+  display:none!important;
+}
+</style>
+
 </head>
 
 <body>
@@ -8866,7 +8900,6 @@ function getRepOwnedActiveFixFields(rec) {
   if (isBlank(rec.serial_number || rec.serial)) add("serial");
   if (isBlank(rec.dom || rec.manufacture_year || rec.year)) add("dom");
   if (isBlank(rec.site || rec.site_name || rec.facility || rec.facility_name || rec.hospital_name)) add("site");
-  if (isBlank(rec.territory || rec.manager_territory || rec.manager_region || rec.region)) add("territory");
   if (isBlank(rec.assigned_rep_name || rec.assigned_rep || rec.rep_owner || rec.sales_rep_name || rec.sales_rep)) add("rep");
 
   [
@@ -11769,7 +11802,6 @@ function getInstallBaseIssueFields(rec) {
     { key:"state", label:"State" },
     { key:"zip_code", label:"ZIP Code" },
     { key:"manager", label:"Owner Group / Manager" },
-    { key:"territory", label:"Territory" },
     { key:"rep", label:"Rep Owner" },
     { key:"utilization_percent", label:"Utilization %" },
     { key:"source", label:"Source" },
@@ -14067,6 +14099,9 @@ function addRepRecordToVisitList(recordId){
     window.location.href = "today.html";
   }
 }
+const FINANCIAL_RECORD_COLLAPSE_KEY =
+  "espin_rep_financial_record_collapse_v1";
+
 function getFinancialRecordCollapseMap() {
   try {
     const parsed = JSON.parse(
@@ -14084,24 +14119,61 @@ function isFinancialRecordCollapsed(recordId) {
   );
 }
 
-function toggleFinancialRecord(recordId) {
-  const id = String(recordId || "");
-  if (!id) return;
-
-  const map = getFinancialRecordCollapseMap();
-
-  if (map[id]) {
-    delete map[id];
-  } else {
-    map[id] = true;
+function toggleFinancialRecord(recordId, event, button) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
   }
 
-  localStorage.setItem(
-    FINANCIAL_RECORD_COLLAPSE_KEY,
-    JSON.stringify(map)
-  );
+  const id = String(recordId || "");
+  if (!id) return false;
 
-  render();
+  const map = getFinancialRecordCollapseMap();
+  const willCollapse = !Boolean(map[id]);
+
+  if (willCollapse) {
+    map[id] = true;
+  } else {
+    delete map[id];
+  }
+
+  try {
+    localStorage.setItem(
+      FINANCIAL_RECORD_COLLAPSE_KEY,
+      JSON.stringify(map)
+    );
+  } catch (error) {
+    console.warn("Financial Record state could not be saved.", error);
+  }
+
+  // Update the currently visible Financial Record directly. This avoids a
+  // full-page render from immediately rebuilding or moving the card.
+  const clickedButton =
+    button ||
+    event?.currentTarget ||
+    event?.target?.closest?.(".financial-record-toggle");
+
+  const card = clickedButton?.closest?.(".rep-financial-review-card");
+
+  if (card) {
+    const body = card.querySelector(".financial-record-body");
+    const summary = card.querySelector(".financial-record-collapsed-summary");
+
+    body?.classList.toggle("hidden", willCollapse);
+
+    if (summary) {
+      summary.classList.toggle("hidden", !willCollapse);
+      summary.style.display = willCollapse ? "" : "none";
+    }
+
+    clickedButton.textContent = willCollapse ? "Open" : "Hide";
+    clickedButton.setAttribute("aria-expanded", String(!willCollapse));
+  } else {
+    // Safe fallback if the button is triggered programmatically.
+    renderDetail();
+  }
+
+  return false;
 }
 
 
@@ -14385,7 +14457,9 @@ function renderDetail() {
       </div>
 
     <div class="rep-review-response-row rep-response-only-row">
+    <div class="rep-review-response-row rep-response-under-action">
       ${renderRepInstallBaseFixResponsePanel(rec)}
+    </div>
     </div>
 
     <div class="selected-record-overview">
@@ -14444,7 +14518,8 @@ function renderDetail() {
         <button
           type="button"
           class="secondary financial-record-toggle"
-          onclick="toggleFinancialRecord('${escapeJs(rec.id)}')"
+          aria-expanded="${isFinancialRecordCollapsed(rec.id) ? "false" : "true"}"
+          onclick="return toggleFinancialRecord('${escapeJs(rec.id)}', event, this)"
         >
           ${isFinancialRecordCollapsed(rec.id) ? "Hide Records" : "Open Records"}
         </button>
@@ -15290,6 +15365,7 @@ function getRepFixPanelIssues(rec) {
     if (["state"].includes(f)) return "state";
     if (["zip", "zipcode", "zip_code", "postal_code"].includes(f)) return "zip_code";
     if (["owner", "manager", "manager_name", "owner_group", "owner_group_name"].includes(f)) return "manager";
+    if (["territory", "manager_region", "manager_territory", "region"].includes(f)) return "territory";
     if (["rep", "assigned_rep", "assigned_rep_name", "rep_owner", "owner_name", "sales_rep", "sales_rep_name"].includes(f)) return "rep";
     if (["utilization", "utilization_percent", "utilization_percentage", "use"].includes(f)) return "utilization_percent";
     if (["source", "source_system", "record_source", "source_conflict", "source_mismatch"].includes(f)) return "source";
@@ -15316,10 +15392,10 @@ function getRepFixPanelIssues(rec) {
   );
 
   return getInstallBaseIssueFields(rec).map(issue => [
-  normalizeFixField(issue.key),
-  issue.label,
-  requestedFields.has(normalizeFixField(issue.key))
-]);
+    normalizeFixField(issue.key),
+    issue.label,
+    requestedFields.has(normalizeFixField(issue.key))
+  ]);
 }
 function getInstallBaseRepActionRequired(rec) {
   const direct = clean(
@@ -16097,7 +16173,7 @@ function saveInstallBaseFix(id) {
     <button
       type="button"
       class="secondary financial-record-toggle"
-      onclick="toggleFinancialRecord('${escapeJs(rec.id)}')"
+      onclick="return toggleFinancialRecord('${escapeJs(rec.id)}', event, this)"
     >
       ${isFinancialRecordCollapsed(rec.id) ? "Open" : "Hide"}
     </button>
