@@ -5143,6 +5143,29 @@ tr.unread-message-row td{
 .active-project-empty{padding:18px;border:1px dashed rgba(88,184,255,.22);border-radius:14px;color:#8fa9c1;text-align:center}
 </style>
 
+
+<style id="selected-record-active-projects-style">
+.selected-record-active-projects{
+  margin:18px 0!important;
+  border:1px solid rgba(88,184,255,.28);
+  border-radius:16px;
+  overflow:hidden;
+  background:
+    linear-gradient(145deg,rgba(0,229,255,.055),rgba(8,18,35,.94));
+  box-shadow:
+    0 0 0 1px rgba(67,176,255,.08),
+    0 0 24px rgba(0,229,255,.10);
+}
+
+.selected-record-active-projects .panel-head{
+  padding:14px 16px;
+}
+
+.selected-record-active-projects .panel-body{
+  padding:16px;
+}
+</style>
+
 </head>
 
 <body>
@@ -5321,19 +5344,6 @@ tr.unread-message-row td{
           </div>
         </div>
 
-        
-        <div class="panel active-projects-panel" id="activeProjectsPanel">
-          <div class="panel-head">
-            <h2>📋 Active Projects</h2>
-            <span class="mini" id="activeProjectsSummary">Milestones from ESPIN Connect</span>
-          </div>
-          <div class="panel-body">
-            <div id="activeProjectsList" class="active-projects-list">
-              <div class="active-project-empty">No active ESPIN Connect projects yet.</div>
-            </div>
-          </div>
-        </div>
-
         <div class="panel" id="myEquipmentReviewPanel">
           <div class="panel-head">
             <h2>My Equipment Review Records</h2>
@@ -5445,6 +5455,18 @@ tr.unread-message-row td{
 
         <div id="detailArea" class="hidden">
           <div class="detail-grid" id="detailGrid"></div>
+
+          <div class="active-projects-panel selected-record-active-projects" id="activeProjectsPanel">
+            <div class="panel-head">
+              <h2>📋 Active Projects</h2>
+              <span class="mini" id="activeProjectsSummary">Selected record project milestones</span>
+            </div>
+            <div class="panel-body">
+              <div id="activeProjectsList" class="active-projects-list">
+                <div class="active-project-empty">No ESPIN Connect project is linked to this selected record.</div>
+              </div>
+            </div>
+          </div>
 
           <div class="btns">
             <button
@@ -13934,9 +13956,6 @@ function addRepRecordToVisitList(recordId){
     window.location.href = "today.html";
   }
 }
-const FINANCIAL_RECORD_COLLAPSE_KEY =
-  "espin_rep_financial_record_collapse_v1";
-
 function getFinancialRecordCollapseMap() {
   try {
     const parsed = JSON.parse(
@@ -14327,7 +14346,7 @@ function renderDetail() {
           class="secondary financial-record-toggle"
           onclick="toggleFinancialRecord('${escapeJs(rec.id)}')"
         >
-          ${isFinancialRecordCollapsed(rec.id) ? "Hide Records" : "Open Records"}
+          ${isFinancialRecordCollapsed(rec.id) ? "Open" : "Hide"}
         </button>
       </div>
       ${
@@ -16199,13 +16218,83 @@ function toggleActiveProjectCard(projectId) {
   renderActiveProjects();
 }
 
+function getActiveProjectRecordKeys(rec) {
+  if (!rec) return [];
+
+  return [
+    rec.id,
+    rec.key,
+    rec.oem_project_id,
+    rec.project_id,
+    rec.axis_project_id,
+    rec.axis_record_id,
+    rec.linked_axis_project_id,
+    rec.linked_new_project_id
+  ]
+    .map(value => clean(value).toLowerCase())
+    .filter(Boolean);
+}
+
+function activeProjectMatchesSelectedRecord(project, rec) {
+  if (!project || !rec) return false;
+
+  const recordKeys = getActiveProjectRecordKeys(rec);
+  const projectKeys = [
+    project.axis_record_id,
+    project.record_id,
+    project.linked_record_id,
+    project.axis_project_id,
+    project.project_id,
+    project.source_record_id
+  ]
+    .map(value => clean(value).toLowerCase())
+    .filter(Boolean);
+
+  if (projectKeys.some(key => recordKeys.includes(key))) {
+    return true;
+  }
+
+  const recordFacility = clean(
+    rec.site || rec.facility || rec.hospital || ""
+  ).toLowerCase();
+
+  const projectFacility = clean(project.facility || "").toLowerCase();
+
+  const recordProjectName = clean(
+    rec.new_project_name ||
+    rec.project_name ||
+    rec.model ||
+    ""
+  ).toLowerCase();
+
+  const projectName = clean(project.project_name || "").toLowerCase();
+
+  return Boolean(
+    (recordFacility && projectFacility && recordFacility === projectFacility) ||
+    (recordProjectName && projectName &&
+      (projectName.includes(recordProjectName) ||
+       recordProjectName.includes(projectName)))
+  );
+}
+
 function renderActiveProjects() {
   const list = $("activeProjectsList");
   const summary = $("activeProjectsSummary");
   if (!list) return;
 
+  const selectedRecord = state.records.find(
+    record => String(record.id) === String(state.selectedId)
+  );
+
+  if (!selectedRecord) {
+    if (summary) summary.textContent = "Select a record to view its project";
+    list.innerHTML = `<div class="active-project-empty">Select a record to view its linked ESPIN Connect project.</div>`;
+    return;
+  }
+
   let projects = readEspinActiveProjects()
     .filter(project => project && project.project_id)
+    .filter(project => activeProjectMatchesSelectedRecord(project, selectedRecord))
     .filter(project => {
       if (!state.selectedRep) return true;
       const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
@@ -16216,7 +16305,7 @@ function renderActiveProjects() {
   if (summary) summary.textContent = `${projects.length} synchronized project${projects.length === 1 ? "" : "s"}`;
 
   if (!projects.length) {
-    list.innerHTML = `<div class="active-project-empty">No active ESPIN Connect projects yet. Save a milestone update in ESPIN Connect to populate this panel.</div>`;
+    list.innerHTML = `<div class="active-project-empty">No ESPIN Connect project is linked to this selected record yet.</div>`;
     return;
   }
 
@@ -16274,6 +16363,30 @@ window.addEventListener("storage", event => {
 
 function upsertEspinActiveProject(project) {
   if (!project || !project.project_id) return;
+
+  const selectedRecord = state.records.find(
+    record => String(record.id) === String(state.selectedId)
+  );
+
+  if (selectedRecord) {
+    project = {
+      ...project,
+      axis_record_id:
+        project.axis_record_id ||
+        selectedRecord.id ||
+        "",
+      axis_project_id:
+        project.axis_project_id ||
+        selectedRecord.oem_project_id ||
+        selectedRecord.project_id ||
+        selectedRecord.id ||
+        "",
+      rep_name:
+        project.rep_name ||
+        getRecordRepName(selectedRecord) ||
+        ""
+    };
+  }
 
   let records = readEspinActiveProjects();
   const index = records.findIndex(
