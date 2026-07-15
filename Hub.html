@@ -1599,49 +1599,6 @@ tr.red-hot-row-pulse{
 }
 </style>
 
-
-<style id="record-view-segmented-switch">
-.record-view-switch{
-  display:inline-grid;
-  grid-template-columns:repeat(2,minmax(150px,1fr));
-  gap:6px;
-  padding:5px;
-  border:1px solid rgba(88,184,255,.28);
-  border-radius:14px;
-  background:rgba(6,16,31,.82);
-  box-shadow:inset 0 0 0 1px rgba(0,229,255,.03);
-}
-
-.record-view-switch button{
-  min-height:42px;
-  padding:9px 14px;
-  border:1px solid transparent;
-  border-radius:10px;
-  background:#102340;
-  color:#b8d3ec;
-  box-shadow:none;
-  font-size:13px;
-  font-weight:950;
-  white-space:nowrap;
-}
-
-.record-view-switch button.active{
-  border-color:rgba(0,229,255,.70);
-  background:linear-gradient(90deg,rgba(67,176,255,.92),rgba(0,229,255,.92));
-  color:#03111b;
-  box-shadow:
-    0 0 0 1px rgba(0,229,255,.18),
-    0 0 18px rgba(0,229,255,.28);
-}
-
-@media(max-width:720px){
-  .record-view-switch{
-    width:100%;
-    grid-template-columns:1fr;
-  }
-}
-</style>
-
 </head>
 
 <body>
@@ -1747,24 +1704,8 @@ tr.red-hot-row-pulse{
             <option value="staged">Staged only</option>
           </select>
 
-          <div class="record-view-switch" aria-label="Choose record view">
-            <button
-              type="button"
-              id="hubInstallBaseViewBtn"
-              class="active"
-              onclick="updateHubRecordView('install_base')"
-            >
-              Install Base
-            </button>
-            <button
-              type="button"
-              id="hubProjectsViewBtn"
-              onclick="updateHubRecordView('project')"
-            >
-              Projects
-            </button>
-          </div>
-          <select id="hubRecordViewFilter" style="display:none;" aria-hidden="true">
+          <select id="hubRecordViewFilter" onchange="updateHubRecordView(this.value)" aria-label="Filter by record type">
+            <option value="">All Records</option>
             <option value="install_base">Install Base</option>
             <option value="project">Rep-Created Projects</option>
           </select>
@@ -1879,7 +1820,7 @@ const state = {
   selectedId: null,
   search: "",
   filter: "",
-  recordView: "install_base",
+  recordView: "",
   modalityFilter: "",
   domFilter: "",
   ageFilter: "",
@@ -6134,30 +6075,11 @@ function espinMatchesDashboardFilters(rec, values) {
   return true;
 }
 
-function syncHubRecordViewButtons() {
-  const view = state.recordView || "install_base";
-  const installBaseBtn = $("hubInstallBaseViewBtn");
-  const projectsBtn = $("hubProjectsViewBtn");
-
-  installBaseBtn?.classList.toggle("active", view === "install_base");
-  projectsBtn?.classList.toggle("active", view === "project");
-
-  const hiddenSelect = $("hubRecordViewFilter");
-  if (hiddenSelect) hiddenSelect.value = view;
-}
-
-function updateHubRecordView(value){
-  state.recordView =
-    value === "project" ? "project" : "install_base";
-  state.selectedId = null;
-  syncHubRecordViewButtons();
-  render();
-}
+function updateHubRecordView(value){ state.recordView = String(value || ""); state.selectedId = null; render(); }
 function updateHubModality(value){ state.modalityFilter = String(value || "").toUpperCase(); state.selectedId = null; render(); }
 function updateHubDom(value){ state.domFilter = String(value || ""); state.selectedId = null; render(); }
 function updateHubAge(value){ state.ageFilter = String(value || ""); state.selectedId = null; render(); }
 function renderHubAdvancedFilters(){
-  syncHubRecordViewButtons();
   const modalitySelect = $("hubModalityFilter");
   if (modalitySelect) {
     const modalities = [...new Set(state.records.map(r => String(r.modality || "").trim().toUpperCase()).filter(Boolean))].sort();
