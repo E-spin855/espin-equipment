@@ -6472,24 +6472,39 @@ function getManagerRepRowRecordKey(rec) {
   );
 }
 
-function hasUnseenManagerRepRowUpdate(rec) {
-  const recordKey = getManagerRepRowRecordKey(rec);
-  const signature = getManagerRepRowUpdateSignature(rec);
+function getManagerRepRowRecordKeys(rec) {
+  return [...new Set([
+    rec?.key,
+    typeof getRecordKey === "function" ? getRecordKey(rec) : "",
+    rec?.oem_project_id,
+    rec?.project_id,
+    rec?.asset_id,
+    rec?.id
+  ].map(value => String(value || "").trim()).filter(Boolean))];
+}
 
-  if (!recordKey || !signature.replace(/\|/g, "")) return false;
+function isManagerRepRowUpdateAcknowledged(rec) {
+  const signature = getManagerRepRowUpdateSignature(rec);
+  if (!signature.replace(/\|/g, "")) return false;
 
   const seenMap = readManagerRepRowSeenMap();
-  return seenMap[recordKey] !== signature;
+  return getManagerRepRowRecordKeys(rec).some(key => seenMap[key] === signature);
+}
+
+function hasUnseenManagerRepRowUpdate(rec) {
+  const signature = getManagerRepRowUpdateSignature(rec);
+  if (!signature.replace(/\|/g, "")) return false;
+  return !isManagerRepRowUpdateAcknowledged(rec);
 }
 
 function acknowledgeManagerRepRowUpdate(rec) {
-  const recordKey = getManagerRepRowRecordKey(rec);
   const signature = getManagerRepRowUpdateSignature(rec);
-
-  if (!recordKey || !signature.replace(/\|/g, "")) return;
+  if (!signature.replace(/\|/g, "")) return;
 
   const seenMap = readManagerRepRowSeenMap();
-  seenMap[recordKey] = signature;
+  getManagerRepRowRecordKeys(rec).forEach(key => {
+    seenMap[key] = signature;
+  });
 
   try {
     localStorage.setItem(
@@ -6501,6 +6516,13 @@ function acknowledgeManagerRepRowUpdate(rec) {
 
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
+
+  // Once this exact Rep-originated update signature is acknowledged, suppress
+  // every legacy flash path for it. A genuinely new Rep update changes the
+  // signature and will flash again.
+  if (isManagerRepRowUpdateAcknowledged(rec)) {
+    return false;
+  }
 
   if (
     hasUnseenManagerRepRowUpdate(rec) &&
