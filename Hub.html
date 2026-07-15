@@ -1478,6 +1478,22 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="hub-owner-group-dropdown">
+#ownerList select{
+  width:100%;
+  min-height:46px;
+}
+
+#ownerGroupDropdownSummary{
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid rgba(88,184,255,.16);
+  border-radius:12px;
+  background:rgba(8,18,35,.58);
+}
+</style>
+
 </head>
 
 <body>
@@ -1544,8 +1560,8 @@ tr.unread-message-row td{
 
       <div class="panel" style="margin-top:18px;">
         <div class="panel-head">
-          <h2>Owner Groups</h2>
-          <span class="mini">Click to filter</span>
+          <h2>Owner Group Filter</h2>
+          <span class="mini">All Records dropdown</span>
         </div>
 
         <div class="panel-body">
@@ -5893,24 +5909,34 @@ function renderOwnerGroups() {
     return;
   }
 
-  el.innerHTML = groups.map(g => `
-    <div
-      class="owner-card ${state.selectedOwner === g.name ? "active" : ""}"
-      onclick="selectOwner('${escapeJs(g.name)}')"
+  el.innerHTML = `
+    <label for="ownerGroupDropdown">Owner Group</label>
+    <select
+      id="ownerGroupDropdown"
+      onchange="selectOwner(this.value)"
+      aria-label="Filter All Records by owner group"
     >
-      <div class="owner-name">${escapeHtml(g.name)}</div>
-      <div class="owner-territory">${escapeHtml(g.territory)}</div>
-      <div class="owner-meta">${escapeHtml(g.email || "No owner email")}</div>
-      <div class="owner-meta">Reps: ${escapeHtml(g.reps.join(", "))}</div>
-      <div class="packet-pill">
-        ${g.count} Records • ${g.exceptions} Exceptions • ${g.released} Released${g.responses ? ` • ${g.responses} Review Response` : ""}
-      </div>
-    </div>
-  `).join("") + `
-    <div class="btns">
-      <button type="button" class="secondary" onclick="selectOwner('')">
-        Show All Records
-      </button>
+      <option value="">All Owner Groups</option>
+      ${groups.map(g => `
+        <option
+          value="${escapeHtml(g.name)}"
+          ${state.selectedOwner === g.name ? "selected" : ""}
+        >
+          ${escapeHtml(g.name)} — ${g.count} Records
+        </option>
+      `).join("")}
+    </select>
+
+    <div class="footer-note" id="ownerGroupDropdownSummary">
+      ${
+        state.selectedOwner
+          ? (() => {
+              const selected = groups.find(g => g.name === state.selectedOwner);
+              if (!selected) return "All records";
+              return `${escapeHtml(selected.name)} · Reps: ${escapeHtml(selected.reps.join(", "))} · ${selected.exceptions} Exceptions · ${selected.released} Released`;
+            })()
+          : `${groups.length} Owner Groups · All Records`
+      }
     </div>
   `;
 }
