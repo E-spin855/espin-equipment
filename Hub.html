@@ -5598,6 +5598,69 @@ axis_clarification_reason:
         oem_review_date: excelDateToISO(obj.oem_review_date || obj.review_date || ""),
         oem_review_level: obj.oem_review_level || obj.review_level || obj.visibility_level || "",
 
+        // Source-authoritative OEM service escalation fields.
+        // Hub preserves these values exactly from the uploaded file.
+        equipment_operational_status:
+          obj.equipment_operational_status ||
+          obj.equipment_status ||
+          "",
+
+        equipment_down_at:
+          obj.equipment_down_at ||
+          obj.equipment_down_date ||
+          obj.down_at ||
+          "",
+
+        service_status:
+          obj.service_status ||
+          obj.current_service_status ||
+          "",
+
+        oem_service_target_days:
+          Number(
+            obj.oem_service_target_days ||
+            obj.service_target_days ||
+            0
+          ) || "",
+
+        service_target_due_at:
+          obj.service_target_due_at ||
+          obj.service_due_at ||
+          "",
+
+        service_resolved_at:
+          obj.service_resolved_at ||
+          obj.restored_at ||
+          obj.service_restored_at ||
+          "",
+
+        red_hot_alert:
+          espinTruthy(obj.red_hot_alert),
+
+        red_hot_reason:
+          obj.red_hot_reason ||
+          "",
+
+        red_hot_source:
+          obj.red_hot_source ||
+          obj.alert_source ||
+          "",
+
+        red_hot_status:
+          obj.red_hot_status ||
+          "",
+
+        red_hot_acknowledged:
+          espinTruthy(obj.red_hot_acknowledged),
+
+        red_hot_acknowledged_at:
+          obj.red_hot_acknowledged_at ||
+          "",
+
+        red_hot_acknowledged_by:
+          obj.red_hot_acknowledged_by ||
+          "",
+
         install_base_release_status: "staged",
         install_base_released_at: "",
         install_base_released_to: "",
@@ -5661,6 +5724,66 @@ rep_fix_required: newRec.rep_fix_required || existing.rep_fix_required || "",
 install_base_issue_note: newRec.install_base_issue_note || existing.install_base_issue_note || "",
 install_base_issue_reason: newRec.install_base_issue_reason || existing.install_base_issue_reason || "",
 utilization_percent: newRec.utilization_percent || existing.utilization_percent || "",
+
+          equipment_operational_status:
+            newRec.equipment_operational_status ||
+            existing.equipment_operational_status ||
+            "",
+
+          equipment_down_at:
+            newRec.equipment_down_at ||
+            existing.equipment_down_at ||
+            "",
+
+          service_status:
+            newRec.service_status ||
+            existing.service_status ||
+            "",
+
+          oem_service_target_days:
+            newRec.oem_service_target_days ||
+            existing.oem_service_target_days ||
+            "",
+
+          service_target_due_at:
+            newRec.service_target_due_at ||
+            existing.service_target_due_at ||
+            "",
+
+          service_resolved_at:
+            newRec.service_resolved_at ||
+            existing.service_resolved_at ||
+            "",
+
+          red_hot_alert:
+            newRec.red_hot_alert === true,
+
+          red_hot_reason:
+            newRec.red_hot_reason ||
+            existing.red_hot_reason ||
+            "",
+
+          red_hot_source:
+            newRec.red_hot_source ||
+            existing.red_hot_source ||
+            "",
+
+          red_hot_status:
+            newRec.red_hot_status ||
+            existing.red_hot_status ||
+            "",
+
+          red_hot_acknowledged:
+            existing.red_hot_acknowledged === true,
+
+          red_hot_acknowledged_at:
+            existing.red_hot_acknowledged_at ||
+            "",
+
+          red_hot_acknowledged_by:
+            existing.red_hot_acknowledged_by ||
+            "",
+
           rep_action: existing.rep_action || "",
           rep_notes: existing.rep_notes || "",
           rep_status: existing.rep_status || "new",
@@ -6059,8 +6182,16 @@ function selectOwner(name) {
 
 
 function espinTruthy(value) {
-  return value === true || value === "true" || value === 1 || value === "1" ||
-    String(value || "").trim().toLowerCase() === "yes";
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  return (
+    value === true ||
+    value === 1 ||
+    normalized === "true" ||
+    normalized === "1" ||
+    normalized === "yes" ||
+    normalized === "active"
+  );
 }
 
 function isRedHotServiceAlert(rec) {
