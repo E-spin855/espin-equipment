@@ -9388,10 +9388,7 @@ function renderStats() {
 
       const repCounts = new Map();
       state.records.forEach(rec => {
-        const rep =
-          `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-          rec.assigned_rep_name ||
-          "Unassigned";
+        const rep = getRecordRepName(rec) || "Unassigned";
         repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
       });
       const reps = [...repCounts.keys()];
@@ -9552,9 +9549,10 @@ function getMyEquipmentReviewRecords() {
         rec.release_destination = "rep";
         rec.install_base_released_to = "rep";
         rec.project_type = "equipment_review_record";
-        return true;
       }
 
+      // Rep-created records must follow the same selected-Rep filter as
+      // Hub-synced records. Previously they always returned true here.
       return recordMatchesSelectedRep(rec);
     })
     .filter(rec => !isRepNewProjectIntakeRecord(rec));
