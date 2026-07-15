@@ -10598,7 +10598,7 @@ function bindIncomingCommunicationFrameDismissal() {
             aria-label="Open Install Base review reason"
             title="Show why this Install Base review was created"
           >
-            ${renderRedHotInlineBadge(rec)}${renderReviewSignalCell(rec)}
+            ${isRedHotServiceAlert(rec) ? renderRedHotInlineBadge(rec) : renderReviewSignalCell(rec)}
           </button>
         </td>
 
@@ -11260,6 +11260,94 @@ function acknowledgeRedHotAlert(recordId, event) {
   return false;
 }
 
+function syncResolvedRedHotRecordEverywhere(resolvedRecord) {
+  if (!resolvedRecord) return;
+
+  const resolvedAt =
+    resolvedRecord.service_resolved_at ||
+    resolvedRecord.red_hot_resolved_at ||
+    new Date().toISOString();
+
+  const applyResolution = item => {
+    if (!sameWorkspaceEquipmentRecord(item, resolvedRecord)) {
+      return item;
+    }
+
+    return {
+      ...item,
+      red_hot_alert: false,
+      red_hot_status: "Resolved",
+      service_status: "Restored",
+      service_resolved_at: resolvedAt,
+      red_hot_resolved_at: resolvedAt,
+      red_hot_resolved_by:
+        resolvedRecord.red_hot_resolved_by ||
+        resolvedRecord.red_hot_acknowledged_by ||
+        "Rep",
+      red_hot_acknowledged: true,
+      red_hot_acknowledged_at:
+        resolvedRecord.red_hot_acknowledged_at || resolvedAt,
+      red_hot_acknowledged_by:
+        resolvedRecord.red_hot_acknowledged_by ||
+        resolvedRecord.red_hot_resolved_by ||
+        "Rep"
+    };
+  };
+
+  const keysToUpdate = [
+    STORAGE_KEY,
+    REP_WORKSPACE_BACKUP_KEY,
+    INSTALL_BASE_KEY,
+    INSTALL_BASE_RESPONSE_KEY,
+    INSTALL_BASE_FINAL_SYNC_KEY,
+    MANAGER_QUEUE_KEY,
+    REP_QUEUE_KEY
+  ];
+
+  keysToUpdate.forEach(key => {
+    let records = [];
+
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      records = Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      records = [];
+    }
+
+    if (!records.length) return;
+
+    const updated = records.map(applyResolution);
+    localStorage.setItem(key, JSON.stringify(updated));
+  });
+
+  const ping = String(Date.now());
+
+  [
+    "axis_install_base_records_ping_v1",
+    "axis_install_base_sync_ping_v1",
+    INSTALL_BASE_RESPONSE_PING_KEY,
+    INSTALL_BASE_FINAL_SYNC_PING_KEY,
+    MANAGER_SYNC_KEY,
+    REP_SYNC_KEY
+  ].forEach(key => {
+    localStorage.setItem(key, ping);
+
+    try {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key,
+          newValue: ping
+        })
+      );
+    } catch (_) {}
+  });
+
+  try {
+    window.dispatchEvent(new Event("rep_feed_update"));
+    window.dispatchEvent(new Event("install_base_response_update"));
+  } catch (_) {}
+}
+
 function resolveRedHotAlert(recordId, event) {
   if (event) {
     event.preventDefault();
@@ -11291,6 +11379,8 @@ function resolveRedHotAlert(recordId, event) {
     rec.red_hot_resolved_by;
 
   saveRecords();
+  syncResolvedRedHotRecordEverywhere(rec);
+
   renderTable();
   renderDetail();
 
@@ -11611,7 +11701,7 @@ hasUnseenHubFix
             aria-label="Open Install Base review reason"
             title="Show why this Install Base review was created"
           >
-            ${renderRedHotInlineBadge(rec)}${renderReviewSignalCell(rec)}
+            ${isRedHotServiceAlert(rec) ? renderRedHotInlineBadge(rec) : renderReviewSignalCell(rec)}
           </button>
         </td>
 
