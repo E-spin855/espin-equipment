@@ -5683,33 +5683,29 @@ const QUOTE_APPROVAL_PING_KEY = "axis_quote_approval_ping_v1";
 
 
 function getRecordRepName(rec) {
-  return (
+  return clean(
     `${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() ||
     rec?.assigned_rep_name ||
+    rec?.assigned_rep ||
     rec?.rep_owner ||
+    rec?.rep_owner_name ||
+    rec?.sales_rep_name ||
+    rec?.sales_rep ||
     rec?.rep_name ||
+    rec?.rep ||
+    rec?.owner_name ||
     "Unassigned"
   );
 }
 
 function recordMatchesSelectedRep(rec) {
   if (!rec) return false;
-
-  // Records created from this Rep page always belong in this Rep's table.
-  // Do not let later Hub/Manager aliases or an exact-name mismatch hide them.
-  if (
-    rec.rep_added_install_base === true ||
-    rec.rep_owned_install_base === true ||
-    rec.record_origin === "rep_owned_install_base" ||
-    rec.install_base_release_status === "rep_local_record"
-  ) {
-    return true;
-  }
-
   if (!state.selectedRep) return true;
 
-  return clean(getRecordRepName(rec)).toLowerCase() ===
-    clean(state.selectedRep).toLowerCase();
+  const selected = clean(state.selectedRep).toLowerCase();
+  const recordRep = clean(getRecordRepName(rec)).toLowerCase();
+
+  return Boolean(recordRep) && recordRep === selected;
 }
 
 function getSelectedRepParts() {
