@@ -16269,6 +16269,48 @@ window.addEventListener("storage", event => {
   if (event.key === ESPIN_ACTIVE_PROJECTS_KEY) renderActiveProjects();
 });
 
+function upsertEspinActiveProject(project) {
+  if (!project || !project.project_id) return;
+
+  let records = readEspinActiveProjects();
+  const index = records.findIndex(
+    item => String(item?.project_id || "") === String(project.project_id)
+  );
+
+  if (index >= 0) {
+    records[index] = { ...records[index], ...project };
+  } else {
+    records.unshift(project);
+  }
+
+  localStorage.setItem(
+    ESPIN_ACTIVE_PROJECTS_KEY,
+    JSON.stringify(records)
+  );
+
+  renderActiveProjects();
+}
+
+// Cross-origin ESPIN Connect pages send the saved milestone snapshot back
+// to the Rep window immediately after Save & Submit succeeds.
+window.addEventListener("message", event => {
+  const message = event?.data;
+
+  if (
+    !message ||
+    message.type !== "ESPIN_ACTIVE_PROJECT_UPDATED" ||
+    !message.project
+  ) {
+    return;
+  }
+
+  upsertEspinActiveProject(message.project);
+});
+
+// Refresh the card when the Rep returns from an ESPIN Connect tab.
+window.addEventListener("focus", renderActiveProjects);
+window.addEventListener("pageshow", renderActiveProjects);
+
 
 function render() {
   renderActiveProjects();
