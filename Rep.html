@@ -5323,6 +5323,126 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="financial-record-height-match-only">
+/* Match Financial Record height to the full stacked height of the left column. */
+.rep-financial-span-row{
+  align-items:stretch!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-right{
+  align-self:stretch!important;
+  display:flex!important;
+}
+
+.rep-financial-span-row .rep-financial-review-card{
+  height:100%!important;
+  min-height:100%!important;
+  align-self:stretch!important;
+}
+</style>
+
+
+<style id="financial-record-extend-to-rep-response">
+/* Extend Financial Record to the bottom of Rep Response to Install Base. */
+.rep-financial-span-row{
+  position:relative!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-right{
+  min-height:100%!important;
+}
+
+.rep-financial-span-row .rep-financial-review-card{
+  height:calc(100% + 92px)!important;
+  min-height:calc(100% + 92px)!important;
+}
+</style>
+
+
+<style id="financial-record-exact-height-match">
+/* Exact structural height match: Review Reason + Rep Action + Rep Response. */
+.rep-financial-span-row{
+  align-items:stretch!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-left{
+  display:grid!important;
+  gap:16px!important;
+  align-content:start!important;
+  height:100%!important;
+}
+
+.rep-financial-span-row > .rep-action-financial-right{
+  display:flex!important;
+  align-self:stretch!important;
+  height:auto!important;
+  min-height:0!important;
+}
+
+.rep-financial-span-row .rep-financial-review-card{
+  flex:1 1 auto!important;
+  height:auto!important;
+  min-height:100%!important;
+  align-self:stretch!important;
+  margin:0!important;
+}
+
+.rep-financial-span-row .rep-response-under-action{
+  width:100%!important;
+  margin:0!important;
+}
+
+.rep-financial-span-row .rep-response-under-action >
+.rep-install-base-fix-response-panel{
+  width:100%!important;
+  margin:0!important;
+}
+
+/* Neutralize the earlier fixed pixel extension. */
+.rep-financial-span-row .rep-financial-review-card{
+  height:100%!important;
+  min-height:100%!important;
+}
+</style>
+
+
+<style id="rep-response-match-rep-action-width">
+/* Make Rep Response to Install Base match the full width of Rep Action. */
+.rep-financial-span-row .rep-response-under-action,
+.rep-financial-span-row .rep-response-under-action > .rep-install-base-fix-response-panel{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  justify-self:stretch!important;
+  align-self:stretch!important;
+}
+
+.rep-financial-span-row .rep-response-under-action > .rep-install-base-fix-response-panel{
+  display:block!important;
+}
+</style>
+
+
+<style id="rep-response-exact-width-fix">
+/* Force the response row itself to one column so the card cannot occupy only half. */
+.rep-financial-span-row .rep-response-under-action{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  width:100%!important;
+  max-width:none!important;
+}
+
+.rep-financial-span-row .rep-response-under-action > .rep-install-base-fix-response-panel,
+.rep-financial-span-row .rep-response-under-action > .rep-install-base-response-always{
+  grid-column:1 / -1!important;
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+</style>
+
 </head>
 
 <body>
@@ -14521,7 +14641,7 @@ function renderDetail() {
           aria-expanded="${isFinancialRecordCollapsed(rec.id) ? "false" : "true"}"
           onclick="return toggleFinancialRecord('${escapeJs(rec.id)}', event, this)"
         >
-          ${isFinancialRecordCollapsed(rec.id) ? "Hide Records" : "Open Records"}
+          ${isFinancialRecordCollapsed(rec.id) ? "Hide Record" : "Open Record"}
         </button>
       </div>
       ${
@@ -14660,6 +14780,9 @@ if (detailGridEl) {
     const reviewReasonCard =
       detailGridEl.querySelector(".selected-oem-review-reason");
 
+    const repResponseRow =
+      detailGridEl.querySelector(".rep-response-under-action");
+
     const row = document.createElement("div");
     row.className = "rep-action-financial-row rep-financial-span-row";
 
@@ -14680,6 +14803,13 @@ if (detailGridEl) {
     }
 
     leftColumn.appendChild(actionCard);
+
+    // Keep Rep Response to Install Base in the same left column so the
+    // Financial Record can match the exact combined height automatically.
+    if (repResponseRow) {
+      leftColumn.appendChild(repResponseRow);
+    }
+
     rightColumn.appendChild(financialCard);
 
     const emptyOverview =
