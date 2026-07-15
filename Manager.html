@@ -9948,14 +9948,49 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
     );
   }
 
-  // Persist row-highlight acknowledgement after the record's update flags
-  // are cleared. Otherwise the signature changes during this click and the
-  // green frame immediately returns on the next render.
+  // Clear every row-update acknowledgement path for this record.
+  acknowledgeManagerRepRowUpdate(rec);
   acknowledgeManagerRepRowUpdate(updated);
+  acknowledgeMessageRow(updated, "manager");
 
   if (isRepAddedManagerRecord(updated)) {
+    markManagerRepAddedRecordSeen(rec);
     markManagerRepAddedRecordSeen(updated);
   }
+
+  // Keep the cleared flags in the live Manager state even when this record
+  // does not require a cross-page sync. Previously renderTable() reused the
+  // stale record and immediately restored the green frame.
+  state.records = state.records.map(item => {
+    const itemKeys = [
+      item?.id,
+      item?.key,
+      typeof getRecordKey === "function" ? getRecordKey(item) : ""
+    ].map(value => String(value || "")).filter(Boolean);
+
+    const updatedKeys = [
+      updated.id,
+      updated.key,
+      typeof getRecordKey === "function" ? getRecordKey(updated) : ""
+    ].map(value => String(value || "")).filter(Boolean);
+
+    return itemKeys.some(key => updatedKeys.includes(key))
+      ? { ...item, ...updated }
+      : item;
+  });
+
+  // Persist Manager-only acknowledgement fields so refresh/polling cannot
+  // bring the same green frame back from an older local queue copy.
+  try {
+    const managerQueue = readManagerQueueRecords().map(item => {
+      const itemKey = String(item?.id || item?.key || getRecordKey(item) || "");
+      const updatedKey = String(updated.id || updated.key || getRecordKey(updated) || "");
+      return itemKey && itemKey === updatedKey
+        ? { ...item, ...updated }
+        : item;
+    });
+    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+  } catch (_) {}
 
 state.selectedId = updated.id;
 
