@@ -5553,6 +5553,7 @@ tr.red-hot-row-pulse{
   color:#ffced3;
   font-weight:900;
 }
+</style>
 <style id="project-outcome-stay-under-tradein-fix">
 /* Financial Review must not spread the two left cards apart */
 .rep-financial-span-row{
@@ -5612,37 +5613,39 @@ tr.red-hot-row-pulse{
 </style>
 
 <style id="new-project-financial-layout-fix">
-/* Keep Project Outcome directly below Associated Trade-In while Financial Review expands */
-#newProjectDetailGrid{
+/* New-project cards: left stack is independent from Financial Review height. */
+#newProjectDetailGrid > .new-project-financial-layout{
+  grid-column:1 / -1!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+  gap:16px!important;
   align-items:start!important;
+  width:100%!important;
 }
 
-#newProjectDetailGrid > .new-project-tradein-card{
-  grid-column:1!important;
-  grid-row:4!important;
+.new-project-financial-layout-left{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:16px!important;
   align-self:start!important;
+  min-width:0!important;
 }
 
-#newProjectDetailGrid > .new-project-outcome-card{
-  grid-column:1!important;
-  grid-row:5!important;
-  align-self:start!important;
-}
-
-#newProjectDetailGrid > .new-project-financial-card{
-  grid-column:2!important;
-  grid-row:4 / span 2!important;
-  align-self:start!important;
+.new-project-financial-layout-left > .new-project-tradein-card,
+.new-project-financial-layout-left > .new-project-outcome-card,
+.new-project-financial-layout > .new-project-financial-card{
+  width:100%!important;
   height:auto!important;
   min-height:0!important;
+  margin:0!important;
+  align-self:start!important;
+  grid-column:auto!important;
+  grid-row:auto!important;
 }
 
 @media(max-width:720px){
-  #newProjectDetailGrid > .new-project-tradein-card,
-  #newProjectDetailGrid > .new-project-outcome-card,
-  #newProjectDetailGrid > .new-project-financial-card{
-    grid-column:1!important;
-    grid-row:auto!important;
+  #newProjectDetailGrid > .new-project-financial-layout{
+    grid-template-columns:1fr!important;
   }
 }
 </style>
@@ -16851,6 +16854,28 @@ ${renderQuoteApprovalActionPanel(rec)}
           </div>
         </div>
       `;
+
+      // Keep Project Outcome directly under Associated Trade-In. Financial Review
+      // expands independently in the right column and cannot change left spacing.
+      const tradeInCard = grid.querySelector(".new-project-tradein-card");
+      const outcomeCard = grid.querySelector(".new-project-outcome-card");
+      const financialCard = grid.querySelector(".new-project-financial-card");
+
+      if (outcomeCard && financialCard) {
+        const layout = document.createElement("div");
+        layout.className = "new-project-financial-layout";
+
+        const left = document.createElement("div");
+        left.className = "new-project-financial-layout-left";
+
+        const anchor = tradeInCard || financialCard;
+        grid.insertBefore(layout, anchor);
+        layout.appendChild(left);
+
+        if (tradeInCard) left.appendChild(tradeInCard);
+        left.appendChild(outcomeCard);
+        layout.appendChild(financialCard);
+      }
 
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
     }
