@@ -11210,10 +11210,10 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
         </button>
         <button
           type="button"
-          class="secondary"
-          onclick="event.stopPropagation(); document.querySelector('.rep-action-main-card, .rep-action-only-card')?.scrollIntoView({behavior:'smooth',block:'center'});"
+          class="green"
+          onclick="resolveRedHotAlert('${escapeJs(rec.id || rec.key || "")}', event)"
         >
-          Open Rep Action
+          Issue Resolved
         </button>
       </div>
     `
@@ -11257,6 +11257,43 @@ function acknowledgeRedHotAlert(recordId, event) {
   saveRecords();
   renderTable();
   renderDetail();
+  return false;
+}
+
+function resolveRedHotAlert(recordId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const rec = state.records.find(record =>
+    String(record.id || record.key || "") === String(recordId || "")
+  );
+  if (!rec) return false;
+
+  const resolvedAt = new Date().toISOString();
+
+  rec.red_hot_alert = false;
+  rec.red_hot_status = "Resolved";
+  rec.service_status = "Restored";
+  rec.service_resolved_at = resolvedAt;
+  rec.red_hot_resolved_at = resolvedAt;
+  rec.red_hot_resolved_by =
+    getRecordRepName(rec) ||
+    rec.assigned_rep_name ||
+    "Rep";
+
+  rec.red_hot_acknowledged = true;
+  rec.red_hot_acknowledged_at =
+    rec.red_hot_acknowledged_at || resolvedAt;
+  rec.red_hot_acknowledged_by =
+    rec.red_hot_acknowledged_by ||
+    rec.red_hot_resolved_by;
+
+  saveRecords();
+  renderTable();
+  renderDetail();
+
   return false;
 }
 
