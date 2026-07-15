@@ -3506,6 +3506,29 @@ tr.unread-message-row td{
 }
 </style>
 
+
+<style id="manager-awaiting-rep-fix-style">
+.awaiting-rep-fix{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:118px;
+  min-height:38px;
+  padding:7px 10px;
+  border-radius:11px;
+  background:linear-gradient(90deg,#8a5a12,#ffd84d);
+  color:#1c1204;
+  border:1px solid rgba(255,216,120,.78);
+  box-shadow:0 0 14px rgba(240,180,41,.24);
+  font-size:11px;
+  font-weight:950;
+  line-height:1.08;
+  text-align:center;
+  text-transform:uppercase;
+  white-space:normal;
+}
+</style>
+
 </head>
 
 <body>
@@ -6733,6 +6756,36 @@ function getManagerFixBadgeLabel(rec, fieldName) {
   return `FIX ${label}`;
 }
 
+function isManagerFieldAwaitingRepFix(rec, fieldName) {
+  if (!rec || isManagerFieldPersistentlyCorrected(rec, fieldName)) return false;
+
+  const aliases = getManagerInstallBaseFieldAliases(fieldName)
+    .map(normalizeCorrectedFieldName);
+
+  const requested = getManagerInstallBaseIssueFields(rec).some(issue =>
+    aliases.includes(normalizeCorrectedFieldName(issue.key))
+  );
+
+  if (!requested && !isManagerInstallBaseFieldRequested(rec, fieldName)) {
+    return false;
+  }
+
+  const route = lower(
+    rec.axis_manual_route_target ||
+    rec.manual_route_target ||
+    rec.install_base_released_to ||
+    rec.release_destination ||
+    rec.fix_destination ||
+    ""
+  );
+
+  const managerOwned = aliases.some(alias =>
+    ["territory", "manager", "owner"].includes(alias)
+  );
+
+  return route === "rep" || (!route && !managerOwned);
+}
+
 function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   const textValue = String(normalHtml || "")
     .replace(/<[^>]*>/g, "")
@@ -6746,6 +6799,10 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
     );
   }
 
+  if (isManagerFieldAwaitingRepFix(rec, fieldName)) {
+    return `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`;
+  }
+
   if (
     isManagerInstallBaseFieldRequested(rec, fieldName) &&
     !isManagerFieldPersistentlyCorrected(rec, fieldName)
@@ -6754,6 +6811,10 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
       rec,
       getManagerFixBadgeLabel(rec, fieldName)
     );
+  }
+
+  if (fieldName === "modality" && textValue.toUpperCase() === "OTHER") {
+    return "-";
   }
 
   return textValue && textValue !== "-"
