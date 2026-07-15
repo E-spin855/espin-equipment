@@ -3885,6 +3885,49 @@ tr.red-hot-row-pulse{
 }
 </style>
 
+
+<style id="record-view-segmented-switch">
+.record-view-switch{
+  display:inline-grid;
+  grid-template-columns:repeat(2,minmax(150px,1fr));
+  gap:6px;
+  padding:5px;
+  border:1px solid rgba(88,184,255,.28);
+  border-radius:14px;
+  background:rgba(6,16,31,.82);
+  box-shadow:inset 0 0 0 1px rgba(0,229,255,.03);
+}
+
+.record-view-switch button{
+  min-height:42px;
+  padding:9px 14px;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:#102340;
+  color:#b8d3ec;
+  box-shadow:none;
+  font-size:13px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.record-view-switch button.active{
+  border-color:rgba(0,229,255,.70);
+  background:linear-gradient(90deg,rgba(67,176,255,.92),rgba(0,229,255,.92));
+  color:#03111b;
+  box-shadow:
+    0 0 0 1px rgba(0,229,255,.18),
+    0 0 18px rgba(0,229,255,.28);
+}
+
+@media(max-width:720px){
+  .record-view-switch{
+    width:100%;
+    grid-template-columns:1fr;
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -3997,8 +4040,24 @@ tr.red-hot-row-pulse{
                 <option value="">All Reps</option>
               </select>
 
-          <select id="managerRecordViewFilter" onchange="updateManagerRecordView(this.value)" aria-label="Filter by record type">
-            <option value="">All Records</option>
+          <div class="record-view-switch" aria-label="Choose record view">
+            <button
+              type="button"
+              id="managerInstallBaseViewBtn"
+              class="active"
+              onclick="updateManagerRecordView('install_base')"
+            >
+              Install Base
+            </button>
+            <button
+              type="button"
+              id="managerProjectsViewBtn"
+              onclick="updateManagerRecordView('project')"
+            >
+              Projects
+            </button>
+          </div>
+          <select id="managerRecordViewFilter" style="display:none;" aria-hidden="true">
             <option value="install_base">Install Base</option>
             <option value="project">Rep-Created Projects</option>
           </select>
@@ -4110,7 +4169,7 @@ const state = {
   selectedRep: null,
   managerQueueSearch: "",
   managerQueueState: "",
-  managerRecordView: "",
+  managerRecordView: "install_base",
   managerModality: "",
   managerDom: "",
   managerAge: "",
@@ -6431,11 +6490,30 @@ function espinMatchesDashboardFilters(rec, values) {
   return true;
 }
 
-function updateManagerRecordView(value){ state.managerRecordView=String(value||""); state.selectedId=null; renderTable(); }
+function syncManagerRecordViewButtons() {
+  const view = state.managerRecordView || "install_base";
+  const installBaseBtn = $("managerInstallBaseViewBtn");
+  const projectsBtn = $("managerProjectsViewBtn");
+
+  installBaseBtn?.classList.toggle("active", view === "install_base");
+  projectsBtn?.classList.toggle("active", view === "project");
+
+  const hiddenSelect = $("managerRecordViewFilter");
+  if (hiddenSelect) hiddenSelect.value = view;
+}
+
+function updateManagerRecordView(value){
+  state.managerRecordView =
+    value === "project" ? "project" : "install_base";
+  state.selectedId = null;
+  syncManagerRecordViewButtons();
+  renderTable();
+}
 function updateManagerModality(value){ state.managerModality=String(value||"").toUpperCase(); state.selectedId=null; renderTable(); }
 function updateManagerDom(value){ state.managerDom=String(value||""); state.selectedId=null; renderTable(); }
 function updateManagerAge(value){ state.managerAge=String(value||""); state.selectedId=null; renderTable(); }
 function renderManagerAdvancedFilters(){
+  syncManagerRecordViewButtons();
   const modalitySelect=$("managerModalityFilter");
   if(modalitySelect){
     const modalities=[...new Set(state.records.map(r=>String(r.modality||"").trim().toUpperCase()).filter(Boolean))].sort();
