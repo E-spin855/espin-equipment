@@ -1704,10 +1704,10 @@ tr.red-hot-row-pulse{
             <option value="staged">Staged only</option>
           </select>
 
-          <select id="hubRecordViewFilter" onchange="updateHubRecordView(this.value)" aria-label="Filter by record type">
+          <select id="hubRecordViewFilter" onchange="updateHubRecordView(this.value)" aria-label="Filter by record source">
             <option value="">All Records</option>
-            <option value="install_base">Install Base</option>
-            <option value="project">Rep-Created Projects</option>
+            <option value="install_base">Install Base Records</option>
+            <option value="rep">Rep Records</option>
           </select>
           <select id="hubModalityFilter" onchange="updateHubModality(this.value)" aria-label="Filter by modality">
             <option value="">All Modalities</option>
@@ -5960,8 +5960,34 @@ function isCompletedRecord(rec) {
 function espinRecordViewType(rec) {
   if (!rec) return "install_base";
 
-  // Rep-uploaded equipment is still installed equipment, not a new project.
-  if (isHubRepOriginatedRecord(rec)) return "install_base";
+  /*
+   * Source distinction for the Hub Records dropdown:
+   * - install_base: imported/pushed by the OEM Install Base source
+   * - rep: uploaded, created, won, or sent from the Rep workspace
+   */
+  if (isHubRepOriginatedRecord(rec)) {
+    return "rep";
+  }
+
+  const explicitOrigin = String(
+    rec.record_origin ||
+    rec.source_type ||
+    rec.record_source_type ||
+    rec.created_by_workspace ||
+    rec.origin_workspace ||
+    ""
+  ).trim().toLowerCase();
+
+  if (
+    explicitOrigin === "rep" ||
+    explicitOrigin === "rep_upload" ||
+    explicitOrigin === "rep-upload" ||
+    explicitOrigin === "rep_created" ||
+    explicitOrigin === "rep-created" ||
+    explicitOrigin === "rep_workspace"
+  ) {
+    return "rep";
+  }
 
   const projectType = String(
     rec.project_type ||
@@ -5984,9 +6010,11 @@ function espinRecordViewType(rec) {
     rec.install_base_lifecycle_status,
     rec.oem_review_label,
     rec.review_label
-  ].map(v => String(v || "").trim().toLowerCase()).join(" ");
+  ].map(value =>
+    String(value || "").trim().toLowerCase()
+  ).join(" ");
 
-  const projectId = String(
+  const recordId = String(
     rec.oem_project_id ||
     rec.project_id ||
     rec.asset_id ||
@@ -5994,8 +6022,10 @@ function espinRecordViewType(rec) {
     ""
   ).trim().toLowerCase();
 
-  const projectFlags = Boolean(
+  const repFlags = Boolean(
     rec.rep_created_new_project === true ||
+    rec.rep_uploaded_record === true ||
+    rec.rep_created_record === true ||
     rec.new_project_badge === true ||
     rec.is_new_project === true ||
     rec.install_base_lifecycle_entry === true ||
@@ -6003,7 +6033,7 @@ function espinRecordViewType(rec) {
     rec.lifecycle_project === true
   );
 
-  const projectTypeMatch = [
+  const repTypeMatch = [
     "new_project_record",
     "new_sales_project",
     "won_project_lifecycle_entry",
@@ -6012,15 +6042,22 @@ function espinRecordViewType(rec) {
     "replacement_project",
     "installation_project",
     "removal_project",
-    "disposal_project"
+    "disposal_project",
+    "rep_upload",
+    "rep_record"
   ].includes(projectType);
 
-  const projectSourceMatch = [
+  const repSourceMatch = [
     "new espin link project",
     "new axis project",
     "new project intake",
     "rep-created project",
     "rep created project",
+    "rep-created record",
+    "rep created record",
+    "rep upload",
+    "uploaded by rep",
+    "rep workspace",
     "rep won project",
     "won project",
     "project won",
@@ -6028,13 +6065,19 @@ function espinRecordViewType(rec) {
     "active project"
   ].some(marker => sourceText.includes(marker));
 
-  const projectIdMatch =
-    projectId.startsWith("new-") ||
-    projectId.startsWith("project-") ||
-    projectId.startsWith("proj-");
+  const repIdMatch =
+    recordId.startsWith("new-") ||
+    recordId.startsWith("project-") ||
+    recordId.startsWith("proj-") ||
+    recordId.startsWith("rep-");
 
-  return (projectFlags || projectTypeMatch || projectSourceMatch || projectIdMatch)
-    ? "project"
+  return (
+    repFlags ||
+    repTypeMatch ||
+    repSourceMatch ||
+    repIdMatch
+  )
+    ? "rep"
     : "install_base";
 }
 
@@ -6280,9 +6323,9 @@ function renderTable() {
 
   const viewLabel =
     state.recordView === "install_base"
-      ? "Install Base"
-      : state.recordView === "project"
-        ? "Rep-Created Projects"
+      ? "Install Base Records"
+      : state.recordView === "rep"
+        ? "Rep Records"
         : "All Records";
 
   $("tableTitle").textContent = state.selectedOwner
