@@ -8265,6 +8265,31 @@ function renderActivityTimeline(rec) {
     });
   });
 
+  // Backward-compatible fallbacks for records created before dated workflow
+  // events were introduced.
+  if (
+    rec.associated_tradein_submitted_at &&
+    !workflowEvents.some(event => clean(event.type) === "tradein_submitted")
+  ) {
+    items.push({
+      key: "workflow_tradein_submitted_fallback",
+      date: rec.associated_tradein_submitted_at,
+      label: "Trade-In Submitted"
+    });
+  }
+
+  if (
+    Number(rec.external_tradein_value || 0) > 0 &&
+    rec.external_tradein_received_at &&
+    !workflowEvents.some(event => clean(event.type) === "tradein_received")
+  ) {
+    items.push({
+      key: "workflow_tradein_received_fallback",
+      date: rec.external_tradein_received_at,
+      label: "Trade-In Received"
+    });
+  }
+
   const alert = getAlerts(rec)[0];
 
   if (alert) items.push({ key: "oem_review", date: rec.oem_review_date || rec.review_date || "Current", label: `OEM review note visible: ${formatReviewText(alert.displayType || alert.label)}` });

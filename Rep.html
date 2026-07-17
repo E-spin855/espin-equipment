@@ -20318,6 +20318,10 @@ return true;
       }
 
       syncFeedStatus(rec);
+
+      // Send the dated Trade-In submission event to Manager immediately.
+      syncToManagerQueue(rec);
+
       render();
 
       showBanner(type === "tradein_desk" ? "✅ Sent to Trade-In Desk" : "✅ Sent to Disposal Review");
@@ -20714,21 +20718,43 @@ return true;
       rec.tradein_equipment_serial_number = serial || rec.tradein_equipment_serial_number || "";
       rec.tradein_equipment_dom = item.dom || item.tradein_equipment_dom || rec.tradein_equipment_dom || "";
 
+      const incomingTradeInAt =
+        item.last_tradein_update_at ||
+        item.updated_at ||
+        new Date().toISOString();
+
       rec.external_tradein_value = tradeInValue;
       rec.external_tradein_source = item.external_tradein_source || item.tradein_source || "OEM Trade Desk";
       rec.external_tradein_status = "pending_rep_review";
-      rec.external_tradein_received_at = item.last_tradein_update_at || new Date().toISOString();
+      rec.external_tradein_received_at = incomingTradeInAt;
 
+      // The incoming Trade-In App sync is the submission event.
+      // It must reach Manager even though the rep did not click a Rep Action.
+      if (Number(tradeInValue || 0) <= 0) {
+        rec.associated_tradein_submitted_at =
+          rec.associated_tradein_submitted_at || incomingTradeInAt;
+
+        rec.associated_tradein_submitted_to = "tradein_desk";
+
+        addRepWorkflowEvent(
+          rec,
+          "tradein_submitted",
+          "Trade-In Submitted",
+          rec.associated_tradein_submitted_at
+        );
+      }
+
+      // A positive value returned from trade_desk.html is the received event.
       if (Number(tradeInValue || 0) > 0) {
         addRepWorkflowEvent(
           rec,
           "tradein_received",
           "Trade-In Received",
-          rec.external_tradein_received_at
+          incomingTradeInAt
         );
       }
 
-      rec.tradein_synced_to_axis_at = item.last_tradein_update_at || new Date().toISOString();
+      rec.tradein_synced_to_axis_at = incomingTradeInAt;
       rec.tradein_last_update_by = item.last_tradein_update_by || "";
       rec.tradein_last_update_at = item.last_tradein_update_at || "";
 
