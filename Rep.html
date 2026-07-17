@@ -5554,6 +5554,77 @@ tr.red-hot-row-pulse{
   font-weight:900;
 }
 </style>
+<style id="trade-team-status-contact-layout-fix">
+.trade-team-side{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(190px,.8fr)!important;
+  grid-template-areas:
+    "status contact"
+    "followup followup"
+    "alert alert"!important;
+  gap:14px 22px!important;
+  align-items:start!important;
+}
+
+.trade-team-status-block{
+  grid-area:status;
+  min-width:0;
+}
+
+.trade-team-contact-block{
+  grid-area:contact;
+  min-width:0;
+}
+
+.trade-followup-row{
+  grid-area:followup;
+  width:100%;
+  max-width:520px;
+  margin-top:0!important;
+}
+
+.trade-team-side > .workflow-alert-date{
+  grid-area:alert;
+  margin-top:-4px;
+}
+
+.trade-team-contact-block .new-project-contact-toggle{
+  justify-content:flex-start!important;
+}
+
+@media(max-width:850px){
+  .trade-team-side{
+    grid-template-columns:1fr!important;
+    grid-template-areas:
+      "status"
+      "contact"
+      "followup"
+      "alert"!important;
+  }
+}
+</style>
+
+<style id="project-outcome-button-click-fix">
+.new-project-outcome-card{
+  position:relative!important;
+  z-index:20!important;
+  overflow:visible!important;
+}
+
+.project-outcome-buttons{
+  position:relative!important;
+  z-index:30!important;
+  pointer-events:auto!important;
+}
+
+.project-outcome-buttons button{
+  position:relative!important;
+  z-index:31!important;
+  pointer-events:auto!important;
+  cursor:pointer!important;
+}
+</style>
+
 <style id="project-outcome-stay-under-tradein-fix">
 /* Financial Review must not spread the two left cards apart */
 .rep-financial-span-row{
@@ -17617,8 +17688,8 @@ function saveInstallBaseFix(id) {
                   <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${rec.id}')">Save Trade-In Value</button>
                   <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${rec.id}')">Apply Trade-In Reference to Quote</button>
                 </div>
-                <div class="new-project-team-side trade-inline">
-                  <div class="trade-inline-col">
+                <div class="new-project-team-side trade-team-side">
+                  <div class="trade-team-status-block">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
 
@@ -17627,37 +17698,43 @@ function saveInstallBaseFix(id) {
                         ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(tradeSubmittedAt))}</div>`
                         : ""
                     }
-
-                    <div class="workflow-followup-row">
-                      <div class="workflow-followup-field">
-                        <label>Follow-Up Date</label>
-                        <input
-                          type="date"
-                          data-workflow-followup="trade"
-                          data-record-id="${escapeHtml(rec.id)}"
-                          value="${escapeHtml(tradeFollowUpDate)}"
-
-                          onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                        />
-                      </div>
-
-                      <div class="workflow-followup-confirmation">
-                        ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
-                      </div>
-                    </div>
-
-                    ${
-                      tradeAlertDate
-                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                        : ""
-                    }
                   </div>
-                  <div class="trade-inline-col">
+
+                  <div class="trade-team-contact-block">
                     <div class="new-project-team-label">Contact</div>
                     <button type="button" class="new-project-contact-toggle trade" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','trade',event)">
                       Mike Adams <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
                     </button>
                   </div>
+
+                  ${
+                    tradeDeskSubmitted
+                      ? `
+                        <div class="workflow-followup-row trade-followup-row">
+                          <div class="workflow-followup-field">
+                            <label>Follow-Up Date</label>
+                            <input
+                              type="date"
+                              data-workflow-followup="trade"
+                              data-record-id="${escapeHtml(rec.id)}"
+                              value="${escapeHtml(tradeFollowUpDate)}"
+                              onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
+                            />
+                          </div>
+
+                          <div class="workflow-followup-confirmation ${tradeFollowUpDate ? "saved" : ""}">
+                            ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
+                          </div>
+                        </div>
+
+                        ${
+                          tradeAlertDate
+                            ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
+                            : ""
+                        }
+                      `
+                      : ""
+                  }
                 </div>
                 ${tradeContactOpen ? `
                   <div class="new-project-contact-panel trade">
@@ -17684,8 +17761,8 @@ function saveInstallBaseFix(id) {
                   <div class="v">Not synced yet</div>
                   <div class="mini" style="margin-top:8px;">Use Send to Trade-In App to attach trade-in equipment to this new project.</div>
                 </div>
-                <div class="new-project-team-side trade-inline">
-                  <div class="trade-inline-col">
+                <div class="new-project-team-side trade-team-side">
+                  <div class="trade-team-status-block">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
 
@@ -17694,37 +17771,43 @@ function saveInstallBaseFix(id) {
                         ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(tradeSubmittedAt))}</div>`
                         : ""
                     }
-
-                    <div class="workflow-followup-row">
-                      <div class="workflow-followup-field">
-                        <label>Follow-Up Date</label>
-                        <input
-                          type="date"
-                          data-workflow-followup="trade"
-                          data-record-id="${escapeHtml(rec.id)}"
-                          value="${escapeHtml(tradeFollowUpDate)}"
-
-                          onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                        />
-                      </div>
-
-                      <div class="workflow-followup-confirmation">
-                        ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
-                      </div>
-                    </div>
-
-                    ${
-                      tradeAlertDate
-                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                        : ""
-                    }
                   </div>
-                  <div class="trade-inline-col">
+
+                  <div class="trade-team-contact-block">
                     <div class="new-project-team-label">Contact</div>
                     <button type="button" class="new-project-contact-toggle trade" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','trade',event)">
                       Mike Adams <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
                     </button>
                   </div>
+
+                  ${
+                    tradeDeskSubmitted
+                      ? `
+                        <div class="workflow-followup-row trade-followup-row">
+                          <div class="workflow-followup-field">
+                            <label>Follow-Up Date</label>
+                            <input
+                              type="date"
+                              data-workflow-followup="trade"
+                              data-record-id="${escapeHtml(rec.id)}"
+                              value="${escapeHtml(tradeFollowUpDate)}"
+                              onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
+                            />
+                          </div>
+
+                          <div class="workflow-followup-confirmation ${tradeFollowUpDate ? "saved" : ""}">
+                            ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
+                          </div>
+                        </div>
+
+                        ${
+                          tradeAlertDate
+                            ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
+                            : ""
+                        }
+                      `
+                      : ""
+                  }
                 </div>
                 ${tradeContactOpen ? `
                   <div class="new-project-contact-panel trade">
@@ -17810,13 +17893,13 @@ ${renderQuoteApprovalActionPanel(rec)}
         <div class="detail-card new-project-outcome-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
           <div class="k">Project Outcome</div>
          <div class="v" style="margin-bottom:12px;">${escapeHtml(formatStatusText(rec.quote_status || "open"))}</div>
-          <div class="btns">
-            <button type="button" class="green" onclick="openQuoteModal()">Create / Update Quote</button>
-            <button type="button" class="green" onclick="startInstallationProject('${rec.id}')">Start Installation Project</button>
-            ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${rec.id}')">Send to Trade-In App</button>`}
+          <div class="btns project-outcome-buttons">
+            <button type="button" class="green" onclick="openQuoteModal('${escapeJs(rec.id)}')">Create / Update Quote</button>
+            <button type="button" class="green" onclick="startInstallationProject('${escapeJs(rec.id)}')">Start Installation Project</button>
+            ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${escapeJs(rec.id)}')">Send to Trade-In App</button>`}
             ${rec.tradein_required !== "no" && rec.tradein_sync_received ? `<button type="button" class="green" onclick="submitAssociatedTradeIn('tradein_desk')">Send Associated Trade-In to Desk</button><button type="button" class="pink" onclick="submitAssociatedTradeIn('disposal')">Send Associated Trade-In to Disposal</button>` : ""}
-            <button type="button" class="green" onclick="markNewProjectWon('${rec.id}')">Mark Won</button>
-            <button type="button" class="red" onclick="markNewProjectLost('${rec.id}')">Mark Lost</button>
+            <button type="button" class="green" onclick="markNewProjectWon('${escapeJs(rec.id)}')">Mark Won</button>
+            <button type="button" class="red" onclick="markNewProjectLost('${escapeJs(rec.id)}')">Mark Lost</button>
             ${rec.quote_status === "lost" ? `<button type="button" class="red" onclick="deleteLostNewProject()">Delete Lost Project</button>` : ""}
           </div>
         </div>
@@ -19013,8 +19096,15 @@ manufacture_year: projectDOM,
       showBanner("New project created and saved.");
     }
 
-    function openQuoteModal() {
-      const rec = state.records.find(r => r.id === state.selectedId);
+    function openQuoteModal(recordId = "") {
+      const targetId = recordId || state.selectedId;
+      const rec = state.records.find(
+        r => String(r.id) === String(targetId)
+      );
+
+      if (rec) {
+        state.selectedId = rec.id;
+      }
       if (!rec) {
         alert("Open a record first");
         return;
