@@ -17289,16 +17289,20 @@ function saveInstallBaseFix(id) {
       return due.getTime() <= today.getTime();
     }
 
-    function saveWorkflowFollowUp(recordId, team) {
+    function saveWorkflowFollowUp(button, recordId, team) {
       const rec = state.records.find(
         item => String(item.id) === String(recordId)
       );
 
-      if (!rec) return;
+      if (!rec) {
+        alert("Record not found.");
+        return;
+      }
 
-      const input = document.querySelector(
-        `[data-workflow-followup="${team}"][data-record-id="${CSS.escape(String(recordId))}"]`
-      );
+      // Read the calendar directly from the same row as the clicked Save
+      // button. This avoids selector failures caused by special record IDs.
+      const row = button?.closest(".workflow-followup-row");
+      const input = row?.querySelector('input[type="date"]');
 
       if (!input || !input.value) {
         alert("Select a follow-up date first.");
@@ -17315,13 +17319,14 @@ function saveInstallBaseFix(id) {
 
       saveRecords();
       syncToManagerQueue(rec);
-      renderNewProjectDetail(rec);
 
       showBanner(
         team === "quote"
           ? "✅ Quote Team follow-up date saved"
           : "✅ Trade Desk follow-up date saved"
       );
+
+      renderNewProjectDetail(rec);
     }
 
     function renderNewProjectDetail(rec) {
@@ -17522,7 +17527,7 @@ function saveInstallBaseFix(id) {
               <button
                 type="button"
                 class="secondary workflow-followup-save"
-                onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','quote')"
+                onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','quote')"
               >
                 Save
               </button>
@@ -17604,7 +17609,7 @@ function saveInstallBaseFix(id) {
                       <button
                         type="button"
                         class="secondary workflow-followup-save"
-                        onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','trade')"
+                        onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
                       >
                         Save
                       </button>
@@ -17673,7 +17678,7 @@ function saveInstallBaseFix(id) {
                       <button
                         type="button"
                         class="secondary workflow-followup-save"
-                        onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','trade')"
+                        onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
                       >
                         Save
                       </button>
