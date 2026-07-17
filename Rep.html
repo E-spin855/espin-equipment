@@ -20304,6 +20304,14 @@ function reviewApprovedQuote() {
         if (processed.has(signature)) return;
         processed.add(signature);
 
+        // Do not re-import the same Quote Review decision every 8 seconds.
+        // Repeatedly treating an already-synced approval as new was rebuilding
+        // the project section while the rep was clicking and made the page
+        // appear frozen.
+        if (String(rec.quote_last_import_signature || "") === signature) {
+          return;
+        }
+
         rec.quote_approval_id =
           item.quote_approval_id ||
           item.approval_id ||
@@ -20363,6 +20371,7 @@ function reviewApprovedQuote() {
 
         rec.manager_unseen_update = true;
         rec.manager_flash_at = decisionAt;
+        rec.quote_last_import_signature = signature;
 
         syncToManagerQueue(rec);
         changed = true;
@@ -20370,15 +20379,6 @@ function reviewApprovedQuote() {
 
       if (changed) {
         saveRecords();
-
-        const quoteModal = $("quoteModal");
-        if (quoteModal) {
-          quoteModal.style.display = "none";
-          quoteModal.classList.remove("open", "show", "active");
-        }
-
-        document.body.classList.remove("modal-open");
-        document.body.style.overflow = "";
 
         /*
           Remove only the dedicated response list. Keep the main quote queue
@@ -22226,19 +22226,6 @@ if (showCompletedProjectsBtn) {
     updateAxisShareStatus();
 
     if (approvalChanged) {
-      // Quote approval sync should refresh only the affected project area.
-      // A full render here could leave the modal overlay above the page and
-      // make every button appear frozen.
-      const quoteModal = $("quoteModal");
-
-      if (quoteModal) {
-        quoteModal.style.display = "none";
-        quoteModal.classList.remove("open", "show", "active");
-      }
-
-      document.body.classList.remove("modal-open");
-      document.body.style.overflow = "";
-
       const selected = state.records.find(
         record => String(record.id) === String(state.selectedId)
       );
