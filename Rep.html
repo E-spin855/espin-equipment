@@ -9084,6 +9084,10 @@ function buildManagerSyncPacket(rec) {
     manager_review_request: getInstallBaseRepActionRequired(rec),
     install_base_rep_action_required: getInstallBaseRepActionRequired(rec),
 
+    // Carry linked ESPIN Connect project progress to Manager.
+    active_project_snapshots: getActiveProjectSnapshotsForRecord(rec),
+    active_projects_updated_at: new Date().toISOString(),
+
     source: rec.source || "Rep Review Page",
     hub_source: rec.hub_source || "Rep Review Page"
   };
@@ -9151,6 +9155,19 @@ function syncToManagerQueue(rec) {
       "",
 
     rep_notes: rec.rep_notes || "",
+
+    // Carry linked Active Projects with every Manager sync.
+    active_project_snapshots: getActiveProjectSnapshotsForRecord(rec),
+    active_projects_updated_at: new Date().toISOString(),
+
+    // Carry the complete Rep Action History with every Manager sync.
+    // This ensures every action selected in Rep Action appears on Manager.
+    rep_action_history: Array.isArray(rec.rep_action_history)
+      ? rec.rep_action_history.map(item => ({ ...item }))
+      : Array.isArray(packet.rep_action_history)
+      ? packet.rep_action_history.map(item => ({ ...item }))
+      : [],
+
     rep_last_action_at:
       rec.rep_last_action_at ||
       packet.rep_last_action_at ||
@@ -17529,6 +17546,24 @@ function activeProjectMatchesSelectedRecord(project, rec) {
   );
 }
 
+function getActiveProjectSnapshotsForRecord(rec) {
+  if (!rec) return [];
+
+  return readEspinActiveProjects()
+    .filter(project => project && project.project_id)
+    .filter(project => activeProjectMatchesSelectedRecord(project, rec))
+    .map(project => ({
+      ...project,
+      milestones: Array.isArray(project.milestones)
+        ? project.milestones.map(milestone => ({ ...milestone }))
+        : []
+    }))
+    .sort((a, b) =>
+      new Date(b.updated_at || 0).getTime() -
+      new Date(a.updated_at || 0).getTime()
+    );
+}
+
 function renderActiveProjects() {
   const list = $("activeProjectsList");
   const summary = $("activeProjectsSummary");
@@ -17655,6 +17690,16 @@ function upsertEspinActiveProject(project) {
     ESPIN_ACTIVE_PROJECTS_KEY,
     JSON.stringify(records)
   );
+
+  // Push the latest milestone snapshot to the Manager record immediately.
+  if (selectedRecord) {
+    selectedRecord.active_project_snapshots = getActiveProjectSnapshotsForRecord(selectedRecord);
+    selectedRecord.active_projects_updated_at = new Date().toISOString();
+    selectedRecord.manager_flash_type = "active_project_update";
+    selectedRecord.manager_flash_text = "Active Project milestone updated";
+    selectedRecord.manager_flash_at = selectedRecord.active_projects_updated_at;
+    syncToManagerQueue(selectedRecord);
+  }
 
   renderActiveProjects();
 }

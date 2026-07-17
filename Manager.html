@@ -2972,6 +2972,57 @@ tr.unread-message-row td{
       0 0 60px rgba(65,255,156,.34);
   }
 }
+
+/* Manager Active Projects */
+.manager-active-projects-card{
+  grid-column:1 / -1;
+  padding:18px 20px!important;
+  border:1px solid rgba(67,176,255,.40)!important;
+  background:linear-gradient(135deg,rgba(67,176,255,.07),rgba(8,18,35,.90))!important;
+}
+.manager-active-projects-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+  flex-wrap:wrap;
+}
+.manager-active-projects-title{
+  color:#9bc6ec;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.manager-active-projects-summary{color:#9db6d2;font-size:12px;font-weight:800;}
+.manager-active-projects-list{display:grid;gap:12px;}
+.manager-active-project-item{
+  padding:14px;
+  border:1px solid rgba(88,184,255,.20);
+  border-radius:14px;
+  background:rgba(7,17,31,.72);
+}
+.manager-active-project-item.complete{
+  border-color:rgba(65,255,156,.52);
+  box-shadow:0 0 16px rgba(65,255,156,.12);
+}
+.manager-active-project-name{font-size:15px;font-weight:950;color:#eef6ff;}
+.manager-active-project-meta{margin-top:4px;color:#9db6d2;font-size:12px;}
+.manager-active-progress-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:11px;}
+.manager-active-progress-track{height:10px;border:1px solid rgba(88,184,255,.24);border-radius:999px;background:#06101f;overflow:hidden;}
+.manager-active-progress-fill{height:100%;background:linear-gradient(90deg,#ff4d4d,#ff9c9c);border-radius:999px;}
+.manager-active-project-item.complete .manager-active-progress-fill{background:linear-gradient(90deg,#22c55e,#8effc3);}
+.manager-active-progress-percent{min-width:42px;text-align:right;color:#d8ebff;font-size:12px;font-weight:950;}
+.manager-active-project-stage{margin-top:8px;color:#a2f5ff;font-size:13px;font-weight:900;}
+.manager-active-project-count{margin-top:3px;color:#9db6d2;font-size:12px;}
+.manager-active-milestones{display:grid;gap:7px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(88,184,255,.14);}
+.manager-active-milestone{display:flex;align-items:center;gap:9px;color:#9db6d2;font-size:12px;}
+.manager-active-milestone.done{color:#b9ffd8;}
+.manager-active-milestone.current{color:#fff2b3;font-weight:900;}
+.manager-active-node{width:18px;text-align:center;font-weight:950;}
+.manager-active-empty{padding:13px;border:1px dashed rgba(88,184,255,.24);border-radius:12px;color:#9db6d2;text-align:center;}
+
 </style>
 
 <style>
@@ -5138,10 +5189,13 @@ const repUpdateTypes = [
   "open_approved_email_draft",
   "send_to_trade_in_app",
   "send_to_disposal_review",
+  "start_installation_project",
+  "installation_project_started",
   "complete_project",
   "remove_from_my_view",
   "rep_priority_updated",
-  "rep_attention_alert_updated"
+  "rep_attention_alert_updated",
+  "active_project_update"
 ];
 
 const incomingRepHistory = Array.isArray(rec.rep_action_history)
@@ -5266,6 +5320,29 @@ const normalSeen = isFreshRepUpdate
 	        existing.manager_only === true,
 
 	      quote_seen: existing.quote_seen === true || rec.quote_seen === true,
+
+      // Preserve all prior Rep actions and append every newly synced action.
+      rep_action_history: mergeManagerRepActionHistories(
+        existing.rep_action_history,
+        rec.rep_action_history
+      ),
+
+      // Keep the newest complete Active Projects snapshot from Rep.
+      active_project_snapshots:
+        Array.isArray(rec.active_project_snapshots)
+          ? rec.active_project_snapshots.map(project => ({
+              ...project,
+              milestones: Array.isArray(project.milestones)
+                ? project.milestones.map(milestone => ({ ...milestone }))
+                : []
+            }))
+          : Array.isArray(existing.active_project_snapshots)
+          ? existing.active_project_snapshots
+          : [],
+      active_projects_updated_at:
+        rec.active_projects_updated_at ||
+        existing.active_projects_updated_at ||
+        "",
 
       manager_response_seen_by_rep:
         rec.manager_response_seen_by_rep === false
@@ -5416,6 +5493,45 @@ function hasFollowUpOverdueBy7Days(rec) {
 
 const MANAGER_REP_ACTION_HISTORY_SEEN_KEY =
   "espin_manager_rep_action_history_seen_v1";
+
+function mergeManagerRepActionHistories(existingHistory, incomingHistory) {
+  const combined = [
+    ...(Array.isArray(existingHistory) ? existingHistory : []),
+    ...(Array.isArray(incomingHistory) ? incomingHistory : [])
+  ];
+
+  const merged = [];
+  const seen = new Set();
+
+  combined.forEach(item => {
+    if (!item || !clean(item.label || item.action)) return;
+
+    const normalized = {
+      at: clean(item.at || item.date || item.timestamp),
+      action: clean(item.action),
+      label: clean(item.label || getRepActionLabel(item.action)),
+      follow_up_date: clean(item.follow_up_date || item.followUpDate),
+      by: clean(item.by || item.rep || "Rep")
+    };
+
+    const signature = [
+      normalized.at,
+      normalized.action,
+      normalized.label,
+      normalized.follow_up_date
+    ].join("|");
+
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    merged.push(normalized);
+  });
+
+  return merged.sort((a, b) => {
+    const aTime = new Date(a.at || 0).getTime() || 0;
+    const bTime = new Date(b.at || 0).getTime() || 0;
+    return aTime - bTime;
+  });
+}
 
 function getLatestRepActionHistorySignature(rec) {
   const history = Array.isArray(rec?.rep_action_history)
@@ -5578,6 +5694,83 @@ function getManagerRepActionHistory(rec) {
     const bTime = new Date(b.at || 0).getTime();
     return aTime - bTime;
   });
+}
+
+function renderManagerActiveProjects(rec) {
+  const projects = Array.isArray(rec?.active_project_snapshots)
+    ? rec.active_project_snapshots
+    : [];
+
+  const updatedAt = rec?.active_projects_updated_at
+    ? new Date(rec.active_projects_updated_at)
+    : null;
+
+  const updatedText = updatedAt && !Number.isNaN(updatedAt.getTime())
+    ? `Updated ${updatedAt.toLocaleString()}`
+    : "Synchronized from Rep";
+
+  if (!projects.length) {
+    return `
+      <div class="detail-card manager-active-projects-card">
+        <div class="manager-active-projects-head">
+          <div class="manager-active-projects-title">📋 Active Projects</div>
+          <div class="manager-active-projects-summary">${escapeHtml(updatedText)}</div>
+        </div>
+        <div class="manager-active-empty">No linked ESPIN Connect project is currently synchronized.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="detail-card manager-active-projects-card">
+      <div class="manager-active-projects-head">
+        <div class="manager-active-projects-title">📋 Active Projects</div>
+        <div class="manager-active-projects-summary">${projects.length} synchronized project${projects.length === 1 ? "" : "s"} · ${escapeHtml(updatedText)}</div>
+      </div>
+      <div class="manager-active-projects-list">
+        ${projects.map(project => {
+          const milestones = Array.isArray(project?.milestones) ? project.milestones : [];
+          const completed = milestones.filter(item => item?.completed === true).length;
+          const progress = Math.max(0, Math.min(100,
+            Number.isFinite(Number(project?.progress))
+              ? Number(project.progress)
+              : Math.round(completed / Math.max(milestones.length, 1) * 100)
+          ));
+          const complete = progress >= 100;
+          const currentIndex = milestones.findIndex(item => item?.completed !== true);
+          const typeLabel = String(project?.project_type || "project").replace(/_/g, " ");
+          const stage = project?.current_stage || (complete ? "Project Completed" : "Project In Progress");
+
+          return `
+            <div class="manager-active-project-item ${complete ? "complete" : ""}">
+              <div class="manager-active-project-name">${escapeHtml(project?.project_name || project?.project_id || "Active Project")}</div>
+              <div class="manager-active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project?.facility || "ESPIN Connect")}</div>
+              <div class="manager-active-progress-row">
+                <div class="manager-active-progress-track"><div class="manager-active-progress-fill" style="width:${progress}%"></div></div>
+                <div class="manager-active-progress-percent">${progress}%</div>
+              </div>
+              <div class="manager-active-project-stage">${escapeHtml(stage)}</div>
+              <div class="manager-active-project-count">${completed} of ${milestones.length} milestones complete</div>
+              ${milestones.length ? `
+                <div class="manager-active-milestones">
+                  ${milestones.map((milestone, index) => {
+                    const done = milestone?.completed === true;
+                    const current = !done && index === currentIndex;
+                    return `
+                      <div class="manager-active-milestone ${done ? "done" : ""} ${current ? "current" : ""}">
+                        <div class="manager-active-node">${done ? "✓" : current ? "●" : "○"}</div>
+                        <div>${escapeHtml(milestone?.name || "Milestone")}</div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              ` : ""}
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function renderManagerRepActionHistory(rec) {
@@ -10042,6 +10235,8 @@ function renderDetail() {
       ${renderManagerRepActionHistory(rec)}
     </div>
   </div>
+
+  ${renderManagerActiveProjects(rec)}
 
 </div>
 <!-- END MANAGER REVIEW ROW -->
