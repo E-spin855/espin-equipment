@@ -17897,7 +17897,6 @@ ${renderQuoteApprovalActionPanel(rec)}
             <button type="button" class="green" onclick="openQuoteModal('${escapeJs(rec.id)}')">Create / Update Quote</button>
             <button type="button" class="green" onclick="startInstallationProject('${escapeJs(rec.id)}')">Start Installation Project</button>
             ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${escapeJs(rec.id)}')">Send to Trade-In App</button>`}
-            ${rec.tradein_required !== "no" && rec.tradein_sync_received ? `<button type="button" class="green" onclick="submitAssociatedTradeIn('tradein_desk')">Send Associated Trade-In to Desk</button><button type="button" class="pink" onclick="submitAssociatedTradeIn('disposal')">Send Associated Trade-In to Disposal</button>` : ""}
             <button type="button" class="green" onclick="markNewProjectWon('${escapeJs(rec.id)}')">Mark Won</button>
             <button type="button" class="red" onclick="markNewProjectLost('${escapeJs(rec.id)}')">Mark Lost</button>
             ${rec.quote_status === "lost" ? `<button type="button" class="red" onclick="deleteLostNewProject()">Delete Lost Project</button>` : ""}
@@ -19102,36 +19101,72 @@ manufacture_year: projectDOM,
         r => String(r.id) === String(targetId)
       );
 
-      if (rec) {
-        state.selectedId = rec.id;
-      }
       if (!rec) {
         alert("Open a record first");
         return;
       }
 
-      $("quoteAmount").value = rec.quote_amount || "";
-      $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
-      $("quoteTradeInCredit").value = rec.tradein_required === "no" ? "" : (getTradeInCreditValue(rec) || "");
-      $("quoteTradeInCredit").disabled = rec.tradein_required === "no";
-      $("quoteStatus").value = rec.quote_status || "draft";
-      $("quoteFollowUpTag").value = rec.quote_follow_up_tag || "medium";
-      $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
-      $("quoteExpirationDate").value = rec.quote_expiration_date || "";
-      $("quoteRecipientEmail").value = rec.quote_recipient_email || rec.contact_email || "";
-      $("quoteCcEmail").value = rec.quote_cc_email || "";
-      $("quoteFollowUpAlertDate").value = rec.quote_follow_up_alert_date || rec.quote_expected_close_date || "";
-      $("quoteFollowUpAlertNote").value = rec.quote_follow_up_alert_note || "";
-      $("quoteInstallRequired").value = rec.quote_install_required || "yes";
-      $("quoteRemovalRequired").value = rec.quote_removal_required || "no";
-      $("quoteLossReason").value = rec.quote_loss_reason || "";
+      state.selectedId = rec.id;
 
-      updateQuotePreview();
-      $("quoteModal").style.display = "flex";
+      const modal = $("quoteModal");
+      if (!modal) {
+        alert("Quote window could not be opened.");
+        return;
+      }
+
+      // Open the modal first so the click cannot appear to freeze the page
+      // while fields and preview are being prepared.
+      modal.style.display = "flex";
+      modal.scrollTop = 0;
+
+      window.requestAnimationFrame(() => {
+        try {
+          $("quoteAmount").value = rec.quote_amount || "";
+          $("quoteEstimatedCost").value = rec.quote_estimated_cost || "";
+
+          const tradeCredit = $("quoteTradeInCredit");
+          tradeCredit.value =
+            rec.tradein_required === "no"
+              ? ""
+              : (getTradeInCreditValue(rec) || "");
+          tradeCredit.disabled = rec.tradein_required === "no";
+
+          $("quoteStatus").value = rec.quote_status || "draft";
+          $("quoteFollowUpTag").value = rec.quote_follow_up_tag || "medium";
+          $("quoteExpectedCloseDate").value = rec.quote_expected_close_date || "";
+          $("quoteExpirationDate").value = rec.quote_expiration_date || "";
+          $("quoteRecipientEmail").value =
+            rec.quote_recipient_email || rec.contact_email || "";
+          $("quoteCcEmail").value = rec.quote_cc_email || "";
+          $("quoteFollowUpAlertDate").value =
+            rec.quote_follow_up_alert_date ||
+            rec.quote_expected_close_date ||
+            "";
+          $("quoteFollowUpAlertNote").value =
+            rec.quote_follow_up_alert_note || "";
+          $("quoteInstallRequired").value =
+            rec.quote_install_required || "yes";
+          $("quoteRemovalRequired").value =
+            rec.quote_removal_required || "no";
+          $("quoteLossReason").value = rec.quote_loss_reason || "";
+
+          updateQuotePreview();
+
+          const modalBox = modal.querySelector(".modal-box");
+          if (modalBox) modalBox.scrollTop = 0;
+        } catch (error) {
+          console.error("Quote modal error:", error);
+          modal.style.display = "none";
+          alert("Quote window could not be loaded. Please try again.");
+        }
+      });
     }
 
     function closeQuoteModal() {
-      $("quoteModal").style.display = "none";
+      const modal = $("quoteModal");
+      if (modal) {
+        modal.style.display = "none";
+      }
     }
 
     function updateQuotePreview() {
