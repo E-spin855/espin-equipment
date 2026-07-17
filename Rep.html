@@ -5789,29 +5789,45 @@ tr.red-hot-row-pulse{
 
 
 <style id="quote-team-status-contact-inline-fix">
-.quote-team-side{
-  display:block!important;
+/* Quote Team Status and Contact sit side by side. */
+.new-project-team-card > .new-project-team-side:not(.trade-inline){
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(150px,.82fr)!important;
+  column-gap:18px!important;
+  row-gap:7px!important;
+  align-items:start!important;
 }
 
-.quote-team-top-row{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(150px,.72fr);
-  gap:18px;
-  align-items:start;
+.new-project-team-card > .new-project-team-side:not(.trade-inline) > .new-project-team-label:nth-of-type(1){
+  grid-column:1!important;
+  grid-row:1!important;
 }
 
-.quote-team-top-row .new-project-team-status{
-  margin-bottom:0;
+.new-project-team-card > .new-project-team-side:not(.trade-inline) > .new-project-team-status{
+  grid-column:1!important;
+  grid-row:2!important;
+  margin-bottom:0!important;
 }
 
-.quote-team-side .workflow-followup-row{
-  margin-top:16px;
-  max-width:430px;
+.new-project-team-card > .new-project-team-side:not(.trade-inline) > .new-project-team-label:nth-of-type(2){
+  grid-column:2!important;
+  grid-row:1!important;
+}
+
+.new-project-team-card > .new-project-team-side:not(.trade-inline) > .new-project-contact-toggle{
+  grid-column:2!important;
+  grid-row:2!important;
+  justify-self:start!important;
 }
 
 @media(max-width:800px){
-  .quote-team-top-row{
-    grid-template-columns:1fr;
+  .new-project-team-card > .new-project-team-side:not(.trade-inline){
+    grid-template-columns:1fr!important;
+  }
+
+  .new-project-team-card > .new-project-team-side:not(.trade-inline) > *{
+    grid-column:1!important;
+    grid-row:auto!important;
   }
 }
 </style>
@@ -5890,6 +5906,28 @@ tr.red-hot-row-pulse{
   min-height:42px;
   padding:10px 14px;
   white-space:nowrap;
+}
+
+.workflow-followup-confirmation{
+  min-width:96px;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(88,184,255,.22);
+  background:#102340;
+  color:#9db6d2;
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.workflow-followup-confirmation.saved{
+  border-color:rgba(65,255,156,.52);
+  background:rgba(65,255,156,.08);
+  color:#8effc3;
 }
 
 .workflow-submission-date{
@@ -17273,16 +17311,9 @@ function saveInstallBaseFix(id) {
       return due.getTime() <= today.getTime();
     }
 
-    const workflowFollowUpDrafts = {};
+    function saveWorkflowFollowUpDate(input, recordId, team) {
+      if (!input || !input.value) return;
 
-    function stageWorkflowFollowUpDate(input, recordId, team) {
-      if (!input) return;
-
-      const key = `${String(recordId)}::${String(team)}`;
-      workflowFollowUpDrafts[key] = input.value || "";
-    }
-
-    function saveWorkflowFollowUp(button, recordId, team) {
       const rec = state.records.find(
         item => String(item.id) === String(recordId)
       );
@@ -17292,52 +17323,31 @@ function saveInstallBaseFix(id) {
         return;
       }
 
-      const row = button?.closest(".workflow-followup-row");
-      const input = row?.querySelector('input[type="date"]');
-
-      if (!input || !input.value) {
-        alert("Select a follow-up date first.");
-        return;
-      }
-
       const field =
         team === "quote"
           ? "quote_team_followup_date"
           : "trade_desk_followup_date";
 
-      const key = `${String(recordId)}::${String(team)}`;
-      const selectedDate =
-        workflowFollowUpDrafts[key] ||
-        input.value ||
-        "";
-
-      if (!selectedDate) {
-        alert("Select a follow-up date first.");
-        return;
-      }
-
-      rec[field] = selectedDate;
+      rec[field] = input.value;
       rec[`${field}_set_at`] = new Date().toISOString();
-      delete workflowFollowUpDrafts[key];
 
       saveRecords();
       syncToManagerQueue(rec);
 
-      // Give the rep clear confirmation that the button was pressed
-      // before the section re-renders.
-      button.textContent = "Saved ✓";
-      button.disabled = true;
-      button.classList.add("message-sent-state");
+      const confirmation = input
+        .closest(".workflow-followup-row")
+        ?.querySelector(".workflow-followup-confirmation");
+
+      if (confirmation) {
+        confirmation.textContent = "Saved ✓";
+        confirmation.classList.add("saved");
+      }
 
       showBanner(
         team === "quote"
           ? "✅ Quote Team follow-up date saved"
           : "✅ Trade Desk follow-up date saved"
       );
-
-      window.setTimeout(() => {
-        renderNewProjectDetail(rec);
-      }, 850);
     }
 
     function renderNewProjectDetail(rec) {
@@ -17469,18 +17479,8 @@ function saveInstallBaseFix(id) {
         rec.tradein_sent_at ||
         "";
 
-      const quoteDraftKey = `${String(rec.id)}::quote`;
-      const tradeDraftKey = `${String(rec.id)}::trade`;
-
-      const quoteFollowUpDate =
-        Object.prototype.hasOwnProperty.call(workflowFollowUpDrafts, quoteDraftKey)
-          ? workflowFollowUpDrafts[quoteDraftKey]
-          : (rec.quote_team_followup_date || "");
-
-      const tradeFollowUpDate =
-        Object.prototype.hasOwnProperty.call(workflowFollowUpDrafts, tradeDraftKey)
-          ? workflowFollowUpDrafts[tradeDraftKey]
-          : (rec.trade_desk_followup_date || "");
+      const quoteFollowUpDate = rec.quote_team_followup_date || "";
+      const tradeFollowUpDate = rec.trade_desk_followup_date || "";
 
       const quoteAlertDate = workflowAddDays(quoteFollowUpDate, 7);
       const tradeAlertDate = workflowAddDays(tradeFollowUpDate, 7);
@@ -17524,59 +17524,44 @@ function saveInstallBaseFix(id) {
                 : ""
             }
           </div>
-          <div class="new-project-team-side quote-team-side">
-            <div class="quote-team-top-row">
-              <div>
-                <div class="new-project-team-label">Quote Team Status</div>
-                <div class="new-project-team-status ${quoteTeamStatusClass}">${escapeHtml(quoteTeamStatus)}</div>
-                ${
-                  quoteSubmittedAt
-                    ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(quoteSubmittedAt))}</div>`
-                    : ""
-                }
-              </div>
-
-              <div>
-                <div class="new-project-team-label">Contact</div>
-                <button type="button" class="new-project-contact-toggle quote" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','quote',event)">
-                  Sarah Johnson <span class="new-project-contact-caret">${quoteContactOpen ? "⌃" : "⌄"}</span>
-                </button>
-              </div>
-            </div>
+          <div class="new-project-team-side">
+            <div class="new-project-team-label">Quote Team Status</div>
+            <div class="new-project-team-status ${quoteTeamStatusClass}">${escapeHtml(quoteTeamStatus)}</div>
 
             ${
-              quoteSubmitted
-                ? `
-                  <div class="workflow-followup-row">
-                    <div class="workflow-followup-field">
-                      <label>Follow-Up Date</label>
-                      <input
-                        type="date"
-                        data-workflow-followup="quote"
-                        data-record-id="${escapeHtml(rec.id)}"
-                        value="${escapeHtml(quoteFollowUpDate)}"
-                        onchange="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','quote')"
-                        oninput="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','quote')"
+              quoteSubmittedAt
+                ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(quoteSubmittedAt))}</div>`
+                : ""
+            }
+
+            <div class="workflow-followup-row">
+              <div class="workflow-followup-field">
+                <label>Follow-Up Date</label>
+                <input
+                  type="date"
+                  data-workflow-followup="quote"
+                  data-record-id="${escapeHtml(rec.id)}"
+                  value="${escapeHtml(quoteFollowUpDate)}"
+
+                        onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','quote')"
                       />
                     </div>
 
-                    <button
-                      type="button"
-                      class="secondary workflow-followup-save" formnovalidate
-                      onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','quote')"
-                    >
-                      Save
-                    </button>
-                  </div>
+                    <div class="workflow-followup-confirmation">
+                      ${quoteFollowUpDate ? "Saved ✓" : "Select a date"}
+                    </div>
+            </div>
 
-                  ${
-                    quoteAlertDate
-                      ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(quoteAlertDate))}</div>`
-                      : ""
-                  }
-                `
+            ${
+              quoteAlertDate
+                ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(quoteAlertDate))}</div>`
                 : ""
             }
+
+            <div class="new-project-team-label">Contact</div>
+            <button type="button" class="new-project-contact-toggle quote" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','quote',event)">
+              Sarah Johnson <span class="new-project-contact-caret">${quoteContactOpen ? "⌃" : "⌄"}</span>
+            </button>
           </div>
           ${quoteContactOpen ? `
             <div class="new-project-contact-panel quote">
@@ -17629,37 +17614,27 @@ function saveInstallBaseFix(id) {
                         : ""
                     }
 
+                    <div class="workflow-followup-row">
+                      <div class="workflow-followup-field">
+                        <label>Follow-Up Date</label>
+                        <input
+                          type="date"
+                          data-workflow-followup="trade"
+                          data-record-id="${escapeHtml(rec.id)}"
+                          value="${escapeHtml(tradeFollowUpDate)}"
+
+                          onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
+                        />
+                      </div>
+
+                      <div class="workflow-followup-confirmation">
+                        ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
+                      </div>
+                    </div>
+
                     ${
-                      tradeDeskSubmitted
-                        ? `
-                          <div class="workflow-followup-row">
-                            <div class="workflow-followup-field">
-                              <label>Follow-Up Date</label>
-                              <input
-                                type="date"
-                                data-workflow-followup="trade"
-                                data-record-id="${escapeHtml(rec.id)}"
-                                value="${escapeHtml(tradeFollowUpDate)}"
-                                onchange="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                                oninput="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                              />
-                            </div>
-
-                            <button
-                              type="button"
-                              class="secondary workflow-followup-save" formnovalidate
-                              onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
-                            >
-                              Save
-                            </button>
-                          </div>
-
-                          ${
-                            tradeAlertDate
-                              ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                              : ""
-                          }
-                        `
+                      tradeAlertDate
+                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
                         : ""
                     }
                   </div>
@@ -17706,37 +17681,27 @@ function saveInstallBaseFix(id) {
                         : ""
                     }
 
+                    <div class="workflow-followup-row">
+                      <div class="workflow-followup-field">
+                        <label>Follow-Up Date</label>
+                        <input
+                          type="date"
+                          data-workflow-followup="trade"
+                          data-record-id="${escapeHtml(rec.id)}"
+                          value="${escapeHtml(tradeFollowUpDate)}"
+
+                          onchange="saveWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
+                        />
+                      </div>
+
+                      <div class="workflow-followup-confirmation">
+                        ${tradeFollowUpDate ? "Saved ✓" : "Select a date"}
+                      </div>
+                    </div>
+
                     ${
-                      tradeDeskSubmitted
-                        ? `
-                          <div class="workflow-followup-row">
-                            <div class="workflow-followup-field">
-                              <label>Follow-Up Date</label>
-                              <input
-                                type="date"
-                                data-workflow-followup="trade"
-                                data-record-id="${escapeHtml(rec.id)}"
-                                value="${escapeHtml(tradeFollowUpDate)}"
-                                onchange="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                                oninput="stageWorkflowFollowUpDate(this,'${escapeJs(rec.id)}','trade')"
-                              />
-                            </div>
-
-                            <button
-                              type="button"
-                              class="secondary workflow-followup-save" formnovalidate
-                              onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
-                            >
-                              Save
-                            </button>
-                          </div>
-
-                          ${
-                            tradeAlertDate
-                              ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                              : ""
-                          }
-                        `
+                      tradeAlertDate
+                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
                         : ""
                     }
                   </div>
