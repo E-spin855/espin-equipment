@@ -5898,6 +5898,32 @@ tr.red-hot-row-pulse{
 }
 </style>
 
+
+<style id="rep-manager-followup-request-styles">
+.rep-followup-request-callout{
+  margin:0 0 14px;
+  padding:13px 14px;
+  border:2px solid rgba(255,216,77,.72);
+  border-radius:14px;
+  background:rgba(255,216,77,.10);
+  box-shadow:0 0 20px rgba(255,216,77,.18);
+}
+.rep-followup-request-title{
+  color:#ffd84d;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+.rep-followup-request-text{
+  margin-top:6px;
+  color:#fff4cc;
+  font-size:14px;
+  font-weight:850;
+  line-height:1.4;
+}
+</style>
+
 </head>
 
 <body>
@@ -13950,7 +13976,8 @@ function clearRepAttentionAlert() {
 
 
 function renderRegularRepAction(rec) {
-  const open = state.repActionOpen === true;
+  const followUpRequestPending = rec.manager_follow_up_request_pending === true;
+  const open = state.repActionOpen === true || followUpRequestPending;
 
   // Only a manually selected Rep Action belongs in this summary.
   // Review categories such as Capital Planning must not appear here.
@@ -13962,6 +13989,8 @@ function renderRegularRepAction(rec) {
       )
     : "Select Action";
   const followUpDate = rec.rep_follow_up_date || rec.next_action_date || "";
+  const requestedAction = clean(rec.manager_follow_up_request_action || "");
+  const requestedLabel = clean(rec.manager_follow_up_request_label || "Rep Action");
   const summaryParts = [];
 
   summaryParts.push(savedActionLabel);
@@ -13983,24 +14012,32 @@ function renderRegularRepAction(rec) {
       </div>
 
       <div class="rep-action-expanded ${open ? "" : "hidden"}">
+        ${followUpRequestPending ? `
+          <div class="rep-followup-request-callout">
+            <div class="rep-followup-request-title">Manager Follow-Up Date Request</div>
+            <div class="rep-followup-request-text">
+              Enter a follow-up date for: ${escapeHtml(requestedLabel)}.
+            </div>
+          </div>
+        ` : ""}
         <div class="row" style="margin-bottom:10px;">
           <label for="manualActionSelect">Rep Action</label>
           <select id="manualActionSelect" class="placeholder">
             <option value="">Select Action</option>
-            <option value="quote_review">Prepare Quote Review</option>
-            <option value="submit_quote_approval">Submit Quote for Approval</option>
-            <option value="open_email_draft">Open Approved Email Draft</option>
-            <option value="send_tradein_app">Send to Trade-In App</option>
-            <option value="send_disposal_review">Send to Disposal Review</option>
-            <option value="start_installation_project">
+            <option value="quote_review" ${requestedAction === "quote_review" ? "selected" : ""}>Prepare Quote Review</option>
+            <option value="submit_quote_approval" ${requestedAction === "submit_quote_approval" ? "selected" : ""}>Submit Quote for Approval</option>
+            <option value="open_email_draft" ${requestedAction === "open_email_draft" ? "selected" : ""}>Open Approved Email Draft</option>
+            <option value="send_tradein_app" ${requestedAction === "send_tradein_app" ? "selected" : ""}>Send to Trade-In App</option>
+            <option value="send_disposal_review" ${requestedAction === "send_disposal_review" ? "selected" : ""}>Send to Disposal Review</option>
+            <option value="start_installation_project" ${requestedAction === "start_installation_project" ? "selected" : ""}>
               ${rec.install_project_started
                 ? "Open Installation Project"
                 : "Start Installation Project"}
             </option>
-            <option value="contact_customer">Contact Customer</option>
-            <option value="schedule_follow_up">Schedule Follow-Up</option>
-            <option value="mark_reviewed">Mark Reviewed</option>
-            <option value="complete">Complete Project</option>
+            <option value="contact_customer" ${requestedAction === "contact_customer" ? "selected" : ""}>Contact Customer</option>
+            <option value="schedule_follow_up" ${requestedAction === "schedule_follow_up" ? "selected" : ""}>Schedule Follow-Up</option>
+            <option value="mark_reviewed" ${requestedAction === "mark_reviewed" ? "selected" : ""}>Mark Reviewed</option>
+            <option value="complete" ${requestedAction === "complete" ? "selected" : ""}>Complete Project</option>
           </select>
         </div>
 
@@ -18857,7 +18894,7 @@ if (!action) {
   return;
 }
 
-	if (action === "schedule_follow_up" && !followUpDate) {
+	if ((action === "schedule_follow_up" || rec.manager_follow_up_request_pending === true) && !followUpDate) {
 	  alert("Select follow-up date first.");
 	  return;
 	}
@@ -18884,8 +18921,21 @@ rec.rep_action = action;
 rec.rep_action_label = label;
 rec.rep_notes = "";
 rec.rep_follow_up_date = followUpDate || "";
-rec.next_action_date = action === "schedule_follow_up" ? followUpDate : "";
+rec.next_action_date = followUpDate || "";
 rec.rep_last_action_at = now;
+
+if (rec.manager_follow_up_request_pending === true && followUpDate) {
+  rec.manager_follow_up_request_pending = false;
+  rec.manager_follow_up_request_completed_at = now;
+  rec.manager_follow_up_request_completed_by =
+    clean(`${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`) ||
+    clean(rec.assigned_rep_name) ||
+    "Rep";
+  rec.manager_response_seen_by_rep = true;
+  rec.manager_response_seen_at = now;
+  rec.manager_flash_text = `Rep entered follow-up date for ${label}`;
+  rec.manager_flash_type = "follow_up_date_completed";
+}
 
 rec.manager_unseen_update = true;
 rec.manager_alert_seen = false;

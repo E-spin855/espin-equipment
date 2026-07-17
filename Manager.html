@@ -3936,6 +3936,53 @@ tr.red-hot-row-pulse{
 }
 </style>
 
+
+<style id="manager-rep-action-followup-request-styles">
+.manager-rep-action-item{
+  display:grid!important;
+  grid-template-columns:36px minmax(0,1fr) minmax(190px,auto)!important;
+  gap:14px!important;
+  align-items:center!important;
+}
+.manager-rep-action-followup-cell{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  min-width:0;
+}
+.manager-rep-action-followup-cell .followup-date-pill{
+  white-space:nowrap;
+}
+.manager-request-followup-btn{
+  min-height:38px!important;
+  padding:9px 12px!important;
+  border:1px solid rgba(255,216,77,.62)!important;
+  background:rgba(255,216,77,.11)!important;
+  color:#fff1b8!important;
+  box-shadow:0 0 14px rgba(255,216,77,.14)!important;
+  font-size:12px!important;
+  white-space:nowrap;
+}
+.manager-followup-request-sent{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
+  padding:8px 11px;
+  border-radius:11px;
+  border:1px solid rgba(65,255,156,.42);
+  background:rgba(65,255,156,.09);
+  color:#c8ffdf;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+}
+@media(max-width:820px){
+  .manager-rep-action-item{grid-template-columns:36px minmax(0,1fr)!important;}
+  .manager-rep-action-followup-cell{grid-column:2;justify-content:flex-start;}
+}
+</style>
+
 </head>
 
 <body>
@@ -5793,9 +5840,25 @@ function renderManagerRepActionHistory(rec) {
             ? parsed.toLocaleString()
             : (item.at || "Current");
 
-        const followUp = item.followUpDate
-          ? `<div class="manager-rep-action-followup">Follow-up: ${escapeHtml(item.followUpDate)}</div>`
-          : "";
+        const requestMatches = Boolean(
+          rec.manager_follow_up_request_pending === true &&
+          clean(rec.manager_follow_up_request_action_at) === clean(item.at) &&
+          clean(rec.manager_follow_up_request_action) === clean(item.action)
+        );
+
+        const followUpControl = item.followUpDate
+          ? renderFollowUpDatePill({ rep_follow_up_date: item.followUpDate })
+          : requestMatches
+          ? `<span class="manager-followup-request-sent">Request Sent</span>`
+          : `
+              <button
+                type="button"
+                class="manager-request-followup-btn"
+                onclick="requestRepFollowUpDate(${index}, event)"
+              >
+                Request Follow-Up Date
+              </button>
+            `;
 
         return `
           <div class="manager-rep-action-item">
@@ -5803,13 +5866,71 @@ function renderManagerRepActionHistory(rec) {
             <div class="manager-rep-action-content">
               <div class="manager-rep-action-label">${escapeHtml(item.label || "Rep updated record")}</div>
               <div class="manager-rep-action-date">${escapeHtml(displayDate)}</div>
-              ${followUp}
+            </div>
+            <div class="manager-rep-action-followup-cell">
+              ${followUpControl}
             </div>
           </div>
         `;
       }).join("")}
     </div>
   `;
+}
+
+function requestRepFollowUpDate(historyIndex, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const rec = findSelectedRecord();
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  const history = getManagerRepActionHistory(rec);
+  const item = history[Number(historyIndex)];
+  if (!item) return;
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...rec,
+    manager_follow_up_request_pending: true,
+    manager_follow_up_request_action: item.action || "schedule_follow_up",
+    manager_follow_up_request_label: item.label || "Rep Action",
+    manager_follow_up_request_action_at: item.at || "",
+    manager_follow_up_request_at: now,
+    manager_follow_up_request_by: MANAGER_NAME,
+
+    manager_response_action: "needs_follow_up",
+    manager_response_date: "",
+    manager_response_notes: `Please enter a follow-up date for: ${item.label || "Rep Action"}.`,
+    manager_response_at: now,
+    manager_response_by: MANAGER_NAME,
+    manager_response_seen_by_rep: false,
+    manager_response_seen_at: "",
+
+    rep_unseen_update: true,
+    rep_flash_at: now,
+    rep_flash_type: "follow_up_date_request",
+    rep_flash_text: `Follow-up date requested for ${item.label || "Rep Action"}`
+  };
+
+  syncRecordEverywhere(updated);
+  syncManagerResponseToRep(updated);
+  state.selectedId = updated.id || updated.key || getRecordKey(updated);
+  render();
+
+  const banner = $("resultBanner");
+  if (banner) {
+    banner.style.display = "block";
+    banner.textContent = "✅ Follow-up date request sent to Rep";
+    setTimeout(() => {
+      banner.style.display = "none";
+      banner.textContent = "";
+    }, 2500);
+  }
 }
 
 function renderFollowUpDatePill(rec) {
@@ -10209,29 +10330,10 @@ function renderDetail() {
     "
   >
     <div class="manager-action-history-head">
-      <div class="k">Rep Action History</div>
-
-      <button
-        type="button"
-        class="secondary manager-action-history-toggle"
-        onclick="toggleManagerRepActionHistory(this)"
-      >
-        Open History
-      </button>
+      <div class="k">Rep Actions & Follow-Up Dates</div>
     </div>
 
-    ${
-      getFollowUpDate(rec)
-        ? `
-          <div class="manager-current-followup">
-            <span>Current Follow-Up</span>
-            ${renderFollowUpDatePill(rec)}
-          </div>
-        `
-        : ""
-    }
-
-    <div class="manager-action-history-body" hidden>
+    <div class="manager-action-history-body">
       ${renderManagerRepActionHistory(rec)}
     </div>
   </div>
