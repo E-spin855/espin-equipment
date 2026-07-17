@@ -459,6 +459,47 @@ function calculateDiscountPercent(q){
   return Number((((gross - requested) / gross) * 100).toFixed(2));
 }
 
+function recalculateApprovedPriceFromDiscount(){
+  if(!selectedQuote) return;
+
+  const basePrice = getRequestedPrice(selectedQuote);
+  const discount = Math.max(
+    0,
+    Math.min(100, Number($("discountPercent").value || 0))
+  );
+
+  const approvedPrice = Math.max(
+    0,
+    Math.round((basePrice * (1 - discount / 100)) * 100) / 100
+  );
+
+  $("approvedPrice").value = approvedPrice;
+  $("incomingQuoteBox").textContent = quoteText();
+}
+
+function recalculateDiscountFromApprovedPrice(){
+  if(!selectedQuote) return;
+
+  const basePrice = getRequestedPrice(selectedQuote);
+  const approvedPrice = Math.max(
+    0,
+    Number($("approvedPrice").value || 0)
+  );
+
+  const discount = basePrice > 0
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          ((basePrice - approvedPrice) / basePrice) * 100
+        )
+      )
+    : 0;
+
+  $("discountPercent").value = Number(discount.toFixed(2));
+  $("incomingQuoteBox").textContent = quoteText();
+}
+
 function statusText(){
   if(!selectedQuote) return "Waiting for submitted quote";
 
@@ -725,6 +766,11 @@ function writeDecisionSync(status){
 
     pricing_discount_percent: discountPercent,
     pricing_approved_price: approvedPrice,
+
+    quote_approved_amount: approvedPrice,
+    approved_quote_amount: approvedPrice,
+    approved_amount: approvedPrice,
+
     pricing_notes: notes,
     pricing_decision_at: nowISO()
   };
@@ -755,6 +801,14 @@ function acceptQuote(){
 
   selectedQuote.pricing_discount_percent = $("discountPercent").value;
   selectedQuote.pricing_approved_price = Number($("approvedPrice").value || 0);
+
+  selectedQuote.quote_approved_amount =
+    Number($("approvedPrice").value || 0);
+  selectedQuote.approved_quote_amount =
+    Number($("approvedPrice").value || 0);
+  selectedQuote.approved_amount =
+    Number($("approvedPrice").value || 0);
+
   selectedQuote.pricing_notes = $("pricingNotes").value;
   selectedQuote.pricing_accepted_at = nowISO();
 
@@ -793,6 +847,16 @@ function returnToRep(){
 
   alert("Quote returned to rep for revision.");
 }
+
+$("discountPercent").addEventListener(
+  "input",
+  recalculateApprovedPriceFromDiscount
+);
+
+$("approvedPrice").addEventListener(
+  "input",
+  recalculateDiscountFromApprovedPrice
+);
 
 function clearAllQuoteRecords(){
   if(!confirm("Clear all submitted quote records and pricing sync records from this demo page?")){
