@@ -5832,6 +5832,155 @@ tr.red-hot-row-pulse{
 }
 </style>
 
+<style id="quote-submitted-approved-windows">
+.new-project-quote-amount-windows{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+
+.new-project-quote-amount-window{
+  min-width:0;
+  padding:11px 12px;
+  border:1px solid rgba(88,184,255,.22);
+  border-radius:12px;
+  background:rgba(7,17,31,.72);
+}
+
+.new-project-quote-amount-window.approved{
+  border-color:rgba(65,255,156,.42);
+  background:rgba(65,255,156,.07);
+}
+
+.new-project-quote-window-label{
+  color:#9bc6ec;
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+}
+
+.new-project-quote-window-value{
+  margin-top:6px;
+  color:#eef6ff;
+  font-size:18px;
+  font-weight:950;
+  line-height:1.15;
+}
+
+.new-project-quote-amount-window.approved .new-project-quote-window-value{
+  color:#8effc3;
+}
+
+@media(max-width:700px){
+  .new-project-quote-amount-windows{
+    grid-template-columns:1fr;
+  }
+}
+</style>
+
+<style id="quote-trade-followup-alerts">
+.workflow-followup-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:end;
+  margin-top:12px;
+}
+
+.workflow-followup-field{
+  min-width:0;
+}
+
+.workflow-followup-field label{
+  display:block;
+  margin-bottom:6px;
+}
+
+.workflow-followup-field input{
+  min-height:42px;
+}
+
+.workflow-followup-save{
+  min-height:42px;
+  padding:10px 14px;
+  white-space:nowrap;
+}
+
+.workflow-submission-date{
+  margin-top:8px;
+  color:#b8cfe6;
+  font-size:12px;
+  font-weight:800;
+}
+
+.workflow-alert-date{
+  margin-top:6px;
+  color:#ffe890;
+  font-size:12px;
+  font-weight:900;
+}
+
+.workflow-seven-day-alert{
+  border:2px solid rgba(255,77,77,.96)!important;
+  box-shadow:
+    0 0 0 1px rgba(255,77,77,.28),
+    0 0 24px rgba(255,77,77,.58),
+    0 0 46px rgba(255,77,77,.24)!important;
+  animation:workflowSevenDayAlertPulse 1.05s ease-in-out infinite!important;
+}
+
+.workflow-seven-day-alert::after{
+  content:"7-DAY FOLLOW-UP DUE";
+  position:absolute;
+  top:-12px;
+  right:18px;
+  z-index:20;
+  padding:5px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,156,156,.96);
+  background:#641923;
+  color:#ffe5e5;
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.10em;
+  box-shadow:0 0 16px rgba(255,77,77,.46);
+  pointer-events:none;
+}
+
+.new-project-team-card,
+.new-project-tradein-card{
+  position:relative;
+}
+
+@keyframes workflowSevenDayAlertPulse{
+  0%,100%{
+    border-color:rgba(255,77,77,.70);
+    box-shadow:
+      0 0 0 1px rgba(255,77,77,.22),
+      0 0 14px rgba(255,77,77,.30);
+  }
+  50%{
+    border-color:rgba(255,156,156,1);
+    box-shadow:
+      0 0 0 2px rgba(255,156,156,.52),
+      0 0 30px rgba(255,77,77,.82),
+      0 0 52px rgba(255,77,77,.24);
+  }
+}
+
+@media(max-width:700px){
+  .workflow-followup-row{
+    grid-template-columns:1fr;
+  }
+
+  .workflow-followup-save{
+    width:100%;
+  }
+}
+</style>
+
 
 <style id="new-project-unified-card-backgrounds">
 /* Selected New Project: use the Financial Review background on every card only. */
@@ -17112,6 +17261,69 @@ function saveInstallBaseFix(id) {
       if (rec) renderNewProjectDetail(rec);
     }
 
+    function workflowDateOnly(value) {
+      if (!value) return "";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return String(value);
+      return parsed.toLocaleDateString();
+    }
+
+    function workflowAddDays(dateValue, days) {
+      if (!dateValue) return "";
+      const parsed = new Date(`${dateValue}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) return "";
+      parsed.setDate(parsed.getDate() + Number(days || 0));
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    function workflowAlertIsDue(followUpDate, completed) {
+      if (!followUpDate || completed) return false;
+
+      const alertDate = workflowAddDays(followUpDate, 7);
+      if (!alertDate) return false;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const due = new Date(`${alertDate}T00:00:00`);
+      return due.getTime() <= today.getTime();
+    }
+
+    function saveWorkflowFollowUp(recordId, team) {
+      const rec = state.records.find(
+        item => String(item.id) === String(recordId)
+      );
+
+      if (!rec) return;
+
+      const input = document.querySelector(
+        `[data-workflow-followup="${team}"][data-record-id="${CSS.escape(String(recordId))}"]`
+      );
+
+      if (!input || !input.value) {
+        alert("Select a follow-up date first.");
+        return;
+      }
+
+      const field =
+        team === "quote"
+          ? "quote_team_followup_date"
+          : "trade_desk_followup_date";
+
+      rec[field] = input.value;
+      rec[`${field}_set_at`] = new Date().toISOString();
+
+      saveRecords();
+      syncToManagerQueue(rec);
+      renderNewProjectDetail(rec);
+
+      showBanner(
+        team === "quote"
+          ? "✅ Quote Team follow-up date saved"
+          : "✅ Trade Desk follow-up date saved"
+      );
+    }
+
     function renderNewProjectDetail(rec) {
       const detail = $("newProjectDetailArea");
       const grid = $("newProjectDetailGrid");
@@ -17132,17 +17344,52 @@ function saveInstallBaseFix(id) {
       const quoteContactOpen = window.__newProjectContactOpen.has(`${rec.id}:quote`);
       const tradeContactOpen = window.__newProjectContactOpen.has(`${rec.id}:trade`);
 
-      const quoteRawStatus = String(rec.quote_review_status || rec.quote_status || "").toLowerCase();
-      const quoteSubmitted = Boolean(rec.quote_submitted_at || rec.quote_review_submitted_at || rec.quote_packet_submitted_at);
+      const quoteRawStatus = String(
+        rec.quote_approval_status ||
+        rec.quote_review_status ||
+        rec.quote_status ||
+        ""
+      ).toLowerCase();
+
+      const quoteSubmitted = Boolean(
+        rec.quote_approval_submitted_at ||
+        rec.quote_submitted_at ||
+        rec.quote_review_submitted_at ||
+        rec.quote_packet_submitted_at ||
+        quoteRawStatus === "pending_review" ||
+        quoteRawStatus === "submitted_for_approval"
+      );
+
+      const quoteApproved = Boolean(
+        rec.quote_customer_release_allowed === true ||
+        quoteRawStatus === "approved" ||
+        quoteRawStatus === "approved_for_customer_release"
+      );
+
+      const submittedQuoteAmount = Number(
+        rec.quote_submitted_amount ||
+        rec.quote_amount ||
+        0
+      );
+
+      const approvedQuoteAmount = Number(
+        rec.quote_approved_amount ||
+        rec.approved_quote_amount ||
+        0
+      );
+
       const quoteTeamStatus =
-        quoteRawStatus.includes("approved") ? "Approved" :
-        quoteRawStatus.includes("change") || quoteRawStatus.includes("revision") ? "Changes Requested" :
-        quoteSubmitted ? "Pending Review" :
+        quoteApproved ? "Quote Received" :
+        quoteRawStatus.includes("change") || quoteRawStatus.includes("revision")
+          ? "Changes Requested" :
+        quoteSubmitted ? "Quote Submitted for Approval" :
         "Not Submitted";
+
       const quoteTeamStatusClass =
-        quoteTeamStatus === "Approved" ? "approved" :
+        quoteApproved ? "approved" :
         quoteTeamStatus === "Changes Requested" ? "attention" :
-        quoteTeamStatus === "Pending Review" ? "pending" : "idle";
+        quoteSubmitted ? "pending" :
+        "idle";
 
       // Once associated equipment syncs back from the Trade-In App,
       // show that it is ready/submitted for Trade Desk review.
@@ -17182,18 +17429,100 @@ function saveInstallBaseFix(id) {
           ? "pending"
           : "idle";
 
+      const quoteSubmittedAt =
+        rec.quote_approval_submitted_at ||
+        rec.quote_submitted_at ||
+        rec.quote_review_submitted_at ||
+        rec.quote_packet_submitted_at ||
+        "";
+
+      const tradeSubmittedAt =
+        rec.associated_tradein_submitted_at ||
+        rec.tradein_submitted_at ||
+        rec.tradein_sent_at ||
+        "";
+
+      const quoteFollowUpDate = rec.quote_team_followup_date || "";
+      const tradeFollowUpDate = rec.trade_desk_followup_date || "";
+
+      const quoteAlertDate = workflowAddDays(quoteFollowUpDate, 7);
+      const tradeAlertDate = workflowAddDays(tradeFollowUpDate, 7);
+
+      const quoteFollowUpDue = workflowAlertIsDue(
+        quoteFollowUpDate,
+        quoteApproved
+      );
+
+      const tradeFollowUpDue = workflowAlertIsDue(
+        tradeFollowUpDate,
+        tradeDeskValueReceived
+      );
+
       grid.innerHTML = `
         <div class="detail-card"><div class="k">Customer / Facility</div><div class="v">${escapeHtml(rec.site || "-")}</div></div>
         <div class="detail-card"><div class="k">New System / Project Name</div><div class="v">${escapeHtml(rec.model || "-")}</div></div>
-        <div class="detail-card new-project-team-card">
+        <div class="detail-card new-project-team-card ${quoteFollowUpDue ? "workflow-seven-day-alert" : ""}">
           <div>
             <div class="k">Quote Value</div>
-            <div class="v">${quoteAmount ? money(quoteAmount) : "Quote not created"}</div>
-            ${quoteAmount ? "" : `<div class="mini" style="margin-top:8px;line-height:1.45;">This new project has been created, but the rep has not finalized quote details yet.</div>`}
+
+            <div class="new-project-quote-amount-windows">
+              <div class="new-project-quote-amount-window">
+                <div class="new-project-quote-window-label">Submitted Quote</div>
+                <div class="new-project-quote-window-value">
+                  ${submittedQuoteAmount > 0 ? money(submittedQuoteAmount) : "-"}
+                </div>
+              </div>
+
+              <div class="new-project-quote-amount-window approved">
+                <div class="new-project-quote-window-label">Approved Quote</div>
+                <div class="new-project-quote-window-value">
+                  ${approvedQuoteAmount > 0 ? money(approvedQuoteAmount) : "-"}
+                </div>
+              </div>
+            </div>
+
+            ${
+              !quoteAmount && !submittedQuoteAmount
+                ? `<div class="mini" style="margin-top:8px;line-height:1.45;">This new project has been created, but the rep has not finalized quote details yet.</div>`
+                : ""
+            }
           </div>
           <div class="new-project-team-side">
             <div class="new-project-team-label">Quote Team Status</div>
             <div class="new-project-team-status ${quoteTeamStatusClass}">${escapeHtml(quoteTeamStatus)}</div>
+
+            ${
+              quoteSubmittedAt
+                ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(quoteSubmittedAt))}</div>`
+                : ""
+            }
+
+            <div class="workflow-followup-row">
+              <div class="workflow-followup-field">
+                <label>Follow-Up Date</label>
+                <input
+                  type="date"
+                  data-workflow-followup="quote"
+                  data-record-id="${escapeHtml(rec.id)}"
+                  value="${escapeHtml(quoteFollowUpDate)}"
+                />
+              </div>
+
+              <button
+                type="button"
+                class="secondary workflow-followup-save"
+                onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','quote')"
+              >
+                Save
+              </button>
+            </div>
+
+            ${
+              quoteAlertDate
+                ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(quoteAlertDate))}</div>`
+                : ""
+            }
+
             <div class="new-project-team-label">Contact</div>
             <button type="button" class="new-project-contact-toggle quote" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','quote',event)">
               Sarah Johnson <span class="new-project-contact-caret">${quoteContactOpen ? "⌃" : "⌄"}</span>
@@ -17223,7 +17552,7 @@ function saveInstallBaseFix(id) {
             ? ""
             : rec.tradein_sync_received
             ? `
-              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
+              <div class="detail-card new-project-tradein-card new-project-team-card ${tradeFollowUpDue ? "workflow-seven-day-alert" : ""}" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">${escapeHtml(rec.tradein_equipment_make || "-")} ${escapeHtml(rec.tradein_equipment_model || "")}</div>
@@ -17243,6 +17572,38 @@ function saveInstallBaseFix(id) {
                   <div class="trade-inline-col">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
+
+                    ${
+                      tradeSubmittedAt
+                        ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(tradeSubmittedAt))}</div>`
+                        : ""
+                    }
+
+                    <div class="workflow-followup-row">
+                      <div class="workflow-followup-field">
+                        <label>Follow-Up Date</label>
+                        <input
+                          type="date"
+                          data-workflow-followup="trade"
+                          data-record-id="${escapeHtml(rec.id)}"
+                          value="${escapeHtml(tradeFollowUpDate)}"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        class="secondary workflow-followup-save"
+                        onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','trade')"
+                      >
+                        Save
+                      </button>
+                    </div>
+
+                    ${
+                      tradeAlertDate
+                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
+                        : ""
+                    }
                   </div>
                   <div class="trade-inline-col">
                     <div class="new-project-team-label">Contact</div>
@@ -17270,7 +17631,7 @@ function saveInstallBaseFix(id) {
               </div>
             `
             : `
-              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
+              <div class="detail-card new-project-tradein-card new-project-team-card ${tradeFollowUpDue ? "workflow-seven-day-alert" : ""}" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">Not synced yet</div>
@@ -17280,6 +17641,38 @@ function saveInstallBaseFix(id) {
                   <div class="trade-inline-col">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
+
+                    ${
+                      tradeSubmittedAt
+                        ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(tradeSubmittedAt))}</div>`
+                        : ""
+                    }
+
+                    <div class="workflow-followup-row">
+                      <div class="workflow-followup-field">
+                        <label>Follow-Up Date</label>
+                        <input
+                          type="date"
+                          data-workflow-followup="trade"
+                          data-record-id="${escapeHtml(rec.id)}"
+                          value="${escapeHtml(tradeFollowUpDate)}"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        class="secondary workflow-followup-save"
+                        onclick="saveWorkflowFollowUp('${escapeJs(rec.id)}','trade')"
+                      >
+                        Save
+                      </button>
+                    </div>
+
+                    ${
+                      tradeAlertDate
+                        ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
+                        : ""
+                    }
                   </div>
                   <div class="trade-inline-col">
                     <div class="new-project-team-label">Contact</div>
@@ -19595,6 +19988,7 @@ function reviewApprovedQuote() {
   rec.rep_quote_release_alert = false;
   rec.quote_approval_requested = true;
   rec.quote_approval_submitted_at = now;
+  rec.quote_submitted_amount = Number(rec.quote_amount || 0);
 
   const packet = {
     ...rec,
@@ -19611,6 +20005,7 @@ function reviewApprovedQuote() {
     quote_approval_status: "pending_review",
     quote_status: "submitted_for_approval",
     quote_approval_submitted_at: now,
+    quote_submitted_amount: Number(rec.quote_amount || 0),
 
     quote_amount: Number(rec.quote_amount || 0),
     quote_estimated_cost: Number(rec.quote_estimated_cost || 0),
@@ -19676,6 +20071,16 @@ function reviewApprovedQuote() {
 
         if (item.quote_approval_status === "approved") {
           rec.quote_status = "approved_for_customer_release";
+
+          rec.quote_approved_amount = Number(
+            item.quote_approved_amount ||
+            item.approved_quote_amount ||
+            item.approved_amount ||
+            item.quote_amount ||
+            rec.quote_amount ||
+            0
+          );
+
           rec.quote_approved_at =
             item.quote_approval_decision_at ||
             rec.quote_approval_decision_at ||
