@@ -17114,13 +17114,32 @@ function saveInstallBaseFix(id) {
         quoteTeamStatus === "Changes Requested" ? "attention" :
         quoteTeamStatus === "Pending Review" ? "pending" : "idle";
 
-      const tradeSubmitted = Boolean(rec.tradein_submitted_at || rec.tradein_sent_at || rec.external_tradein_source);
-      const tradeDeskStatus = rec.tradein_sync_received
+      const tradeDeskSubmitted = Boolean(
+        rec.associated_tradein_submitted_to === "tradein_desk" ||
+        rec.associated_tradein_submitted_at ||
+        rec.tradein_submitted_at ||
+        rec.tradein_sent_at
+      );
+
+      // Equipment syncing from the Trade-In App does not mean the Trade Desk
+      // has returned a value. "Received" is shown only after an actual value
+      // is synced back from trade_desk.html.
+      const tradeDeskValueReceived = Boolean(
+        Number(rec.external_tradein_value || 0) > 0 &&
+        rec.external_tradein_received_at
+      );
+
+      const tradeDeskStatus = tradeDeskValueReceived
         ? "Trade-In Received"
-        : tradeSubmitted
-          ? "Pending"
+        : tradeDeskSubmitted
+          ? "Trade-In Submitted to Trade Desk"
           : "Not Submitted";
-      const tradeDeskStatusClass = rec.tradein_sync_received ? "received" : tradeSubmitted ? "pending" : "idle";
+
+      const tradeDeskStatusClass = tradeDeskValueReceived
+        ? "received"
+        : tradeDeskSubmitted
+          ? "pending"
+          : "idle";
 
       grid.innerHTML = `
         <div class="detail-card"><div class="k">Customer / Facility</div><div class="v">${escapeHtml(rec.site || "-")}</div></div>
@@ -20599,6 +20618,8 @@ return true;
     }
 
     function applyTradeInSyncToRecord(rec, item, tradeInValue, projectId, modalityId, serial, alreadyProcessed, flashType) {
+      // This flag means associated equipment has synced from the Trade-In App.
+      // It does not by itself mean the Trade Desk has returned a value.
       rec.tradein_sync_received = true;
 
       if (!alreadyProcessed) {
