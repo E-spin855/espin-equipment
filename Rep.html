@@ -20052,85 +20052,175 @@ function reviewApprovedQuote() {
   window.dispatchEvent(new Event("axis_quote_approval_update"));
 }
     function importQuoteApprovalDecisions() {
-      let sync = [];
-      try {
-        sync = JSON.parse(localStorage.getItem(QUOTE_APPROVAL_SYNC_KEY) || "[]");
-        if (!Array.isArray(sync)) sync = [];
-      } catch {
-        sync = [];
-      }
+      const readArray = key => {
+        try {
+          const value = JSON.parse(localStorage.getItem(key) || "[]");
+          return Array.isArray(value) ? value : [];
+        } catch {
+          return [];
+        }
+      };
 
-      if (!sync.length) return false;
+      /*
+        quote.html versions may write the decision either to the dedicated
+        sync key or directly back into the original quote queue. Read both.
+      */
+      const candidates = [
+        ...readArray(QUOTE_APPROVAL_SYNC_KEY),
+        ...readArray(QUOTE_APPROVAL_KEY)
+      ];
+
+      if (!candidates.length) return false;
 
       let changed = false;
+      const processed = new Set();
 
-      sync.forEach(item => {
+      candidates.forEach(item => {
+        if (!item) return;
+
+        const status = String(
+          item.quote_approval_status ||
+          item.approval_status ||
+          item.status ||
+          ""
+        ).toLowerCase();
+
+        // Ignore the original pending queue item.
+        const isDecision = [
+          "approved",
+          "revision_needed",
+          "changes_requested",
+          "rejected"
+        ].includes(status);
+
+        if (!isDecision) return;
+
         const rec = state.records.find(r =>
-          String(r.id || "") === String(item.axis_record_id || item.axis_parent_record_id || "") ||
-          String(r.quote_approval_id || "") === String(item.quote_approval_id || "")
+          String(r.id || "") === String(
+            item.axis_record_id ||
+            item.axis_parent_record_id ||
+            item.record_id ||
+            item.rep_record_id ||
+            ""
+          ) ||
+          String(r.quote_approval_id || "") === String(
+            item.quote_approval_id ||
+            item.approval_id ||
+            ""
+          ) ||
+          String(r.project_id || "") === String(
+            item.project_id ||
+            item.axis_project_id ||
+            ""
+          )
         );
 
         if (!rec) return;
 
-        rec.quote_approval_id = item.quote_approval_id || rec.quote_approval_id || "";
-        rec.quote_approval_status = item.quote_approval_status || rec.quote_approval_status || "";
-        rec.quote_approval_notes = item.quote_approval_notes || "";
-        rec.quote_approval_decision_at = item.quote_approval_decision_at || "";
-        rec.quote_approval_decision_by = item.quote_approval_decision_by || "";
-        rec.quote_customer_release_allowed = item.quote_approval_status === "approved";
+        const decisionAt =
+          item.quote_approval_decision_at ||
+          item.approved_at ||
+          item.decision_at ||
+          item.updated_at ||
+          new Date().toISOString();
+
+        const approvedAmount = Number(
+          item.quote_approved_amount ??
+          item.approved_quote_amount ??
+          item.approved_amount ??
+          item.final_quote_amount ??
+          item.final_amount ??
+          item.approved_total ??
+          item.quote_amount ??
+          0
+        );
+
+        const signature = [
+          rec.id,
+          status,
+          decisionAt,
+          approvedAmount
+        ].join("|");
+
+        if (processed.has(signature)) return;
+        processed.add(signature);
+
+        rec.quote_approval_id =
+          item.quote_approval_id ||
+          item.approval_id ||
+          rec.quote_approval_id ||
+          "";
+
+        rec.quote_approval_status =
+          status === "changes_requested"
+            ? "revision_needed"
+            : status;
+
+        rec.quote_approval_notes =
+          item.quote_approval_notes ||
+          item.approval_notes ||
+          item.notes ||
+          "";
+
+        rec.quote_approval_decision_at = decisionAt;
+
+        rec.quote_approval_decision_by =
+          item.quote_approval_decision_by ||
+          item.approved_by ||
+          item.decision_by ||
+          "Quote Review";
+
+        rec.quote_customer_release_allowed = status === "approved";
         rec.rep_quote_release_alert = true;
 
-        if (item.quote_approval_status === "approved") {
+        if (status === "approved") {
           rec.quote_status = "approved_for_customer_release";
-
-          rec.quote_approved_amount = Number(
-            item.quote_approved_amount ||
-            item.approved_quote_amount ||
-            item.approved_amount ||
-            0
-          );
-
-          rec.quote_last_sync_at =
-            item.quote_approval_decision_at ||
-            item.updated_at ||
-            new Date().toISOString();
-
-          rec.quote_approved_at =
-            item.quote_approval_decision_at ||
-            rec.quote_approval_decision_at ||
-            new Date().toISOString();
+          rec.quote_approved_amount = approvedAmount;
+          rec.approved_quote_amount = approvedAmount;
+          rec.quote_last_sync_at = decisionAt;
+          rec.quote_approved_at = decisionAt;
 
           addRepWorkflowEvent(
             rec,
             "quote_approved",
             "Quote Approved",
-            rec.quote_approved_at
+            decisionAt
           );
 
           rec.manager_flash_type = "quote_approved";
-        } else if (item.quote_approval_status === "revision_needed") {
+          rec.manager_flash_text = "Quote approved";
+        } else if (
+          status === "revision_needed" ||
+          status === "changes_requested"
+        ) {
           rec.quote_status = "revision_needed";
           rec.manager_flash_type = "quote_revision_needed";
-        } else if (item.quote_approval_status === "rejected") {
+          rec.manager_flash_text = "Quote changes requested";
+        } else if (status === "rejected") {
           rec.quote_status = "rejected";
           rec.manager_flash_type = "quote_rejected";
+          rec.manager_flash_text = "Quote rejected";
         }
 
         rec.manager_unseen_update = true;
-        rec.manager_flash_at = new Date().toISOString();
+        rec.manager_flash_at = decisionAt;
 
+        syncToManagerQueue(rec);
         changed = true;
       });
 
       if (changed) {
         saveRecords();
 
-        state.records.forEach(rec => {
-          if (rec.rep_quote_release_alert) syncToManagerQueue(rec);
-        });
-
+        /*
+          Remove only the dedicated response list. Keep the main quote queue
+          because quote.html may use it as its persistent review history.
+        */
         localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-        localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+        localStorage.setItem(
+          "axis_manager_sync_ping_v1",
+          String(Date.now())
+        );
       }
 
       return changed;
