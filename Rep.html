@@ -17332,6 +17332,7 @@ function saveInstallBaseFix(id) {
         `);
         newTab.document.close();
         newTab.location.replace(handoffUrl.toString());
+        watchEspinConnectWindow(newTab);
       } else {
         location.href = handoffUrl.toString();
       }
@@ -18259,6 +18260,31 @@ function refreshActiveProjectsImmediately() {
   });
 }
 
+function refreshReturnedEspinConnectProject() {
+  // A full Rep refresh is required when ESPIN Connect writes the project
+  // through a return queue instead of directly updating the Active Projects key.
+  render();
+
+  window.setTimeout(() => {
+    render();
+  }, 250);
+
+  window.setTimeout(() => {
+    render();
+  }, 900);
+}
+
+function watchEspinConnectWindow(projectWindow) {
+  if (!projectWindow) return;
+
+  const watcher = window.setInterval(() => {
+    if (!projectWindow.closed) return;
+
+    window.clearInterval(watcher);
+    refreshReturnedEspinConnectProject();
+  }, 500);
+}
+
 window.addEventListener("storage", event => {
   if (event.key !== ESPIN_ACTIVE_PROJECTS_KEY) return;
 
@@ -18343,11 +18369,11 @@ window.addEventListener("message", event => {
 });
 
 // Refresh the card when the Rep returns from an ESPIN Connect tab.
-window.addEventListener("focus", refreshActiveProjectsImmediately);
-window.addEventListener("pageshow", refreshActiveProjectsImmediately);
+window.addEventListener("focus", refreshReturnedEspinConnectProject);
+window.addEventListener("pageshow", refreshReturnedEspinConnectProject);
 window.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
-    refreshActiveProjectsImmediately();
+    refreshReturnedEspinConnectProject();
   }
 });
 
@@ -21197,8 +21223,10 @@ return true;
 
   if (connectWindow && !connectWindow.closed) {
     connectWindow.location.replace(handoffUrl.toString());
+    watchEspinConnectWindow(connectWindow);
   } else {
-    window.open(handoffUrl.toString(), "_blank");
+    const fallbackConnectWindow = window.open(handoffUrl.toString(), "_blank");
+    watchEspinConnectWindow(fallbackConnectWindow);
   }
 
   return true;
