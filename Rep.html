@@ -17273,21 +17273,13 @@ function saveInstallBaseFix(id) {
       return due.getTime() <= today.getTime();
     }
 
+    const workflowFollowUpDrafts = {};
+
     function stageWorkflowFollowUpDate(input, recordId, team) {
-      const rec = state.records.find(
-        item => String(item.id) === String(recordId)
-      );
+      if (!input) return;
 
-      if (!rec || !input) return;
-
-      const field =
-        team === "quote"
-          ? "quote_team_followup_date"
-          : "trade_desk_followup_date";
-
-      // Keep the selected date in memory immediately so any page re-render
-      // does not reset the calendar before Save is clicked.
-      rec[field] = input.value || "";
+      const key = `${String(recordId)}::${String(team)}`;
+      workflowFollowUpDrafts[key] = input.value || "";
     }
 
     function saveWorkflowFollowUp(button, recordId, team) {
@@ -17313,8 +17305,20 @@ function saveInstallBaseFix(id) {
           ? "quote_team_followup_date"
           : "trade_desk_followup_date";
 
-      rec[field] = input.value;
+      const key = `${String(recordId)}::${String(team)}`;
+      const selectedDate =
+        workflowFollowUpDrafts[key] ||
+        input.value ||
+        "";
+
+      if (!selectedDate) {
+        alert("Select a follow-up date first.");
+        return;
+      }
+
+      rec[field] = selectedDate;
       rec[`${field}_set_at`] = new Date().toISOString();
+      delete workflowFollowUpDrafts[key];
 
       saveRecords();
       syncToManagerQueue(rec);
@@ -17457,8 +17461,18 @@ function saveInstallBaseFix(id) {
         rec.tradein_sent_at ||
         "";
 
-      const quoteFollowUpDate = rec.quote_team_followup_date || "";
-      const tradeFollowUpDate = rec.trade_desk_followup_date || "";
+      const quoteDraftKey = `${String(rec.id)}::quote`;
+      const tradeDraftKey = `${String(rec.id)}::trade`;
+
+      const quoteFollowUpDate =
+        Object.prototype.hasOwnProperty.call(workflowFollowUpDrafts, quoteDraftKey)
+          ? workflowFollowUpDrafts[quoteDraftKey]
+          : (rec.quote_team_followup_date || "");
+
+      const tradeFollowUpDate =
+        Object.prototype.hasOwnProperty.call(workflowFollowUpDrafts, tradeDraftKey)
+          ? workflowFollowUpDrafts[tradeDraftKey]
+          : (rec.trade_desk_followup_date || "");
 
       const quoteAlertDate = workflowAddDays(quoteFollowUpDate, 7);
       const tradeAlertDate = workflowAddDays(tradeFollowUpDate, 7);
@@ -17540,7 +17554,7 @@ function saveInstallBaseFix(id) {
 
                     <button
                       type="button"
-                      class="secondary workflow-followup-save"
+                      class="secondary workflow-followup-save" formnovalidate
                       onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','quote')"
                     >
                       Save
@@ -17625,7 +17639,7 @@ function saveInstallBaseFix(id) {
 
                             <button
                               type="button"
-                              class="secondary workflow-followup-save"
+                              class="secondary workflow-followup-save" formnovalidate
                               onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
                             >
                               Save
@@ -17702,7 +17716,7 @@ function saveInstallBaseFix(id) {
 
                             <button
                               type="button"
-                              class="secondary workflow-followup-save"
+                              class="secondary workflow-followup-save" formnovalidate
                               onclick="saveWorkflowFollowUp(this,'${escapeJs(rec.id)}','trade')"
                             >
                               Save
