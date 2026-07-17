@@ -5366,6 +5366,12 @@ const normalSeen = isFreshRepUpdate
         rec.rep_action_history
       ),
 
+      // Preserve dated Trade-In and Quote workflow events.
+      workflow_event_history: mergeManagerWorkflowEvents(
+        existing.workflow_event_history,
+        rec.workflow_event_history
+      ),
+
       // Keep the newest complete Active Projects snapshot from Rep.
       active_project_snapshots:
         Array.isArray(rec.active_project_snapshots)
@@ -5559,6 +5565,43 @@ function mergeManagerRepActionHistories(existingHistory, incomingHistory) {
       normalized.action,
       normalized.label,
       normalized.follow_up_date
+    ].join("|");
+
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    merged.push(normalized);
+  });
+
+  return merged.sort((a, b) => {
+    const aTime = new Date(a.at || 0).getTime() || 0;
+    const bTime = new Date(b.at || 0).getTime() || 0;
+    return aTime - bTime;
+  });
+}
+
+
+function mergeManagerWorkflowEvents(existingHistory, incomingHistory) {
+  const combined = [
+    ...(Array.isArray(existingHistory) ? existingHistory : []),
+    ...(Array.isArray(incomingHistory) ? incomingHistory : [])
+  ];
+
+  const merged = [];
+  const seen = new Set();
+
+  combined.forEach(item => {
+    if (!item || !clean(item.type) || !clean(item.label)) return;
+
+    const normalized = {
+      type: clean(item.type),
+      label: clean(item.label),
+      at: clean(item.at || item.date || item.timestamp)
+    };
+
+    const signature = [
+      normalized.type,
+      normalized.label,
+      normalized.at
     ].join("|");
 
     if (seen.has(signature)) return;
@@ -8208,11 +8251,35 @@ function renderActivityTimeline(rec) {
 
   if (rec.assigned_at) items.push({ key: "assigned", date: rec.assigned_at, label: "Record loaded into manager workspace" });
 
+  const workflowEvents = Array.isArray(rec.workflow_event_history)
+    ? rec.workflow_event_history
+    : [];
+
+  workflowEvents.forEach(event => {
+    if (!event || !clean(event.label) || !clean(event.at)) return;
+
+    items.push({
+      key: `workflow_${clean(event.type)}`,
+      date: event.at,
+      label: event.label
+    });
+  });
+
   const alert = getAlerts(rec)[0];
 
   if (alert) items.push({ key: "oem_review", date: rec.oem_review_date || rec.review_date || "Current", label: `OEM review note visible: ${formatReviewText(alert.displayType || alert.label)}` });
 
-  if (rec.tradein_sync_received) items.push({ key: "tradein", date: rec.tradein_synced_to_axis_at || rec.external_tradein_received_at || "Current", label: "Trade-In details synced back to AXIS" });
+  if (
+    rec.tradein_sync_received &&
+    !workflowEvents.some(event => clean(event.type) === "tradein_received")
+  ) {
+    items.push({
+      key: "tradein",
+      date: rec.tradein_synced_to_axis_at || rec.external_tradein_received_at || "Current",
+      label: "Trade-In details synced back to ESPIN LINK"
+    });
+  }
+
   if (rec.quote_created_at) items.push({ key: "quote_created", date: rec.quote_created_at, label: "Rep created quote review record" });
   if (rec.quote_updated_at) items.push({ key: "quote_updated", date: rec.quote_updated_at, label: "Rep updated quote review record" });
   if (getFollowUpDate(rec)) items.push({ key: "follow_up", date: getFollowUpDate(rec), label: "Rep follow-up date set" });

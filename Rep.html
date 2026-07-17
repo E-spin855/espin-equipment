@@ -9029,6 +9029,31 @@ function upsertRepWorkspaceRecord(incoming, options = {}) {
   return { record: incomingRecord, index: 0, merged: false };
 }
 
+
+function addRepWorkflowEvent(rec, type, label, at = "") {
+  if (!rec || !type || !label) return;
+
+  const eventAt = at || new Date().toISOString();
+  const history = Array.isArray(rec.workflow_event_history)
+    ? [...rec.workflow_event_history]
+    : [];
+
+  const duplicate = history.some(item =>
+    String(item?.type || "") === String(type) &&
+    String(item?.at || "") === String(eventAt)
+  );
+
+  if (!duplicate) {
+    history.push({
+      type: String(type),
+      label: String(label),
+      at: eventAt
+    });
+  }
+
+  rec.workflow_event_history = history;
+}
+
 function buildManagerSyncPacket(rec) {
   const now = new Date().toISOString();
   const key = rec.key || getRecordKey(rec);
@@ -9083,6 +9108,11 @@ function buildManagerSyncPacket(rec) {
     oem_review_action_required: getInstallBaseRepActionRequired(rec),
     manager_review_request: getInstallBaseRepActionRequired(rec),
     install_base_rep_action_required: getInstallBaseRepActionRequired(rec),
+
+    // Carry dated workflow events to Manager.
+    workflow_event_history: Array.isArray(rec.workflow_event_history)
+      ? rec.workflow_event_history.map(item => ({ ...item }))
+      : [],
 
     // Carry linked ESPIN Connect project progress to Manager.
     active_project_snapshots: getActiveProjectSnapshotsForRecord(rec),
@@ -18786,6 +18816,13 @@ function saveQuoteAndSubmitForReview() {
   rec.manager_flash_type = "quote_submitted_for_approval";
   rec.manager_flash_text = "Rep submitted quote for review";
 
+  addRepWorkflowEvent(
+    rec,
+    "quote_submitted",
+    "Quote Submitted",
+    rec.quote_approval_submitted_at || new Date().toISOString()
+  );
+
   syncFeedStatus(rec);
   render();
 
@@ -19489,6 +19526,13 @@ function submitSelectedQuoteForApproval() {
   rec.manager_flash_type = "quote_submitted_for_approval";
   rec.manager_flash_text = "Rep submitted quote for review";
 
+  addRepWorkflowEvent(
+    rec,
+    "quote_submitted",
+    "Quote Submitted",
+    rec.quote_approval_submitted_at || new Date().toISOString()
+  );
+
   syncFeedStatus(rec);
   render();
 
@@ -19632,6 +19676,18 @@ function reviewApprovedQuote() {
 
         if (item.quote_approval_status === "approved") {
           rec.quote_status = "approved_for_customer_release";
+          rec.quote_approved_at =
+            item.quote_approval_decision_at ||
+            rec.quote_approval_decision_at ||
+            new Date().toISOString();
+
+          addRepWorkflowEvent(
+            rec,
+            "quote_approved",
+            "Quote Approved",
+            rec.quote_approved_at
+          );
+
           rec.manager_flash_type = "quote_approved";
         } else if (item.quote_approval_status === "revision_needed") {
           rec.quote_status = "revision_needed";
@@ -20252,6 +20308,15 @@ return true;
         ? "Rep sent equipment to Trade-In Desk"
         : "Rep sent equipment to Disposal Review";
 
+      if (type === "tradein_desk") {
+        addRepWorkflowEvent(
+          rec,
+          "tradein_submitted",
+          "Trade-In Submitted",
+          rec.associated_tradein_submitted_at
+        );
+      }
+
       syncFeedStatus(rec);
       render();
 
@@ -20654,6 +20719,15 @@ return true;
       rec.external_tradein_status = "pending_rep_review";
       rec.external_tradein_received_at = item.last_tradein_update_at || new Date().toISOString();
 
+      if (Number(tradeInValue || 0) > 0) {
+        addRepWorkflowEvent(
+          rec,
+          "tradein_received",
+          "Trade-In Received",
+          rec.external_tradein_received_at
+        );
+      }
+
       rec.tradein_synced_to_axis_at = item.last_tradein_update_at || new Date().toISOString();
       rec.tradein_last_update_by = item.last_tradein_update_by || "";
       rec.tradein_last_update_at = item.last_tradein_update_at || "";
@@ -20663,6 +20737,10 @@ return true;
       rec.images = item.images || rec.images || [];
       rec.last_image_update_by = item.last_image_update_by || rec.last_image_update_by || "";
       rec.last_image_update_at = item.last_image_update_at || rec.last_image_update_at || "";
+
+      if (!alreadyProcessed) {
+        syncToManagerQueue(rec);
+      }
     }
 
     function attachUnmatchedTradeInToProject(leadId) {
