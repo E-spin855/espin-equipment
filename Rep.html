@@ -17372,11 +17372,22 @@ function saveInstallBaseFix(id) {
         0
       );
 
-      const approvedQuoteAmount = Number(
-        rec.quote_approved_amount ||
-        rec.approved_quote_amount ||
-        0
+      const approvedQuoteSynced = Boolean(
+        rec.quote_approval_status === "approved" &&
+        (
+          rec.quote_approved_at ||
+          rec.quote_approval_decision_at ||
+          rec.quote_last_sync_at
+        )
       );
+
+      const approvedQuoteAmount = approvedQuoteSynced
+        ? Number(
+            rec.quote_approved_amount ||
+            rec.approved_quote_amount ||
+            0
+          )
+        : 0;
 
       const quoteTeamStatus =
         quoteApproved ? "Quote Received" :
@@ -20076,10 +20087,13 @@ function reviewApprovedQuote() {
             item.quote_approved_amount ||
             item.approved_quote_amount ||
             item.approved_amount ||
-            item.quote_amount ||
-            rec.quote_amount ||
             0
           );
+
+          rec.quote_last_sync_at =
+            item.quote_approval_decision_at ||
+            item.updated_at ||
+            new Date().toISOString();
 
           rec.quote_approved_at =
             item.quote_approval_decision_at ||
