@@ -3369,17 +3369,25 @@ tr.unread-message-row td{
 
 <style id="manager-rep-action-history-style">
 .manager-current-followup{
-  display:flex;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px 22px;
   align-items:center;
-  gap:12px;
-  flex-wrap:wrap;
   margin:14px 0;
-  padding:12px 14px;
+  padding:14px 16px;
   border:1px solid rgba(255,216,77,.34);
   border-radius:14px;
   background:rgba(255,216,77,.07);
 }
-.manager-current-followup > span:first-child{
+
+.manager-current-action-block,
+.manager-current-followup-date-block{
+  min-width:0;
+}
+
+.manager-current-followup-label{
+  display:block;
+  margin-bottom:6px;
   color:#ffe890;
   font-size:11px;
   font-weight:950;
@@ -3388,10 +3396,34 @@ tr.unread-message-row td{
 }
 
 .manager-current-action-label{
+  display:block;
   color:#eef6ff;
   font-size:15px;
   font-weight:900;
   line-height:1.35;
+}
+
+.manager-followup-date-simple{
+  display:block;
+  color:#8effc3;
+  font-size:16px;
+  font-weight:900;
+  line-height:1.2;
+  white-space:nowrap;
+}
+
+.manager-followup-date-simple.due-soon{
+  color:#ffe890;
+}
+
+.manager-followup-date-simple.overdue{
+  color:#ff9c9c;
+}
+
+@media(max-width:760px){
+  .manager-current-followup{
+    grid-template-columns:1fr;
+  }
 }
 .manager-rep-action-list{
   display:grid;
@@ -5721,11 +5753,11 @@ function renderManagerActionFollowUpDatePill(dateValue) {
   const cleanDate = clean(dateValue);
 
   if (!cleanDate) {
-    return `<span class="mini">No follow-up date set</span>`;
+    return `<span class="mini">Not set</span>`;
   }
 
   const daysUntil = getDaysUntil(cleanDate);
-  let cls = "followup-date-pill";
+  let cls = "manager-followup-date-simple";
 
   if (daysUntil !== null) {
     if (daysUntil < 0) {
@@ -5745,9 +5777,15 @@ function renderManagerCurrentRepAction(rec) {
 
   return `
     <div class="manager-current-followup">
-      <span>Current Rep Action</span>
-      <strong class="manager-current-action-label">${escapeHtml(latest.label || "Rep updated record")}</strong>
-      ${renderManagerActionFollowUpDatePill(latest.followUpDate)}
+      <div class="manager-current-action-block">
+        <span class="manager-current-followup-label">Current Rep Action</span>
+        <strong class="manager-current-action-label">${escapeHtml(latest.label || "Rep updated record")}</strong>
+      </div>
+
+      <div class="manager-current-followup-date-block">
+        <span class="manager-current-followup-label">Rep's Set Follow-Up Date</span>
+        ${renderManagerActionFollowUpDatePill(latest.followUpDate)}
+      </div>
     </div>
   `;
 }
