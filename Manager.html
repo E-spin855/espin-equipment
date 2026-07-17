@@ -3386,6 +3386,13 @@ tr.unread-message-row td{
   letter-spacing:.12em;
   text-transform:uppercase;
 }
+
+.manager-current-action-label{
+  color:#eef6ff;
+  font-size:15px;
+  font-weight:900;
+  line-height:1.35;
+}
 .manager-rep-action-list{
   display:grid;
   gap:10px;
@@ -5694,6 +5701,55 @@ function getManagerRepActionHistory(rec) {
     const bTime = new Date(b.at || 0).getTime();
     return aTime - bTime;
   });
+}
+
+function getLatestManagerRepAction(rec) {
+  const history = getManagerRepActionHistory(rec);
+
+  if (!history.length) return null;
+
+  return history
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.at || 0).getTime() || 0;
+      const bTime = new Date(b.at || 0).getTime() || 0;
+      return bTime - aTime;
+    })[0];
+}
+
+function renderManagerActionFollowUpDatePill(dateValue) {
+  const cleanDate = clean(dateValue);
+
+  if (!cleanDate) {
+    return `<span class="mini">No follow-up date set</span>`;
+  }
+
+  const daysUntil = getDaysUntil(cleanDate);
+  let cls = "followup-date-pill";
+
+  if (daysUntil !== null) {
+    if (daysUntil < 0) {
+      cls += " overdue";
+    } else if (daysUntil <= 7) {
+      cls += " due-soon";
+    }
+  }
+
+  return `<span class="${cls}">${escapeHtml(cleanDate)}</span>`;
+}
+
+function renderManagerCurrentRepAction(rec) {
+  const latest = getLatestManagerRepAction(rec);
+
+  if (!latest) return "";
+
+  return `
+    <div class="manager-current-followup">
+      <span>Current Rep Action</span>
+      <strong class="manager-current-action-label">${escapeHtml(latest.label || "Rep updated record")}</strong>
+      ${renderManagerActionFollowUpDatePill(latest.followUpDate)}
+    </div>
+  `;
 }
 
 function renderManagerActiveProjects(rec) {
@@ -10220,16 +10276,7 @@ function renderDetail() {
       </button>
     </div>
 
-    ${
-      getFollowUpDate(rec)
-        ? `
-          <div class="manager-current-followup">
-            <span>Current Follow-Up</span>
-            ${renderFollowUpDatePill(rec)}
-          </div>
-        `
-        : ""
-    }
+    ${renderManagerCurrentRepAction(rec)}
 
     <div class="manager-action-history-body" hidden>
       ${renderManagerRepActionHistory(rec)}
