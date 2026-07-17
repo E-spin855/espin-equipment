@@ -5741,6 +5741,52 @@ function getManagerRepActionHistory(rec) {
         }))
     : [];
 
+  // Trade-In and Quote events arrive from connected workflow pages rather
+  // than from the Rep Action menu. Include them in the same visible history.
+  const workflowEvents = Array.isArray(rec?.workflow_event_history)
+    ? rec.workflow_event_history
+    : [];
+
+  workflowEvents.forEach(event => {
+    if (!event || !clean(event.label) || !clean(event.at)) return;
+
+    history.push({
+      at: clean(event.at),
+      action: clean(event.type),
+      label: clean(event.label),
+      followUpDate: "",
+      by: "ESPIN LINK"
+    });
+  });
+
+  // Backward-compatible dated Trade-In fields.
+  if (
+    clean(rec?.associated_tradein_submitted_at) &&
+    !history.some(item => clean(item.action) === "tradein_submitted")
+  ) {
+    history.push({
+      at: clean(rec.associated_tradein_submitted_at),
+      action: "tradein_submitted",
+      label: "Trade-In Submitted",
+      followUpDate: "",
+      by: "Trade-In App"
+    });
+  }
+
+  if (
+    Number(rec?.external_tradein_value || 0) > 0 &&
+    clean(rec?.external_tradein_received_at) &&
+    !history.some(item => clean(item.action) === "tradein_received")
+  ) {
+    history.push({
+      at: clean(rec.external_tradein_received_at),
+      action: "tradein_received",
+      label: "Trade-In Received",
+      followUpDate: "",
+      by: "Trade Desk"
+    });
+  }
+
   if (!history.length && clean(rec?.rep_last_action_at)) {
     history.push({
       at: clean(rec.rep_last_action_at),
