@@ -18068,6 +18068,8 @@ function showCompletedRepProjects() {
 
 const ESPIN_ACTIVE_PROJECTS_KEY = "espin_active_project_progress_v1";
 const activeProjectOpenState = {};
+let lastActiveProjectsStorageValue =
+  localStorage.getItem(ESPIN_ACTIVE_PROJECTS_KEY) || "[]";
 
 function readEspinActiveProjects() {
   try {
@@ -18247,8 +18249,21 @@ function renderActiveProjects() {
   }).join("");
 }
 
+function refreshActiveProjectsImmediately() {
+  renderActiveProjects();
+
+  // The selected-record panel can be rebuilt during project handoff.
+  // Run one more refresh after the DOM settles.
+  window.requestAnimationFrame(() => {
+    renderActiveProjects();
+  });
+}
+
 window.addEventListener("storage", event => {
-  if (event.key === ESPIN_ACTIVE_PROJECTS_KEY) renderActiveProjects();
+  if (event.key !== ESPIN_ACTIVE_PROJECTS_KEY) return;
+
+  lastActiveProjectsStorageValue = event.newValue || "[]";
+  refreshActiveProjectsImmediately();
 });
 
 function upsertEspinActiveProject(project) {
@@ -18289,10 +18304,14 @@ function upsertEspinActiveProject(project) {
     records.unshift(project);
   }
 
+  const serializedProjects = JSON.stringify(records);
+
   localStorage.setItem(
     ESPIN_ACTIVE_PROJECTS_KEY,
-    JSON.stringify(records)
+    serializedProjects
   );
+
+  lastActiveProjectsStorageValue = serializedProjects;
 
   // Push the latest milestone snapshot to the Manager record immediately.
   if (selectedRecord) {
@@ -18324,8 +18343,26 @@ window.addEventListener("message", event => {
 });
 
 // Refresh the card when the Rep returns from an ESPIN Connect tab.
-window.addEventListener("focus", renderActiveProjects);
-window.addEventListener("pageshow", renderActiveProjects);
+window.addEventListener("focus", refreshActiveProjectsImmediately);
+window.addEventListener("pageshow", refreshActiveProjectsImmediately);
+window.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    refreshActiveProjectsImmediately();
+  }
+});
+
+// Removal projects do not always send the same immediate postMessage as
+// installation projects. Watch the shared project storage value so a newly
+// created removal project appears without requiring a full page reload.
+setInterval(() => {
+  const currentValue =
+    localStorage.getItem(ESPIN_ACTIVE_PROJECTS_KEY) || "[]";
+
+  if (currentValue === lastActiveProjectsStorageValue) return;
+
+  lastActiveProjectsStorageValue = currentValue;
+  refreshActiveProjectsImmediately();
+}, 750);
 
 
 function render() {
@@ -20304,14 +20341,6 @@ function reviewApprovedQuote() {
         if (processed.has(signature)) return;
         processed.add(signature);
 
-        // Do not re-import the same Quote Review decision every 8 seconds.
-        // Repeatedly treating an already-synced approval as new was rebuilding
-        // the project section while the rep was clicking and made the page
-        // appear frozen.
-        if (String(rec.quote_last_import_signature || "") === signature) {
-          return;
-        }
-
         rec.quote_approval_id =
           item.quote_approval_id ||
           item.approval_id ||
@@ -20371,7 +20400,6 @@ function reviewApprovedQuote() {
 
         rec.manager_unseen_update = true;
         rec.manager_flash_at = decisionAt;
-        rec.quote_last_import_signature = signature;
 
         syncToManagerQueue(rec);
         changed = true;
@@ -22225,22 +22253,7 @@ if (showCompletedProjectsBtn) {
 
     updateAxisShareStatus();
 
-    if (approvalChanged) {
-      const selected = state.records.find(
-        record => String(record.id) === String(state.selectedId)
-      );
-
-      if (selected) {
-        renderNewProjectDetail(selected);
-      }
-
-      renderNewProjectsTable();
-      renderStats();
-    }
-
-    if (tradeInChanged && !approvalChanged) {
-      render();
-    }
+    if (tradeInChanged || approvalChanged) render();
   }, 8000);
 
   render();
