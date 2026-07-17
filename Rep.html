@@ -19845,11 +19845,7 @@ queue.unshift(updated);
     }
 
     function applyExternalTradeInToQuote(id = null) {
-      const targetId = id || state.selectedId;
-
-      const rec = state.records.find(
-        r => String(r.id) === String(targetId)
-      );
+      const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
 
       if (!rec) {
         alert("Open a record first");
@@ -19863,9 +19859,7 @@ queue.unshift(updated);
         return;
       }
 
-      if (!confirm(`Apply trade-in reference of ${money(externalValue)} to this quote?`)) {
-        return;
-      }
+      if (!confirm(`Apply trade-in reference of ${money(externalValue)} to this quote?`)) return;
 
       rec.quote_trade_in_credit = externalValue;
       rec.tradein_credit = externalValue;
@@ -19880,29 +19874,16 @@ queue.unshift(updated);
 
       rec.quote_net_amount = quoteAmount ? netQuote : "";
       rec.quote_profit = quoteAmount ? profit : "";
-      rec.quote_margin =
-        quoteAmount && netQuote > 0
-          ? Math.round((profit / netQuote) * 100)
-          : "";
+      rec.quote_margin = quoteAmount && netQuote > 0 ? Math.round((profit / netQuote) * 100) : "";
 
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
       rec.manager_flash_type = "external_tradein_manually_applied";
-      rec.manager_flash_text = "Trade-In reference applied to quote";
 
-      // Preserve the selected project and save the updated record directly.
-      // A full render here was rebuilding the page and leaving an invisible
-      // layer over the controls, which made every button appear frozen.
-      state.selectedId = rec.id;
-      saveRecords();
-      syncToManagerQueue(rec);
-      localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+      syncFeedStatus(rec);
+      render();
 
-      renderNewProjectDetail(rec);
-      renderNewProjectsTable();
-      renderStats();
-
-      showBanner("✅ Trade-in reference applied to quote");
+      alert("Trade-in reference applied to quote.");
     }
 
     
@@ -20389,6 +20370,15 @@ function reviewApprovedQuote() {
 
       if (changed) {
         saveRecords();
+
+        const quoteModal = $("quoteModal");
+        if (quoteModal) {
+          quoteModal.style.display = "none";
+          quoteModal.classList.remove("open", "show", "active");
+        }
+
+        document.body.classList.remove("modal-open");
+        document.body.style.overflow = "";
 
         /*
           Remove only the dedicated response list. Keep the main quote queue
@@ -22235,7 +22225,35 @@ if (showCompletedProjectsBtn) {
 
     updateAxisShareStatus();
 
-    if (tradeInChanged || approvalChanged) render();
+    if (approvalChanged) {
+      // Quote approval sync should refresh only the affected project area.
+      // A full render here could leave the modal overlay above the page and
+      // make every button appear frozen.
+      const quoteModal = $("quoteModal");
+
+      if (quoteModal) {
+        quoteModal.style.display = "none";
+        quoteModal.classList.remove("open", "show", "active");
+      }
+
+      document.body.classList.remove("modal-open");
+      document.body.style.overflow = "";
+
+      const selected = state.records.find(
+        record => String(record.id) === String(state.selectedId)
+      );
+
+      if (selected) {
+        renderNewProjectDetail(selected);
+      }
+
+      renderNewProjectsTable();
+      renderStats();
+    }
+
+    if (tradeInChanged && !approvalChanged) {
+      render();
+    }
   }, 8000);
 
   render();
