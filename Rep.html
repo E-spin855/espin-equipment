@@ -17114,19 +17114,33 @@ function saveInstallBaseFix(id) {
         quoteTeamStatus === "Changes Requested" ? "attention" :
         quoteTeamStatus === "Pending Review" ? "pending" : "idle";
 
+      // Once associated equipment syncs back from the Trade-In App,
+      // show that it is ready/submitted for Trade Desk review.
       const tradeDeskSubmitted = Boolean(
+        rec.tradein_sync_received ||
         rec.associated_tradein_submitted_to === "tradein_desk" ||
         rec.associated_tradein_submitted_at ||
         rec.tradein_submitted_at ||
         rec.tradein_sent_at
       );
 
-      // Equipment syncing from the Trade-In App does not mean the Trade Desk
-      // has returned a value. "Received" is shown only after an actual value
-      // is synced back from trade_desk.html.
+      // "Trade-In Received" is shown only after trade_desk.html sends a newer
+      // update back than the time the rep submitted the equipment to the desk.
+      const deskSubmittedAt = Date.parse(
+        rec.associated_tradein_submitted_at || ""
+      );
+
+      const deskReturnedAt = Date.parse(
+        rec.external_tradein_received_at ||
+        rec.tradein_last_update_at ||
+        ""
+      );
+
       const tradeDeskValueReceived = Boolean(
-        Number(rec.external_tradein_value || 0) > 0 &&
-        rec.external_tradein_received_at
+        rec.associated_tradein_submitted_to === "tradein_desk" &&
+        Number.isFinite(deskSubmittedAt) &&
+        Number.isFinite(deskReturnedAt) &&
+        deskReturnedAt > deskSubmittedAt
       );
 
       const tradeDeskStatus = tradeDeskValueReceived
