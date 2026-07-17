@@ -13985,7 +13985,7 @@ function renderRegularRepAction(rec) {
       <div class="rep-action-expanded ${open ? "" : "hidden"}">
         <div class="row" style="margin-bottom:10px;">
           <label for="manualActionSelect">Rep Action</label>
-          <select id="manualActionSelect" class="placeholder">
+          <select id="manualActionSelect" class="placeholder" onchange="updateContinueRepActionState();">
             <option value="">Select Action</option>
             <option value="quote_review">Prepare Quote Review</option>
             <option value="submit_quote_approval">Submit Quote for Approval</option>
@@ -14010,11 +14010,19 @@ function renderRegularRepAction(rec) {
             id="repFollowUpDate"
             type="date"
             value="${escapeHtml(followUpDate)}"
+            oninput="updateContinueRepActionState();"
+            onchange="updateContinueRepActionState();"
           />
         </div>
 
         <div class="btns">
-          <button type="button" class="green" onclick="confirmManualAction()">
+          <button
+            type="button"
+            id="continueRepActionBtn"
+            class="green"
+            onclick="confirmManualAction()"
+            ${followUpDate ? "" : "disabled"}
+          >
             Continue Rep Action
           </button>
 
@@ -14027,6 +14035,20 @@ function renderRegularRepAction(rec) {
 function toggleRepActionPanel() {
   state.repActionOpen = state.repActionOpen !== true;
   renderDetail();
+}
+
+function updateContinueRepActionState() {
+  const button = $("continueRepActionBtn");
+  const actionField = $("manualActionSelect");
+  const dateField = $("repFollowUpDate");
+
+  if (!button) return;
+
+  const action = actionField ? actionField.value : "";
+  const followUpDate = dateField ? dateField.value : "";
+
+  // Complete Project is the only Rep Action that does not require a follow-up date.
+  button.disabled = !action || (action !== "complete" && !followUpDate);
 }
 
 function renderRepManagerCommunication(rec) {
