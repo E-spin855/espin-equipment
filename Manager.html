@@ -8202,7 +8202,9 @@ function renderTable() {
 
     const selectedClass = [
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
-      isRedHotServiceAlert(rec) ? "red-hot-row-pulse" : "",
+      isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)
+        ? "red-hot-row-pulse"
+        : "",
       String(rec.id) === String(state.selectedId) ? "selected" : "",
       shouldManagerRowFlash(rec) ? "manager-row-flash" : "",
       hasUnreadMessageRow(rec, "manager") ? "unread-message-row" : ""
@@ -11793,6 +11795,17 @@ if (tableBody) {
     );
 
     if (clickedRecord) {
+      if (
+        isRedHotServiceAlert(clickedRecord) &&
+        !espinTruthy(clickedRecord.red_hot_acknowledged)
+      ) {
+        clickedRecord.red_hot_acknowledged = true;
+        clickedRecord.red_hot_acknowledged_at = new Date().toISOString();
+        clickedRecord.red_hot_acknowledged_by = "Manager";
+        writeManagerQueueRecord(clickedRecord);
+        row.classList.remove("red-hot-row-pulse");
+      }
+
       acknowledgeManagerRepRowUpdate(clickedRecord);
 
       if (isRepAddedManagerRecord(clickedRecord)) {

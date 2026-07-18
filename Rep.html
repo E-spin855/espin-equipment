@@ -5481,7 +5481,16 @@ tr.red-hot-row{
 }
 
 tr.red-hot-row-pulse{
-  animation:redHotServicePulse 1s ease-in-out infinite!important;
+  animation:repPersistentRedHotFlash .68s ease-in-out infinite!important;
+}
+
+@keyframes repPersistentRedHotFlash{
+  0%,100%{
+    filter:brightness(.62) saturate(.85) drop-shadow(0 0 2px rgba(255,51,71,.24));
+  }
+  50%{
+    filter:brightness(1.65) saturate(1.65) drop-shadow(0 0 18px rgba(255,51,71,1));
+  }
 }
 
 @keyframes redHotServicePulse{
@@ -21780,6 +21789,7 @@ function markRepRowUpdateSeen(id) {
   if (!rec) return false;
 
   const needsSeenUpdate =
+    (isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)) ||
     rec.install_base_release_seen !== true ||
     rec.install_base_release_new === true ||
     rec.install_base_fixed_seen_by_rep !== true ||
@@ -21809,6 +21819,16 @@ function markRepRowUpdateSeen(id) {
 
     return {
       ...r,
+
+      red_hot_acknowledged: isRedHotServiceAlert(r)
+        ? true
+        : r.red_hot_acknowledged,
+      red_hot_acknowledged_at: isRedHotServiceAlert(r)
+        ? now
+        : r.red_hot_acknowledged_at,
+      red_hot_acknowledged_by: isRedHotServiceAlert(r)
+        ? (getRecordRepName(r) || r.assigned_rep_name || "Rep")
+        : r.red_hot_acknowledged_by,
 
       install_base_release_seen: true,
       install_base_release_seen_at: now,
