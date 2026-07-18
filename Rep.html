@@ -8481,6 +8481,45 @@ function isNewerRedHotPushFromHub(incoming, existing) {
   return !Number.isFinite(acknowledgedTime) || pushedTime > acknowledgedTime;
 }
 
+function hasRepUpdateAfterRedHotAcknowledgement(rec) {
+  if (!rec) return false;
+
+  const acknowledgedTime = new Date(
+    rec.red_hot_acknowledged_at || 0
+  ).getTime();
+
+  if (!espinTruthy(rec.red_hot_acknowledged) || !Number.isFinite(acknowledgedTime)) {
+    return true;
+  }
+
+  const directTimes = [
+    rec.install_base_released_at,
+    rec.install_base_auto_synced_at,
+    rec.install_base_reply_to_rep_at,
+    rec.install_base_response_at,
+    rec.install_base_correction_at,
+    rec.manager_response_at,
+    rec.manager_response_sent_at,
+    rec.rep_flash_at
+  ];
+
+  const conversationTimes = [
+    ...(Array.isArray(rec.install_base_conversation_history)
+      ? rec.install_base_conversation_history
+      : []),
+    ...(Array.isArray(rec.manager_conversation_history)
+      ? rec.manager_conversation_history
+      : [])
+  ].map(item => item?.at || item?.created_at || item?.timestamp || "");
+
+  const latestUpdateTime = [...directTimes, ...conversationTimes]
+    .map(value => new Date(value || 0).getTime())
+    .filter(Number.isFinite)
+    .reduce((latest, value) => Math.max(latest, value), 0);
+
+  return latestUpdateTime > acknowledgedTime;
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -12338,6 +12377,7 @@ const hasUnseenManagerFix =
         ? "red-hot-row-pulse"
         : "",
       isRedHotServiceAlert(rec) &&
+      hasRepUpdateAfterRedHotAcknowledgement(rec) &&
       (
         hasUnseenManagerResponse ||
         hasUnseenHubCommunication ||
