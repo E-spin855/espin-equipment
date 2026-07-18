@@ -5538,24 +5538,24 @@ body tr:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,
 
 /* When a fresh update lands on a Red Hot row, the Red Hot frame itself
    flashes red. Do not replace it with the normal green update frame. */
-tr.red-hot-row.red-hot-row-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash){
+tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash){
   outline:5px solid #ff3347!important;
   outline-offset:-5px;
   background:rgba(255,51,71,.10)!important;
   animation:redHotIncomingAlertPulse .68s ease-in-out infinite!important;
 }
 
-tr.red-hot-row.red-hot-row-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td{
+tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td{
   background:rgba(255,51,71,.06)!important;
   border-top:4px solid #ff3347!important;
   border-bottom:4px solid #ff3347!important;
 }
 
-tr.red-hot-row.red-hot-row-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td:first-child{
+tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td:first-child{
   border-left:4px solid #ff3347!important;
 }
 
-tr.red-hot-row.red-hot-row-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td:last-child{
+tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash) td:last-child{
   border-right:4px solid #ff3347!important;
 }
 
@@ -12322,6 +12322,18 @@ const hasUnseenManagerFix =
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
       isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)
         ? "red-hot-row-pulse"
+        : "",
+      isRedHotServiceAlert(rec) &&
+      (
+        hasUnseenManagerResponse ||
+        hasUnseenHubCommunication ||
+        hasUnseenInstallBaseUpdate ||
+        hasUnseenFixedData ||
+        hasUnseenManagerFix ||
+        hasUnseenHubFix ||
+        hasUnreadMessageRow(rec, "rep")
+      )
+        ? "red-hot-update-pulse"
         : "",
       String(rec.id || "") === String(state.selectedId || "")
         ? "selected"
@@ -21978,7 +21990,7 @@ function handleRepRowClick(id) {
     .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
     .forEach(row => {
       if (String(row.dataset.recordId || "") === selectedId) {
-        row.classList.remove("red-hot-row-pulse");
+        row.classList.remove("red-hot-row-pulse", "red-hot-update-pulse");
       }
     });
 
