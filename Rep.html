@@ -8433,6 +8433,31 @@ function isRepRoutingComplete(rec) {
   return true;
 }
 
+function isNewerRedHotPushFromHub(incoming, existing) {
+  if (!isRedHotServiceAlert(incoming)) return false;
+
+  const pushedAt =
+    incoming.install_base_released_at ||
+    incoming.install_base_auto_synced_at ||
+    incoming.timestamp ||
+    "";
+
+  if (!pushedAt) return !espinTruthy(existing?.red_hot_acknowledged);
+
+  const pushedTime = new Date(pushedAt).getTime();
+  const acknowledgedAt =
+    existing?.red_hot_acknowledged_at ||
+    incoming.red_hot_acknowledged_at ||
+    "";
+  const acknowledgedTime = new Date(acknowledgedAt).getTime();
+
+  if (!Number.isFinite(pushedTime)) {
+    return !espinTruthy(existing?.red_hot_acknowledged);
+  }
+
+  return !Number.isFinite(acknowledgedTime) || pushedTime > acknowledgedTime;
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -8448,6 +8473,14 @@ function mergeInstallBaseQueueIntoRepRecords() {
       `${incoming.oem_project_id || incoming.asset_id || ""}_${incoming.serial_number || incoming.serial || ""}`;
 
     if (!key) return;
+
+    const existingRepRecord = state.records.find(record =>
+      String(record.key || getRecordKey(record) || "") === String(key)
+    );
+    const restartRedHotFlash = isNewerRedHotPushFromHub(
+      incoming,
+      existingRepRecord
+    );
 
     const isManualClarification =
       incoming.install_base_sync_type === "manual_clarification" ||
@@ -8557,6 +8590,16 @@ const repRecord = {
       ...incoming,
       key,
       id: incoming.id || key,
+
+      red_hot_acknowledged: restartRedHotFlash
+        ? false
+        : espinTruthy(existingRepRecord?.red_hot_acknowledged || incoming.red_hot_acknowledged),
+      red_hot_acknowledged_at: restartRedHotFlash
+        ? ""
+        : (existingRepRecord?.red_hot_acknowledged_at || incoming.red_hot_acknowledged_at || ""),
+      red_hot_acknowledged_by: restartRedHotFlash
+        ? ""
+        : (existingRepRecord?.red_hot_acknowledged_by || incoming.red_hot_acknowledged_by || ""),
 
       hub_source: "Install Base",
       source: "Install Base",
@@ -8798,8 +8841,18 @@ const hubArrivalTime =
   item.install_base_released_at ||
   item.install_base_auto_synced_at ||
   new Date().toISOString();
+const restartRedHotFlash = isNewerRedHotPushFromHub(item, existing);
     const releasedRecord = {
       ...item,
+      red_hot_acknowledged: restartRedHotFlash
+        ? false
+        : espinTruthy(existing?.red_hot_acknowledged || item.red_hot_acknowledged),
+      red_hot_acknowledged_at: restartRedHotFlash
+        ? ""
+        : (existing?.red_hot_acknowledged_at || item.red_hot_acknowledged_at || ""),
+      red_hot_acknowledged_by: restartRedHotFlash
+        ? ""
+        : (existing?.red_hot_acknowledged_by || item.red_hot_acknowledged_by || ""),
       // A genuinely new clean row synced from Hub must pulse green
       // until the Rep clicks the row.
       install_base_release_new: isNewHubRow
