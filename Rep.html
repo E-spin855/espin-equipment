@@ -21889,6 +21889,16 @@ function markRepRowUpdateSeen(id) {
     return {
       ...r,
 
+      red_hot_acknowledged: isRedHotServiceAlert(r)
+        ? true
+        : r.red_hot_acknowledged,
+      red_hot_acknowledged_at: isRedHotServiceAlert(r)
+        ? now
+        : r.red_hot_acknowledged_at,
+      red_hot_acknowledged_by: isRedHotServiceAlert(r)
+        ? (getRecordRepName(rec) || rec.assigned_rep_name || "Rep")
+        : r.red_hot_acknowledged_by,
+
       install_base_release_seen: true,
       install_base_release_seen_at: now,
       install_base_release_new: false,
@@ -21963,6 +21973,14 @@ function handleRepRowClick(id) {
   function selectRow(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
+
+  document
+    .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
+    .forEach(row => {
+      if (String(row.dataset.recordId || "") === selectedId) {
+        row.classList.remove("red-hot-row-pulse");
+      }
+    });
 
   const previousSelectedId =
     String(state.selectedId || "").trim();
