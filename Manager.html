@@ -4258,6 +4258,7 @@ const state = {
   repCommunicationOpen: {},
   repHistoryOpen: {},
   repCommunicationDismissed: {},
+  managerRepActionHistoryDismissed: {},
 repCommunicationManuallyHidden: {}
 };
 
@@ -5726,8 +5727,20 @@ function hasUnseenManagerRepActionHistory(rec) {
 
   if (!recordKey || !signature) return false;
 
+  const aliases = [rec?.id, rec?.key, getRecordKey(rec)]
+    .map(value => String(value || ""))
+    .filter(Boolean);
+
+  if (
+    aliases.some(alias =>
+      state.managerRepActionHistoryDismissed[alias] === signature
+    )
+  ) {
+    return false;
+  }
+
   const seen = readManagerRepActionHistorySeen();
-  return seen[recordKey] !== signature;
+  return !aliases.some(alias => seen[alias] === signature);
 }
 
 function acknowledgeManagerRepActionHistory(rec) {
@@ -5737,7 +5750,14 @@ function acknowledgeManagerRepActionHistory(rec) {
   if (!recordKey || !signature) return;
 
   const seen = readManagerRepActionHistorySeen();
-  seen[recordKey] = signature;
+  const aliases = [rec?.id, rec?.key, getRecordKey(rec), recordKey]
+    .map(value => String(value || ""))
+    .filter(Boolean);
+
+  aliases.forEach(alias => {
+    seen[alias] = signature;
+    state.managerRepActionHistoryDismissed[alias] = signature;
+  });
 
   try {
     localStorage.setItem(
@@ -10521,6 +10541,9 @@ function renderDetail() {
       ? "detail-card update-detail-card followup-update"
       : "detail-card";
 
+  const repActionHistoryUnseen =
+    hasUnseenManagerRepActionHistory(rec);
+
   grid.innerHTML = `
   ${renderRedHotServiceCard(rec, "manager")}
   ${completed ? "" : renderOverdueManagerAlert(rec)}
@@ -10688,15 +10711,13 @@ function renderDetail() {
   </div>
 
   <div
-    class="${repFollowUpCardClass} manager-followup-card ${
-      hasUnseenManagerRepActionHistory(rec)
+    class="${
+      repActionHistoryUnseen ? repFollowUpCardClass : "detail-card"
+    } manager-followup-card ${
+      repActionHistoryUnseen
         ? "manager-action-history-update-frame"
         : ""
     }"
-    style="
-      border:2px solid rgba(65,255,156,.48);
-      background:rgba(65,255,156,.07);
-    "
   >
     <div class="manager-action-history-head">
       <div class="k">Rep Action History</div>
