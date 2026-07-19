@@ -7436,6 +7436,9 @@ function bindStableMessageRefresh(pageRole) {
       .join("§");
 
     if (nextFingerprint === lastFingerprint) return;
+
+    if (isRepPrioritySelectInteractionActive()) return;
+
     lastFingerprint = nextFingerprint;
 
     try {
@@ -10992,12 +10995,21 @@ function renderPrioritySelect(rec) {
     <select
       class="priority-select ${hasPriority ? 'has-priority' : ''}"
       title="Manual rep priority"
+      onpointerdown="window.repPrioritySelectInteracting=true; event.stopPropagation();"
       onclick="event.stopPropagation();"
-      onchange="event.stopPropagation(); updateLeadPriority('${escapeJs(rec.id)}', this.value);"
+      onblur="window.repPrioritySelectInteracting=false;"
+      onchange="window.repPrioritySelectInteracting=false; event.stopPropagation(); updateLeadPriority('${escapeJs(rec.id)}', this.value);"
     >
       ${options.join('')}
     </select>
   `;
+}
+
+function isRepPrioritySelectInteractionActive() {
+  return Boolean(
+    window.repPrioritySelectInteracting === true ||
+    document.activeElement?.matches?.(".priority-select")
+  );
 }
 
 function getSalesRoutingRecords() {
@@ -22448,6 +22460,7 @@ function refreshRepFromSync() {
 }
 
 function scheduleRepSyncRender() {
+  if (isRepPrioritySelectInteractionActive()) return;
   if (repSyncRenderQueued) return;
   repSyncRenderQueued = true;
 
