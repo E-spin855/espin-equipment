@@ -10412,19 +10412,18 @@ function syncFeedStatus(rec) {
     id: rec.id || managerPacket.id
   });
 
-  let main = [];
+  // The Rep workspace is authoritative. Updating one record must never
+  // replace the full Rep list with the smaller shared Manager/Hub store.
+  const updatedLocalRecord = {
+    ...rec,
+    ...localPacket
+  };
 
-  try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
-  } catch {
-    main = [];
-  }
+  const preservedRepRecords = state.records.filter(
+    item => !sameSyncRecord(item, updatedLocalRecord)
+  );
 
-  const cleanedMain = main.filter(item => !sameSyncRecord(item, localPacket));
-  cleanedMain.unshift(localPacket);
-
-  state.records = cleanedMain;
+  state.records = [updatedLocalRecord, ...preservedRepRecords];
   saveRecords();
 
   syncToManagerQueue(managerPacket);
