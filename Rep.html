@@ -9146,34 +9146,8 @@ function readArrayKey(key) {
 function writeArrayKey(key, arr) {
   localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
-    function saveRecords(options = {}) {
-      let records = Array.isArray(state.records)
-        ? state.records.map(record => ({ ...record }))
-        : [];
-
-      // Rep Action and cross-page sync saves must never replace the complete
-      // Rep workspace with a partial shared snapshot. Keep every protected
-      // record unless a dedicated permanent-delete path explicitly opts out.
-      if (options.allowRemoval !== true) {
-        const protectedRecords = readRepWorkspaceBackup();
-
-        protectedRecords.forEach(protectedRecord => {
-          const index = records.findIndex(currentRecord =>
-            sameWorkspaceEquipmentRecord(currentRecord, protectedRecord)
-          );
-
-          if (index >= 0) {
-            records[index] = {
-              ...protectedRecord,
-              ...records[index]
-            };
-          } else {
-            records.push({ ...protectedRecord });
-          }
-        });
-      }
-
-      state.records = records;
+    function saveRecords() {
+      const records = Array.isArray(state.records) ? state.records : [];
 
       records.forEach(rec => {
         const isWonRecord =
@@ -10972,9 +10946,18 @@ function getMyEquipmentReviewRecords() {
         rec.project_type = "equipment_review_record";
       }
 
-      // Rep-created records must follow the same selected-Rep filter as
-      // Hub-synced records. Previously they always returned true here.
-      return recordMatchesSelectedRep(rec);
+      if (!recordMatchesSelectedRep(rec)) return false;
+
+      if (isRepCreated) return true;
+
+      // Keep non-routed Manager/Hub copies in sync storage, but never show
+      // them in the Rep table until Hub has actually released them to Rep.
+      return (
+        isRepRoutingComplete(rec) &&
+        rec.install_base_released_to !== "manager" &&
+        rec.release_destination !== "manager" &&
+        rec.manager_visible !== true
+      );
     })
     .filter(rec => !isRepNewProjectIntakeRecord(rec));
 
@@ -20437,7 +20420,7 @@ function markNewProjectWon(id) {
       state.records = state.records.filter(r => r.id !== rec.id);
       state.selectedId = null;
 
-      saveRecords({ allowRemoval: true });
+      saveRecords();
       render();
     }
 function submitSelectedQuoteForApproval() {
