@@ -8614,12 +8614,49 @@ function getRepRedHotDismissedSignatures() {
   }
 }
 
+function getRepRedHotLatestUpdateTime(rec) {
+  if (!rec) return 0;
+
+  const directTimes = [
+    rec.install_base_released_at,
+    rec.install_base_auto_synced_at,
+    rec.install_base_reply_to_rep_at,
+    rec.install_base_response_at,
+    rec.install_base_correction_at,
+    rec.manager_response_at,
+    rec.manager_response_sent_at
+  ];
+
+  const conversationTimes = [
+    ...(Array.isArray(rec.install_base_conversation_history)
+      ? rec.install_base_conversation_history
+      : []),
+    ...(Array.isArray(rec.manager_conversation_history)
+      ? rec.manager_conversation_history
+      : [])
+  ].map(item => item?.at || item?.created_at || item?.timestamp || "");
+
+  return [...directTimes, ...conversationTimes]
+    .map(value => new Date(value || 0).getTime())
+    .filter(Number.isFinite)
+    .reduce((latest, value) => Math.max(latest, value), 0);
+}
+
 function isRepRedHotFlashDismissed(rec) {
   const key = String(getRecordKey(rec) || rec?.id || rec?.key || "");
   if (!key) return false;
 
   const dismissed = getRepRedHotDismissedSignatures();
-  return dismissed[key] === getRepRedHotFlashSignature(rec);
+  const dismissedValue = dismissed[key];
+  if (!dismissedValue) return false;
+
+  // Support signatures saved by the earlier implementation.
+  if (dismissedValue === getRepRedHotFlashSignature(rec)) return true;
+
+  const dismissedTime = new Date(dismissedValue).getTime();
+  if (!Number.isFinite(dismissedTime)) return false;
+
+  return getRepRedHotLatestUpdateTime(rec) <= dismissedTime;
 }
 
 function dismissRepRedHotFlash(rec) {
@@ -8629,7 +8666,7 @@ function dismissRepRedHotFlash(rec) {
   if (!key) return;
 
   const dismissed = getRepRedHotDismissedSignatures();
-  dismissed[key] = getRepRedHotFlashSignature(rec);
+  dismissed[key] = new Date().toISOString();
   localStorage.setItem(
     REP_RED_HOT_DISMISSED_SIGNATURES_KEY,
     JSON.stringify(dismissed)
