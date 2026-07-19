@@ -9885,8 +9885,22 @@ function toggleManagerInstallBaseCommunication(recordId) {
   render();
 }
 function toggleManagerInstallBaseHistory(recordId) {
-  const current = state.installBaseHistoryOpen[String(recordId || "")] === true;
-  state.installBaseHistoryOpen[String(recordId || "")] = !current;
+  const key = String(recordId || "");
+  const current = state.installBaseHistoryOpen[key] === true;
+  state.installBaseHistoryOpen[key] = !current;
+
+  if (current) {
+    const rec =
+      state.records.find(r => String(r.id || "") === key) ||
+      findSelectedRecord();
+
+    if (rec) {
+      acknowledgeMessageFieldByRecord(rec, "manager", "install_base");
+      acknowledgeMessageRow(rec, "manager");
+      state.installBaseCommunicationDismissed[key] = true;
+    }
+  }
+
   render();
 }
 function renderManagerInstallBaseCommunication(rec) {
@@ -10119,8 +10133,35 @@ function toggleManagerRepCommunication(recordId) {
 }
 function toggleManagerRepHistory(recordId) {
   const key = String(recordId || "");
-  state.repHistoryOpen[key] = state.repHistoryOpen[key] !== true;
-  render();
+  const current = state.repHistoryOpen[key] === true;
+  state.repHistoryOpen[key] = !current;
+
+  if (current) {
+    const rec =
+      state.records.find(r =>
+        String(r.id || r.key || getRecordKey(r)) === key
+      ) || findSelectedRecord();
+
+    if (rec) {
+      const ui = getManagerRepCommunicationUi(rec);
+      const keys = [recordId, rec.id, rec.key, getRecordKey(rec)]
+        .map(value => String(value || ""))
+        .filter(Boolean);
+
+      acknowledgeMessageFieldByRecord(rec, "manager", "rep");
+      acknowledgeMessageRow(rec, "manager");
+
+      keys.forEach(recordKey => {
+        state.repCommunicationDismissed[recordKey] =
+          ui.incomingSignature || true;
+      });
+
+      state.managerRepCommunicationFrameActive = false;
+    }
+  }
+
+  renderDetail();
+  renderTable();
 }
 function renderManagerRepCommunication(rec) {
   const ui = getManagerRepCommunicationUi(rec);
