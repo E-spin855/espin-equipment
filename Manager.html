@@ -5768,7 +5768,42 @@ function toggleManagerRepActionHistory(button) {
   } else {
     body.setAttribute("hidden", "");
     card.classList.remove("history-open");
+    card.classList.remove("manager-action-history-update-frame");
     button.textContent = "Open History";
+
+    const rec = findSelectedRecord();
+    if (rec) {
+      const seenAt = new Date().toISOString();
+      const acknowledged = {
+        ...rec,
+        key: getRecordKey(rec),
+        manager_alert_seen: true,
+        manager_unseen_update: false,
+        manager_update_seen_at: seenAt,
+        manager_seen_release_id:
+          rec.manager_release_id || rec.manager_seen_release_id || "",
+        manager_flash_at: "",
+        manager_flash_type: "",
+        manager_flash_text: ""
+      };
+
+      acknowledgeManagerRepActionHistory(acknowledged);
+      acknowledgeManagerRepRowUpdate(acknowledged);
+
+      if (isRepAddedManagerRecord(acknowledged)) {
+        markManagerRepAddedRecordSeen(acknowledged);
+      }
+
+      syncRecordEverywhere(acknowledged);
+      state.records = state.records.map(item =>
+        sameRecord(item, acknowledged)
+          ? { ...item, ...acknowledged }
+          : item
+      );
+
+      renderTable();
+      managerStorageSignature = getManagerStorageSignature();
+    }
   }
 }
 
