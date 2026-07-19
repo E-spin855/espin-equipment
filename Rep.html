@@ -8695,6 +8695,69 @@ function dismissRepRedHotFlash(rec) {
   );
 }
 
+const REP_GREEN_ROW_SEEN_KEY = "axis_rep_green_row_seen_v1";
+
+function getRepGreenRowUpdateSignature(rec) {
+  if (!rec) return "";
+
+  const conversationSignature = [
+    ...(Array.isArray(rec.install_base_conversation_history)
+      ? rec.install_base_conversation_history
+      : []),
+    ...(Array.isArray(rec.manager_conversation_history)
+      ? rec.manager_conversation_history
+      : [])
+  ].map(item => [
+    item?.sender || "",
+    item?.at || item?.created_at || item?.timestamp || "",
+    item?.message || item?.note || item?.text || ""
+  ].join("|")).join("||");
+
+  return [
+    rec.install_base_released_at || "",
+    rec.install_base_reply_to_rep_at || "",
+    rec.install_base_response_at || "",
+    rec.install_base_correction_at || "",
+    rec.manager_response_at || "",
+    rec.manager_response_sent_at || "",
+    rec.install_base_fix_request_id || "",
+    rec.manager_release_id || "",
+    conversationSignature
+  ].join("::");
+}
+
+function readRepGreenRowSeenMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REP_GREEN_ROW_SEEN_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getRepGreenRowKey(rec) {
+  return String(getRecordKey(rec) || rec?.id || rec?.key || "");
+}
+
+function isRepGreenRowUpdateAcknowledged(rec) {
+  const key = getRepGreenRowKey(rec);
+  const signature = getRepGreenRowUpdateSignature(rec);
+  if (!key || !signature.replace(/:/g, "")) return false;
+  return readRepGreenRowSeenMap()[key] === signature;
+}
+
+function acknowledgeRepGreenRowUpdate(rec) {
+  const key = getRepGreenRowKey(rec);
+  const signature = getRepGreenRowUpdateSignature(rec);
+  if (!key || !signature.replace(/:/g, "")) return;
+
+  const seen = readRepGreenRowSeenMap();
+  seen[key] = signature;
+  localStorage.setItem(REP_GREEN_ROW_SEEN_KEY, JSON.stringify(seen));
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -12555,6 +12618,8 @@ const hasUnseenManagerFix =
     rec.rep_flash_type === "manager_fix"
   ) &&
   rec.manager_response_seen_by_rep !== true;
+    const repGreenUpdateAcknowledged =
+      isRepGreenRowUpdateAcknowledged(rec);
     const selectedClass = [
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
       isRedHotServiceAlert(rec) &&
@@ -12580,14 +12645,18 @@ const hasUnseenManagerFix =
         ? "selected"
         : "",
 
-      hasUnseenManagerResponse || hasUnseenHubCommunication
+      !repGreenUpdateAcknowledged &&
+      (hasUnseenManagerResponse || hasUnseenHubCommunication)
         ? "incoming-communication-flash"
         : "",
 
-      hasUnseenInstallBaseUpdate ||
-hasUnseenFixedData ||
-hasUnseenManagerFix ||
-hasUnseenHubFix
+      !repGreenUpdateAcknowledged &&
+      (
+        hasUnseenInstallBaseUpdate ||
+        hasUnseenFixedData ||
+        hasUnseenManagerFix ||
+        hasUnseenHubFix
+      )
   ? "rep-new-row-flash"
   : "",
 
@@ -12595,7 +12664,7 @@ hasUnseenHubFix
         ? "rep-attention-alert-row"
         : "",
 
-      hasUnreadMessageRow(rec, "rep")
+      !repGreenUpdateAcknowledged && hasUnreadMessageRow(rec, "rep")
         ? "unread-message-row"
         : ""
     ]
@@ -22237,12 +22306,20 @@ function handleRepRowClick(id) {
     record => String(record.id || record.key || "") === selectedId
   );
   dismissRepRedHotFlash(clickedRedHotRecord);
+  acknowledgeRepGreenRowUpdate(clickedRedHotRecord);
 
   document
     .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
     .forEach(row => {
       if (String(row.dataset.recordId || "") === selectedId) {
-        row.classList.remove("red-hot-row-pulse", "red-hot-update-pulse");
+        row.classList.remove(
+          "red-hot-row-pulse",
+          "red-hot-update-pulse",
+          "incoming-communication-flash",
+          "rep-new-row-flash",
+          "manager-response-flash",
+          "unread-message-row"
+        );
       }
     });
 
