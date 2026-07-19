@@ -5552,57 +5552,35 @@ body :is(.rep-new-pill-flash,.rep-new-flash) :is(.pill,.alert-badge){
   filter:none!important;
 }
 
-/* Match Manager: updated non-Red-Hot rows use the same green pulse. */
-body tr:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,.manager-response-flash):not(.red-hot-row){
-  animation:repManagerMatchedGreenRowFlash .72s ease-in-out infinite!important;
-}
-
-body .detail-update-frame:not(.comm-shell){
-  animation:repSubtleGreenUpdateFlash 1.25s ease-in-out infinite!important;
-}
-
-@keyframes repManagerMatchedGreenRowFlash{
-  0%,100%{
-    filter:brightness(.72) saturate(.85) drop-shadow(0 0 2px rgba(65,255,156,.20));
-  }
-  50%{
-    filter:brightness(1.55) saturate(1.45) drop-shadow(0 0 14px rgba(65,255,156,1));
-  }
-}
-
-@keyframes repSubtleGreenUpdateFlash{
-  0%,100%{
-    filter:brightness(.92) saturate(.96) drop-shadow(0 0 2px rgba(65,255,156,.18));
-  }
-  50%{
-    filter:brightness(1.12) saturate(1.12) drop-shadow(0 0 8px rgba(65,255,156,.62));
-  }
-}
-
 /* Match Hub behavior: only the communication shell's outer border flashes.
    Never apply brightness/filter animation to the shell's inner content. */
-body .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame,.needs-rep-input),
-body .rep-vertical-stack > .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame,.needs-rep-input){
+body .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame),
+body .rep-vertical-stack > .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame){
   position:relative!important;
-  border-color:rgba(65,255,156,.24)!important;
-  box-shadow:none!important;
-  animation:repCommunicationOutlinePulse 1s ease-in-out infinite!important;
+  animation:none!important;
   filter:none!important;
 }
 
-body .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame,.needs-rep-input)::before,
-body .rep-vertical-stack > .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame,.needs-rep-input)::before{
-  content:none!important;
+body .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame)::before,
+body .rep-vertical-stack > .comm-shell:is(.detail-update-frame,.communication-update-frame,.incoming-message-field-frame)::before{
+  content:"";
+  position:absolute;
+  inset:-5px;
+  z-index:20;
+  border:4px solid #41ff9c;
+  border-radius:20px;
+  pointer-events:none;
+  animation:repOuterCommunicationFrameFlash .82s ease-in-out infinite;
 }
 
-@keyframes repCommunicationOutlinePulse{
+@keyframes repOuterCommunicationFrameFlash{
   0%,100%{
-    outline:2px solid rgba(65,255,156,.40);
-    outline-offset:-2px;
+    opacity:.48;
+    box-shadow:0 0 8px rgba(65,255,156,.28);
   }
   50%{
-    outline:6px solid #baffd8;
-    outline-offset:3px;
+    opacity:1;
+    box-shadow:0 0 24px rgba(65,255,156,1),0 0 46px rgba(65,255,156,.55);
   }
 }
 
@@ -8695,69 +8673,6 @@ function dismissRepRedHotFlash(rec) {
   );
 }
 
-const REP_GREEN_ROW_SEEN_KEY = "axis_rep_green_row_seen_v1";
-
-function getRepGreenRowUpdateSignature(rec) {
-  if (!rec) return "";
-
-  const conversationSignature = [
-    ...(Array.isArray(rec.install_base_conversation_history)
-      ? rec.install_base_conversation_history
-      : []),
-    ...(Array.isArray(rec.manager_conversation_history)
-      ? rec.manager_conversation_history
-      : [])
-  ].map(item => [
-    item?.sender || "",
-    item?.at || item?.created_at || item?.timestamp || "",
-    item?.message || item?.note || item?.text || ""
-  ].join("|")).join("||");
-
-  return [
-    rec.install_base_released_at || "",
-    rec.install_base_reply_to_rep_at || "",
-    rec.install_base_response_at || "",
-    rec.install_base_correction_at || "",
-    rec.manager_response_at || "",
-    rec.manager_response_sent_at || "",
-    rec.install_base_fix_request_id || "",
-    rec.manager_release_id || "",
-    conversationSignature
-  ].join("::");
-}
-
-function readRepGreenRowSeenMap() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(REP_GREEN_ROW_SEEN_KEY) || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function getRepGreenRowKey(rec) {
-  return String(getRecordKey(rec) || rec?.id || rec?.key || "");
-}
-
-function isRepGreenRowUpdateAcknowledged(rec) {
-  const key = getRepGreenRowKey(rec);
-  const signature = getRepGreenRowUpdateSignature(rec);
-  if (!key || !signature.replace(/:/g, "")) return false;
-  return readRepGreenRowSeenMap()[key] === signature;
-}
-
-function acknowledgeRepGreenRowUpdate(rec) {
-  const key = getRepGreenRowKey(rec);
-  const signature = getRepGreenRowUpdateSignature(rec);
-  if (!key || !signature.replace(/:/g, "")) return;
-
-  const seen = readRepGreenRowSeenMap();
-  seen[key] = signature;
-  localStorage.setItem(REP_GREEN_ROW_SEEN_KEY, JSON.stringify(seen));
-}
-
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -9005,7 +8920,7 @@ install_base_review_reason: originalInstallBaseReviewReason,
     sharedRecords
   );
 
-  state.records = combinedRecords.map(rec => {
+  state.records = combinedRecords.filter(rec => {
     const isRepCreated =
       rec?.rep_added_install_base === true ||
       rec?.rep_owned_install_base === true ||
@@ -9019,13 +8934,42 @@ install_base_review_reason: originalInstallBaseReviewReason,
       rec.release_destination = "rep";
       rec.install_base_released_to = "rep";
       rec.project_type = "equipment_review_record";
-      return rec;
+      return true;
     }
 
-    return rec;
+    return (
+      isRepRoutingComplete(rec) &&
+      rec.install_base_released_to !== "manager" &&
+      rec.release_destination !== "manager" &&
+      rec.manager_visible !== true
+    );
   });
 
   mergeInstallBaseQueueIntoRepRecords();
+
+  const routedRecords = state.records.filter(rec => {
+    const isRepCreated =
+      rec?.rep_added_install_base === true ||
+      rec?.rep_owned_install_base === true ||
+      rec?.record_origin === "rep_owned_install_base" ||
+      rec?.install_base_release_status === "rep_local_record";
+
+    if (isRepCreated) {
+      return true;
+    }
+
+    const complete = isRepRoutingComplete(rec);
+
+    if (!complete && String(rec.id) === String(state.selectedId)) {
+      state.selectedId = null;
+    }
+
+    return complete;
+  });
+
+  if (routedRecords.length !== state.records.length) {
+    state.records = routedRecords;
+  }
 
   // Re-save the recovered/merged Rep records immediately so both stores heal.
   saveRecords();
@@ -9866,6 +9810,17 @@ function syncToManagerQueue(rec) {
 
   const ping = String(Date.now());
   localStorage.setItem(MANAGER_SYNC_KEY, ping);
+
+  try {
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: MANAGER_SYNC_KEY,
+        newValue: ping
+      })
+    );
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
 }
 
 
@@ -10447,34 +10402,31 @@ function syncFeedStatus(rec) {
     id: rec.id || managerPacket.id
   });
 
-  // The Rep workspace is authoritative. Updating one record must never
-  // replace the full Rep list with the smaller shared Manager/Hub store.
-  const updatedLocalRecord = {
-    ...rec,
-    ...localPacket
-  };
+  let main = [];
 
-  const selectedRecordIndex = state.records.findIndex(item =>
-    item === rec ||
-    (
-      rec.id &&
-      String(item.id || "") === String(rec.id)
-    )
-  );
-
-  if (selectedRecordIndex >= 0) {
-    const nextRecords = [...state.records];
-    nextRecords[selectedRecordIndex] = updatedLocalRecord;
-    state.records = nextRecords;
-  } else {
-    state.records = [updatedLocalRecord, ...state.records];
+  try {
+    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (!Array.isArray(main)) main = [];
+  } catch {
+    main = [];
   }
+
+  const cleanedMain = main.filter(item => !sameSyncRecord(item, localPacket));
+  cleanedMain.unshift(localPacket);
+
+  state.records = cleanedMain;
   saveRecords();
 
   syncToManagerQueue(managerPacket);
   syncRepOwnedRecordToInstallBase(rec, "rep_update");
 
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
+  } catch {
+    window.dispatchEvent(new Event("rep_feed_update"));
+  }
 }
 function syncRecordEverywhere(rec) {
   if (!rec) return;
@@ -12241,9 +12193,6 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
   );
 
   const acknowledged = espinTruthy(rec.red_hot_acknowledged);
-  const formallyAcknowledged = espinTruthy(
-    rec.red_hot_acknowledged_via_button
-  );
   const repControls = audience === "rep"
     ? `
       <div class="btns" style="margin-top:14px;">
@@ -12251,9 +12200,9 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
           type="button"
           class="red"
           onclick="acknowledgeRedHotAlert('${escapeJs(rec.id || rec.key || "")}', event)"
-          ${formallyAcknowledged ? "disabled" : ""}
+          ${acknowledged ? "disabled" : ""}
         >
-          ${formallyAcknowledged ? "Acknowledged" : "Acknowledge"}
+          ${acknowledged ? "Acknowledged" : "Acknowledge"}
         </button>
         <button
           type="button"
@@ -12295,7 +12244,6 @@ function acknowledgeRedHotAlert(recordId, event) {
   if (!rec) return false;
 
   rec.red_hot_acknowledged = true;
-  rec.red_hot_acknowledged_via_button = true;
   rec.red_hot_acknowledged_at = new Date().toISOString();
   rec.red_hot_acknowledged_by =
     getRecordRepName(rec) ||
@@ -12576,8 +12524,6 @@ const hasUnseenManagerFix =
     rec.rep_flash_type === "manager_fix"
   ) &&
   rec.manager_response_seen_by_rep !== true;
-    const repGreenUpdateAcknowledged =
-      isRepGreenRowUpdateAcknowledged(rec);
     const selectedClass = [
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
       isRedHotServiceAlert(rec) &&
@@ -12603,18 +12549,14 @@ const hasUnseenManagerFix =
         ? "selected"
         : "",
 
-      !repGreenUpdateAcknowledged &&
-      (hasUnseenManagerResponse || hasUnseenHubCommunication)
+      hasUnseenManagerResponse || hasUnseenHubCommunication
         ? "incoming-communication-flash"
         : "",
 
-      !repGreenUpdateAcknowledged &&
-      (
-        hasUnseenInstallBaseUpdate ||
-        hasUnseenFixedData ||
-        hasUnseenManagerFix ||
-        hasUnseenHubFix
-      )
+      hasUnseenInstallBaseUpdate ||
+hasUnseenFixedData ||
+hasUnseenManagerFix ||
+hasUnseenHubFix
   ? "rep-new-row-flash"
   : "",
 
@@ -12622,7 +12564,7 @@ const hasUnseenManagerFix =
         ? "rep-attention-alert-row"
         : "",
 
-      !repGreenUpdateAcknowledged && hasUnreadMessageRow(rec, "rep")
+      hasUnreadMessageRow(rec, "rep")
         ? "unread-message-row"
         : ""
     ]
@@ -14203,16 +14145,6 @@ function syncInstallBaseCorrection(updated) {
   saveRecords();
   render();
 }
-
-function findSelectedRecord() {
-  const selectedId = String(state.selectedId || "");
-  if (!selectedId) return null;
-
-  return state.records.find(record =>
-    String(record.id || record.key || getRecordKey(record) || "") === selectedId
-  ) || null;
-}
-
 function sendQuickRepManagerMessage() {
   const notesEl = $("repManagerMessage");
   const notes = notesEl?.value?.trim() || "";
@@ -18857,6 +18789,8 @@ function render() {
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
 
+  state.records = state.records.filter(visibleToRep);
+
   renderStats();
   renderRepMenu();
   renderFollowUpAlertCenter();
@@ -20007,11 +19941,6 @@ if (!action) {
 rec.rep_selected_action = action;
 rec.rep_selected_action_label = label;
 rec.rep_selected_action_at = new Date().toISOString();
-// Persist the value under the fields used by the Rep Action UI. Keeping these
-// separate from routing/status fields prevents a subsequent render/import from
-// reclassifying the rest of the equipment-review list.
-rec.rep_selected_manual_action = action;
-rec.rep_selected_manual_action_label = label;
 
     rec.rep_status =
   action === "mark_reviewed"
@@ -20049,16 +19978,7 @@ syncToManagerQueue({
   manager_flash_text: rec.manager_flash_text || `Rep Action: ${rec.rep_action_label || rec.rep_action || "Updated"}`
 });
 
-// An action changes only the selected record. A full render also imports every
-// shared Manager/Hub queue and can temporarily replace the Rep table with that
-// smaller routed subset. Refresh only the views affected by this action so the
-// complete My Equipment Review Records list stays intact.
-renderStats();
-renderFollowUpAlertCenter();
-renderTable();
-renderSalesRouting();
-renderDetail();
-updateAxisShareStatus();
+render();
 
       if (action === "quote_review") {
         openQuoteModal();
@@ -22118,6 +22038,16 @@ function markRepRowUpdateSeen(id) {
     return {
       ...r,
 
+      red_hot_acknowledged: isRedHotServiceAlert(r)
+        ? true
+        : r.red_hot_acknowledged,
+      red_hot_acknowledged_at: isRedHotServiceAlert(r)
+        ? now
+        : r.red_hot_acknowledged_at,
+      red_hot_acknowledged_by: isRedHotServiceAlert(r)
+        ? (getRecordRepName(r) || r.assigned_rep_name || "Rep")
+        : r.red_hot_acknowledged_by,
+
       install_base_release_seen: true,
       install_base_release_seen_at: now,
       install_base_release_new: false,
@@ -22176,6 +22106,16 @@ function markRepRowUpdateSeen(id) {
 
     return {
       ...r,
+
+      red_hot_acknowledged: isRedHotServiceAlert(r)
+        ? true
+        : r.red_hot_acknowledged,
+      red_hot_acknowledged_at: isRedHotServiceAlert(r)
+        ? now
+        : r.red_hot_acknowledged_at,
+      red_hot_acknowledged_by: isRedHotServiceAlert(r)
+        ? (getRecordRepName(rec) || rec.assigned_rep_name || "Rep")
+        : r.red_hot_acknowledged_by,
 
       install_base_release_seen: true,
       install_base_release_seen_at: now,
@@ -22256,20 +22196,12 @@ function handleRepRowClick(id) {
     record => String(record.id || record.key || "") === selectedId
   );
   dismissRepRedHotFlash(clickedRedHotRecord);
-  acknowledgeRepGreenRowUpdate(clickedRedHotRecord);
 
   document
     .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
     .forEach(row => {
       if (String(row.dataset.recordId || "") === selectedId) {
-        row.classList.remove(
-          "red-hot-row-pulse",
-          "red-hot-update-pulse",
-          "incoming-communication-flash",
-          "rep-new-row-flash",
-          "manager-response-flash",
-          "unread-message-row"
-        );
+        row.classList.remove("red-hot-row-pulse", "red-hot-update-pulse");
       }
     });
 
