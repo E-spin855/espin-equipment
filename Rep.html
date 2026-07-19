@@ -8920,7 +8920,7 @@ install_base_review_reason: originalInstallBaseReviewReason,
     sharedRecords
   );
 
-  state.records = combinedRecords.filter(rec => {
+  state.records = combinedRecords.map(rec => {
     const isRepCreated =
       rec?.rep_added_install_base === true ||
       rec?.rep_owned_install_base === true ||
@@ -8934,42 +8934,13 @@ install_base_review_reason: originalInstallBaseReviewReason,
       rec.release_destination = "rep";
       rec.install_base_released_to = "rep";
       rec.project_type = "equipment_review_record";
-      return true;
+      return rec;
     }
 
-    return (
-      isRepRoutingComplete(rec) &&
-      rec.install_base_released_to !== "manager" &&
-      rec.release_destination !== "manager" &&
-      rec.manager_visible !== true
-    );
+    return rec;
   });
 
   mergeInstallBaseQueueIntoRepRecords();
-
-  const routedRecords = state.records.filter(rec => {
-    const isRepCreated =
-      rec?.rep_added_install_base === true ||
-      rec?.rep_owned_install_base === true ||
-      rec?.record_origin === "rep_owned_install_base" ||
-      rec?.install_base_release_status === "rep_local_record";
-
-    if (isRepCreated) {
-      return true;
-    }
-
-    const complete = isRepRoutingComplete(rec);
-
-    if (!complete && String(rec.id) === String(state.selectedId)) {
-      state.selectedId = null;
-    }
-
-    return complete;
-  });
-
-  if (routedRecords.length !== state.records.length) {
-    state.records = routedRecords;
-  }
 
   // Re-save the recovered/merged Rep records immediately so both stores heal.
   saveRecords();
@@ -9811,16 +9782,6 @@ function syncToManagerQueue(rec) {
   const ping = String(Date.now());
   localStorage.setItem(MANAGER_SYNC_KEY, ping);
 
-  try {
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: MANAGER_SYNC_KEY,
-        newValue: ping
-      })
-    );
-  } catch {
-    window.dispatchEvent(new Event("rep_feed_update"));
-  }
 }
 
 
@@ -10402,19 +10363,18 @@ function syncFeedStatus(rec) {
     id: rec.id || managerPacket.id
   });
 
-  let main = [];
+  const currentRecords = Array.isArray(state.records) ? state.records : [];
+  const selectedIndex = currentRecords.findIndex(item =>
+    sameSyncRecord(item, localPacket)
+  );
 
-  try {
-    main = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    if (!Array.isArray(main)) main = [];
-  } catch {
-    main = [];
+  if (selectedIndex >= 0) {
+    state.records = currentRecords.map((item, index) =>
+      index === selectedIndex ? { ...item, ...localPacket } : item
+    );
+  } else {
+    state.records = [localPacket, ...currentRecords];
   }
-
-  const cleanedMain = main.filter(item => !sameSyncRecord(item, localPacket));
-  cleanedMain.unshift(localPacket);
-
-  state.records = cleanedMain;
   saveRecords();
 
   syncToManagerQueue(managerPacket);
@@ -10422,11 +10382,6 @@ function syncFeedStatus(rec) {
 
   localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
 
-  try {
-    window.dispatchEvent(new StorageEvent("storage", { key: MANAGER_SYNC_KEY }));
-  } catch {
-    window.dispatchEvent(new Event("rep_feed_update"));
-  }
 }
 function syncRecordEverywhere(rec) {
   if (!rec) return;
@@ -18788,8 +18743,6 @@ function render() {
   importRepQueueRecords();
   importTradeInSyncRecords();
   importQuoteApprovalDecisions();
-
-  state.records = state.records.filter(visibleToRep);
 
   renderStats();
   renderRepMenu();
