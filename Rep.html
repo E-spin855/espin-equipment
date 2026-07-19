@@ -10419,11 +10419,21 @@ function syncFeedStatus(rec) {
     ...localPacket
   };
 
-  const preservedRepRecords = state.records.filter(
-    item => !sameSyncRecord(item, updatedLocalRecord)
+  const selectedRecordIndex = state.records.findIndex(item =>
+    item === rec ||
+    (
+      rec.id &&
+      String(item.id || "") === String(rec.id)
+    )
   );
 
-  state.records = [updatedLocalRecord, ...preservedRepRecords];
+  if (selectedRecordIndex >= 0) {
+    const nextRecords = [...state.records];
+    nextRecords[selectedRecordIndex] = updatedLocalRecord;
+    state.records = nextRecords;
+  } else {
+    state.records = [updatedLocalRecord, ...state.records];
+  }
   saveRecords();
 
   syncToManagerQueue(managerPacket);
