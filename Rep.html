@@ -8520,6 +8520,74 @@ function hasRepUpdateAfterRedHotAcknowledgement(rec) {
   return latestUpdateTime > acknowledgedTime;
 }
 
+const REP_RED_HOT_DISMISSED_SIGNATURES_KEY =
+  "axis_rep_red_hot_dismissed_signatures_v1";
+
+function getRepRedHotFlashSignature(rec) {
+  if (!rec) return "";
+
+  const conversationSignature = [
+    ...(Array.isArray(rec.install_base_conversation_history)
+      ? rec.install_base_conversation_history
+      : []),
+    ...(Array.isArray(rec.manager_conversation_history)
+      ? rec.manager_conversation_history
+      : [])
+  ].map(item => [
+    item?.sender || "",
+    item?.at || item?.created_at || item?.timestamp || "",
+    item?.message || item?.note || item?.text || ""
+  ].join("|")).join("||");
+
+  return [
+    rec.install_base_released_at || "",
+    rec.install_base_auto_synced_at || "",
+    rec.install_base_reply_to_rep_at || "",
+    rec.install_base_response_at || "",
+    rec.install_base_correction_at || "",
+    rec.manager_response_at || "",
+    rec.manager_response_sent_at || "",
+    rec.red_hot_reason || "",
+    rec.red_hot_status || "",
+    conversationSignature
+  ].join("::");
+}
+
+function getRepRedHotDismissedSignatures() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(REP_RED_HOT_DISMISSED_SIGNATURES_KEY) || "{}"
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function isRepRedHotFlashDismissed(rec) {
+  const key = String(getRecordKey(rec) || rec?.id || rec?.key || "");
+  if (!key) return false;
+
+  const dismissed = getRepRedHotDismissedSignatures();
+  return dismissed[key] === getRepRedHotFlashSignature(rec);
+}
+
+function dismissRepRedHotFlash(rec) {
+  if (!isRedHotServiceAlert(rec)) return;
+
+  const key = String(getRecordKey(rec) || rec.id || rec.key || "");
+  if (!key) return;
+
+  const dismissed = getRepRedHotDismissedSignatures();
+  dismissed[key] = getRepRedHotFlashSignature(rec);
+  localStorage.setItem(
+    REP_RED_HOT_DISMISSED_SIGNATURES_KEY,
+    JSON.stringify(dismissed)
+  );
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -12373,10 +12441,13 @@ const hasUnseenManagerFix =
   rec.manager_response_seen_by_rep !== true;
     const selectedClass = [
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
-      isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)
+      isRedHotServiceAlert(rec) &&
+      !espinTruthy(rec.red_hot_acknowledged) &&
+      !isRepRedHotFlashDismissed(rec)
         ? "red-hot-row-pulse"
         : "",
       isRedHotServiceAlert(rec) &&
+      !isRepRedHotFlashDismissed(rec) &&
       hasRepUpdateAfterRedHotAcknowledgement(rec) &&
       (
         hasUnseenManagerResponse ||
@@ -22039,6 +22110,11 @@ function handleRepRowClick(id) {
   function selectRow(id) {
   const selectedId = String(id || "").trim();
   if (!selectedId) return;
+
+  const clickedRedHotRecord = state.records.find(
+    record => String(record.id || record.key || "") === selectedId
+  );
+  dismissRepRedHotFlash(clickedRedHotRecord);
 
   document
     .querySelectorAll("#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]")
