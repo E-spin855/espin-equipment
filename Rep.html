@@ -20007,6 +20007,11 @@ if (!action) {
 rec.rep_selected_action = action;
 rec.rep_selected_action_label = label;
 rec.rep_selected_action_at = new Date().toISOString();
+// Persist the value under the fields used by the Rep Action UI. Keeping these
+// separate from routing/status fields prevents a subsequent render/import from
+// reclassifying the rest of the equipment-review list.
+rec.rep_selected_manual_action = action;
+rec.rep_selected_manual_action_label = label;
 
     rec.rep_status =
   action === "mark_reviewed"
@@ -20044,7 +20049,16 @@ syncToManagerQueue({
   manager_flash_text: rec.manager_flash_text || `Rep Action: ${rec.rep_action_label || rec.rep_action || "Updated"}`
 });
 
-render();
+// An action changes only the selected record. A full render also imports every
+// shared Manager/Hub queue and can temporarily replace the Rep table with that
+// smaller routed subset. Refresh only the views affected by this action so the
+// complete My Equipment Review Records list stays intact.
+renderStats();
+renderFollowUpAlertCenter();
+renderTable();
+renderSalesRouting();
+renderDetail();
+updateAxisShareStatus();
 
       if (action === "quote_review") {
         openQuoteModal();
