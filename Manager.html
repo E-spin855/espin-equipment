@@ -4100,6 +4100,9 @@ body tr.red-hot-row.red-hot-update-pulse td{
 <style id="manager-unified-communication-style">
 .manager-unified-communication{grid-column:1/-1!important}.manager-unified-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.manager-unified-summary{margin-top:6px;color:#c8d8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:780px}.manager-unified-history{display:grid;gap:9px;max-height:320px;overflow:auto;margin-top:14px}.manager-unified-message{padding:11px 13px;border:1px solid rgba(91,144,190,.34);border-radius:12px;background:rgba(7,21,36,.55)}.manager-unified-source{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#73d8ff}.manager-unified-message.hub .manager-unified-source{color:#ffd84d}.manager-unified-message.service .manager-unified-source{color:#ff858f}.manager-unified-message.rep .manager-unified-source{color:#77f0bb}.manager-unified-text{font-weight:800;margin-top:4px;line-height:1.45}.manager-unified-date{font-size:11px;color:#91a9be;margin-top:4px}.manager-unified-compose{display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:end;margin-top:14px;padding-top:14px;border-top:1px solid rgba(91,144,190,.25)}.manager-unified-compose textarea{min-height:72px}@media(max-width:850px){.manager-unified-compose{grid-template-columns:1fr}.manager-unified-head{display:block}.manager-unified-summary{white-space:normal}}
 </style>
+<style id="manager-financial-communication-aligned">
+.manager-financial-communication-row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(420px,.85fr);gap:18px;align-items:stretch;margin-top:18px}.manager-communication-column,.manager-financial-column{min-width:0;display:flex;flex-direction:column}.manager-communication-column .manager-communications-row,.manager-communication-column .manager-unified-communication,.manager-financial-column .manager-financial-row,.manager-financial-column .manager-financial-record-card{width:100%;height:100%;margin:0}.manager-communication-column .manager-communications-row{display:flex}.manager-financial-column .section-title{margin-top:0}.manager-financial-column .manager-financial-row{display:flex;flex:1}.manager-financial-column .manager-financial-record-card{grid-column:auto!important}.manager-financial-column .financial-record-body{font-size:13px}.manager-financial-column .financial-record-collapsed-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.manager-financial-communication-row.financial-only{grid-template-columns:1fr}.manager-financial-communication-row.financial-only .manager-financial-column{max-width:760px;margin-left:auto;width:100%}@media(max-width:1050px){.manager-financial-communication-row{grid-template-columns:1fr}.manager-financial-column{order:2}.manager-communication-column{order:1}.manager-financial-communication-row.financial-only .manager-financial-column{max-width:none}}
+</style>
 </head>
 
 <body>
@@ -9665,6 +9668,38 @@ const secondaryItems = [
   }
 }
 
+function restoreManagerFinancialCommunicationAlignment() {
+  const grid = $("detailGrid");
+  const alignedRow = grid?.querySelector(
+    ".manager-financial-communication-row"
+  );
+
+  if (!alignedRow) return;
+
+  const financialColumn = alignedRow.querySelector(
+    ".manager-financial-column"
+  );
+
+  const financialCard = grid.querySelector(
+    ".manager-financial-record-card"
+  );
+
+  if (!financialColumn || !financialCard) return;
+
+  let title = financialColumn.querySelector(
+    ".section-title.yellow"
+  );
+
+  if (!title) {
+    title = document.createElement("div");
+    title.className = "section-title yellow";
+    title.textContent = "Financial Record";
+    financialColumn.prepend(title);
+  }
+
+  financialColumn.appendChild(financialCard);
+}
+
 
 const INSTALL_MANAGER_CHAT_KEY = "espin_install_manager_text_v1";
 
@@ -10978,11 +11013,23 @@ ${
         : ``
     }
 
-  <div class="section-title yellow">
-  Financial Record
-</div>
+<div class="manager-financial-communication-row ${completed ? "financial-only" : ""}">
+  ${
+    completed
+      ? ""
+      : `
+        <div class="manager-communication-column">
+          <div class="manager-communications-row">
+            ${renderManagerUnifiedCommunication(rec)}
+          </div>
+        </div>
+      `
+  }
 
-<div class="manager-financial-row">
+  <div class="manager-financial-column">
+    <div class="section-title yellow">Financial Record</div>
+
+    <div class="manager-financial-row">
   <div class="detail-card manager-financial-record-card" style="grid-column:1 / -1;">
     <div class="financial-record-head">
       <div class="k">Financial Record</div>
@@ -11047,20 +11094,13 @@ ${
       </div>
     </div>
   </div>
+    </div>
+  </div>
 </div>
-
-${
-  completed
-    ? ""
-    : `
-      <div class="manager-communications-row">
-        ${renderManagerUnifiedCommunication(rec)}
-      </div>
-    `
-}
 `;
 
 arrangeManagerWorkflowLayout();
+restoreManagerFinancialCommunicationAlignment();
 applyManagerUpdatedFieldFrames(rec);
 
 if (!completed) {
