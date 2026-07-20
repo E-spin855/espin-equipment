@@ -4097,6 +4097,9 @@ body tr.red-hot-row.red-hot-update-pulse td{
   }
 }
 </style>
+<style id="manager-unified-communication-style">
+.manager-unified-communication{grid-column:1/-1!important}.manager-unified-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.manager-unified-summary{margin-top:6px;color:#c8d8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:780px}.manager-unified-history{display:grid;gap:9px;max-height:320px;overflow:auto;margin-top:14px}.manager-unified-message{padding:11px 13px;border:1px solid rgba(91,144,190,.34);border-radius:12px;background:rgba(7,21,36,.55)}.manager-unified-source{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#73d8ff}.manager-unified-message.hub .manager-unified-source{color:#ffd84d}.manager-unified-message.service .manager-unified-source{color:#ff858f}.manager-unified-message.rep .manager-unified-source{color:#77f0bb}.manager-unified-text{font-weight:800;margin-top:4px;line-height:1.45}.manager-unified-date{font-size:11px;color:#91a9be;margin-top:4px}.manager-unified-compose{display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:end;margin-top:14px;padding-top:14px;border-top:1px solid rgba(91,144,190,.25)}.manager-unified-compose textarea{min-height:72px}@media(max-width:850px){.manager-unified-compose{grid-template-columns:1fr}.manager-unified-head{display:block}.manager-unified-summary{white-space:normal}}
+</style>
 </head>
 
 <body>
@@ -5745,7 +5748,11 @@ function getLatestRepActionHistorySignature(rec) {
     : [];
 
   const latest = history
-    .filter(item => item && clean(item.label || item.action))
+    .filter(item =>
+      item &&
+      clean(item.action) &&
+      clean(item.at || item.date || item.timestamp)
+    )
     .slice()
     .sort((a, b) => {
       const aTime = new Date(a.at || a.date || a.timestamp || 0).getTime();
@@ -5762,14 +5769,19 @@ function getLatestRepActionHistorySignature(rec) {
     ].join("|");
   }
 
-  if (clean(rec?.rep_last_action_at)) {
+  const fallbackAction = clean(
+    rec?.rep_selected_manual_action ||
+    ""
+  );
+
+  if (fallbackAction && clean(rec?.rep_last_action_at)) {
     return [
       clean(rec.rep_last_action_at),
-      clean(rec.rep_action),
+      fallbackAction,
       clean(
+        rec.rep_selected_manual_action_label ||
         rec.rep_action_label ||
-        rec.rep_selected_action_label ||
-        getRepActionLabel(rec.rep_action)
+        getRepActionLabel(fallbackAction)
       ),
       clean(rec.rep_follow_up_date || rec.next_action_date)
     ].join("|");
@@ -5908,7 +5920,11 @@ function toggleManagerRepActionHistory(button) {
 function getManagerRepActionHistory(rec) {
   const history = Array.isArray(rec?.rep_action_history)
     ? rec.rep_action_history
-        .filter(item => item && clean(item.label || item.action))
+        .filter(item =>
+          item &&
+          clean(item.action) &&
+          clean(item.at || item.date || item.timestamp)
+        )
         .map(item => ({
           at: clean(item.at || item.date || item.timestamp),
           action: clean(item.action),
@@ -5964,14 +5980,19 @@ function getManagerRepActionHistory(rec) {
     });
   }
 
-  if (!history.length && clean(rec?.rep_last_action_at)) {
+  const fallbackAction = clean(
+    rec?.rep_selected_manual_action ||
+    ""
+  );
+
+  if (!history.length && fallbackAction && clean(rec?.rep_last_action_at)) {
     history.push({
       at: clean(rec.rep_last_action_at),
-      action: clean(rec.rep_action),
+      action: fallbackAction,
       label: clean(
+        rec.rep_selected_manual_action_label ||
         rec.rep_action_label ||
-        rec.rep_selected_action_label ||
-        getRepActionLabel(rec.rep_action)
+        getRepActionLabel(fallbackAction)
       ),
       followUpDate: clean(rec.rep_follow_up_date || rec.next_action_date),
       by: clean(rec.assigned_rep_name || "Rep")
@@ -8251,6 +8272,7 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
   );
 
   const acknowledged = espinTruthy(rec.red_hot_acknowledged);
+  const acknowledgedBy = clean(rec.red_hot_acknowledged_by || "");
   const repControls = audience === "rep"
     ? `
       <div class="btns" style="margin-top:14px;">
@@ -8284,7 +8306,7 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
         <span>Service status: ${escapeHtml(rec.service_status || "Unable to Restore")}</span>
         <span>Source: ${escapeHtml(rec.red_hot_source || "OEM Service")}</span>
       </div>
-      ${acknowledged ? `<div class="red-hot-acknowledged" style="margin-top:12px;">Acknowledged by Rep</div>` : ""}
+      ${acknowledged ? `<div class="red-hot-acknowledged" style="margin-top:12px;">${acknowledgedBy ? `Acknowledged by ${escapeHtml(acknowledgedBy)}` : "Acknowledged"}</div>` : ""}
       ${repControls}
     </div>
   `;
@@ -10593,6 +10615,38 @@ function toggleManagerFinancialRecord(recordId, event, button) {
   return false;
 }
 
+const MANAGER_SERVICE_MESSAGES_KEY = "espin_service_rep_messages_v1";
+function readManagerServiceMessages(){try{const v=JSON.parse(localStorage.getItem(MANAGER_SERVICE_MESSAGES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
+function managerUnifiedIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
+function managerUnifiedMessageMatches(rec,item){const ids=managerUnifiedIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
+function getManagerUnifiedMessages(rec){
+  const items=[];
+  getManagerInstallBaseConversationHistory(rec).forEach(x=>items.push({channel:"hub",label:lower(x.sender)==="manager"?"Manager to Hub":"Hub",message:x.message,at:x.at||""}));
+  getManagerRepCommunicationHistory(rec).forEach(x=>items.push({channel:"rep",label:lower(x.sender)==="manager"?"Manager to Rep":"Rep",message:x.message,at:x.at||""}));
+  readManagerServiceMessages().filter(x=>managerUnifiedMessageMatches(rec,x)).forEach(x=>{const sender=lower(x.sender||x.role||x.author_type);items.push({channel:"service",label:sender==="manager"?"Manager to Service":(x.author||"Service"),message:clean(x.message||x.note||x.text),at:x.created_at||x.at||""})});
+  return items.filter(x=>clean(x.message)).sort((a,b)=>(new Date(a.at||0).getTime()||0)-(new Date(b.at||0).getTime()||0));
+}
+function toggleManagerUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}state.unifiedCommunicationOpen=state.unifiedCommunicationOpen!==true;renderDetail()}
+function sendManagerUnifiedCommunication(recordId){
+  const rec=state.records.find(x=>String(x.id||x.key||getRecordKey(x))===String(recordId||""))||findSelectedRecord();if(!rec)return;
+  const to=$("managerUnifiedCommunicationTo")?.value||"rep";const message=clean($("managerUnifiedCommunicationText")?.value||"");if(!message){alert("Type a message before sending.");return}
+  if(to==="hub"){
+    const input=document.createElement("textarea");input.id="managerMessageToInstallBase";input.value=message;input.style.display="none";document.body.appendChild(input);sendManagerMessageToInstallBase();input.remove();return;
+  }
+  if(to==="rep"){
+    const action=document.createElement("select");action.id="managerResponseAction";action.innerHTML='<option value="custom_message" selected>Custom Message</option>';action.style.display="none";
+    const notes=document.createElement("textarea");notes.id="managerResponseNotes";notes.value=message;notes.style.display="none";
+    document.body.append(action,notes);saveManagerResponse();action.remove();notes.remove();return;
+  }
+  const messages=readManagerServiceMessages();const now=new Date().toISOString();messages.push({id:`manager_service_${Date.now()}`,record_id:rec.id||rec.key||getRecordKey(rec),asset_id:rec.asset_id||rec.equipment_id||"",serial_number:rec.serial_number||rec.serial||"",facility:rec.site||rec.facility||rec.hospital||"",sender:"manager",role:"manager",author:MANAGER_NAME||"Manager",message,created_at:now});
+  localStorage.setItem(MANAGER_SERVICE_MESSAGES_KEY,JSON.stringify(messages));localStorage.setItem("espin_service_sync_ping_v1",String(Date.now()));renderDetail();
+}
+function renderManagerUnifiedCommunication(rec){
+  const history=getManagerUnifiedMessages(rec);const latest=history[history.length-1]||null;const open=state.unifiedCommunicationOpen===true;const defaultTo=latest?.channel||((isRedHotServiceAlert(rec)||clean(rec.service_status))?"service":"rep");
+  return `<div class="detail-card full comm-shell manager-unified-communication"><div class="manager-unified-head"><div><div class="comm-title">Communication</div><div class="manager-unified-summary">${latest?`<strong>${escapeHtml(latest.label)}:</strong> ${escapeHtml(latest.message)}`:"No messages yet."}</div></div><button type="button" class="${open?"green":"secondary"}" onclick="toggleManagerUnifiedCommunication(event)">${open?"Hide Communication":`Open Communication${history.length?` (${history.length})`:""}`}</button></div>${open?`<div class="manager-unified-history">${history.length?history.map(x=>`<div class="manager-unified-message ${escapeHtml(x.channel)}"><div class="manager-unified-source">${escapeHtml(x.label)}</div><div class="manager-unified-text">${escapeHtml(x.message)}</div><div class="manager-unified-date">${escapeHtml(formatTimelineDate(x.at))}</div></div>`).join(""):`<div class="mini">No communication history yet.</div>`}</div><div class="manager-unified-compose"><div><label for="managerUnifiedCommunicationTo">To</label><select id="managerUnifiedCommunicationTo"><option value="hub" ${defaultTo==="hub"?"selected":""}>Hub</option><option value="service" ${defaultTo==="service"?"selected":""}>Service</option><option value="rep" ${defaultTo==="rep"?"selected":""}>Rep</option></select></div><div><label for="managerUnifiedCommunicationText">Message</label><textarea id="managerUnifiedCommunicationText" placeholder="Type one message and select the receiving team..."></textarea></div><button type="button" class="green send-message-glow" onclick="sendManagerUnifiedCommunication('${escapeJs(rec.id||rec.key||getRecordKey(rec))}')">Send Message</button></div>`:""}</div>`;
+}
+window.addEventListener("storage",event=>{if(event.key===MANAGER_SERVICE_MESSAGES_KEY||event.key==="espin_service_sync_ping_v1"){loadRecords();render()}});
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -11000,8 +11054,7 @@ ${
     ? ""
     : `
       <div class="manager-communications-row">
-        ${renderManagerRepCommunication(rec)}
-        ${renderManagerInstallBaseCommunication(rec)}
+        ${renderManagerUnifiedCommunication(rec)}
       </div>
     `
 }
