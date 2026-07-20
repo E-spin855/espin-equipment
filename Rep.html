@@ -17502,12 +17502,17 @@ function saveInstallBaseFix(id) {
   }
 }
 
-    function startInstallationProject(id) {
+    function startInstallationProject(id, followUpDate = "", actionLabel = "Start Installation Project") {
       const rec = state.records.find(r => String(r.id) === String(id));
       if (!rec) {
-        alert("New project record not found.");
+        alert("Project record not found.");
         return;
       }
+
+      // Reserve the destination window while this function is still running
+      // directly from the confirmed user action. Browsers may block it after
+      // storage, sync, or render work has occurred.
+      const newTab = window.open("about:blank", "_blank");
 
       const cleanText = value => String(value || "").trim();
       const now = new Date().toISOString();
@@ -17586,6 +17591,14 @@ function saveInstallBaseFix(id) {
 
       rec.install_project_started = true;
       rec.install_project_started_at = now;
+      rec.rep_selected_action = "start_installation_project";
+      rec.rep_selected_action_label = actionLabel;
+      rec.rep_selected_action_at = now;
+      rec.rep_selected_manual_action = "start_installation_project";
+      rec.rep_selected_manual_action_label = actionLabel;
+      rec.rep_follow_up_date = followUpDate || "";
+      rec.next_action_date = followUpDate || "";
+      rec.rep_status = "installation_project_started";
       rec.project_management_ready = true;
       rec.project_management_status = "sent_to_espin_connect_install";
       rec.project_management_created_at =
@@ -17599,17 +17612,10 @@ function saveInstallBaseFix(id) {
       rec.manager_flash_type = "installation_project_started";
       rec.manager_flash_text = "Rep started installation project in Espin Connect";
 
-      try {
-        saveState();
-      } catch (e) {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-        } catch (_) {}
-      }
+      syncFeedStatus(rec);
+      syncToManagerQueue(rec);
 
       render();
-
-      const newTab = window.open("about:blank", "_blank");
 
       if (newTab) {
         newTab.document.write(`
@@ -19898,6 +19904,20 @@ if (!action) {
 	      if (!confirm(`Confirm action:\n\n${label}\n\nAXIS will document this rep-selected action.`)) {
 	        return;
 	      }
+
+      // These actions own their persistence and navigation. Run them before
+      // the generic action save/render so popup handling remains tied to the
+      // user gesture and cancelled disposal setup is not recorded as sent.
+      if (action === "send_disposal_review") {
+        openDecisionModal(rec.id, followUpDate, label);
+        return;
+      }
+
+      if (action === "start_installation_project") {
+        startInstallationProject(rec.id, followUpDate, label);
+        return;
+      }
+
 rec.rep_selected_action = action;
 rec.rep_selected_action_label = label;
 rec.rep_selected_action_at = new Date().toISOString();
@@ -19960,15 +19980,6 @@ render();
         return;
       }
 
-      if (action === "send_disposal_review") {
-        openDecisionModal();
-        return;
-      }
-
-      if (action === "start_installation_project") {
-        startInstallationProject(rec.id);
-        return;
-      }
       if (action === "complete") {
         completeLifecycleProject();
         return;
@@ -20978,13 +20989,21 @@ Thank you.`
     window.location.href = mailtoUrl;
   }, 700);
 }
-function openDecisionModal() {
-  const rec = state.records.find(r => r.id === state.selectedId);
+let pendingDisposalAction = null;
+
+function openDecisionModal(recordId = state.selectedId, followUpDate = "", actionLabel = "Send to Disposal Review") {
+  const rec = state.records.find(r => String(r.id) === String(recordId));
 
   if (!rec) {
     alert("Open a record first");
     return;
   }
+
+  pendingDisposalAction = {
+    recordId: String(rec.id),
+    followUpDate: String(followUpDate || ""),
+    actionLabel: String(actionLabel || "Send to Disposal Review").trim()
+  };
 
   const modality = String(rec.modality || "").toUpperCase().trim();
 
@@ -21010,10 +21029,18 @@ function openDecisionModal() {
 }
     function closeDecisionModal() {
       $("decisionModal").style.display = "none";
+      pendingDisposalAction = null;
     }
 
  async function confirmDecision() {
-  const rec = state.records.find(r => r.id === state.selectedId);
+  const decisionContext = pendingDisposalAction || {
+    recordId: String(state.selectedId || ""),
+    followUpDate: "",
+    actionLabel: "Send to Disposal Review"
+  };
+  const rec = state.records.find(
+    r => String(r.id) === String(decisionContext.recordId)
+  );
 
   if (!rec) {
     alert("Open a record first");
@@ -21025,7 +21052,8 @@ function openDecisionModal() {
   const disposalRequired =
     String($("decisionDisposal").value).toLowerCase().trim() === "true";
 
-  closeDecisionModal();
+  $("decisionModal").style.display = "none";
+  pendingDisposalAction = null;
 
   const connectWindow = window.open("about:blank", "_blank");
   if (connectWindow) {
@@ -21039,7 +21067,8 @@ function openDecisionModal() {
     rec,
     magnetEvent,
     disposalRequired,
-    connectWindow
+    connectWindow,
+    decisionContext
   );
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
@@ -21379,7 +21408,7 @@ return true;
   }
 }
 
- async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow = null) {
+ async function sendToConnectWithDecision(rec, magnetEvent, disposalRequired, connectWindow = null, decisionContext = {}) {
   const banner = $("resultBanner");
 
   if (!rec) {
@@ -21485,8 +21514,12 @@ return true;
 
   // Final confirmed disposal action must be visible to Manager.
   rec.rep_selected_action = "send_disposal_review";
-  rec.rep_selected_action_label = "Sent to Disposal Review";
+  rec.rep_selected_action_label = decisionContext.actionLabel || "Sent to Disposal Review";
   rec.rep_selected_action_at = now;
+  rec.rep_selected_manual_action = "send_disposal_review";
+  rec.rep_selected_manual_action_label = decisionContext.actionLabel || "Send to Disposal Review";
+  rec.rep_follow_up_date = decisionContext.followUpDate || "";
+  rec.next_action_date = decisionContext.followUpDate || "";
 
   rec.rep_action = "send_disposal_review";
   rec.rep_action_label = "Sent to Disposal Review";
