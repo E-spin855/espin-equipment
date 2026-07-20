@@ -6291,6 +6291,9 @@ tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communicati
 }
 </style>
 
+<style id="rep-unified-communication-style">
+.rep-unified-communication{grid-column:1/-1!important}.rep-unified-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.rep-unified-summary{margin-top:6px;color:#c8d8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:780px}.rep-unified-history{display:grid;gap:9px;max-height:320px;overflow:auto;margin-top:14px}.rep-unified-message{padding:11px 13px;border:1px solid rgba(91,144,190,.34);border-radius:12px;background:rgba(7,21,36,.55)}.rep-unified-source{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#73d8ff}.rep-unified-message.hub .rep-unified-source{color:#ffd84d}.rep-unified-message.service .rep-unified-source{color:#ff858f}.rep-unified-message.manager .rep-unified-source{color:#77f0bb}.rep-unified-text{font-weight:800;margin-top:4px;line-height:1.45}.rep-unified-date{font-size:11px;color:#91a9be;margin-top:4px}.rep-unified-compose{display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:end;margin-top:14px;padding-top:14px;border-top:1px solid rgba(91,144,190,.25)}.rep-unified-compose textarea{min-height:72px}@media(max-width:850px){.rep-unified-compose{grid-template-columns:1fr}.rep-unified-head{display:block}.rep-unified-summary{white-space:normal}}
+</style>
 </head>
 
 <body>
@@ -15753,6 +15756,42 @@ function toggleRepFacilityDetails(recordId) {
 }
 
 
+const UNIFIED_SERVICE_MESSAGES_KEY = "espin_service_rep_messages_v1";
+window.addEventListener("storage", event => {
+  if (
+    event.key === UNIFIED_SERVICE_MESSAGES_KEY ||
+    event.key === "espin_service_sync_ping_v1"
+  ) {
+    loadRecords();
+    render();
+  }
+});
+function readUnifiedServiceMessages(){try{const v=JSON.parse(localStorage.getItem(UNIFIED_SERVICE_MESSAGES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
+function unifiedRecordIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
+function unifiedMessageMatches(rec,item){const ids=unifiedRecordIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
+function getUnifiedRepMessages(rec){
+  const items=[];
+  getInstallBaseConversationHistory(rec).forEach(x=>items.push({channel:"hub",label:lower(x.sender)==="rep"?"Rep to Hub":"Hub",message:x.message,at:x.at||""}));
+  getRepManagerCommunicationHistory(rec).forEach(x=>items.push({channel:"manager",label:lower(x.sender)==="rep"?"Rep to Manager":"Manager",message:x.message,at:x.at||""}));
+  readUnifiedServiceMessages().filter(x=>unifiedMessageMatches(rec,x)).forEach(x=>{const fromRep=lower(x.sender||x.role||x.author_type)==="rep";items.push({channel:"service",label:fromRep?"Rep to Service":(x.author||"Service"),message:clean(x.message||x.note||x.text),at:x.created_at||x.at||""})});
+  return items.filter(x=>clean(x.message)).sort((a,b)=>(new Date(a.at||0).getTime()||0)-(new Date(b.at||0).getTime()||0));
+}
+function toggleUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}state.unifiedCommunicationOpen=state.unifiedCommunicationOpen!==true;renderDetail()}
+function sendUnifiedCommunication(recordId){
+  const rec=state.records.find(x=>String(x.id||x.key||getRecordKey(x))===String(recordId||""))||findSelectedRecord();if(!rec)return;
+  const to=$("unifiedCommunicationTo")?.value||"hub";const message=clean($("unifiedCommunicationText")?.value||"");if(!message){alert("Type a message before sending.");return}
+  if(to==="manager"){sendRepManagerMessage("custom_message","Rep Message",message);return}
+  if(to==="hub"){
+    const input=document.createElement("textarea");input.id="installBaseCorrectionNote";input.value=message;input.style.display="none";document.body.appendChild(input);sendRepMessageToInstallBase(rec.id);input.remove();return;
+  }
+  const messages=readUnifiedServiceMessages();const now=new Date().toISOString();messages.push({id:`rep_service_${Date.now()}`,record_id:rec.id||rec.key||getRecordKey(rec),asset_id:rec.asset_id||rec.equipment_id||"",serial_number:rec.serial_number||rec.serial||"",facility:rec.site||rec.facility||rec.hospital||"",sender:"rep",role:"rep",author:rec.assigned_rep_name||rec.sales_rep_name||rec.rep_owner||"Rep",message,created_at:now});
+  localStorage.setItem(UNIFIED_SERVICE_MESSAGES_KEY,JSON.stringify(messages));localStorage.setItem("espin_service_sync_ping_v1",String(Date.now()));rec.latest_rep_service_message=message;rec.latest_rep_service_message_at=now;rec.service_rep_communication_status="Rep Replied";saveRecords();renderDetail();
+}
+function renderUnifiedRepCommunication(rec){
+  const history=getUnifiedRepMessages(rec);const latest=history[history.length-1]||null;const open=state.unifiedCommunicationOpen===true;const defaultTo=latest?.channel||((isRedHotServiceAlert(rec)||clean(rec.service_status))?"service":"hub");
+  return `<div class="detail-card full comm-shell rep-unified-communication"><div class="rep-unified-head"><div><div class="comm-title">Communication</div><div class="rep-unified-summary">${latest?`<strong>${escapeHtml(latest.label)}:</strong> ${escapeHtml(latest.message)}`:"No messages yet."}</div></div><button type="button" class="${open?"green":"secondary"}" onclick="toggleUnifiedCommunication(event)">${open?"Hide Communication":`Open Communication${history.length?` (${history.length})`:""}`}</button></div>${open?`<div class="rep-unified-history">${history.length?history.map(x=>`<div class="rep-unified-message ${escapeHtml(x.channel)}"><div class="rep-unified-source">${escapeHtml(x.label)}</div><div class="rep-unified-text">${escapeHtml(x.message)}</div><div class="rep-unified-date">${escapeHtml(formatTimelineDate(x.at))}</div></div>`).join(""):`<div class="mini">No communication history yet.</div>`}</div><div class="rep-unified-compose"><div><label for="unifiedCommunicationTo">To</label><select id="unifiedCommunicationTo"><option value="hub" ${defaultTo==="hub"?"selected":""}>Hub</option><option value="service" ${defaultTo==="service"?"selected":""}>Service</option><option value="manager" ${defaultTo==="manager"?"selected":""}>Manager</option></select></div><div><label for="unifiedCommunicationText">Message</label><textarea id="unifiedCommunicationText" placeholder="Type one message and select the receiving team..."></textarea></div><button type="button" class="green send-message-glow" onclick="sendUnifiedCommunication('${escapeJs(rec.id||rec.key||getRecordKey(rec))}')">Send Message</button></div>`:""}</div>`;
+}
+
 function renderDetail() {
   const rec = state.records.find(r => r.id === state.selectedId);
   const empty = $("emptyState");
@@ -16138,8 +16177,7 @@ function renderDetail() {
     <div class="rep-vertical-stack">
       <div class="rep-vertical-left-column">
         ${renderRepAttentionAlertCard(rec)}
-        ${renderRepManagerCommunication(rec)}
-        ${renderInstallBaseCorrectionPanel(rec)}
+        ${renderUnifiedRepCommunication(rec)}
       </div>
 
       <div class="rep-vertical-right-column">
