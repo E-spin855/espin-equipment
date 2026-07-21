@@ -125,7 +125,19 @@ function mergeRecords(){
       new Date(b.service_updated_at||b.updated_at||0)-new Date(a.service_updated_at||a.updated_at||0)
     );
 }
-function isServiceRecord(r){return [r.service_case,r.service_case_id,r.service_status,r.equipment_down_at,r.equipment_down_date,r.assigned_service_contact,r.service_contact,r.customer_impact,r.red_hot_alert,r.service_resolved_at].some(v=>clean(v)!=="")}
+function isServiceRecord(r){
+  return [
+    r.service_case,
+    r.service_case_id,
+    r.service_status,
+    r.equipment_down_at,
+    r.equipment_down_date,
+    r.assigned_service_contact,
+    r.service_contact,
+    r.customer_impact,
+    r.service_resolved_at
+  ].some(v=>clean(v)!=="")||truthy(r.red_hot_alert);
+}
 function isHot(r){const s=clean(r.red_hot_status||"active").toLowerCase();return truthy(r.red_hot_alert)&&!r.service_resolved_at&&!["resolved","closed","restored"].includes(s)}
 function isDown(r){return !r.service_resolved_at&&(["down","unable to restore","out of service"].includes(clean(r.equipment_operational_status||r.service_status).toLowerCase())||Boolean(r.equipment_down_at||r.equipment_down_date))}
 function daysDown(r){const d=new Date(r.equipment_down_at||r.equipment_down_date||"");const end=new Date(r.service_resolved_at||Date.now());return Number.isNaN(d.getTime())?"":Math.max(0,Math.floor((end-d)/86400000))}
@@ -168,7 +180,7 @@ function mapStores(transform){[KEYS.main,KEYS.install,KEYS.rep,KEYS.response,KEY
 function patchEverywhere(r,patch){mapStores(item=>same(item,r)?{...item,...patch}:item);const ping=String(Date.now());PINGS.forEach(k=>{localStorage.setItem(k,ping);try{window.dispatchEvent(new StorageEvent("storage",{key:k,newValue:ping}))}catch{}})}
 function saveService(r){const patch={service_status:$("editStatus").value,customer_impact:$("editImpact").value,assigned_service_contact:$("editContact").value,service_target_due_at:$("editTarget").value,service_updated_at:new Date().toISOString()};patchEverywhere(r,patch);load()}
 function sendMessage(r){const text=clean($("serviceMessage").value);if(!text)return;const msgs=parse(KEYS.serviceMessages,[]);msgs.push({id:`service_${Date.now()}`,record_id:recordKey(r),asset_id:r.asset_id||r.equipment_id||"",serial_number:r.serial_number||r.serial||"",facility:name(r),message:text,author:contact(r)==="-"?"OEM Service":contact(r),created_at:new Date().toISOString()});localStorage.setItem(KEYS.serviceMessages,JSON.stringify(msgs));patchEverywhere(r,{latest_service_message:text,latest_service_message_at:new Date().toISOString(),latest_service_message_by:contact(r)==="-"?"OEM Service":contact(r),service_rep_communication_status:"Sent"});load()}
-function resolve(r){const at=new Date().toISOString(),patch={red_hot_alert:false,red_hot_status:"Resolved",service_status:"Restored",equipment_operational_status:"Operational",service_resolved_at:at,red_hot_resolved_at:at,red_hot_resolved_by:contact(r)==="-"?"OEM Service":contact(r),red_hot_acknowledged:true,red_hot_acknowledged_at:r.red_hot_acknowledged_at||at,red_hot_acknowledged_by:r.red_hot_acknowledged_by||rep(r)};patchEverywhere(r,patch);localStorage.setItem(KEYS.resolutionPacket,JSON.stringify({...r,...patch}));load()}
+function resolve(r){const at=new Date().toISOString(),patch={red_hot_alert:false,red_hot_status:"Resolved",service_status:"Restored",equipment_operational_status:"Operational",service_resolved_at:at,red_hot_resolved_at:at,red_hot_resolved_by:contact(r)==="-"?"OEM Service":contact(r)};patchEverywhere(r,patch);localStorage.setItem(KEYS.resolutionPacket,JSON.stringify({...r,...patch}));load()}
 $("search").oninput=e=>{state.search=e.target.value;render()};$("statusFilter").onchange=e=>{state.filter=e.target.value;render()};$("refreshBtn").onclick=load;window.addEventListener("storage",e=>{if(Object.values(KEYS).includes(e.key)||PINGS.includes(e.key))load()});load();
 </script>
 </body>
