@@ -86,7 +86,45 @@ function recordKey(r){return clean(r.id||r.key||r.record_id||r.oem_project_id||r
 function fingerprint(r){return [recordKey(r),r.serial_number||r.serial,r.facility||r.site||r.customer_name].map(v=>clean(v).toLowerCase()).filter(Boolean)}
 function same(a,b){const aa=fingerprint(a),bb=fingerprint(b);return aa.some(v=>bb.includes(v))}
 function allStoredRecords(){const out=[];[KEYS.main,KEYS.install,KEYS.rep,KEYS.response,KEYS.final].forEach(k=>{const v=parse(k,[]);if(Array.isArray(v))out.push(...v)});const mq=parse(KEYS.manager,{});if(Array.isArray(mq))out.push(...mq);else if(mq&&typeof mq==="object")Object.values(mq).forEach(v=>{if(Array.isArray(v))out.push(...v)});return out}
-function mergeRecords(){const merged=[];for(const r of allStoredRecords()){if(!r||typeof r!=="object")continue;const i=merged.findIndex(x=>same(x,r));if(i<0)merged.push({...r});else merged[i]={...merged[i],...r}}return merged.filter(isServiceRecord).sort((a,b)=>Number(hasUnseenServiceProjectUpdate(b))-Number(hasUnseenServiceProjectUpdate(a))||Number(isHot(b))-Number(isHot(a))||new Date(b.service_updated_at||b.updated_at||0)-new Date(a.service_updated_at||a.updated_at||0))}
+function mergeRecords(){
+  const merged=[];
+  const preserveWhenIncomingBlank=[
+    "assigned_service_contact",
+    "service_contact",
+    "service_lead",
+    "customer_impact",
+    "service_customer_impact"
+  ];
+
+  for(const r of allStoredRecords()){
+    if(!r||typeof r!=="object")continue;
+    const i=merged.findIndex(x=>same(x,r));
+
+    if(i<0){
+      merged.push({...r});
+      continue;
+    }
+
+    const previous=merged[i];
+    const combined={...previous,...r};
+
+    preserveWhenIncomingBlank.forEach(field=>{
+      if(clean(r[field])===""&&clean(previous[field])!==""){
+        combined[field]=previous[field];
+      }
+    });
+
+    merged[i]=combined;
+  }
+
+  return merged
+    .filter(isServiceRecord)
+    .sort((a,b)=>
+      Number(hasUnseenServiceProjectUpdate(b))-Number(hasUnseenServiceProjectUpdate(a))||
+      Number(isHot(b))-Number(isHot(a))||
+      new Date(b.service_updated_at||b.updated_at||0)-new Date(a.service_updated_at||a.updated_at||0)
+    );
+}
 function isServiceRecord(r){return [r.service_case,r.service_case_id,r.service_status,r.equipment_down_at,r.equipment_down_date,r.assigned_service_contact,r.service_contact,r.customer_impact,r.red_hot_alert,r.service_resolved_at].some(v=>clean(v)!=="")}
 function isHot(r){const s=clean(r.red_hot_status||"active").toLowerCase();return truthy(r.red_hot_alert)&&!r.service_resolved_at&&!["resolved","closed","restored"].includes(s)}
 function isDown(r){return !r.service_resolved_at&&(["down","unable to restore","out of service"].includes(clean(r.equipment_operational_status||r.service_status).toLowerCase())||Boolean(r.equipment_down_at||r.equipment_down_date))}
