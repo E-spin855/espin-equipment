@@ -15757,35 +15757,36 @@ function toggleRepFacilityDetails(recordId) {
 
 
 const UNIFIED_SERVICE_MESSAGES_KEY = "espin_service_rep_messages_v1";
+const UNIFIED_COMMUNICATION_KEY = "espin_unified_communication_v1";
 window.addEventListener("storage", event => {
   if (
     event.key === UNIFIED_SERVICE_MESSAGES_KEY ||
-    event.key === "espin_service_sync_ping_v1"
+    event.key === "espin_service_sync_ping_v1" ||
+    event.key === UNIFIED_COMMUNICATION_KEY ||
+    event.key === "espin_unified_communication_ping_v1"
   ) {
     loadRecords();
     render();
   }
 });
 function readUnifiedServiceMessages(){try{const v=JSON.parse(localStorage.getItem(UNIFIED_SERVICE_MESSAGES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
+function readUnifiedCommunication(){try{const v=JSON.parse(localStorage.getItem(UNIFIED_COMMUNICATION_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function unifiedRecordIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
 function unifiedMessageMatches(rec,item){const ids=unifiedRecordIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
 function getUnifiedRepMessages(rec){
   const items=[];
   getInstallBaseConversationHistory(rec).forEach(x=>items.push({channel:"hub",label:lower(x.sender)==="rep"?"Rep to Hub":"Hub",message:x.message,at:x.at||""}));
   getRepManagerCommunicationHistory(rec).forEach(x=>items.push({channel:"manager",label:lower(x.sender)==="rep"?"Rep to Manager":"Manager",message:x.message,at:x.at||""}));
-  readUnifiedServiceMessages().filter(x=>unifiedMessageMatches(rec,x)).forEach(x=>{const fromRep=lower(x.sender||x.role||x.author_type)==="rep";items.push({channel:"service",label:fromRep?"Rep to Service":(x.author||"Service"),message:clean(x.message||x.note||x.text),at:x.created_at||x.at||""})});
+  readUnifiedServiceMessages().filter(x=>unifiedMessageMatches(rec,x)&&!clean(x.to||x.recipient)&&!["manager","hub"].includes(lower(x.sender||x.role||x.author_type))).forEach(x=>{const fromRep=lower(x.sender||x.role||x.author_type)==="rep";items.push({channel:"service",label:fromRep?"Rep to Service":(x.author||"Service"),message:clean(x.message||x.note||x.text),at:x.created_at||x.at||""})});
+  readUnifiedCommunication().filter(x=>unifiedMessageMatches(rec,x)&&(lower(x.from)==="rep"||lower(x.to)==="rep")).forEach(x=>items.push({channel:lower(x.from)==="rep"?lower(x.to):lower(x.from),label:`${clean(x.from_label||x.from||"Team")} to ${clean(x.to_label||x.to||"Team")}`,message:clean(x.message),at:x.created_at||""}));
   return items.filter(x=>clean(x.message)).sort((a,b)=>(new Date(a.at||0).getTime()||0)-(new Date(b.at||0).getTime()||0));
 }
 function toggleUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}state.unifiedCommunicationOpen=state.unifiedCommunicationOpen!==true;renderDetail()}
 function sendUnifiedCommunication(recordId){
   const rec=state.records.find(x=>String(x.id||x.key||getRecordKey(x))===String(recordId||""))||findSelectedRecord();if(!rec)return;
   const to=$("unifiedCommunicationTo")?.value||"hub";const message=clean($("unifiedCommunicationText")?.value||"");if(!message){alert("Type a message before sending.");return}
-  if(to==="manager"){sendRepManagerMessage("custom_message","Rep Message",message);return}
-  if(to==="hub"){
-    const input=document.createElement("textarea");input.id="installBaseCorrectionNote";input.value=message;input.style.display="none";document.body.appendChild(input);sendRepMessageToInstallBase(rec.id);input.remove();return;
-  }
-  const messages=readUnifiedServiceMessages();const now=new Date().toISOString();messages.push({id:`rep_service_${Date.now()}`,record_id:rec.id||rec.key||getRecordKey(rec),asset_id:rec.asset_id||rec.equipment_id||"",serial_number:rec.serial_number||rec.serial||"",facility:rec.site||rec.facility||rec.hospital||"",sender:"rep",role:"rep",author:rec.assigned_rep_name||rec.sales_rep_name||rec.rep_owner||"Rep",message,created_at:now});
-  localStorage.setItem(UNIFIED_SERVICE_MESSAGES_KEY,JSON.stringify(messages));localStorage.setItem("espin_service_sync_ping_v1",String(Date.now()));rec.latest_rep_service_message=message;rec.latest_rep_service_message_at=now;rec.service_rep_communication_status="Rep Replied";saveRecords();renderDetail();
+  const messages=readUnifiedCommunication();const now=new Date().toISOString();messages.push({id:`rep_${to}_${Date.now()}`,record_id:rec.id||rec.key||getRecordKey(rec),asset_id:rec.asset_id||rec.equipment_id||"",serial_number:rec.serial_number||rec.serial||"",facility:rec.site||rec.facility||rec.hospital||"",from:"rep",from_label:rec.assigned_rep_name||rec.sales_rep_name||rec.rep_owner||"Rep",to,to_label:to==="hub"?"Hub":to==="service"?"Service":"Manager",message,created_at:now});
+  localStorage.setItem(UNIFIED_COMMUNICATION_KEY,JSON.stringify(messages));localStorage.setItem("espin_unified_communication_ping_v1",String(Date.now()));renderDetail();
 }
 function renderUnifiedRepCommunication(rec){
   const history=getUnifiedRepMessages(rec);const latest=history[history.length-1]||null;const open=state.unifiedCommunicationOpen===true;const defaultTo=latest?.channel||((isRedHotServiceAlert(rec)||clean(rec.service_status))?"service":"hub");

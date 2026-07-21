@@ -1715,6 +1715,9 @@ body tr.red-hot-row-pulse{
   }
 }
 </style>
+<style id="hub-unified-communication-style">
+.hub-unified-communication{grid-column:1/-1!important}.hub-unified-head{display:flex;justify-content:space-between;gap:16px;align-items:center}.hub-unified-summary{margin-top:6px;color:#c8d8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:780px}.hub-unified-history{display:grid;gap:9px;max-height:320px;overflow:auto;margin-top:14px}.hub-unified-message{padding:11px 13px;border:1px solid rgba(91,144,190,.34);border-radius:12px;background:rgba(7,21,36,.55)}.hub-unified-route{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#73d8ff}.hub-unified-text{font-weight:800;margin-top:4px;line-height:1.45}.hub-unified-date{font-size:11px;color:#91a9be;margin-top:4px}.hub-unified-compose{display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:end;margin-top:14px;padding-top:14px;border-top:1px solid rgba(91,144,190,.25)}.hub-unified-compose textarea{min-height:72px}@media(max-width:850px){.hub-unified-compose{grid-template-columns:1fr}.hub-unified-head{display:block}.hub-unified-summary{white-space:normal}}
+</style>
 </head>
 
 <body>
@@ -1930,6 +1933,7 @@ const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
+const HUB_UNIFIED_COMMUNICATION_KEY = "espin_unified_communication_v1";
 const state = {
   records: [],
   selectedOwner: "",
@@ -1946,7 +1950,8 @@ const state = {
   repHistoryOpen: {},
   managerMessageDrafts: {},
   managerCommunicationOpen: {},
-  managerHistoryOpen: {}
+  managerHistoryOpen: {},
+  hubUnifiedCommunicationOpen: false
 };
 
 const $ = (id) => document.getElementById(id);
@@ -7131,6 +7136,20 @@ function isHubRepFixOnlyResponse(rec) {
   return genuineRepMessages.length === 0 && !legacyMessage;
 }
 
+function readHubUnifiedCommunication(){try{const v=JSON.parse(localStorage.getItem(HUB_UNIFIED_COMMUNICATION_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
+function hubUnifiedRecordIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
+function hubUnifiedMessageMatches(rec,item){const ids=hubUnifiedRecordIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
+function getHubUnifiedMessages(rec){
+  const items=[];
+  getInstallBaseConversationHistory(rec).forEach(x=>items.push({from:lower(x.sender)==="install_base"?"hub":"rep",from_label:lower(x.sender)==="install_base"?"Hub":"Rep",to:lower(x.sender)==="install_base"?"rep":"hub",to_label:lower(x.sender)==="install_base"?"Rep":"Hub",message:x.message,created_at:x.at||""}));
+  (Array.isArray(rec?.manager_install_base_conversation_history)?rec.manager_install_base_conversation_history:[]).forEach(x=>items.push({from:lower(x.sender)==="manager"?"manager":"hub",from_label:lower(x.sender)==="manager"?"Manager":"Hub",to:lower(x.sender)==="manager"?"hub":"manager",to_label:lower(x.sender)==="manager"?"Hub":"Manager",message:clean(x.message),created_at:x.at||x.created_at||""}));
+  readHubUnifiedCommunication().filter(x=>hubUnifiedMessageMatches(rec,x)&&(lower(x.from)==="hub"||lower(x.to)==="hub")).forEach(x=>items.push(x));
+  return items.filter(x=>clean(x.message)).sort((a,b)=>(new Date(a.created_at||0).getTime()||0)-(new Date(b.created_at||0).getTime()||0));
+}
+function toggleHubUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}state.hubUnifiedCommunicationOpen=!state.hubUnifiedCommunicationOpen;renderDetail()}
+function sendHubUnifiedCommunication(recordId){const rec=state.records.find(x=>String(x.id||x.key||getRecordKey(x))===String(recordId||""));if(!rec)return;const to=$("hubUnifiedCommunicationTo")?.value||"rep",message=clean($("hubUnifiedCommunicationText")?.value||"");if(!message){alert("Type a message before sending.");return}const items=readHubUnifiedCommunication(),now=new Date().toISOString();items.push({id:`hub_${to}_${Date.now()}`,record_id:rec.id||rec.key||getRecordKey(rec),asset_id:rec.asset_id||rec.equipment_id||"",serial_number:rec.serial_number||rec.serial||"",facility:rec.site||rec.facility||rec.hospital||"",from:"hub",from_label:"Hub",to,to_label:to==="service"?"Service":to==="manager"?"Manager":"Rep",message,created_at:now});localStorage.setItem(HUB_UNIFIED_COMMUNICATION_KEY,JSON.stringify(items));localStorage.setItem("espin_unified_communication_ping_v1",String(Date.now()));renderDetail()}
+function renderHubUnifiedCommunication(rec){const history=getHubUnifiedMessages(rec),latest=history[history.length-1],open=state.hubUnifiedCommunicationOpen;return `<div class="detail-card full comm-shell hub-unified-communication"><div class="hub-unified-head"><div><div class="comm-title">Communication</div><div class="hub-unified-summary">${latest?`<strong>${escapeHtml(latest.from_label||latest.from)} to ${escapeHtml(latest.to_label||latest.to)}:</strong> ${escapeHtml(latest.message)}`:"No messages yet."}</div></div><button type="button" class="${open?"green":"secondary"}" onclick="toggleHubUnifiedCommunication(event)">${open?"Hide Communication":`Open Communication${history.length?` (${history.length})`:""}`}</button></div>${open?`<div class="hub-unified-history">${history.length?history.map(x=>`<div class="hub-unified-message"><div class="hub-unified-route">${escapeHtml(x.from_label||x.from)} to ${escapeHtml(x.to_label||x.to)}</div><div class="hub-unified-text">${escapeHtml(x.message)}</div><div class="hub-unified-date">${escapeHtml(formatDateTime(x.created_at))}</div></div>`).join(""):'<div class="mini">No communication history yet.</div>'}</div><div class="hub-unified-compose"><div><label for="hubUnifiedCommunicationTo">To</label><select id="hubUnifiedCommunicationTo"><option value="rep">Rep</option><option value="manager">Manager</option><option value="service">Service</option></select></div><div><label for="hubUnifiedCommunicationText">Message</label><textarea id="hubUnifiedCommunicationText" placeholder="Type one message and select the receiving team..."></textarea></div><button type="button" class="green send-message-glow" onclick="sendHubUnifiedCommunication('${escapeJs(rec.id||rec.key||getRecordKey(rec))}')">Send Message</button></div>`:""}</div>`}
+
 function renderRepResponseCard(rec) {
   const ui = getHubRepCommunicationUi(rec);
   const requestText = getOriginalRepRequest(rec);
@@ -7633,10 +7652,7 @@ function renderDetail() {
       <div class="mini">${escapeHtml(`${rec.city || ""}${rec.city ? ", " : ""}${rec.state || ""} ${rec.zip_code || ""}`.trim())}</div>
     </div>
 
-    <div class="hub-communications-row">
-      ${renderRepResponseCard(rec)}
-      ${renderManagerInstallBaseCommunication(rec)}
-    </div>
+    ${renderHubUnifiedCommunication(rec)}
   `;
 
   updateReleaseButtonVisibility(rec);
@@ -7666,6 +7682,8 @@ function clearLocalData() {
 
     INSTALL_BASE_FINAL_SYNC_KEY,
     INSTALL_BASE_FINAL_SYNC_PING_KEY,
+    HUB_UNIFIED_COMMUNICATION_KEY,
+    "espin_unified_communication_ping_v1",
 
     INSTALL_MANAGER_CHAT_KEY,
     "espin_install_manager_text_ping_v1",
@@ -7777,7 +7795,9 @@ window.addEventListener("storage", e => {
     e.key === INSTALL_MANAGER_CHAT_KEY ||
     e.key === "espin_install_manager_text_ping_v1" ||
     e.key === "axis_install_base_records_ping_v1" ||
-    e.key === "axis_install_base_sync_ping_v1"
+    e.key === "axis_install_base_sync_ping_v1" ||
+    e.key === HUB_UNIFIED_COMMUNICATION_KEY ||
+    e.key === "espin_unified_communication_ping_v1"
   ) {
     if (isTypingInstallBaseReply()) return;
     loadRecords();
