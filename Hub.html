@@ -7143,7 +7143,12 @@ function isHubRepFixOnlyResponse(rec) {
 
 function readHubUnifiedCommunication(){try{const v=JSON.parse(localStorage.getItem(HUB_UNIFIED_COMMUNICATION_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function formatHubCommunicationTimestamp(value){if(!value)return"Timestamp unavailable";const d=new Date(value);return Number.isNaN(d.getTime())?String(value):d.toLocaleString([],{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-function hubCommunicationChannel(item){const from=lower(item?.from),to=lower(item?.to);if(to==="hub")return"hub";if(from==="hub"&&to==="service")return"service";return"rep"}
+function hubCommunicationChannel(item){
+  const participants=[lower(item?.from),lower(item?.to)];
+  if(participants.includes("service"))return"service";
+  if(participants.includes("manager"))return"rep";
+  return"hub";
+}
 function hubUnifiedRecordIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
 function hubUnifiedMessageMatches(rec,item){const ids=hubUnifiedRecordIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
 function getHubUnifiedMessages(rec){
