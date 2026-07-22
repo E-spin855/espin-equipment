@@ -6705,6 +6705,10 @@ function selectRecord(id) {
   // so a newly received message can still open automatically.
   const repUiBeforeSeen = getHubRepCommunicationUi(rec);
 
+  // A row click acknowledges the dedicated Rep/Manager communication flags
+  // as well as the generic signature so the green frame cannot reappear.
+  acknowledgeHubRowCommunications(rec);
+
   // Clicking the green row itself now clears every row-level green frame.
   if (hasActualInstallBaseCorrection(rec)) {
     markInstallBaseCorrectedFieldsSeen(rec);
@@ -7142,6 +7146,44 @@ function getHubRepCommunicationUi(rec) {
     historyOpen,
     fixOnlyResponse
   };
+}
+
+function acknowledgeHubRowCommunications(rec) {
+  if (!rec) return;
+
+  const repUi = getHubRepCommunicationUi(rec);
+  const managerUi = getHubManagerCommunicationUi(rec);
+  const patch = {};
+
+  if (repUi.needsResponse) {
+    patch.hub_rep_ack_signature = repUi.latest
+      ? [clean(repUi.latest.sender), clean(repUi.latest.at), clean(repUi.latest.message)].join("|")
+      : ["rep", clean(rec.install_base_response_at), clean(repUi.legacyRepResponse)].join("|");
+    patch.install_base_response_seen = true;
+  }
+
+  if (managerUi.needsResponse && managerUi.latest) {
+    patch.hub_manager_ack_signature = [
+      clean(managerUi.latest.sender),
+      clean(managerUi.latest.at),
+      clean(managerUi.latest.message)
+    ].join("|");
+    patch.manager_message_to_install_base_seen = true;
+  }
+
+  if (!Object.keys(patch).length) return;
+
+  state.records = state.records.map(item =>
+    sameRecord(item, rec) ? { ...item, ...patch } : item
+  );
+
+  const queue = readArrayKey(INSTALL_BASE_RESPONSE_KEY).map(item =>
+    sameRecord(item, rec) || getRecordKey(item) === getRecordKey(rec)
+      ? { ...item, ...patch }
+      : item
+  );
+  writeArrayKey(INSTALL_BASE_RESPONSE_KEY, queue);
+  saveRecords();
 }
 
 function toggleHubRepCommunication(recordId) {

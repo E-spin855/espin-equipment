@@ -7455,6 +7455,37 @@ function getDisplayOrderWeight(rec) {
   return 0;
 }
 
+function getManagerLatestUpdateTime(rec) {
+  if (!rec) return 0;
+
+  const activeProjectTimes = Array.isArray(rec.active_project_snapshots)
+    ? rec.active_project_snapshots.map(project =>
+        project?.updated_at || project?.status_updated_at || ""
+      )
+    : [];
+
+  return [
+    rec.install_base_response_at,
+    rec.install_base_correction_at,
+    rec.install_base_fixed_at,
+    rec.manager_flash_at,
+    rec.rep_last_action_at,
+    rec.rep_manager_message_at,
+    rec.external_tradein_received_at,
+    rec.tradein_last_update_at,
+    rec.quote_updated_at,
+    rec.quote_approval_decision_at,
+    rec.active_projects_updated_at,
+    rec.service_updated_at,
+    rec.latest_service_message_at,
+    rec.install_base_released_at,
+    ...activeProjectTimes
+  ].reduce((latest, value) => {
+    const time = new Date(value || 0).getTime() || 0;
+    return Math.max(latest, time);
+  }, 0);
+}
+
 
 function espinRecordViewType(rec) {
   const projectType = String(rec?.project_type || rec?.axis_parent_project_type || "").trim().toLowerCase();
@@ -8105,7 +8136,12 @@ function isRepInstallBaseFix(rec) {
     rec.install_base_correction_status === "corrected_by_rep" ||
     rec.install_base_response_status === "rep_correction_sent" ||
     rec.install_base_fix_status === "rep_reviewed" ||
-    rec.manager_flash_type === "rep_update"
+    Boolean(clean(rec.install_base_corrected_fields)) ||
+    Boolean(
+      rec.corrected_fields &&
+      typeof rec.corrected_fields === "object" &&
+      Object.keys(rec.corrected_fields).length
+    )
   );
 }
 
@@ -8749,6 +8785,10 @@ function renderTable() {
     const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
 
     if (aUpdated !== bUpdated) return Number(bUpdated) - Number(aUpdated);
+    if (aUpdated && bUpdated) {
+      const timeDifference = getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
+      if (timeDifference) return timeDifference;
+    }
     return getDisplayOrderWeight(b) - getDisplayOrderWeight(a);
   });
 

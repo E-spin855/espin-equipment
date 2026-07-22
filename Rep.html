@@ -7572,6 +7572,23 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
           item.message || item.note || item.text
         );
       });
+
+    // Service's legacy/shared message feed is separate from unified
+    // communication and must activate the same Rep row alert.
+    readUnifiedServiceMessages()
+      .filter(item =>
+        unifiedMessageMatches(rec, item) &&
+        !["rep", "manager", "hub"].includes(
+          lower(item.sender || item.role || item.author_type)
+        )
+      )
+      .forEach(item => {
+        add(
+          "service",
+          item.created_at || item.at || item.timestamp,
+          item.message || item.note || item.text
+        );
+      });
   }
 
   [
@@ -22621,6 +22638,14 @@ function handleRepRowClick(id) {
     hasUnseenManagerCommunication(clickedRedHotRecord);
   const rowHadIncomingInstallBaseCommunication =
     hasUnseenInstallBaseCommunication(clickedRedHotRecord);
+  const incomingRowSignature = getLatestIncomingMessageSignature(
+    clickedRedHotRecord,
+    "rep"
+  );
+  const rowHadIncomingServiceCommunication = Boolean(
+    hasUnreadMessageRow(clickedRedHotRecord, "rep") &&
+    incomingRowSignature.startsWith("service|")
+  );
   const rowHadIncomingCommunication =
     rowHadIncomingManagerCommunication ||
     rowHadIncomingInstallBaseCommunication ||
@@ -22664,6 +22689,9 @@ function handleRepRowClick(id) {
 
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
+  if (rowHadIncomingServiceCommunication) {
+    state.unifiedCommunicationOpen = true;
+  }
 
   if (selectionChanged) {
     state.repAttentionAlertOpen = false;
@@ -22764,7 +22792,7 @@ function handleRepRowClick(id) {
    * Corrected-field updates are not always classified as
    * incoming communication.
    */
-  if (seenStateChanged) {
+  if (seenStateChanged || rowHadIncomingServiceCommunication) {
     renderTable();
     renderNewProjectsTable();
   }
@@ -22775,7 +22803,8 @@ function handleRepRowClick(id) {
     selectionChanged ||
     seenStateChanged ||
     recordChanged ||
-    hasDetailFlash
+    hasDetailFlash ||
+    rowHadIncomingServiceCommunication
   ) {
     renderDetail();
   }
@@ -22783,7 +22812,9 @@ function handleRepRowClick(id) {
   if (rowHadIncomingCommunication) {
     window.setTimeout(() => {
       const card = document.querySelector(
-        ".comm-shell.communication-update-frame, .comm-shell.incoming-message-field-frame, .rep-unified-communication, .comm-shell"
+        rowHadIncomingServiceCommunication
+          ? ".rep-unified-communication"
+          : ".comm-shell.communication-update-frame, .comm-shell.incoming-message-field-frame, .rep-unified-communication, .comm-shell"
       );
       if (!card) return;
       card.classList.add("communication-update-frame");
