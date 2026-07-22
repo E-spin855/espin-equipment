@@ -91,7 +91,7 @@
   </div>
 </main>
 <script>
-const KEYS={main:"espin_lifecycle_demo_records_v1",install:"axis_install_base_records_v1",manager:"axis_manager_queue_v1",rep:"espin_rep_queue",response:"axis_install_base_response_queue_v1",final:"axis_install_base_final_sync_v1",serviceFeed:"espin_service_feed_records_v1",serviceMessages:"espin_service_rep_messages_v1",unifiedCommunication:"espin_unified_communication_v1",resolutionPacket:"espin_red_hot_resolution_packet_v1"};
+const KEYS={main:"espin_lifecycle_demo_records_v1",install:"axis_install_base_records_v1",manager:"axis_manager_queue_v1",rep:"espin_rep_queue",response:"axis_install_base_response_queue_v1",final:"axis_install_base_final_sync_v1",serviceFeed:"espin_service_feed_records_v1",serviceMessages:"espin_service_rep_messages_v1",unifiedCommunication:"espin_unified_communication_v1",resolutionPacket:"espin_red_hot_resolution_packet_v1",activeProjects:"espin_active_project_progress_v1"};
 const PINGS=["axis_install_base_records_ping_v1","axis_install_base_sync_ping_v1","axis_install_base_response_ping_v1","axis_install_base_final_sync_ping_v1","axis_manager_sync_ping_v1","axis_rep_sync_ping_v1","espin_red_hot_resolution_ping_v1","espin_service_sync_ping_v1","espin_unified_communication_ping_v1","espin_active_project_progress_v1"];
 const state={records:[],selected:"",search:"",filter:"",communicationOpen:false}; const $=id=>document.getElementById(id); const clean=v=>String(v??"").trim(); const truthy=v=>v===true||v===1||["true","1","yes","active"].includes(clean(v).toLowerCase());
 function esc(v){return clean(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -99,7 +99,7 @@ function parse(key,fallback){try{const v=JSON.parse(localStorage.getItem(key)||"
 function recordKey(r){return clean(r.id||r.key||r.record_id||r.oem_project_id||r.project_id||r.asset_id||r.equipment_id||r.serial_number||r.serial)}
 function fingerprint(r){return [recordKey(r),r.serial_number||r.serial,r.facility||r.site||r.customer_name].map(v=>clean(v).toLowerCase()).filter(Boolean)}
 function same(a,b){const aa=fingerprint(a),bb=fingerprint(b);return aa.some(v=>bb.includes(v))}
-function allStoredRecords(){const out=[];[KEYS.main,KEYS.install,KEYS.rep,KEYS.response,KEYS.final,KEYS.serviceFeed].forEach(k=>{const v=parse(k,[]);if(Array.isArray(v))out.push(...v)});const mq=parse(KEYS.manager,{});if(Array.isArray(mq))out.push(...mq);else if(mq&&typeof mq==="object")Object.values(mq).forEach(v=>{if(Array.isArray(v))out.push(...v)});return out}
+function allStoredRecords(){const out=[];[KEYS.main,KEYS.install,KEYS.rep,KEYS.response,KEYS.final,KEYS.serviceFeed].forEach(k=>{const v=parse(k,[]);if(Array.isArray(v))out.push(...v)});const mq=parse(KEYS.manager,{});if(Array.isArray(mq))out.push(...mq);else if(mq&&typeof mq==="object")Object.values(mq).forEach(v=>{if(Array.isArray(v))out.push(...v)});const projects=parse(KEYS.activeProjects,[]);if(Array.isArray(projects))projects.filter(p=>/install/i.test(clean(p.project_type||p.type||p.handoff||""))).forEach(p=>out.push({id:p.axis_record_id||p.record_id||p.project_id,key:p.axis_record_id||p.record_id||p.project_id,oem_project_id:p.axis_project_id||p.project_id,project_id:p.axis_project_id||p.project_id,site:p.facility||p.site||"",facility:p.facility||p.site||"",model:p.project_name||"Installation Project",service_visible:true,service_sync_type:"installation_project",service_status:"Installation Project",service_project_synced_at:p.updated_at||p.status_updated_at||"",active_project_snapshots:[p]}));return out}
 function mergeRecords(){
   const merged=[];
   const preserveWhenIncomingBlank=[
@@ -140,6 +140,7 @@ function mergeRecords(){
     );
 }
 function isServiceRecord(r){
+  if(r.service_visible===true||r.service_sync_type==="installation_project"||r.install_project_started===true)return true;
   return [
     r.service_case,
     r.service_case_id,
