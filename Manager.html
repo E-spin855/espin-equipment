@@ -8925,14 +8925,33 @@ function renderTable() {
     return;
   }
 
+  const newestManagerUpdateTime = records.reduce(
+    (latest, item) => Math.max(latest, getManagerLatestUpdateTime(item)),
+    0
+  );
+
   tbody.innerHTML = records.map(rec => {
     const id = clean(rec.id || getRecordKey(rec) || uuid());
     rec.id = id;
     rec.key = getRecordKey(rec) || rec.key || id;
 
+    const recordUpdateTime = getManagerLatestUpdateTime(rec);
     const managerUpdatePending = Boolean(
-      rec.manager_unseen_update === true ||
-      hasUnseenManagerCorrectionRow(rec)
+      recordUpdateTime > 0 &&
+      recordUpdateTime === newestManagerUpdateTime &&
+      (
+        rec.manager_unseen_update === true ||
+        hasUnseenManagerCorrectionRow(rec)
+      )
+    );
+    const latestManagerRowShouldFlash = Boolean(
+      recordUpdateTime > 0 &&
+      recordUpdateTime === newestManagerUpdateTime &&
+      (
+        managerUpdatePending ||
+        shouldManagerRowFlash(rec) ||
+        hasUnreadMessageRow(rec, "manager")
+      )
     );
 
     const selectedClass = [
@@ -8941,13 +8960,13 @@ function renderTable() {
         ? "red-hot-row-pulse"
         : "",
       isRedHotServiceAlert(rec) &&
-      (shouldManagerRowFlash(rec) || hasUnreadMessageRow(rec, "manager"))
+      latestManagerRowShouldFlash
         ? "red-hot-update-pulse"
         : "",
       String(rec.id) === String(state.selectedId) ? "selected" : "",
       managerUpdatePending ? "manager-update-pending" : "",
-      shouldManagerRowFlash(rec) ? "manager-row-flash" : "",
-      hasUnreadMessageRow(rec, "manager") ? "unread-message-row" : ""
+      latestManagerRowShouldFlash && shouldManagerRowFlash(rec) ? "manager-row-flash" : "",
+      latestManagerRowShouldFlash && hasUnreadMessageRow(rec, "manager") ? "unread-message-row" : ""
     ].filter(Boolean).join(" ");
 
     const tradeRef =
