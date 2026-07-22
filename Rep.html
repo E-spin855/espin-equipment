@@ -6366,6 +6366,42 @@ tr.unread-message-row:not(.red-hot-row){
   box-shadow:inset 7px 0 0 #41ff9c,0 0 28px rgba(65,255,156,.62)!important;
   animation:unreadMessageRowPulse .9s ease-in-out infinite!important;
 }
+
+/* New-project team colors: green Trade Desk status and no purple contacts. */
+.new-project-team-status.pending{
+  color:#34d399!important;
+  background:linear-gradient(90deg,#22c55e,#6ee7b7);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.new-project-team-status.pending::before{
+  background:#41ff9c!important;
+  box-shadow:0 0 14px rgba(65,255,156,.78)!important;
+}
+.new-project-contact-toggle.quote,
+.new-project-contact-toggle.trade{
+  color:#f4f8ff!important;
+  font-weight:400!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.new-project-contact-toggle.quote::selection,
+.new-project-contact-toggle.quote *::selection{
+  background:rgba(45,125,210,.42)!important;
+  color:#fff!important;
+}
+.new-project-contact-panel.quote,
+.new-project-contact-panel.trade{
+  border-color:rgba(67,153,225,.58)!important;
+}
+.new-project-contact-actions.quote a,
+.new-project-contact-actions.trade a{
+  color:#f5fbff!important;
+  border-color:rgba(78,184,232,.72)!important;
+  background:linear-gradient(90deg,#114778,#126f91)!important;
+  box-shadow:0 0 12px rgba(34,153,210,.20)!important;
+}
 </style>
 </head>
 
@@ -21840,28 +21876,75 @@ return true;
   AXIS does not connect to, crawl, mine, or pull OEM CRM, ERP, service,
   pricing, contract, utilization, customer-success, or installed-base systems.
 */
+    const TRADE_IN_RETURN_KEYS = [
+      "axis_tradein_sync_records_v1",
+      "axis_trade_desk_sync_records_v1",
+      "axis_trade_desk_records_v1",
+      "espin_tradein_sync_records_v1",
+      "axis_tradein_last_sync_v1"
+    ];
+
+    function normalizeTradeInReturnPayload(value) {
+      if (Array.isArray(value)) return value;
+      if (!value || typeof value !== "object") return [];
+
+      for (const key of ["records", "items", "data", "results", "returns", "tradeins", "trade_in_records"]) {
+        if (Array.isArray(value[key])) return value[key];
+      }
+
+      return [value];
+    }
+
+    function readTradeInReturnRecords() {
+      const records = [];
+      const keys = new Set(TRADE_IN_RETURN_KEYS);
+
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index) || "";
+        if (
+          /trade[_-]?(in|desk).*(sync|return|update|record)/i.test(key) &&
+          !/(handoff|processed|share|unmatched|ping)/i.test(key)
+        ) {
+          keys.add(key);
+        }
+      }
+
+      keys.forEach(key => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return;
+          records.push(...normalizeTradeInReturnPayload(JSON.parse(raw)));
+        } catch (_) {}
+      });
+
+      return records.filter(item => item && typeof item === "object");
+    }
+
+    function tradeInReturnMatchesRecord(rec, item) {
+      const recordIds = [
+        rec.id, rec.key, rec.oem_project_id, rec.project_id,
+        rec.axis_record_id, rec.axis_parent_record_id, rec.axis_project_id
+      ].map(value => clean(value).toLowerCase()).filter(Boolean);
+
+      const returnIds = [
+        item.axis_record_id, item.axis_parent_record_id, item.axis_project_id,
+        item.record_id, item.parent_record_id, item.source_record_id,
+        item.project_id, item.oem_project_id, item.linked_record_id,
+        item.linked_axis_project_id
+      ].map(value => clean(value).toLowerCase()).filter(Boolean);
+
+      if (returnIds.some(value => recordIds.includes(value))) return true;
+
+      const recordSerial = clean(rec.serial_number || rec.axis_serial_number).toLowerCase();
+      const returnSerial = clean(item.serial_number || item.axis_serial_number || item.tradein_equipment_serial_number).toLowerCase();
+      return Boolean(recordSerial && returnSerial && recordSerial === returnSerial);
+    }
+
     function importTradeInSyncRecords() {
       const shareEnabled = localStorage.getItem(AXIS_SHARE_KEY) !== "off";
       if (!shareEnabled) return false;
 
-      let synced = [];
-
-      try {
-        const parsed = JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]");
-        synced = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.records)
-            ? parsed.records
-            : Array.isArray(parsed?.items)
-              ? parsed.items
-              : Array.isArray(parsed?.data)
-                ? parsed.data
-                : parsed && typeof parsed === "object"
-                  ? [parsed]
-                  : [];
-      } catch {
-        synced = [];
-      }
+      const synced = readTradeInReturnRecords();
 
       if (!synced.length) return false;
 
@@ -21895,29 +21978,23 @@ return true;
           item.associatedTradeInCredit ||
           item.estimated_trade_in_value ||
           item.tradein_estimated_value ||
+          item.estimated_value ||
+          item.estimatedValue ||
+          item.fair_market_value ||
+          item.fairMarketValue ||
+          item.approved_trade_in_value ||
+          item.approvedTradeInValue ||
           item.winning_bid_amount ||
           item.winningBid?.amount ||
           0
         );
 
         const existingNewProject = state.records.find(r =>
-          r.project_type === "new_project_record" &&
-          (
-            String(r.id || "") === String(item.axis_record_id || "") ||
-            String(r.id || "") === String(item.axis_parent_record_id || "") ||
-            String(r.oem_project_id || "") === String(item.axis_project_id || "") ||
-            String(r.oem_project_id || "") === String(item.project_id || "")
-          )
+          r.project_type === "new_project_record" && tradeInReturnMatchesRecord(r, item)
         );
 
         const existingLifecycle = state.records.find(r =>
-          r.project_type !== "new_project_record" &&
-          (
-            (item.axis_record_id && String(r.id || "") === String(item.axis_record_id || "")) ||
-            (item.axis_parent_record_id && String(r.id || "") === String(item.axis_parent_record_id || "")) ||
-            (item.axis_project_id && String(r.oem_project_id || "") === String(item.axis_project_id || "")) ||
-            (serial && String(r.serial_number || "") === serial)
-          )
+          r.project_type !== "new_project_record" && tradeInReturnMatchesRecord(r, item)
         );
 
         // A processed marker must not suppress recovery when an older Rep
@@ -22009,6 +22086,10 @@ return true;
       const incomingTradeInAt =
         item.last_tradein_update_at ||
         item.updated_at ||
+        item.tradein_returned_at ||
+        item.trade_in_returned_at ||
+        item.returned_at ||
+        item.synced_at ||
         new Date().toISOString();
 
       rec.external_tradein_value = tradeInValue;
@@ -22749,7 +22830,8 @@ function scheduleRepSyncRender() {
       e.key === STORAGE_KEY ||
       e.key === REP_QUEUE_KEY ||
       e.key === REP_SYNC_KEY ||
-      e.key === "axis_tradein_sync_records_v1" ||
+      TRADE_IN_RETURN_KEYS.includes(e.key) ||
+      /trade[_-]?(in|desk).*(sync|return|update)/i.test(String(e.key || "")) ||
       e.key === "axis_manager_sync_ping_v1" ||
       e.key === AXIS_SHARE_KEY ||
       e.key === UNMATCHED_TRADEIN_KEY ||
