@@ -7937,6 +7937,11 @@ const MANAGER_REP_ROW_SEEN_KEY =
 function getManagerRepRowUpdateSignature(rec) {
   if (!rec) return "";
 
+  const latestIncomingCommunication =
+    typeof getLatestIncomingManagerUnifiedMessage === "function"
+      ? getLatestIncomingManagerUnifiedMessage(rec)
+      : null;
+
   const history = Array.isArray(rec.rep_action_history)
     ? rec.rep_action_history
     : [];
@@ -7965,6 +7970,7 @@ function getManagerRepRowUpdateSignature(rec) {
   // Manager acknowledgement fields change when a row is clicked; including
   // them caused a previously cleared green frame to reappear.
   return [
+    clean(rec.updated_at),
     clean(latestHistory?.at || latestHistory?.date || latestHistory?.timestamp),
     clean(latestHistory?.action),
     clean(latestHistory?.label),
@@ -7972,14 +7978,29 @@ function getManagerRepRowUpdateSignature(rec) {
     clean(rec.rep_manager_message_at),
     clean(rec.priority_updated_at),
     clean(rec.rep_attention_alert_configured_at),
-    clean(rec.external_tradein_received_at || rec.tradein_last_update_at || rec.tradein_synced_to_axis_at),
+    clean(rec.external_tradein_received_at),
+    clean(rec.tradein_last_update_at),
+    clean(rec.tradein_synced_to_axis_at),
     clean(rec.external_tradein_value || rec.tradein_credit || rec.trade_in_credit),
     clean(rec.active_projects_updated_at),
     activeProjectSignature,
-    clean(rec.quote_updated_at || rec.quote_approval_decision_at || rec.quote_last_sync_at),
-    clean(rec.install_base_released_at || rec.install_base_auto_synced_at || rec.install_base_reply_to_rep_at || rec.install_base_response_at),
-    clean(rec.service_updated_at || rec.service_resolved_at || rec.red_hot_resolved_at),
-    clean(rec.latest_service_message_at)
+    clean(rec.quote_updated_at),
+    clean(rec.quote_approval_decision_at),
+    clean(rec.quote_last_sync_at),
+    clean(rec.install_base_released_at),
+    clean(rec.install_base_auto_synced_at),
+    clean(rec.install_base_reply_to_rep_at),
+    clean(rec.install_base_response_at),
+    clean(rec.install_base_correction_at),
+    clean(rec.install_base_fixed_at),
+    clean(rec.service_updated_at),
+    clean(rec.service_resolved_at),
+    clean(rec.red_hot_resolved_at),
+    clean(rec.latest_service_message_at),
+    clean(rec.install_base_message_to_manager_at),
+    clean(latestIncomingCommunication?.channel || latestIncomingCommunication?.messageClass),
+    clean(latestIncomingCommunication?.at),
+    clean(latestIncomingCommunication?.message)
   ].join("|");
 }
 
