@@ -4324,6 +4324,13 @@ td:nth-child(12) .alert-badge{
   text-align:center!important;
   line-height:1.05!important;
 }
+/* Persistent incoming-update alert; selecting the row acknowledges it. */
+tr.unread-message-row:not(.red-hot-row){
+  outline:3px solid #41ff9c!important;
+  outline-offset:-3px!important;
+  box-shadow:inset 7px 0 0 #41ff9c,0 0 28px rgba(65,255,156,.62)!important;
+  animation:unreadMessageRowPulse .9s ease-in-out infinite!important;
+}
 </style>
 </head>
 
@@ -4749,6 +4756,18 @@ function getIncomingMessageSignatureForChannel(rec, pageRole, channel) {
       rec.install_base_message_to_manager_at,
       rec.install_base_message_to_manager
     );
+
+    readManagerUnifiedCommunication()
+      .filter(item => (
+        managerUnifiedMessageMatches(rec, item) &&
+        lower(item.to) === "manager" &&
+        lower(item.from) !== "manager"
+      ))
+      .forEach(item => add(
+        lower(item.from || "team"),
+        item.created_at || item.at || item.timestamp,
+        item.message || item.note || item.text
+      ));
   }
 
   if (pageRole === "rep" && channel === "manager") {
@@ -5029,15 +5048,6 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
 }
 
 function hasUnreadMessageRow(rec, pageRole) {
-  // On Manager, row highlighting must come only from the two dedicated
-  // Manager communication channels. Rep <-> Install Base messages are excluded.
-  if (pageRole === "manager") {
-    return (
-      hasUnreadMessageField(rec, "manager", "rep") ||
-      hasUnreadMessageField(rec, "manager", "install_base")
-    );
-  }
-
   const signature = getLatestIncomingMessageSignature(rec, pageRole);
   const recordKey = getMessageRecordIdentity(rec);
 
