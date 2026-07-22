@@ -8076,6 +8076,20 @@ function getQuoteFollowUpAlertBadge(rec) {
   return `<span class="quote-sub-badge">Follow-up set</span>`;
 }
 function renderReviewSignalCell(rec) {
+  const isRepCreatedNewProject = Boolean(
+    String(rec.project_type || "").toLowerCase() === "new_project_record" &&
+    (
+      rec.new_project_badge === true ||
+      rec.rep_created_new_project === true ||
+      Boolean(rec.new_project_created_at) ||
+      lower(rec.source) === "new espin link project"
+    )
+  );
+
+  if (isRepCreatedNewProject) {
+    return `<span class="alert-badge alert-new-record">New Record</span>`;
+  }
+
   if (
     rec.hub_source === "AXIS Install Base Workspace" ||
     rec.install_base_sync_type ||
@@ -8128,7 +8142,7 @@ function renderReviewSignalCell(rec) {
 
    const label =
   isManualClarification && !fixed
-    ? "New Record"
+    ? "Lifecycle"
     : normalizeOemReviewLabelForRep(rec);
 
    const normalized = String(label).toLowerCase();
@@ -8163,6 +8177,8 @@ if (normalized.includes("service")) {
   cls = "alert-quote";
 } else if (normalized.includes("new")) {
   cls = "alert-new-record";
+} else if (normalized.includes("lifecycle")) {
+  cls = "alert-age";
 }
 
     return `
@@ -8177,7 +8193,7 @@ if (normalized.includes("service")) {
   }
 
   if (rec.manager_unseen_update && rec.manager_flash_type !== "manager_response") {
-    return `<span class="alert-badge alert-new-record">New Record</span>`;
+    return `<span class="alert-badge alert-age">Lifecycle</span>`;
   }
 
   if (rec.tradein_sync_received && !rec.tradein_seen_by_rep) {
