@@ -5092,6 +5092,18 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
       rec.install_base_message_to_manager_at,
       rec.install_base_message_to_manager
     );
+
+    // Unified Hub, Rep, and Service messages addressed to Manager must also
+    // activate the row-level unread frame.
+    getManagerUnifiedMessages(rec)
+      .filter(item => lower(item.messageClass) !== "manager")
+      .forEach(item => {
+        add(
+          item.channel || item.messageClass || "team",
+          item.at || item.created_at || item.timestamp,
+          item.message || item.note || item.text
+        );
+      });
   }
 
   if (pageRole === "rep") {
@@ -11242,8 +11254,8 @@ const MANAGER_UNIFIED_COMMUNICATION_KEY = "espin_unified_communication_v1";
 function readManagerServiceMessages(){try{const v=JSON.parse(localStorage.getItem(MANAGER_SERVICE_MESSAGES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function readManagerUnifiedCommunication(){try{const v=JSON.parse(localStorage.getItem(MANAGER_UNIFIED_COMMUNICATION_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function formatManagerCommunicationTimestamp(value){if(!value)return"Timestamp unavailable";const d=new Date(value);return Number.isNaN(d.getTime())?String(value):d.toLocaleString([],{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-function managerUnifiedIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
-function managerUnifiedMessageMatches(rec,item){const ids=managerUnifiedIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
+function managerUnifiedIds(rec){return[rec.id,rec.key,getRecordKey(rec),rec.oem_project_id,rec.project_id,rec.projectId,rec.asset_id,rec.asset_number,rec.equipment_id,rec.serial_number,rec.serial,rec.serial_no,rec.serialNumber].map(v=>clean(v).toLowerCase()).filter(Boolean)}
+function managerUnifiedMessageMatches(rec,item){const ids=managerUnifiedIds(rec);return[item.record_id,item.record_key,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
 function getManagerUnifiedMessages(rec){
   const items=[];
   getManagerInstallBaseConversationHistory(rec).forEach(x=>items.push({channel:"hub",messageClass:lower(x.sender)==="manager"?"manager":"hub",label:lower(x.sender)==="manager"?"Manager to Hub":"Hub",message:x.message,at:x.at||""}));
