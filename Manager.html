@@ -7954,6 +7954,55 @@ function hasNewRepActionSinceManagerViewed(rec) {
 
 const MANAGER_REP_ROW_SEEN_KEY =
   "espin_manager_rep_row_seen_v1";
+const MANAGER_CORRECTION_ROW_SEEN_KEY =
+  "espin_manager_correction_row_seen_v1";
+
+function getManagerCorrectionRowSignature(rec) {
+  if (!rec) return "";
+  const fields = clean(
+    rec.install_base_latest_corrected_fields ||
+    rec.install_base_corrected_fields ||
+    ""
+  );
+  const correctedAt = clean(
+    rec.install_base_correction_at ||
+    rec.install_base_response_at ||
+    ""
+  );
+  if (!fields || !correctedAt) return "";
+  const values = rec.corrected_fields && typeof rec.corrected_fields === "object"
+    ? JSON.stringify(rec.corrected_fields)
+    : "";
+  return [correctedAt, fields, values].join("|");
+}
+
+function readManagerCorrectionRowSeenMap() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MANAGER_CORRECTION_ROW_SEEN_KEY) || "{}"
+    );
+    return value && typeof value === "object" ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function hasUnseenManagerCorrectionRow(rec) {
+  const signature = getManagerCorrectionRowSignature(rec);
+  if (!signature) return false;
+  const seen = readManagerCorrectionRowSeenMap();
+  return !getManagerRepRowRecordKeys(rec).some(key => seen[key] === signature);
+}
+
+function acknowledgeManagerCorrectionRow(rec) {
+  const signature = getManagerCorrectionRowSignature(rec);
+  if (!signature) return;
+  const seen = readManagerCorrectionRowSeenMap();
+  getManagerRepRowRecordKeys(rec).forEach(key => {
+    seen[key] = signature;
+  });
+  localStorage.setItem(MANAGER_CORRECTION_ROW_SEEN_KEY, JSON.stringify(seen));
+}
 
 function getManagerRepRowUpdateSignature(rec) {
   if (!rec) return "";
@@ -8883,10 +8932,7 @@ function renderTable() {
 
     const managerUpdatePending = Boolean(
       rec.manager_unseen_update === true ||
-      (
-        hasActualInstallBaseCorrection(rec) &&
-        !isManagerRepRowUpdateAcknowledged(rec)
-      )
+      hasUnseenManagerCorrectionRow(rec)
     );
 
     const selectedClass = [
@@ -11997,7 +12043,9 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
 
   // Clear every row-update acknowledgement path for this record.
   acknowledgeManagerRepRowUpdate(rec);
+  acknowledgeManagerCorrectionRow(rec);
   acknowledgeManagerRepRowUpdate(updated);
+  acknowledgeManagerCorrectionRow(updated);
   acknowledgeMessageRow(updated, "manager");
 
   if (isRepAddedManagerRecord(updated)) {
@@ -12823,6 +12871,7 @@ if (clearBtn) {
     localStorage.removeItem(MANAGER_FINANCIAL_SEEN_KEY);
     localStorage.removeItem(MANAGER_REP_ADDED_SEEN_KEY);
     localStorage.removeItem(MANAGER_REP_ROW_SEEN_KEY);
+    localStorage.removeItem(MANAGER_CORRECTION_ROW_SEEN_KEY);
     localStorage.removeItem(MESSAGE_ROW_ACK_KEY);
     localStorage.removeItem(MANAGER_UNIFIED_COMMUNICATION_KEY);
     localStorage.removeItem("espin_unified_communication_ping_v1");
