@@ -1741,6 +1741,14 @@ button[onclick*="ReplyToRep"]{
 }
 button.secondary{background:#15283d!important;border-color:#456683!important;color:#dcecff!important}
 button.red,button.danger{background:linear-gradient(90deg,#a51d32,#ef476f)!important;color:#fff!important}
+
+/* Keep an updated Hub row flashing until its click acknowledgement is saved. */
+tr.unread-message-row:not(.red-hot-row){
+  outline:3px solid #41ff9c!important;
+  outline-offset:-3px!important;
+  box-shadow:inset 7px 0 0 #41ff9c,0 0 28px rgba(65,255,156,.62)!important;
+  animation:unreadMessageRowPulse .9s ease-in-out infinite!important;
+}
 </style>
 </head>
 
@@ -2142,6 +2150,21 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
       rec.manager_message_to_install_base_at,
       rec.manager_message_to_install_base
     );
+
+    // Unified messages addressed to Hub also activate the green row frame.
+    readHubUnifiedCommunication()
+      .filter(item =>
+        hubUnifiedMessageMatches(rec, item) &&
+        lower(item.to) === "hub" &&
+        lower(item.from) !== "hub"
+      )
+      .forEach(item => {
+        add(
+          lower(item.from || "team"),
+          item.created_at || item.at || item.timestamp,
+          item.message || item.note || item.text
+        );
+      });
   }
 
   if (pageRole === "manager") {
@@ -2215,8 +2238,20 @@ function hasUnreadMessageRow(rec, pageRole) {
   if (pageRole === "hub") {
     const repUi = getHubRepCommunicationUi(rec);
     const managerUi = getHubManagerCommunicationUi(rec);
+    const signature = getLatestIncomingMessageSignature(rec, pageRole);
+    const recordKey = getMessageRecordIdentity(rec);
+    const acknowledgements = readMessageRowAcknowledgements();
+    const unifiedUnread = Boolean(
+      signature &&
+      recordKey &&
+      acknowledgements[`${pageRole}|${recordKey}`] !== signature
+    );
 
-    return Boolean(repUi.needsResponse || managerUi.needsResponse);
+    return Boolean(
+      repUi.needsResponse ||
+      managerUi.needsResponse ||
+      unifiedUnread
+    );
   }
 
   const signature = getLatestIncomingMessageSignature(rec, pageRole);
