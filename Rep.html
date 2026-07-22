@@ -22341,6 +22341,14 @@ function handleRepRowClick(id) {
   const clickedRedHotRecord = state.records.find(
     record => String(record.id || record.key || "") === selectedId
   );
+  const rowHadIncomingManagerCommunication =
+    hasUnseenManagerCommunication(clickedRedHotRecord);
+  const rowHadIncomingInstallBaseCommunication =
+    hasUnseenInstallBaseCommunication(clickedRedHotRecord);
+  const rowHadIncomingCommunication =
+    rowHadIncomingManagerCommunication ||
+    rowHadIncomingInstallBaseCommunication ||
+    hasUnreadMessageRow(clickedRedHotRecord, "rep");
   dismissRepRedHotFlash(clickedRedHotRecord);
 
   document
@@ -22396,14 +22404,11 @@ function handleRepRowClick(id) {
   state.detailUpdateFlash =
     getDetailUpdateFlashState(recBeforeSeen);
 
-  const hasIncomingCommunication =
-    hasUnseenIncomingCommunication(recBeforeSeen);
+  const hasIncomingCommunication = rowHadIncomingCommunication;
 
-  const hasIncomingManagerCommunication =
-    hasUnseenManagerCommunication(recBeforeSeen);
+  const hasIncomingManagerCommunication = rowHadIncomingManagerCommunication;
 
-  const hasIncomingInstallBaseCommunication =
-    hasUnseenInstallBaseCommunication(recBeforeSeen);
+  const hasIncomingInstallBaseCommunication = rowHadIncomingInstallBaseCommunication;
 
   if (hasIncomingCommunication) {
     document
@@ -22497,6 +22502,17 @@ function handleRepRowClick(id) {
     hasDetailFlash
   ) {
     renderDetail();
+  }
+
+  if (rowHadIncomingCommunication) {
+    window.setTimeout(() => {
+      const card = document.querySelector(
+        ".comm-shell.communication-update-frame, .comm-shell.incoming-message-field-frame, .rep-unified-communication, .comm-shell"
+      );
+      if (!card) return;
+      card.classList.add("communication-update-frame");
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
   }
 }
 
