@@ -14781,7 +14781,7 @@ function renderRegularRepAction(rec) {
 
   // Only a manually selected Rep Action belongs in this summary.
   // Review categories such as Capital Planning must not appear here.
-  const savedActionValue = actionDraft.action || rec.rep_selected_manual_action || "";
+  const savedActionValue = rec.rep_selected_manual_action || "";
   const savedActionLabel = savedActionValue
     ? (
         rec.rep_selected_manual_action_label ||
@@ -16520,7 +16520,10 @@ applyDetailUpdateFrames();
 const manualActionSelect = $("manualActionSelect");
 const repActionDraftKey = String(rec.id || rec.key || getRecordKey(rec) || "");
 const repActionDraft = state.repActionDrafts[repActionDraftKey] || {};
-const savedManualAction = repActionDraft.action || rec.rep_selected_manual_action || rec.rep_action || "";
+const repActionDraftHasSelection = Object.prototype.hasOwnProperty.call(repActionDraft, "action");
+const savedManualAction = repActionDraftHasSelection
+  ? repActionDraft.action
+  : (rec.rep_selected_manual_action || rec.rep_action || "");
 
 if (manualActionSelect) {
   const hasSavedManualAction = [...manualActionSelect.options].some(
@@ -20175,6 +20178,13 @@ if (!action) {
 	      if (!confirm(`Confirm action:\n\n${label}\n\nAXIS will document this rep-selected action.`)) {
 	        return;
 	      }
+
+      // Continue confirms the current action. Reset the controls for the next
+      // action while retaining the completed action in record history/summary.
+      state.repActionDrafts[String(rec.id || rec.key || getRecordKey(rec) || "")] = {
+        action: "",
+        followUpDate: ""
+      };
 
       // These actions own their persistence and navigation. Run them before
       // the generic action save/render so popup handling remains tied to the
