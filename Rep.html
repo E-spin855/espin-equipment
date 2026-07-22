@@ -12692,7 +12692,8 @@ const hasUnseenManagerFix =
       hasUnseenInstallBaseUpdate ||
 hasUnseenFixedData ||
 hasUnseenManagerFix ||
-hasUnseenHubFix
+hasUnseenHubFix ||
+(rec.tradein_sync_received && rec.tradein_seen_by_rep !== true)
   ? "rep-new-row-flash"
   : "",
 
@@ -21846,8 +21847,18 @@ return true;
       let synced = [];
 
       try {
-        synced = JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]");
-        if (!Array.isArray(synced)) synced = [];
+        const parsed = JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]");
+        synced = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.records)
+            ? parsed.records
+            : Array.isArray(parsed?.items)
+              ? parsed.items
+              : Array.isArray(parsed?.data)
+                ? parsed.data
+                : parsed && typeof parsed === "object"
+                  ? [parsed]
+                  : [];
       } catch {
         synced = [];
       }
@@ -21859,8 +21870,7 @@ return true;
 
       synced.forEach(item => {
         const syncSeenKey = getTradeInSyncSeenKey(item);
-        const alreadyProcessed = syncSeenKey && processedSet.has(syncSeenKey);
-        if (alreadyProcessed) return;
+        let alreadyProcessed = Boolean(syncSeenKey && processedSet.has(syncSeenKey));
 
         const serial = clean(item.serial_number || item.axis_serial_number || "");
         const projectId = clean(item.project_id || "");
@@ -21909,6 +21919,32 @@ return true;
             (serial && String(r.serial_number || "") === serial)
           )
         );
+
+        // A processed marker must not suppress recovery when an older Rep
+        // workspace copy lost the Trade Desk fields. Reapply it as a new
+        // visible update unless the linked record still contains this return.
+        const linkedRecord = isNewProjectSync
+          ? existingNewProject
+          : existingLifecycle;
+        const incomingTradeInAt = clean(
+          item.last_tradein_update_at || item.updated_at || ""
+        );
+        const linkedTradeInAt = clean(
+          linkedRecord?.external_tradein_received_at ||
+          linkedRecord?.tradein_last_update_at ||
+          linkedRecord?.tradein_synced_to_axis_at ||
+          ""
+        );
+        const linkedRecordIsCurrent = Boolean(
+          linkedRecord?.tradein_sync_received &&
+          Number(linkedRecord.external_tradein_value || 0) === Number(tradeInValue || 0) &&
+          (!incomingTradeInAt || linkedTradeInAt === incomingTradeInAt)
+        );
+
+        if (alreadyProcessed && linkedRecordIsCurrent) return;
+        if (alreadyProcessed && linkedRecord && !linkedRecordIsCurrent) {
+          alreadyProcessed = false;
+        }
 
         if (isNewProjectSync) {
           if (!existingNewProject) {

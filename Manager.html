@@ -4757,17 +4757,22 @@ function getIncomingMessageSignatureForChannel(rec, pageRole, channel) {
       rec.install_base_message_to_manager
     );
 
-    readManagerUnifiedCommunication()
-      .filter(item => (
-        managerUnifiedMessageMatches(rec, item) &&
-        lower(item.to) === "manager" &&
-        lower(item.from) !== "manager"
-      ))
-      .forEach(item => add(
-        lower(item.from || "team"),
-        item.created_at || item.at || item.timestamp,
-        item.message || item.note || item.text
-      ));
+    // Use the same normalized feed as Manager's Communication panel so
+    // incoming Hub, Rep, Service, legacy, and unified messages all alert.
+    const latestManagerCommunication =
+      typeof getLatestIncomingManagerUnifiedMessage === "function"
+        ? getLatestIncomingManagerUnifiedMessage(rec)
+        : null;
+
+    if (latestManagerCommunication) {
+      add(
+        latestManagerCommunication.channel ||
+          latestManagerCommunication.messageClass ||
+          "team",
+        latestManagerCommunication.at,
+        latestManagerCommunication.message
+      );
+    }
   }
 
   if (pageRole === "rep" && channel === "manager") {
@@ -7790,7 +7795,8 @@ function hasNewRepActionSinceManagerViewed(rec) {
     new Date(rec.rep_last_action_at || 0).getTime() || 0,
     new Date(rec.rep_manager_message_at || 0).getTime() || 0,
     new Date(rec.priority_updated_at || 0).getTime() || 0,
-    new Date(rec.rep_attention_alert_configured_at || 0).getTime() || 0
+    new Date(rec.rep_attention_alert_configured_at || 0).getTime() || 0,
+    new Date(rec.external_tradein_received_at || rec.tradein_last_update_at || rec.tradein_synced_to_axis_at || 0).getTime() || 0
   );
 
   if (!latestRepUpdateTime) return false;
@@ -7829,7 +7835,9 @@ function getManagerRepRowUpdateSignature(rec) {
     clean(rec.rep_last_action_at),
     clean(rec.rep_manager_message_at),
     clean(rec.priority_updated_at),
-    clean(rec.rep_attention_alert_configured_at)
+    clean(rec.rep_attention_alert_configured_at),
+    clean(rec.external_tradein_received_at || rec.tradein_last_update_at || rec.tradein_synced_to_axis_at),
+    clean(rec.external_tradein_value || rec.tradein_credit || rec.trade_in_credit)
   ].join("|");
 }
 
