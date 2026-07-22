@@ -8953,7 +8953,10 @@ function renderTable() {
       recordUpdateTime === newestManagerUpdateTime
     );
     const managerUpdatePending = Boolean(
-      rec.manager_unseen_update === true ||
+      (
+        rec.manager_unseen_update === true &&
+        !isManagerRepRowUpdateAcknowledged(rec)
+      ) ||
       (isNewestManagerUpdate && hasUnseenManagerCorrectionRow(rec))
     );
     const latestManagerRowShouldFlash = Boolean(
@@ -11995,7 +11998,10 @@ function selectRow(id) {
   }
 
   const rowHadIncomingCommunication = hasUnreadMessageRow(rec, "manager");
+  const rowHadIncomingUnifiedCommunication =
+    hasUnseenManagerUnifiedCommunication(rec);
   acknowledgeMessageRow(rec, "manager");
+  acknowledgeManagerUnifiedCommunication(rec);
 
   const now = new Date().toISOString();
 
@@ -12019,6 +12025,10 @@ state.managerUpdateHighlight = captureManagerUpdateHighlight(rec);
 // Same behavior as Rep side: clicking the row tied to a Rep text opens
 // the Manager / Rep communication field and shows the green frame.
 state.selectedId = rec.id || selectedId;
+
+if (rowHadIncomingUnifiedCommunication) {
+  state.unifiedCommunicationOpen = true;
+}
 
 let openedRepCommunicationFromRowClick = false;
 const repCommunicationUi = getManagerRepCommunicationUi(rec);
@@ -12143,11 +12153,19 @@ if (openedRepCommunicationFromRowClick) {
 renderTable();
 managerStorageSignature = getManagerStorageSignature();
 
-if (selectionChanged || openedRepCommunicationFromRowClick) {
+if (
+  selectionChanged ||
+  openedRepCommunicationFromRowClick ||
+  rowHadIncomingUnifiedCommunication
+) {
   renderDetail();
 }
 
-if (rowHadIncomingCommunication || openedRepCommunicationFromRowClick) {
+if (
+  rowHadIncomingCommunication ||
+  openedRepCommunicationFromRowClick ||
+  rowHadIncomingUnifiedCommunication
+) {
   window.setTimeout(() => {
     const card = document.querySelector(
       ".comm-shell.communication-update-frame, .comm-shell.incoming-message-field-frame, .manager-unified-communication, .comm-shell"
