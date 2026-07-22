@@ -16094,7 +16094,11 @@ function getUnifiedRepMessages(rec){
   readUnifiedCommunication().filter(x=>unifiedMessageMatches(rec,x)&&(lower(x.from)==="rep"||lower(x.to)==="rep")).forEach(x=>items.push({channel:lower(x.from)==="rep"?lower(x.to):lower(x.from),label:`${clean(x.from_label||x.from||"Team")} to ${clean(x.to_label||x.to||"Team")}`,message:clean(x.message),at:x.created_at||""}));
   return items.filter(x=>clean(x.message)).sort((a,b)=>(new Date(a.at||0).getTime()||0)-(new Date(b.at||0).getTime()||0));
 }
-function toggleUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}state.unifiedCommunicationOpen=state.unifiedCommunicationOpen!==true;renderDetail()}
+function clearUnifiedCommunicationFrame(event){
+  state.unifiedCommunicationFrameActive=false;
+  event?.currentTarget?.closest(".rep-unified-communication")?.classList.remove("communication-update-frame");
+}
+function toggleUnifiedCommunication(event){if(event){event.preventDefault();event.stopPropagation()}clearUnifiedCommunicationFrame(event);state.unifiedCommunicationOpen=state.unifiedCommunicationOpen!==true;renderDetail()}
 function sendUnifiedCommunication(recordId){
   const rec=state.records.find(x=>String(x.id||x.key||getRecordKey(x))===String(recordId||""))||findSelectedRecord();if(!rec)return;
   const to=$("unifiedCommunicationTo")?.value||"hub";const message=clean($("unifiedCommunicationText")?.value||"");if(!message){alert("Type a message before sending.");return}
@@ -16103,7 +16107,8 @@ function sendUnifiedCommunication(recordId){
 }
 function renderUnifiedRepCommunication(rec){
   const history=getUnifiedRepMessages(rec);const latest=history[history.length-1]||null;const open=state.unifiedCommunicationOpen===true;const defaultTo=latest?.channel||((isRedHotServiceAlert(rec)||clean(rec.service_status))?"service":"hub");
-  return `<div class="detail-card full comm-shell rep-unified-communication"><div class="rep-unified-head"><div><div class="comm-title">Communication</div><div class="rep-unified-summary">${latest?`<strong>${escapeHtml(latest.label)}:</strong> ${escapeHtml(latest.message)}`:"No messages yet."}</div></div><button type="button" class="${open?"green":"secondary"}" onclick="toggleUnifiedCommunication(event)">${open?"Hide Communication":`Open Communication${history.length?` (${history.length})`:""}`}</button></div>${open?`<div class="rep-unified-history">${history.length?history.map(x=>`<div class="rep-unified-message ${escapeHtml(x.channel)}"><div class="rep-unified-source">${escapeHtml(x.label)} · ${escapeHtml(formatRepCommunicationTimestamp(x.at))}</div><div class="rep-unified-text">${escapeHtml(x.message)}</div></div>`).join(""):`<div class="mini">No communication history yet.</div>`}</div><div class="rep-unified-compose"><div><label for="unifiedCommunicationTo">To</label><select id="unifiedCommunicationTo"><option value="hub" ${defaultTo==="hub"?"selected":""}>Hub</option><option value="service" ${defaultTo==="service"?"selected":""}>Service</option><option value="manager" ${defaultTo==="manager"?"selected":""}>Manager</option></select></div><div><label for="unifiedCommunicationText">Message</label><textarea id="unifiedCommunicationText" placeholder="Type one message and select the receiving team..."></textarea></div><button type="button" class="green send-message-glow" onclick="sendUnifiedCommunication('${escapeJs(rec.id||rec.key||getRecordKey(rec))}')">Send Message</button></div>`:""}</div>`;
+  const frameClass=state.unifiedCommunicationFrameActive===true?" communication-update-frame":"";
+  return `<div class="detail-card full comm-shell rep-unified-communication${frameClass}" onclick="clearUnifiedCommunicationFrame(event)"><div class="rep-unified-head"><div><div class="comm-title">Communication</div><div class="rep-unified-summary">${latest?`<strong>${escapeHtml(latest.label)}:</strong> ${escapeHtml(latest.message)}`:"No messages yet."}</div></div><button type="button" class="${open?"green":"secondary"}" onclick="toggleUnifiedCommunication(event)">${open?"Hide Communication":`Open Communication${history.length?` (${history.length})`:""}`}</button></div>${open?`<div class="rep-unified-history">${history.length?history.map(x=>`<div class="rep-unified-message ${escapeHtml(x.channel)}"><div class="rep-unified-source">${escapeHtml(x.label)} · ${escapeHtml(formatRepCommunicationTimestamp(x.at))}</div><div class="rep-unified-text">${escapeHtml(x.message)}</div></div>`).join(""):`<div class="mini">No communication history yet.</div>`}</div><div class="rep-unified-compose"><div><label for="unifiedCommunicationTo">To</label><select id="unifiedCommunicationTo"><option value="hub" ${defaultTo==="hub"?"selected":""}>Hub</option><option value="service" ${defaultTo==="service"?"selected":""}>Service</option><option value="manager" ${defaultTo==="manager"?"selected":""}>Manager</option></select></div><div><label for="unifiedCommunicationText">Message</label><textarea id="unifiedCommunicationText" placeholder="Type one message and select the receiving team..."></textarea></div><button type="button" class="green send-message-glow" onclick="sendUnifiedCommunication('${escapeJs(rec.id||rec.key||getRecordKey(rec))}')">Send Message</button></div>`:""}</div>`;
 }
 
 function renderDetail() {
@@ -22701,6 +22706,7 @@ function handleRepRowClick(id) {
   state.installBaseCommunicationOpen = false;
   if (rowHadIncomingServiceCommunication) {
     state.unifiedCommunicationOpen = true;
+    state.unifiedCommunicationFrameActive = true;
   }
 
   if (selectionChanged) {
@@ -23116,6 +23122,7 @@ state.selectedRep = null;
 state.showCompleted = true;
 state.installBaseCommunicationOpen = false;
 state.unifiedCommunicationOpen = false;
+state.unifiedCommunicationFrameActive = false;
 
 const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
 
