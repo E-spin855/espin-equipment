@@ -6661,12 +6661,15 @@ function getAlerts(rec) {
     ""
   );
 
-  const importedLabel = clean(
+  const rawImportedLabel = clean(
     rec.oem_review_label ||
     rec.review_label ||
     rec.proactive_reason ||
     ""
   );
+  const importedLabel = lower(rawImportedLabel).includes("upgrade review")
+    ? "Modernization Review"
+    : rawImportedLabel;
 
   const importedReason = clean(
     rec.oem_review_reason ||
@@ -6700,6 +6703,9 @@ function getAlerts(rec) {
       utilization_review: "utilization",
       lifecycle: "lifecycle",
       lifecycle_review: "lifecycle",
+      replacement_signal: "replacement",
+      replacement_planning: "replacement",
+      replacement_review: "replacement",
       tradein: "tradein",
       trade_in: "tradein",
       quote: "quote",
@@ -6709,6 +6715,8 @@ function getAlerts(rec) {
       proactive: "proactive",
       review: "review",
       replacement: "replacement",
+      upgrade_signal: "upgrade",
+      upgrade_review: "upgrade",
       upgrade: "upgrade",
       disposal: "disposal",
       disposition: "disposal"
@@ -6724,6 +6732,9 @@ function getAlerts(rec) {
       utilization_review: "Use",
       lifecycle: "Age",
       lifecycle_review: "Age",
+      replacement_signal: "Replacement Planning",
+      replacement_planning: "Replacement Planning",
+      replacement_review: "Replacement Planning",
       tradein: "Review",
       trade_in: "Review",
       quote: "Quote",
@@ -6733,7 +6744,9 @@ function getAlerts(rec) {
       proactive: "Review",
       review: "Review",
       replacement: "Replace",
-      upgrade: "Upgrade",
+      upgrade_signal: "Modernization Review",
+      upgrade_review: "Modernization Review",
+      upgrade: "Modernization Review",
       disposal: "Dispose",
       disposition: "Dispose"
     };
@@ -7087,7 +7100,10 @@ function renderReviewCondition(rec) {
     rec.install_base_release_status === "released_to_manager";
 
   if (isInstallBaseRecord) {
-    const label = getManagerVisibleInstallBaseReviewLabel(rec);
+    const rawLabel = getManagerVisibleInstallBaseReviewLabel(rec);
+    const label = lower(rawLabel).includes("upgrade review")
+      ? "Modernization Review"
+      : rawLabel;
     const normalized = String(label || "").toLowerCase();
 
     let cls = "alert-badge alert-record-note";
@@ -7105,6 +7121,10 @@ function renderReviewCondition(rec) {
   cls = "alert-badge alert-upgrade";
     } else if (normalized.includes("ownership change")) {
       cls = "alert-badge alert-ownership-change";
+    } else if (
+      normalized.includes("replacement")
+    ) {
+      cls = "alert-badge alert-age";
     } else if (
       normalized.includes("capital") ||
       normalized.includes("planning")
@@ -7148,10 +7168,7 @@ function renderReviewCondition(rec) {
       cls = "alert-badge alert-site";
     } else if (normalized.includes("quote")) {
       cls = "alert-badge alert-quote";
-    } else if (
-      normalized.includes("age") ||
-      normalized.includes("replacement")
-    ) {
+    } else if (normalized.includes("age")) {
       cls = "alert-badge alert-age";
     } else if (normalized.includes("new record")) {
       cls = "alert-badge alert-new-record";
