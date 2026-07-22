@@ -7473,6 +7473,9 @@ function getManagerLatestUpdateTime(rec) {
       )
     : [];
 
+  const communicationTimes = getManagerUnifiedMessages(rec)
+    .map(item => item?.at || item?.created_at || item?.timestamp || "");
+
   return [
     rec.install_base_response_at,
     rec.install_base_correction_at,
@@ -7488,7 +7491,12 @@ function getManagerLatestUpdateTime(rec) {
     rec.service_updated_at,
     rec.latest_service_message_at,
     rec.install_base_released_at,
-    ...activeProjectTimes
+    rec.updated_at,
+    rec.manager_response_at,
+    rec.install_base_message_to_manager_at,
+    rec.manager_message_to_install_base_at,
+    ...activeProjectTimes,
+    ...communicationTimes
   ].reduce((latest, value) => {
     const time = new Date(value || 0).getTime() || 0;
     return Math.max(latest, time);
@@ -8790,6 +8798,10 @@ function renderTable() {
   }));
 
   records = records.sort((a, b) => {
+    const latestUpdateDifference =
+      getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
+    if (latestUpdateDifference) return latestUpdateDifference;
+
     const aUpdated = shouldManagerRowFlash(a) || hasUnreadMessageRow(a, "manager");
     const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
 

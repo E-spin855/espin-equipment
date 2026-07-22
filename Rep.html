@@ -8899,7 +8899,14 @@ function getRepRedHotLatestUpdateTime(rec) {
     rec.install_base_response_at,
     rec.install_base_correction_at,
     rec.manager_response_at,
-    rec.manager_response_sent_at
+    rec.manager_response_sent_at,
+    rec.updated_at,
+    rec.service_updated_at,
+    rec.rep_last_action_at,
+    rec.rep_manager_message_at,
+    rec.tradein_last_update_at,
+    rec.quote_updated_at,
+    rec.active_projects_updated_at
   ];
 
   const conversationTimes = [
@@ -8908,7 +8915,12 @@ function getRepRedHotLatestUpdateTime(rec) {
       : []),
     ...(Array.isArray(rec.manager_conversation_history)
       ? rec.manager_conversation_history
-      : [])
+      : []),
+    ...(Array.isArray(rec.rep_manager_conversation_history)
+      ? rec.rep_manager_conversation_history
+      : []),
+    ...readUnifiedCommunication().filter(item => unifiedMessageMatches(rec, item)),
+    ...readUnifiedServiceMessages().filter(item => unifiedMessageMatches(rec, item))
   ].map(item => item?.at || item?.created_at || item?.timestamp || "");
 
   return [...directTimes, ...conversationTimes]
@@ -12767,10 +12779,15 @@ function renderTable() {
       redHot: isRedHotServiceAlert(rec),
       hasHubFix: hasUnseenHubFixRequest(rec),
       hasAlert: hasAnyEquipmentReviewAlert(rec),
+      updatedAt: getRepRedHotLatestUpdateTime(rec),
       weight: getDisplayOrderWeight(rec, today),
       priority: getManualPriority(rec)
     }))
     .sort((a, b) => {
+      if (a.updatedAt !== b.updatedAt) {
+        return b.updatedAt - a.updatedAt;
+      }
+
       if (a.redHot !== b.redHot) {
         return a.redHot ? -1 : 1;
       }

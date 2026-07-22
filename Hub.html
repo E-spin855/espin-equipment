@@ -6524,7 +6524,16 @@ function renderTable() {
       rec?.install_base_latest_fix_at,
       rec?.install_base_corrected_at,
       rec?.manager_response_at,
-      rec?.updated_at
+      rec?.updated_at,
+      rec?.service_updated_at,
+      rec?.rep_last_action_at,
+      rec?.rep_manager_message_at,
+      rec?.install_base_message_to_rep_at,
+      rec?.install_base_message_to_manager_at,
+      rec?.tradein_last_update_at,
+      rec?.quote_updated_at,
+      rec?.active_projects_updated_at,
+      ...getHubUnifiedMessages(rec).map(item => item?.created_at || item?.at || "")
     ]
       .map(value => new Date(value || 0).getTime())
       .filter(value => Number.isFinite(value) && value > 0);
@@ -6533,6 +6542,10 @@ function renderTable() {
   };
 
   const sorted = [...records].sort((a, b) => {
+    const activityDifference =
+      getHubCorrectionTimestamp(b) - getHubCorrectionTimestamp(a);
+    if (activityDifference !== 0) return activityDifference;
+
     const redHotA = isRedHotServiceAlert(a) ? 1 : 0;
     const redHotB = isRedHotServiceAlert(b) ? 1 : 0;
     if (redHotB !== redHotA) return redHotB - redHotA;
