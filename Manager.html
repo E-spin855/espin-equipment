@@ -7901,6 +7901,18 @@ function getManagerRepRowUpdateSignature(rec) {
       new Date(a.at || a.date || a.timestamp || 0).getTime()
     )[0];
 
+  const activeProjectSnapshots = Array.isArray(rec.active_project_snapshots)
+    ? rec.active_project_snapshots
+    : [];
+  const activeProjectSignature = activeProjectSnapshots.length
+    ? JSON.stringify(activeProjectSnapshots.map(project => ({
+        id: project.project_id || project.id || "",
+        updated: project.updated_at || project.status_updated_at || "",
+        progress: project.progress ?? "",
+        stage: project.current_stage || ""
+      })))
+    : "";
+
   // The row-update signature must contain only Rep-originated update data.
   // Manager acknowledgement fields change when a row is clicked; including
   // them caused a previously cleared green frame to reappear.
@@ -7913,7 +7925,13 @@ function getManagerRepRowUpdateSignature(rec) {
     clean(rec.priority_updated_at),
     clean(rec.rep_attention_alert_configured_at),
     clean(rec.external_tradein_received_at || rec.tradein_last_update_at || rec.tradein_synced_to_axis_at),
-    clean(rec.external_tradein_value || rec.tradein_credit || rec.trade_in_credit)
+    clean(rec.external_tradein_value || rec.tradein_credit || rec.trade_in_credit),
+    clean(rec.active_projects_updated_at),
+    activeProjectSignature,
+    clean(rec.quote_updated_at || rec.quote_approval_decision_at || rec.quote_last_sync_at),
+    clean(rec.install_base_released_at || rec.install_base_auto_synced_at || rec.install_base_reply_to_rep_at || rec.install_base_response_at),
+    clean(rec.service_updated_at || rec.service_resolved_at || rec.red_hot_resolved_at),
+    clean(rec.latest_service_message_at)
   ].join("|");
 }
 
@@ -8726,7 +8744,13 @@ function renderTable() {
     age: state.managerAge
   }));
 
-  records = records.sort((a, b) => getDisplayOrderWeight(b) - getDisplayOrderWeight(a));
+  records = records.sort((a, b) => {
+    const aUpdated = shouldManagerRowFlash(a) || hasUnreadMessageRow(a, "manager");
+    const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
+
+    if (aUpdated !== bUpdated) return Number(bUpdated) - Number(aUpdated);
+    return getDisplayOrderWeight(b) - getDisplayOrderWeight(a);
+  });
 
   if (!records.length) {
     tbody.innerHTML = `
