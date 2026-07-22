@@ -7665,6 +7665,8 @@ function bindStableMessageRefresh(pageRole) {
     "espin_rep_queue",
     "axis_install_base_response_queue_v1",
     "espin_install_manager_text_v1",
+    "espin_unified_communication_v1",
+    "espin_unified_communication_ping_v1",
     "axis_install_base_response_ping_v1",
     "axis_manager_sync_ping_v1",
     "espin_install_manager_text_ping_v1"
@@ -16084,8 +16086,8 @@ window.addEventListener("storage", event => {
 function readUnifiedServiceMessages(){try{const v=JSON.parse(localStorage.getItem(UNIFIED_SERVICE_MESSAGES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function readUnifiedCommunication(){try{const v=JSON.parse(localStorage.getItem(UNIFIED_COMMUNICATION_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return[]}}
 function formatRepCommunicationTimestamp(value){if(!value)return"Timestamp unavailable";const d=new Date(value);return Number.isNaN(d.getTime())?String(value):d.toLocaleString([],{year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}
-function unifiedRecordIds(rec){return[rec.id,rec.key,rec.oem_project_id,rec.project_id,rec.asset_id,rec.equipment_id,rec.serial_number,rec.serial].map(v=>clean(v).toLowerCase()).filter(Boolean)}
-function unifiedMessageMatches(rec,item){const ids=unifiedRecordIds(rec);return[item.record_id,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
+function unifiedRecordIds(rec){return[rec.id,rec.key,getRecordKey(rec),rec.oem_project_id,rec.project_id,rec.projectId,rec.asset_id,rec.asset_number,rec.equipment_id,rec.serial_number,rec.serial,rec.serial_no,rec.serialNumber].map(v=>clean(v).toLowerCase()).filter(Boolean)}
+function unifiedMessageMatches(rec,item){const ids=unifiedRecordIds(rec);return[item.record_id,item.record_key,item.key,item.oem_project_id,item.project_id,item.asset_id,item.equipment_id,item.serial_number,item.serial].map(v=>clean(v).toLowerCase()).filter(Boolean).some(v=>ids.includes(v))}
 function getUnifiedRepMessages(rec){
   const items=[];
   getInstallBaseConversationHistory(rec).forEach(x=>items.push({channel:"hub",label:lower(x.sender)==="rep"?"Rep to Hub":"Hub",message:x.message,at:x.at||""}));
@@ -23016,6 +23018,8 @@ function scheduleRepSyncRender() {
       TRADE_IN_RETURN_KEYS.includes(e.key) ||
       /trade[_-]?(in|desk).*(sync|return|update)/i.test(String(e.key || "")) ||
       e.key === "axis_manager_sync_ping_v1" ||
+      e.key === UNIFIED_COMMUNICATION_KEY ||
+      e.key === "espin_unified_communication_ping_v1" ||
       e.key === AXIS_SHARE_KEY ||
       e.key === UNMATCHED_TRADEIN_KEY ||
       e.key === QUOTE_APPROVAL_SYNC_KEY ||
