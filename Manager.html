@@ -5857,10 +5857,45 @@ function mergeManagerRepActionHistories(existingHistory, incomingHistory) {
     merged.push(normalized);
   });
 
-  return merged.sort((a, b) => {
+  return removeTradeInInstallBaseHistoryArtifact(merged).sort((a, b) => {
     const aTime = new Date(a.at || 0).getTime() || 0;
     const bTime = new Date(b.at || 0).getTime() || 0;
     return aTime - bTime;
+  });
+}
+
+function removeTradeInInstallBaseHistoryArtifact(history) {
+  const items = Array.isArray(history) ? history : [];
+  const tradeInTimes = new Set(
+    items
+      .filter(item => {
+        const action = lower(item?.action || "");
+        const label = lower(item?.label || "");
+
+        return (
+          action === "send_tradein_app" ||
+          action === "send_to_trade_in_app" ||
+          label.includes("send to trade-in app")
+        );
+      })
+      .map(item => clean(item?.at || item?.date || item?.timestamp))
+      .filter(Boolean)
+  );
+
+  if (!tradeInTimes.size) return items;
+
+  return items.filter(item => {
+    const at = clean(item?.at || item?.date || item?.timestamp);
+    if (!tradeInTimes.has(at)) return true;
+
+    const action = lower(item?.action || "");
+    const label = lower(item?.label || "");
+    const isInstallBaseFixArtifact =
+      action === "install_base_fix" ||
+      action === "install_base_fix_request" ||
+      label === "install base fix";
+
+    return !isInstallBaseFixArtifact;
   });
 }
 
@@ -5902,9 +5937,11 @@ function mergeManagerWorkflowEvents(existingHistory, incomingHistory) {
 }
 
 function getLatestRepActionHistorySignature(rec) {
-  const history = Array.isArray(rec?.rep_action_history)
-    ? rec.rep_action_history
-    : [];
+  const history = removeTradeInInstallBaseHistoryArtifact(
+    Array.isArray(rec?.rep_action_history)
+      ? rec.rep_action_history
+      : []
+  );
 
   const latest = history
     .filter(item =>
@@ -6175,7 +6212,7 @@ function getManagerRepActionHistory(rec) {
     }
   });
 
-  return deduped.sort((a, b) => {
+  return removeTradeInInstallBaseHistoryArtifact(deduped).sort((a, b) => {
     const aTime = new Date(a.at || 0).getTime();
     const bTime = new Date(b.at || 0).getTime();
     return aTime - bTime;
