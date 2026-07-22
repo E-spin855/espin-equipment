@@ -3806,9 +3806,46 @@ function loadRecords() {
     state.records = [];
   }
 
+  mergeMissingRepRecordsIntoHub();
   mergeWonProjectsFromRepIntoInstallBase();
   mergeRepResponsesIntoRecords();
   state.records = state.records.map(mergeInstallManagerTextIntoHubRecord);
+}
+function mergeMissingRepRecordsIntoHub() {
+  const sharedRepRecords = [
+    ...readArrayKey(STORAGE_KEY),
+    ...readArrayKey("espin_rep_workspace_records_v1")
+  ].filter(rec =>
+    rec &&
+    isHubRepOriginatedRecord(rec) &&
+    rec.install_base_visible !== false &&
+    lower(rec.install_base_sync_type || "") !== "fix_hold" &&
+    lower(rec.install_base_release_status || "") !== "fix_needed"
+  );
+
+  let changed = false;
+
+  sharedRepRecords.forEach(repRecord => {
+    if (state.records.some(existing => sameRecord(existing, repRecord))) return;
+
+    const key = repRecord.key || getRecordKey(repRecord);
+    state.records.unshift({
+      ...repRecord,
+      id: repRecord.id || key,
+      key,
+      install_base_visible: true,
+      install_base_received_from_rep: true,
+      install_base_received_from_rep_at:
+        repRecord.install_base_received_from_rep_at ||
+        repRecord.rep_added_at ||
+        repRecord.rep_new_update_at ||
+        new Date().toISOString()
+    });
+    changed = true;
+  });
+
+  if (changed) saveRecords();
+  return changed;
 }
 function mergeWonProjectsFromRepIntoInstallBase() {
   const directRecords = readArrayKey(INSTALL_BASE_KEY);
