@@ -8073,6 +8073,16 @@ function acknowledgeManagerRepRowUpdate(rec) {
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
 
+  // Rep sync packets explicitly mark fresh fixes, actions, and messages as
+  // unseen. Honor that live flag before consulting an older saved signature;
+  // the row click clears the flag and records the new acknowledgement.
+  if (
+    rec.manager_unseen_update === true &&
+    !isHubRepOnlyTextExchange(rec)
+  ) {
+    return true;
+  }
+
   // Once this exact Rep-originated update signature is acknowledged, suppress
   // every legacy flash path for it. A genuinely new Rep update changes the
   // signature and will flash again.
