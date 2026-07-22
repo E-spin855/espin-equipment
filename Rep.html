@@ -6358,6 +6358,14 @@ button.red,button.danger{background:linear-gradient(90deg,#a51d32,#ef476f)!impor
   color:#fff7fb!important;border-color:rgba(249,168,212,.88)!important;
   box-shadow:0 0 15px rgba(236,72,153,.28)!important;
 }
+
+/* Keep an updated Rep row flashing until its click acknowledgement is saved. */
+tr.unread-message-row:not(.red-hot-row){
+  outline:3px solid #41ff9c!important;
+  outline-offset:-3px!important;
+  box-shadow:inset 7px 0 0 #41ff9c,0 0 28px rgba(65,255,156,.62)!important;
+  animation:unreadMessageRowPulse .9s ease-in-out infinite!important;
+}
 </style>
 </head>
 
@@ -7429,6 +7437,21 @@ function getLatestIncomingMessageSignature(rec, pageRole) {
         rec.install_base_request_message ||
         rec.install_base_message
     );
+
+    // Unified messages addressed to Rep must also activate the row frame.
+    readUnifiedCommunication()
+      .filter(item =>
+        unifiedMessageMatches(rec, item) &&
+        lower(item.to) === "rep" &&
+        lower(item.from) !== "rep"
+      )
+      .forEach(item => {
+        add(
+          lower(item.from || "team"),
+          item.created_at || item.at || item.timestamp,
+          item.message || item.note || item.text
+        );
+      });
   }
 
   [
