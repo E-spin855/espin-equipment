@@ -12246,9 +12246,62 @@ function acknowledgeRedHotAlert(recordId, event) {
     "Rep";
 
   saveRecords();
+  syncAcknowledgedRedHotRecordEverywhere(rec);
   renderTable();
   renderDetail();
   return false;
+}
+
+function syncAcknowledgedRedHotRecordEverywhere(acknowledgedRecord) {
+  if (!acknowledgedRecord) return;
+
+  const applyAcknowledgement = item => {
+    if (!sameWorkspaceEquipmentRecord(item, acknowledgedRecord)) return item;
+
+    return {
+      ...item,
+      red_hot_acknowledged: true,
+      red_hot_acknowledged_at: acknowledgedRecord.red_hot_acknowledged_at,
+      red_hot_acknowledged_by: acknowledgedRecord.red_hot_acknowledged_by
+    };
+  };
+
+  [
+    STORAGE_KEY,
+    REP_WORKSPACE_BACKUP_KEY,
+    INSTALL_BASE_KEY,
+    INSTALL_BASE_RESPONSE_KEY,
+    INSTALL_BASE_FINAL_SYNC_KEY,
+    MANAGER_QUEUE_KEY,
+    REP_QUEUE_KEY
+  ].forEach(key => {
+    let parsed;
+    try {
+      parsed = JSON.parse(localStorage.getItem(key) || "null");
+    } catch (_) {
+      parsed = null;
+    }
+
+    if (Array.isArray(parsed)) {
+      localStorage.setItem(key, JSON.stringify(parsed.map(applyAcknowledgement)));
+      return;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const buckets = {};
+      Object.entries(parsed).forEach(([name, records]) => {
+        buckets[name] = Array.isArray(records)
+          ? records.map(applyAcknowledgement)
+          : records;
+      });
+      localStorage.setItem(key, JSON.stringify(buckets));
+    }
+  });
+
+  const ping = String(Date.now());
+  [MANAGER_SYNC_KEY, REP_SYNC_KEY, "axis_install_base_sync_ping_v1"].forEach(key => {
+    localStorage.setItem(key, ping);
+  });
 }
 
 function syncResolvedRedHotRecordEverywhere(resolvedRecord) {
@@ -22048,7 +22101,6 @@ function markRepRowUpdateSeen(id) {
 
   const needsSeenUpdate =
     isRepAttentionAlertActive(rec) ||
-    (isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)) ||
     rec.install_base_release_seen !== true ||
     rec.install_base_release_new === true ||
     rec.install_base_fixed_seen_by_rep !== true ||
@@ -22082,16 +22134,6 @@ function markRepRowUpdateSeen(id) {
       rep_attention_alert_dismissed_at: isRepAttentionAlertActive(r)
         ? now
         : r.rep_attention_alert_dismissed_at,
-
-      red_hot_acknowledged: isRedHotServiceAlert(r)
-        ? true
-        : r.red_hot_acknowledged,
-      red_hot_acknowledged_at: isRedHotServiceAlert(r)
-        ? now
-        : r.red_hot_acknowledged_at,
-      red_hot_acknowledged_by: isRedHotServiceAlert(r)
-        ? (getRecordRepName(r) || r.assigned_rep_name || "Rep")
-        : r.red_hot_acknowledged_by,
 
       install_base_release_seen: true,
       install_base_release_seen_at: now,
@@ -22155,16 +22197,6 @@ function markRepRowUpdateSeen(id) {
       rep_attention_alert_dismissed_at: isRepAttentionAlertActive(r)
         ? now
         : r.rep_attention_alert_dismissed_at,
-
-      red_hot_acknowledged: isRedHotServiceAlert(r)
-        ? true
-        : r.red_hot_acknowledged,
-      red_hot_acknowledged_at: isRedHotServiceAlert(r)
-        ? now
-        : r.red_hot_acknowledged_at,
-      red_hot_acknowledged_by: isRedHotServiceAlert(r)
-        ? (getRecordRepName(rec) || rec.assigned_rep_name || "Rep")
-        : r.red_hot_acknowledged_by,
 
       install_base_release_seen: true,
       install_base_release_seen_at: now,
