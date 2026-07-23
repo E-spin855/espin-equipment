@@ -5770,9 +5770,9 @@ const normalSeen = isFreshRepUpdate
       rec.manager_alert_seen === true
     );
 
-    const baseFlashType = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
-    const baseFlashText = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
-    const baseFlashAt = repFixSeen || hubRepOnlyTextExchange ? "" : (rec.manager_flash_at || existing.manager_flash_at || "");
+    const baseFlashType = repFixSeen || hubRepOnlyTextExchange || normalSeen ? "" : (rec.manager_flash_type || existing.manager_flash_type || "");
+    const baseFlashText = repFixSeen || hubRepOnlyTextExchange || normalSeen ? "" : (rec.manager_flash_text || existing.manager_flash_text || "");
+    const baseFlashAt = repFixSeen || hubRepOnlyTextExchange || normalSeen ? "" : (rec.manager_flash_at || existing.manager_flash_at || "");
 
     const repFixUnseen = repFixRecord && !repFixSeen && (
       (
@@ -5804,11 +5804,19 @@ const normalSeen = isFreshRepUpdate
       existing.install_base_fix_status === "manager_reviewed"
     );
 
+    const incomingHasManagerAcknowledgement = Boolean(
+      rec.manager_alert_seen === true ||
+      clean(rec.manager_update_seen_at)
+    );
+
     const legacyUnseen =
       !hubRepOnlyTextExchange &&
       !repFixSeen &&
       !finalReleaseId &&
-      (rec.manager_unseen_update === true || existing.manager_unseen_update === true) &&
+      (
+        rec.manager_unseen_update === true ||
+        (!incomingHasManagerAcknowledgement && existing.manager_unseen_update === true)
+      ) &&
       baseFlashType !== "manager_response";
 
    const shouldFlash =
