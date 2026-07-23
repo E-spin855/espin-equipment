@@ -20146,7 +20146,7 @@ function saveQuoteAndSubmitForReview() {
     return;
   }
 
-  submitQuoteForApproval(rec);
+  if (!submitQuoteForApproval(rec)) return;
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
@@ -20773,6 +20773,7 @@ function markNewProjectWon(id) {
   }
 
   const now = new Date().toISOString();
+  rec.rep_won_button_pressed_at = now;
   promoteWonProjectToEquipmentReview(rec, now);
 
   // Persist the Rep lifecycle record before any cross-page packets are written.
@@ -20785,6 +20786,11 @@ function markNewProjectWon(id) {
   );
 
   syncFeedStatus(rec);
+
+  // VP receives financials only after the Rep explicitly presses WON.
+  if (Number(rec.quote_amount || 0) > 0) {
+    submitQuoteForApproval(rec);
+  }
 
   // Re-assert the Rep-local lifecycle state after Manager/Install Base sync.
   const localRecord = state.records.find(
@@ -20883,7 +20889,7 @@ function submitSelectedQuoteForApproval() {
     return;
   }
 
-  submitQuoteForApproval(rec);
+  if (!submitQuoteForApproval(rec)) return;
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
@@ -20935,7 +20941,12 @@ function reviewApprovedQuote() {
   );
 }
     function submitQuoteForApproval(rec) {
-  if (!rec || !rec.quote_amount) return;
+  if (!rec || !rec.quote_amount) return false;
+
+  if (!rec.rep_won_button_pressed_at) {
+    alert("Mark the project WON before syncing financials to VP Review.");
+    return false;
+  }
 
   let queue = [];
 
@@ -20954,7 +20965,7 @@ function reviewApprovedQuote() {
 
   rec.quote_approval_id = approvalId;
   rec.quote_approval_status = "pending_review";
-  rec.quote_status = "submitted_for_approval";
+  rec.quote_status = "won";
   rec.quote_customer_release_allowed = false;
   rec.rep_quote_release_alert = false;
   rec.quote_approval_requested = true;
@@ -20974,7 +20985,7 @@ function reviewApprovedQuote() {
     axis_serial_number: rec.serial_number || "",
 
     quote_approval_status: "pending_review",
-    quote_status: "submitted_for_approval",
+    quote_status: "won",
     quote_approval_submitted_at: now,
     quote_submitted_amount: Number(rec.quote_amount || 0),
 
@@ -21010,6 +21021,7 @@ function reviewApprovedQuote() {
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   window.dispatchEvent(new Event("axis_quote_approval_update"));
+  return true;
 }
     function importQuoteApprovalDecisions() {
       const readArray = key => {
