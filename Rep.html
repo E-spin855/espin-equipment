@@ -20148,7 +20148,7 @@ function saveQuoteAndSubmitForReview() {
     return;
   }
 
-  if (!submitQuoteForApproval(rec)) return;
+  submitQuoteForApproval(rec);
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
@@ -20760,7 +20760,6 @@ function markNewProjectWon(id) {
   }
 
   const now = new Date().toISOString();
-  rec.rep_won_button_pressed_at = now;
   promoteWonProjectToEquipmentReview(rec, now);
 
   // Persist the Rep lifecycle record before any cross-page packets are written.
@@ -20773,11 +20772,6 @@ function markNewProjectWon(id) {
   );
 
   syncFeedStatus(rec);
-
-  // VP receives financials only after the Rep explicitly presses WON.
-  if (Number(rec.quote_amount || 0) > 0) {
-    submitQuoteForApproval(rec);
-  }
 
   // Re-assert the Rep-local lifecycle state after Manager/Install Base sync.
   const localRecord = state.records.find(
@@ -20876,7 +20870,7 @@ function submitSelectedQuoteForApproval() {
     return;
   }
 
-  if (!submitQuoteForApproval(rec)) return;
+  submitQuoteForApproval(rec);
 
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
@@ -20928,12 +20922,7 @@ function reviewApprovedQuote() {
   );
 }
     function submitQuoteForApproval(rec) {
-  if (!rec || !rec.quote_amount) return false;
-
-  if (!rec.rep_won_button_pressed_at) {
-    alert("Mark the project WON before syncing financials to VP Review.");
-    return false;
-  }
+  if (!rec || !rec.quote_amount) return;
 
   let queue = [];
 
@@ -20952,7 +20941,7 @@ function reviewApprovedQuote() {
 
   rec.quote_approval_id = approvalId;
   rec.quote_approval_status = "pending_review";
-  rec.quote_status = "won";
+  rec.quote_status = "submitted_for_approval";
   rec.quote_customer_release_allowed = false;
   rec.rep_quote_release_alert = false;
   rec.quote_approval_requested = true;
@@ -20972,7 +20961,7 @@ function reviewApprovedQuote() {
     axis_serial_number: rec.serial_number || "",
 
     quote_approval_status: "pending_review",
-    quote_status: "won",
+    quote_status: "submitted_for_approval",
     quote_approval_submitted_at: now,
     quote_submitted_amount: Number(rec.quote_amount || 0),
 
@@ -21008,7 +20997,6 @@ function reviewApprovedQuote() {
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   window.dispatchEvent(new Event("axis_quote_approval_update"));
-  return true;
 }
     function importQuoteApprovalDecisions() {
       const readArray = key => {
@@ -22124,19 +22112,41 @@ return true;
     }
 
     function tradeInReturnMatchesRecord(rec, item) {
-      const recordIds = [
-        rec.id, rec.key, rec.oem_project_id, rec.project_id,
-        rec.axis_record_id, rec.axis_parent_record_id, rec.axis_project_id
+      const recordRowIds = [
+        rec.id,
+        rec.key,
+        rec.axis_record_id,
+        rec.axis_parent_record_id
       ].map(value => clean(value).toLowerCase()).filter(Boolean);
 
-      const returnIds = [
-        item.axis_record_id, item.axis_parent_record_id, item.axis_project_id,
-        item.record_id, item.parent_record_id, item.source_record_id,
-        item.project_id, item.oem_project_id, item.linked_record_id,
+      const returnRowIds = [
+        item.axis_record_id,
+        item.axis_parent_record_id,
+        item.record_id,
+        item.parent_record_id,
+        item.source_record_id,
+        item.linked_record_id
+      ].map(value => clean(value).toLowerCase()).filter(Boolean);
+
+      if (returnRowIds.length) {
+        return returnRowIds.some(value => recordRowIds.includes(value));
+      }
+
+      const recordProjectIds = [
+        rec.oem_project_id,
+        rec.project_id,
+        rec.axis_project_id
+      ].map(value => clean(value).toLowerCase()).filter(Boolean);
+
+      const returnAxisProjectIds = [
+        item.axis_project_id,
+        item.oem_project_id,
         item.linked_axis_project_id
       ].map(value => clean(value).toLowerCase()).filter(Boolean);
 
-      if (returnIds.some(value => recordIds.includes(value))) return true;
+      if (returnAxisProjectIds.length) {
+        return returnAxisProjectIds.some(value => recordProjectIds.includes(value));
+      }
 
       const recordSerial = clean(rec.serial_number || rec.axis_serial_number).toLowerCase();
       const returnSerial = clean(item.serial_number || item.axis_serial_number || item.tradein_equipment_serial_number).toLowerCase();
