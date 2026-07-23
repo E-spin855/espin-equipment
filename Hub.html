@@ -2093,6 +2093,63 @@ function lower(v) {
 }
 
 const MESSAGE_ROW_ACK_KEY = "espin_message_row_ack_v1";
+const HUB_ROW_UPDATE_ACK_KEY = "espin_hub_row_update_ack_v1";
+
+function readHubRowUpdateAcknowledgements() {
+  try {
+    const value = JSON.parse(localStorage.getItem(HUB_ROW_UPDATE_ACK_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function getHubRowUpdateSignature(rec, type) {
+  if (!rec) return "";
+
+  const recordKey = getMessageRecordIdentity(rec);
+  if (!recordKey) return "";
+
+  if (type === "correction" && hasActualInstallBaseCorrection(rec)) {
+    const at = clean(
+      rec.install_base_correction_at ||
+      rec.install_base_latest_fix_at ||
+      rec.install_base_response_at
+    );
+    const fields = clean(
+      rec.install_base_corrected_fields || rec.corrected_fields
+    );
+    return [recordKey, type, at, fields].join("|");
+  }
+
+  if (type === "completion" && isCompletedByRep(rec)) {
+    const at = clean(
+      rec.completed_at ||
+      rec.rep_last_action_at ||
+      rec.install_base_response_at
+    );
+    return [recordKey, type, at, clean(rec.rep_status || rec.rep_action)].join("|");
+  }
+
+  return "";
+}
+
+function hasUnseenHubRowUpdate(rec, type) {
+  const signature = getHubRowUpdateSignature(rec, type);
+  if (!signature) return false;
+  const acknowledgements = readHubRowUpdateAcknowledgements();
+  return acknowledgements[`${type}|${getMessageRecordIdentity(rec)}`] !== signature;
+}
+
+function acknowledgeHubRowUpdate(rec, type) {
+  const signature = getHubRowUpdateSignature(rec, type);
+  if (!signature) return;
+  const acknowledgements = readHubRowUpdateAcknowledgements();
+  acknowledgements[`${type}|${getMessageRecordIdentity(rec)}`] = signature;
+  localStorage.setItem(HUB_ROW_UPDATE_ACK_KEY, JSON.stringify(acknowledgements));
+}
 
 function readMessageRowAcknowledgements() {
   try {
@@ -3029,6 +3086,7 @@ function isCompletedByRep(rec) {
 function wasInstallBaseFieldCorrected(rec, fieldName) {
   if (!isFixedByRep(rec)) return false;
   if (rec.install_base_fixed_seen_by_install_base === true) return false;
+  if (!hasUnseenHubRowUpdate(rec, "correction")) return false;
 
 	  const fixedFields = String(
 	    rec.install_base_corrected_fields ||
@@ -6585,11 +6643,13 @@ const completedByRep = isCompletedByRep(rec);
 
 const correctedUnseen =
   fixedByRep &&
-  rec.install_base_fixed_seen_by_install_base !== true;
+  rec.install_base_fixed_seen_by_install_base !== true &&
+  hasUnseenHubRowUpdate(rec, "correction");
 
 const completionUnseen =
   completedByRep &&
-  rec.install_base_response_seen !== true;
+  rec.install_base_response_seen !== true &&
+  hasUnseenHubRowUpdate(rec, "completion");
 
 const rowClass = [
   isRedHotServiceAlert(rec)
@@ -6717,6 +6777,8 @@ function selectRecord(id) {
   }
 
   acknowledgeMessageRow(rec, "hub");
+  acknowledgeHubRowUpdate(rec, "correction");
+  acknowledgeHubRowUpdate(rec, "completion");
 
   // Capture communication state before marking the row as seen,
   // so a newly received message can still open automatically.
