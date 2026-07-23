@@ -7979,7 +7979,6 @@ function getManagerIncomingEventSignature(rec) {
   if (!rec) return "";
   const incomingUnified = getLatestIncomingManagerUnifiedMessage(rec);
   const values = [
-    rec.manager_flash_at,
     rec.rep_last_action_at,
     rec.rep_manager_message_at,
     rec.install_base_correction_at,
@@ -8616,22 +8615,12 @@ function managerCorrectedFieldsList(rec) {
 function wasManagerFieldCorrected(rec, fieldName) {
   if (!isManagerRecordFixed(rec)) return false;
 
-  const recordId = String(
-    rec.id ||
-    rec.key ||
-    getRecordKey(rec) ||
-    ""
-  );
-
   const correctionIsUnseen =
-    rec.manager_alert_seen !== true &&
-    rec.install_base_fixed_seen_by_manager !== true;
+    rec.manager_unseen_update === true &&
+    hasUnseenManagerIncomingEvent(rec) &&
+    hasUnseenManagerCorrectionRow(rec);
 
-  const correctionIsCurrentlyOpen =
-    recordId &&
-    recordId === String(state.correctedFieldHighlightId || "");
-
-  if (!correctionIsUnseen && !correctionIsCurrentlyOpen) {
+  if (!correctionIsUnseen) {
     return false;
   }
 
