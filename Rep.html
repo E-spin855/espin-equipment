@@ -5924,6 +5924,20 @@ tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communicati
 .new-project-team-status.received{color:#41ff9c;}
 .new-project-team-status.attention{color:#ff6b6b;}
 .new-project-team-status.idle{color:#9db6d2;}
+.quote-team-status-block .new-project-team-status{
+  color:#d29aff;
+}
+.trade-team-status-block .new-project-team-status{
+  color:#55e9ff;
+}
+.workflow-live-detail{
+  margin-top:-5px;
+  color:#c9d9ec;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.45;
+}
+.workflow-live-detail strong{color:#fff;}
 .new-project-contact-toggle{
   display:inline-flex;
   align-items:center;
@@ -18201,17 +18215,26 @@ function saveInstallBaseFix(id) {
           )
         : 0;
 
+      const quoteUnderReview = Boolean(
+        rec.quote_opened_at ||
+        rec.quote_review_opened_at ||
+        rec.quote_team_opened_at ||
+        rec.quote_approval_status === "pending_review" ||
+        rec.quote_review_status === "under_review"
+      );
+
       const quoteTeamStatus =
         quoteApproved ? "Quote Received" :
         quoteRawStatus.includes("change") || quoteRawStatus.includes("revision")
           ? "Changes Requested" :
+        quoteUnderReview ? "Quote Under Review" :
         quoteSubmitted ? "Quote Submitted for Approval" :
         "Not Submitted";
 
       const quoteTeamStatusClass =
         quoteApproved ? "approved" :
         quoteTeamStatus === "Changes Requested" ? "attention" :
-        quoteSubmitted ? "pending" :
+        quoteUnderReview || quoteSubmitted ? "pending" :
         "idle";
 
       // Once associated equipment syncs back from the Trade-In App,
@@ -18240,15 +18263,41 @@ function saveInstallBaseFix(id) {
         Number(rec.external_tradein_value || 0) > 0
       );
 
+      const tradeDeadline = String(
+        rec.tradein_acceptance_deadline ||
+        rec.trade_in_acceptance_deadline ||
+        rec.trade_desk_deadline ||
+        rec.bid_acceptance_deadline ||
+        ""
+      );
+
+      const tradeBidsSent = Boolean(
+        rec.tradein_bids_sent_at ||
+        rec.trade_in_bids_sent_at ||
+        rec.trade_desk_bids_sent_at ||
+        Number(rec.tradein_bid_count || rec.trade_in_bid_count || rec.bid_count || 0) > 0
+      );
+
+      const tradeBidCount = Number(
+        rec.tradein_bid_count ||
+        rec.trade_in_bid_count ||
+        rec.bid_count ||
+        0
+      );
+
       const tradeDeskStatus = tradeDeskValueReceived
         ? "Trade-In Received"
+        : tradeBidsSent
+          ? "Bids Sent"
+        : tradeDeadline
+          ? "Acceptance Deadline Set"
         : tradeDeskSubmitted
           ? "Trade-In Submitted to Trade Desk"
           : "Not Submitted";
 
       const tradeDeskStatusClass = tradeDeskValueReceived
         ? "received"
-        : tradeDeskSubmitted
+        : tradeBidsSent || tradeDeadline || tradeDeskSubmitted
           ? "pending"
           : "idle";
 
@@ -18314,6 +18363,11 @@ function saveInstallBaseFix(id) {
             <div class="quote-team-status-block">
               <div class="new-project-team-label">Quote Team Status</div>
               <div class="new-project-team-status ${quoteTeamStatusClass}">${escapeHtml(quoteTeamStatus)}</div>
+              ${
+                rec.quote_review_opened_at || rec.quote_opened_at || rec.quote_team_opened_at
+                  ? `<div class="workflow-live-detail">Opened: <strong>${escapeHtml(workflowDateOnly(rec.quote_review_opened_at || rec.quote_opened_at || rec.quote_team_opened_at))}</strong></div>`
+                  : ""
+              }
               ${
                 quoteSubmittedAt
                   ? `<div class="workflow-submission-date">Submitted: ${escapeHtml(workflowDateOnly(quoteSubmittedAt))}</div>`
@@ -18401,6 +18455,16 @@ function saveInstallBaseFix(id) {
                   <div class="trade-team-status-block">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
+                    ${
+                      tradeDeadline
+                        ? `<div class="workflow-live-detail">Accept by: <strong>${escapeHtml(workflowDateOnly(tradeDeadline))}</strong></div>`
+                        : ""
+                    }
+                    ${
+                      tradeBidsSent
+                        ? `<div class="workflow-live-detail">${tradeBidCount > 0 ? `<strong>${tradeBidCount}</strong> bid${tradeBidCount === 1 ? "" : "s"} sent` : "Bids sent to buyers"}</div>`
+                        : ""
+                    }
 
                     ${
                       tradeSubmittedAt
@@ -18474,6 +18538,16 @@ function saveInstallBaseFix(id) {
                   <div class="trade-team-status-block">
                     <div class="new-project-team-label">Trade Desk Status</div>
                     <div class="new-project-team-status ${tradeDeskStatusClass}">${escapeHtml(tradeDeskStatus)}</div>
+                    ${
+                      tradeDeadline
+                        ? `<div class="workflow-live-detail">Accept by: <strong>${escapeHtml(workflowDateOnly(tradeDeadline))}</strong></div>`
+                        : ""
+                    }
+                    ${
+                      tradeBidsSent
+                        ? `<div class="workflow-live-detail">${tradeBidCount > 0 ? `<strong>${tradeBidCount}</strong> bid${tradeBidCount === 1 ? "" : "s"} sent` : "Bids sent to buyers"}</div>`
+                        : ""
+                    }
 
                     ${
                       tradeSubmittedAt
@@ -22404,6 +22478,28 @@ return true;
       rec.tradein_synced_to_axis_at = incomingTradeInAt;
       rec.tradein_last_update_by = item.last_tradein_update_by || "";
       rec.tradein_last_update_at = item.last_tradein_update_at || "";
+      rec.tradein_acceptance_deadline =
+        item.tradein_acceptance_deadline ||
+        item.trade_in_acceptance_deadline ||
+        item.trade_desk_deadline ||
+        item.bid_acceptance_deadline ||
+        rec.tradein_acceptance_deadline ||
+        "";
+      rec.tradein_bids_sent_at =
+        item.tradein_bids_sent_at ||
+        item.trade_in_bids_sent_at ||
+        item.trade_desk_bids_sent_at ||
+        item.bids_sent_at ||
+        rec.tradein_bids_sent_at ||
+        "";
+      rec.tradein_bid_count = Number(
+        item.tradein_bid_count ||
+        item.trade_in_bid_count ||
+        item.bid_count ||
+        item.bids?.length ||
+        rec.tradein_bid_count ||
+        0
+      );
 
       rec.image_sync_received = item.image_sync_received || Boolean(item.images && item.images.length) || rec.image_sync_received || false;
       rec.image_count = item.image_count || item.images?.length || rec.image_count || 0;

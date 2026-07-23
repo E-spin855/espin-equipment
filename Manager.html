@@ -4424,6 +4424,34 @@ tr.unread-message-row:not(.red-hot-row){
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
+.manager-team-progress{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+}
+.manager-team-progress-card{
+  padding:18px 20px;
+  border-radius:16px;
+  background:rgba(7,17,31,.76);
+}
+.manager-team-progress-card.quote{
+  border:2px solid rgba(210,154,255,.68);
+  box-shadow:0 0 22px rgba(171,91,255,.12);
+}
+.manager-team-progress-card.trade{
+  border:2px solid rgba(85,233,255,.62);
+  box-shadow:0 0 22px rgba(0,208,255,.12);
+}
+.manager-team-progress-card.quote .manager-team-progress-status{color:#d29aff;}
+.manager-team-progress-card.trade .manager-team-progress-status{color:#55e9ff;}
+.manager-team-progress-status{
+  margin:7px 0 5px;
+  font-size:18px;
+  font-weight:950;
+}
+@media(max-width:760px){
+  .manager-team-progress{grid-template-columns:1fr;}
+}
 </style>
 </head>
 
@@ -11397,6 +11425,98 @@ function renderManagerUnifiedCommunication(rec){
 }
 window.addEventListener("storage",event=>{if(event.key===MANAGER_SERVICE_MESSAGES_KEY||event.key==="espin_service_sync_ping_v1"||event.key===MANAGER_UNIFIED_COMMUNICATION_KEY||event.key==="espin_unified_communication_ping_v1"){loadRecords();render()}});
 
+function getManagerQuoteTeamProgress(rec) {
+  const raw = String(
+    rec.quote_approval_status ||
+    rec.quote_review_status ||
+    rec.quote_status ||
+    ""
+  ).toLowerCase();
+  const approved =
+    rec.quote_customer_release_allowed === true ||
+    raw === "approved" ||
+    raw === "approved_for_customer_release";
+  const revised = raw.includes("revision") || raw.includes("change");
+  const opened = Boolean(
+    rec.quote_opened_at ||
+    rec.quote_review_opened_at ||
+    rec.quote_team_opened_at ||
+    raw === "pending_review" ||
+    raw === "under_review"
+  );
+  const submitted = Boolean(
+    rec.quote_approval_submitted_at ||
+    rec.quote_submitted_at ||
+    raw === "submitted_for_approval"
+  );
+  return {
+    label: approved ? "Quote Received" :
+      revised ? "Changes Requested" :
+      opened ? "Quote Under Review" :
+      submitted ? "Quote Submitted for Approval" :
+      "Not Submitted",
+    openedAt: rec.quote_review_opened_at || rec.quote_opened_at || rec.quote_team_opened_at || ""
+  };
+}
+
+function getManagerTradeDeskProgress(rec) {
+  const deadline =
+    rec.tradein_acceptance_deadline ||
+    rec.trade_in_acceptance_deadline ||
+    rec.trade_desk_deadline ||
+    rec.bid_acceptance_deadline ||
+    "";
+  const bidCount = Number(
+    rec.tradein_bid_count ||
+    rec.trade_in_bid_count ||
+    rec.bid_count ||
+    0
+  );
+  const bidsSent = Boolean(
+    rec.tradein_bids_sent_at ||
+    rec.trade_in_bids_sent_at ||
+    rec.trade_desk_bids_sent_at ||
+    bidCount > 0
+  );
+  const received = Number(rec.external_tradein_value || 0) > 0;
+  const submitted = Boolean(
+    rec.tradein_sync_received ||
+    rec.associated_tradein_submitted_at ||
+    rec.tradein_submitted_at
+  );
+  return {
+    label: received ? "Trade-In Received" :
+      bidsSent ? "Bids Sent" :
+      deadline ? "Acceptance Deadline Set" :
+      submitted ? "Trade-In Submitted to Trade Desk" :
+      "Not Submitted",
+    deadline,
+    bidCount,
+    bidsSent
+  };
+}
+
+function renderManagerProjectTeamProgress(rec) {
+  if (rec.project_type !== "new_project_record" && rec.project_type !== "new_sales_project") return "";
+  const quote = getManagerQuoteTeamProgress(rec);
+  const trade = getManagerTradeDeskProgress(rec);
+  return `
+    <div class="manager-team-progress full">
+      <div class="manager-team-progress-card quote">
+        <div class="k">Quote Team Status</div>
+        <div class="manager-team-progress-status">${escapeHtml(quote.label)}</div>
+        ${quote.openedAt ? `<div class="mini">Opened: ${escapeHtml(formatManagerActiveProjectDate(quote.openedAt))}</div>` : ""}
+      </div>
+      <div class="manager-team-progress-card trade">
+        <div class="k">Trade Desk Status</div>
+        <div class="manager-team-progress-status">${escapeHtml(trade.label)}</div>
+        ${trade.deadline ? `<div class="mini">Accept by: ${escapeHtml(formatManagerActiveProjectDate(trade.deadline))}</div>` : ""}
+        ${trade.bidsSent ? `<div class="mini">${trade.bidCount > 0 ? `${trade.bidCount} bid${trade.bidCount === 1 ? "" : "s"} sent` : "Bids sent to buyers"}</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
 function renderDetail() {
   const rec = findSelectedRecord();
   const empty = $("emptyState");
@@ -11478,6 +11598,7 @@ function renderDetail() {
   grid.innerHTML = `
   ${renderRedHotServiceCard(rec, "manager")}
   ${completed ? "" : renderOverdueManagerAlert(rec)}
+  ${renderManagerProjectTeamProgress(rec)}
   <div class="selected-summary full">
       <div class="summary-card">
         <div class="summary-title">Facility</div>
