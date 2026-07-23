@@ -5504,7 +5504,11 @@ function writeManagerQueueRecord(rec) {
 
   try {
     data = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
-    if (!data || typeof data !== "object" || Array.isArray(data)) data = {};
+    if (Array.isArray(data)) {
+      data = { [MANAGER_NAME || "Default Manager"]: data };
+    } else if (!data || typeof data !== "object") {
+      data = {};
+    }
   } catch {
     data = {};
   }
@@ -12189,18 +12193,10 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
       : item;
   });
 
-  // Persist Manager-only acknowledgement fields so refresh/polling cannot
-  // bring the same green frame back from an older local queue copy.
-  try {
-    const managerQueue = readManagerQueueRecords().map(item => {
-      const itemKey = String(item?.id || item?.key || getRecordKey(item) || "");
-      const updatedKey = String(updated.id || updated.key || getRecordKey(updated) || "");
-      return itemKey && itemKey === updatedKey
-        ? { ...item, ...updated }
-        : item;
-    });
-    localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
-  } catch (_) {}
+  // Preserve the bucketed queue structure while saving this acknowledgement.
+  // Flattening the queue caused the next Rep sync to discard every previously
+  // acknowledged record and restore their stale green frames.
+  writeManagerQueueRecord(updated);
 
 state.selectedId = updated.id;
 
