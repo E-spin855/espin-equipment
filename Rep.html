@@ -18609,7 +18609,7 @@ ${renderQuoteApprovalActionPanel(rec)}
             ${rec.tradein_required === "no" ? "" : `<button type="button" class="green" onclick="submitRecord('tradein_app', '${escapeJs(rec.id)}')">Send to Trade-In App</button>`}
             <button type="button" class="green" onclick="markNewProjectWon('${escapeJs(rec.id)}')">Mark Won</button>
             <button type="button" class="red" onclick="markNewProjectLost('${escapeJs(rec.id)}')">Mark Lost</button>
-            ${rec.quote_status === "lost" ? `<button type="button" class="red" onclick="deleteLostNewProject()">Delete Lost Project</button>` : ""}
+            <button type="button" class="red" onclick="deleteRepProject('${escapeJs(rec.id)}')">Delete Project</button>
           </div>
         </div>
       `;
@@ -20848,6 +20848,70 @@ function markNewProjectWon(id) {
 
       saveRecords();
       render();
+    }
+
+    function deleteRepProject(id) {
+      const rec = state.records.find(r => String(r.id || "") === String(id || ""));
+
+      if (!rec || rec.project_type !== "new_project_record") {
+        alert("Only Rep-created new projects can be deleted here.");
+        return;
+      }
+
+      if (!confirm("Delete this project permanently? This removes it from Rep and all synced review queues.")) return;
+
+      const matchesProject = item => Boolean(
+        item &&
+        (
+          sameWorkspaceEquipmentRecord(item, rec) ||
+          String(item.id || "") === String(rec.id || "") ||
+          String(item.axis_record_id || item.axis_parent_record_id || "") === String(rec.id || "")
+        )
+      );
+
+      [
+        REP_QUEUE_KEY,
+        INSTALL_BASE_KEY,
+        INSTALL_BASE_RESPONSE_KEY,
+        INSTALL_BASE_FINAL_SYNC_KEY,
+        QUOTE_APPROVAL_KEY,
+        QUOTE_APPROVAL_SYNC_KEY
+      ].forEach(key => {
+        const records = readArrayKey(key).filter(item => !matchesProject(item));
+        writeArrayKey(key, records);
+      });
+
+      let managerQueue = {};
+      try {
+        managerQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+      } catch {
+        managerQueue = {};
+      }
+
+      if (Array.isArray(managerQueue)) {
+        managerQueue = managerQueue.filter(item => !matchesProject(item));
+      } else if (managerQueue && typeof managerQueue === "object") {
+        Object.keys(managerQueue).forEach(bucket => {
+          if (Array.isArray(managerQueue[bucket])) {
+            managerQueue[bucket] = managerQueue[bucket].filter(item => !matchesProject(item));
+          }
+        });
+      }
+      localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(managerQueue));
+
+      state.records = state.records.filter(item => !matchesProject(item));
+      state.selectedId = null;
+      saveRecords();
+
+      const ping = String(Date.now());
+      localStorage.setItem(MANAGER_SYNC_KEY, ping);
+      localStorage.setItem(REP_SYNC_KEY, ping);
+      localStorage.setItem(INSTALL_BASE_RESPONSE_PING_KEY, ping);
+      localStorage.setItem(INSTALL_BASE_FINAL_SYNC_PING_KEY, ping);
+      localStorage.setItem(QUOTE_APPROVAL_PING_KEY, ping);
+
+      render();
+      showBanner("Project deleted from Rep and synced review queues.");
     }
 function submitSelectedQuoteForApproval() {
   const rec = state.records.find(r => r.id === state.selectedId);
