@@ -9032,7 +9032,14 @@ function renderTable() {
       recordUpdateTime > 0 &&
       recordUpdateTime === newestManagerUpdateTime
     );
+    const directRepActionPending = Boolean(
+      ["contact_customer", "schedule_follow_up"].includes(
+        lower(rec.manager_flash_type || rec.rep_action || rec.rep_selected_action)
+      ) &&
+      hasUnseenManagerRepRowUpdate(rec)
+    );
     const managerUpdatePending = Boolean(
+      directRepActionPending ||
       (
         rec.manager_unseen_update === true &&
         hasUnseenManagerIncomingEvent(rec)
@@ -13071,11 +13078,23 @@ if (showCompletedProjectsBtn) {
 document.addEventListener("DOMContentLoaded", init);
 </script>
 <script>
-history.scrollRestoration = "manual";
-window.addEventListener("pagehide", () => window.scrollTo(0, 0));
-window.addEventListener("pageshow", () => {
+const resetPageScrollToTop = () => {
+  document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
   window.scrollTo(0, 0);
-  requestAnimationFrame(() => window.scrollTo(0, 0));
+};
+history.scrollRestoration = "manual";
+resetPageScrollToTop();
+document.addEventListener("DOMContentLoaded", resetPageScrollToTop);
+window.addEventListener("load", () => {
+  resetPageScrollToTop();
+  setTimeout(resetPageScrollToTop, 0);
+});
+window.addEventListener("pagehide", resetPageScrollToTop);
+window.addEventListener("pageshow", () => {
+  resetPageScrollToTop();
+  requestAnimationFrame(resetPageScrollToTop);
+  setTimeout(resetPageScrollToTop, 0);
 });
 </script>
 </body>
