@@ -2094,6 +2094,28 @@ function lower(v) {
 
 const MESSAGE_ROW_ACK_KEY = "espin_message_row_ack_v1";
 const HUB_ROW_UPDATE_ACK_KEY = "espin_hub_row_update_ack_v1";
+const HUB_CLEARED_REP_RECORDS_KEY = "espin_hub_cleared_rep_records_v1";
+
+function getHubRepRecordVersion(rec) {
+  const source = JSON.stringify(rec || {});
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return String(hash >>> 0);
+}
+
+function readHubClearedRepRecords() {
+  try {
+    const value = JSON.parse(localStorage.getItem(HUB_CLEARED_REP_RECORDS_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 function readHubRowUpdateAcknowledgements() {
   try {
@@ -3924,11 +3946,13 @@ function loadRecords() {
   state.records = state.records.map(mergeInstallManagerTextIntoHubRecord);
 }
 function mergeMissingRepRecordsIntoHub() {
+  const clearedRepRecords = readHubClearedRepRecords();
   const sharedRepRecords = [
     ...readArrayKey(STORAGE_KEY),
     ...readArrayKey("espin_rep_workspace_records_v1")
   ].filter(rec =>
     rec &&
+    clearedRepRecords[getRecordKey(rec)] !== getHubRepRecordVersion(rec) &&
     isHubRepOriginatedRecord(rec) &&
     rec.install_base_visible !== false &&
     lower(rec.install_base_sync_type || "") !== "fix_hold" &&
@@ -7863,9 +7887,20 @@ function showBanner(msg) {
 }
 
 function clearLocalData() {
+  const clearedRepRecords = readHubClearedRepRecords();
   [
-    STORAGE_KEY,
-    "espin_rep_workspace_records_v1",
+    ...readArrayKey(STORAGE_KEY),
+    ...readArrayKey("espin_rep_workspace_records_v1")
+  ].forEach(rec => {
+    const key = getRecordKey(rec);
+    if (key) clearedRepRecords[key] = getHubRepRecordVersion(rec);
+  });
+  localStorage.setItem(
+    HUB_CLEARED_REP_RECORDS_KEY,
+    JSON.stringify(clearedRepRecords)
+  );
+
+  [
     INSTALL_BASE_KEY,
     MANAGER_QUEUE_KEY,
     REP_QUEUE_KEY,
