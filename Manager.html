@@ -8019,15 +8019,23 @@ function hasUnseenManagerIncomingEvent(rec) {
   const signature = getManagerIncomingEventSignature(rec);
   if (!signature) return false;
   const seen = readManagerIncomingEventSeenMap();
-  return !getManagerRepRowRecordKeys(rec).some(key => seen[key] === signature);
+  const incomingTime = new Date(signature).getTime() || 0;
+  return !getManagerRepRowRecordKeys(rec).some(key => {
+    const seenValue = seen[key];
+    if (!seenValue) return false;
+    if (seenValue === signature) return true;
+    const seenTime = new Date(seenValue).getTime() || 0;
+    return incomingTime > 0 && seenTime >= incomingTime;
+  });
 }
 
 function acknowledgeManagerIncomingEvent(rec) {
   const signature = getManagerIncomingEventSignature(rec);
   if (!signature) return;
   const seen = readManagerIncomingEventSeenMap();
+  const acknowledgedAt = new Date().toISOString();
   getManagerRepRowRecordKeys(rec).forEach(key => {
-    seen[key] = signature;
+    seen[key] = acknowledgedAt;
   });
   localStorage.setItem(MANAGER_INCOMING_EVENT_SEEN_KEY, JSON.stringify(seen));
 }
