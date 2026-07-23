@@ -20760,6 +20760,7 @@ function markNewProjectWon(id) {
   }
 
   const now = new Date().toISOString();
+  rec.rep_won_button_pressed_at = now;
   promoteWonProjectToEquipmentReview(rec, now);
 
   // Persist the Rep lifecycle record before any cross-page packets are written.
@@ -20772,6 +20773,10 @@ function markNewProjectWon(id) {
   );
 
   syncFeedStatus(rec);
+
+  if (rec.quote_approval_requested === true && Number(rec.quote_amount || 0) > 0) {
+    submitQuoteForApproval(rec);
+  }
 
   // Re-assert the Rep-local lifecycle state after Manager/Install Base sync.
   const localRecord = state.records.find(
@@ -20938,15 +20943,30 @@ function reviewApprovedQuote() {
     `QAPP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
   const now = new Date().toISOString();
+  const canSyncFinancialsToVp = Boolean(rec.rep_won_button_pressed_at);
 
   rec.quote_approval_id = approvalId;
   rec.quote_approval_status = "pending_review";
-  rec.quote_status = "submitted_for_approval";
+  rec.quote_status = canSyncFinancialsToVp ? "won" : "submitted_for_approval";
   rec.quote_customer_release_allowed = false;
   rec.rep_quote_release_alert = false;
   rec.quote_approval_requested = true;
   rec.quote_approval_submitted_at = now;
   rec.quote_submitted_amount = Number(rec.quote_amount || 0);
+
+  if (!canSyncFinancialsToVp) {
+    rec.quote_vp_sync_deferred = true;
+    queue = queue.filter(item =>
+      String(item.quote_approval_id || "") !== String(approvalId) &&
+      String(item.axis_record_id || "") !== String(rec.id || "")
+    );
+    localStorage.setItem(QUOTE_APPROVAL_KEY, JSON.stringify(queue));
+    localStorage.setItem(QUOTE_APPROVAL_PING_KEY, String(Date.now()));
+    return true;
+  }
+
+  rec.quote_vp_sync_deferred = false;
+  rec.quote_vp_synced_at = now;
 
   const packet = {
     ...rec,
@@ -20997,6 +21017,7 @@ function reviewApprovedQuote() {
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   window.dispatchEvent(new Event("axis_quote_approval_update"));
+  return true;
 }
     function importQuoteApprovalDecisions() {
       const readArray = key => {
