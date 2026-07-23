@@ -15014,7 +15014,7 @@ function renderRepManagerCommunication(rec) {
   const latestText = ui.latest ? `${lower(ui.latest.sender) === "manager" ? "Manager" : "Rep"}: ${ui.latest.message}` : "No messages yet.";
   return `
     <div
-      class="detail-card full comm-shell ${getCommunicationFrameClass(rec, "manager")} ${ui.needsResponse ? "detail-update-frame" : ""} ${hasUnreadMessageField(rec, "rep", "manager") ? "incoming-message-field-frame" : ""}"
+      class="detail-card full comm-shell rep-manager-communication ${getCommunicationFrameClass(rec, "manager")} ${ui.needsResponse ? "detail-update-frame" : ""} ${hasUnreadMessageField(rec, "rep", "manager") ? "incoming-message-field-frame" : ""}"
       onclick="acknowledgeCommunicationField(event, '${escapeJs(recordId)}', 'rep', 'manager')"
     >
       <div class="comm-toolbar">
@@ -22683,13 +22683,10 @@ function handleRepRowClick(id) {
     hasUnseenManagerCommunication(clickedRedHotRecord);
   const rowHadIncomingInstallBaseCommunication =
     hasUnseenInstallBaseCommunication(clickedRedHotRecord);
-  const incomingRowSignature = getLatestIncomingMessageSignature(
-    clickedRedHotRecord,
-    "rep"
-  );
-  const rowHadIncomingServiceCommunication = Boolean(
+  const rowHadIncomingUnifiedCommunication = Boolean(
     hasUnreadMessageRow(clickedRedHotRecord, "rep") &&
-    incomingRowSignature.startsWith("service|")
+    !rowHadIncomingManagerCommunication &&
+    !rowHadIncomingInstallBaseCommunication
   );
   const rowHadIncomingCommunication =
     rowHadIncomingManagerCommunication ||
@@ -22734,7 +22731,7 @@ function handleRepRowClick(id) {
 
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
-  if (rowHadIncomingServiceCommunication) {
+  if (rowHadIncomingUnifiedCommunication) {
     state.unifiedCommunicationOpen = true;
     state.unifiedCommunicationFrameActive = true;
   }
@@ -22838,7 +22835,7 @@ function handleRepRowClick(id) {
    * Corrected-field updates are not always classified as
    * incoming communication.
    */
-  if (seenStateChanged || rowHadIncomingServiceCommunication) {
+  if (seenStateChanged || rowHadIncomingUnifiedCommunication) {
     renderTable();
     renderNewProjectsTable();
   }
@@ -22850,18 +22847,21 @@ function handleRepRowClick(id) {
     seenStateChanged ||
     recordChanged ||
     hasDetailFlash ||
-    rowHadIncomingServiceCommunication
+    rowHadIncomingUnifiedCommunication
   ) {
     renderDetail();
   }
 
   if (rowHadIncomingCommunication) {
     window.setTimeout(() => {
-      const card = document.querySelector(
-        rowHadIncomingServiceCommunication
-          ? ".rep-unified-communication"
-          : ".comm-shell.communication-update-frame, .comm-shell.incoming-message-field-frame, .rep-unified-communication, .comm-shell"
-      );
+      const selector = rowHadIncomingUnifiedCommunication
+        ? ".rep-unified-communication"
+        : hasIncomingManagerCommunication
+          ? ".rep-manager-communication"
+          : hasIncomingInstallBaseCommunication
+            ? ".rep-install-base-match-manager"
+            : ".rep-unified-communication";
+      const card = document.querySelector(selector);
       if (!card) return;
       card.classList.add("communication-update-frame");
       card.scrollIntoView({ behavior: "smooth", block: "center" });
