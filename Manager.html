@@ -7972,6 +7972,66 @@ const MANAGER_REP_ROW_SEEN_KEY =
   "espin_manager_rep_row_seen_v1";
 const MANAGER_CORRECTION_ROW_SEEN_KEY =
   "espin_manager_correction_row_seen_v1";
+const MANAGER_INCOMING_EVENT_SEEN_KEY =
+  "espin_manager_incoming_event_seen_v1";
+
+function getManagerIncomingEventSignature(rec) {
+  if (!rec) return "";
+  const incomingUnified = getLatestIncomingManagerUnifiedMessage(rec);
+  const values = [
+    rec.manager_flash_at,
+    rec.rep_last_action_at,
+    rec.rep_manager_message_at,
+    rec.install_base_correction_at,
+    rec.install_base_response_at,
+    rec.priority_updated_at,
+    rec.rep_attention_alert_configured_at,
+    rec.external_tradein_received_at,
+    rec.tradein_last_update_at,
+    rec.quote_updated_at,
+    rec.quote_approval_decision_at,
+    rec.service_updated_at,
+    rec.latest_service_message_at,
+    rec.red_hot_created_at,
+    rec.red_hot_updated_at,
+    rec.install_base_released_at,
+    incomingUnified?.at
+  ].filter(Boolean);
+  if (!values.length) return "";
+  return values.reduce((latest, value) => {
+    const time = new Date(value || 0).getTime() || 0;
+    const latestTime = new Date(latest || 0).getTime() || 0;
+    return time > latestTime ? String(value) : latest;
+  }, "");
+}
+
+function readManagerIncomingEventSeenMap() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MANAGER_INCOMING_EVENT_SEEN_KEY) || "{}"
+    );
+    return value && typeof value === "object" ? value : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function hasUnseenManagerIncomingEvent(rec) {
+  const signature = getManagerIncomingEventSignature(rec);
+  if (!signature) return false;
+  const seen = readManagerIncomingEventSeenMap();
+  return !getManagerRepRowRecordKeys(rec).some(key => seen[key] === signature);
+}
+
+function acknowledgeManagerIncomingEvent(rec) {
+  const signature = getManagerIncomingEventSignature(rec);
+  if (!signature) return;
+  const seen = readManagerIncomingEventSeenMap();
+  getManagerRepRowRecordKeys(rec).forEach(key => {
+    seen[key] = signature;
+  });
+  localStorage.setItem(MANAGER_INCOMING_EVENT_SEEN_KEY, JSON.stringify(seen));
+}
 
 function getManagerCorrectionRowSignature(rec) {
   if (!rec) return "";
@@ -8947,8 +9007,6 @@ function renderTable() {
     (latest, item) => Math.max(latest, getManagerLatestUpdateTime(item)),
     0
   );
-  const managerUpdateBatchWindowMs = 15000;
-
   tbody.innerHTML = records.map(rec => {
     const id = clean(rec.id || getRecordKey(rec) || uuid());
     rec.id = id;
@@ -8959,15 +9017,10 @@ function renderTable() {
       recordUpdateTime > 0 &&
       recordUpdateTime === newestManagerUpdateTime
     );
-    const isCurrentManagerUpdateBatch = Boolean(
-      recordUpdateTime > 0 &&
-      newestManagerUpdateTime - recordUpdateTime <= managerUpdateBatchWindowMs
-    );
     const managerUpdatePending = Boolean(
       (
-        isCurrentManagerUpdateBatch &&
         rec.manager_unseen_update === true &&
-        !isManagerRepRowUpdateAcknowledged(rec)
+        hasUnseenManagerIncomingEvent(rec)
       ) ||
       (isNewestManagerUpdate && hasUnseenManagerCorrectionRow(rec))
     );
@@ -12098,8 +12151,10 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
   // Clear every row-update acknowledgement path for this record.
   acknowledgeManagerRepRowUpdate(rec);
   acknowledgeManagerCorrectionRow(rec);
+  acknowledgeManagerIncomingEvent(rec);
   acknowledgeManagerRepRowUpdate(updated);
   acknowledgeManagerCorrectionRow(updated);
+  acknowledgeManagerIncomingEvent(updated);
   acknowledgeMessageRow(updated, "manager");
 
   if (isRepAddedManagerRecord(updated)) {
@@ -12169,6 +12224,7 @@ const finalizedSelectedRecord = findSelectedRecord();
 if (finalizedSelectedRecord) {
   acknowledgeManagerRepRowUpdate(finalizedSelectedRecord);
   acknowledgeManagerCorrectionRow(finalizedSelectedRecord);
+  acknowledgeManagerIncomingEvent(finalizedSelectedRecord);
   acknowledgeMessageRow(finalizedSelectedRecord, "manager");
   acknowledgeManagerUnifiedCommunication(finalizedSelectedRecord);
 }
@@ -12945,6 +13001,7 @@ if (clearBtn) {
     localStorage.removeItem(MANAGER_REP_ADDED_SEEN_KEY);
     localStorage.removeItem(MANAGER_REP_ROW_SEEN_KEY);
     localStorage.removeItem(MANAGER_CORRECTION_ROW_SEEN_KEY);
+    localStorage.removeItem(MANAGER_INCOMING_EVENT_SEEN_KEY);
     localStorage.removeItem(MESSAGE_ROW_ACK_KEY);
     localStorage.removeItem(MANAGER_UNIFIED_COMMUNICATION_KEY);
     localStorage.removeItem("espin_unified_communication_ping_v1");
