@@ -8056,7 +8056,6 @@ function getManagerRepRowUpdateSignature(rec) {
   // Manager acknowledgement fields change when a row is clicked; including
   // them caused a previously cleared green frame to reappear.
   return [
-    clean(rec.updated_at),
     clean(latestHistory?.at || latestHistory?.date || latestHistory?.timestamp),
     clean(latestHistory?.action),
     clean(latestHistory?.label),
@@ -8068,7 +8067,6 @@ function getManagerRepRowUpdateSignature(rec) {
     clean(rec.tradein_last_update_at),
     clean(rec.tradein_synced_to_axis_at),
     clean(rec.external_tradein_value || rec.tradein_credit || rec.trade_in_credit),
-    clean(rec.active_projects_updated_at),
     activeProjectSignature,
     clean(rec.quote_updated_at),
     clean(rec.quote_approval_decision_at),
@@ -12162,6 +12160,17 @@ if (openedRepCommunicationFromRowClick) {
 });
 
   state.managerRepCommunicationFrameActive = true;
+}
+
+// Save the acknowledgement against the final merged copy. Manager sync can
+// normalize fields during selection; acknowledging only the pre-sync copy
+// allowed the same row to look new again after refresh.
+const finalizedSelectedRecord = findSelectedRecord();
+if (finalizedSelectedRecord) {
+  acknowledgeManagerRepRowUpdate(finalizedSelectedRecord);
+  acknowledgeManagerCorrectionRow(finalizedSelectedRecord);
+  acknowledgeMessageRow(finalizedSelectedRecord, "manager");
+  acknowledgeManagerUnifiedCommunication(finalizedSelectedRecord);
 }
 
 renderTable();
