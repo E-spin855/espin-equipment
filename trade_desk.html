@@ -1488,9 +1488,29 @@ function prepareBuyerReviewPacket(id, btn = null){
     return;
   }
 
-  const responseDeadline =
-  getResponseDeadline(rec) ||
-  getDefaultResponseDeadline();
+  const deadlineInputId =
+    `responseDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  const deadlineInput = document.getElementById(deadlineInputId);
+  const responseDeadline = String(
+    deadlineInput?.value ||
+    getResponseDeadline(rec) ||
+    ""
+  ).trim();
+
+  if (!responseDeadline) {
+    alert("Bid end date is required before preparing the Buyer Review Packet.");
+    if (deadlineInput) {
+      deadlineInput.setCustomValidity("Bid end date is required.");
+      deadlineInput.reportValidity();
+      deadlineInput.focus();
+      deadlineInput.addEventListener(
+        "input",
+        () => deadlineInput.setCustomValidity(""),
+        { once: true }
+      );
+    }
+    return;
+  }
   const packetId =
     rec.review_packet_id ||
     `RP-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
@@ -2646,6 +2666,8 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
               <input
                 id="${deadlineInputId}"
                 type="date"
+                required
+                aria-required="true"
                 value="${htmlSafe(getResponseDeadline(rec) || "")}"
                 style="
                   font-size:22px;
@@ -2660,7 +2682,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
               </button>
 
               <div class="small">
-                This date updates only the prepared buyer review packet payload.
+                Required before preparing the Buyer Review Packet. This date updates the buyer review packet payload.
               </div>
             </div>
 
