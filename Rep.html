@@ -18633,6 +18633,7 @@ ${renderQuoteApprovalActionPanel(rec)}
             <button type="button" class="red" onclick="deleteRepProject('${escapeJs(rec.id)}')">Delete Project</button>
           </div>
         </div>
+        ${renderUnifiedRepCommunication(rec)}
       `;
 
       // Keep Project Outcome directly under Associated Trade-In. Financial Review
@@ -18655,6 +18656,21 @@ ${renderQuoteApprovalActionPanel(rec)}
         if (tradeInCard) left.appendChild(tradeInCard);
         left.appendChild(outcomeCard);
         layout.appendChild(financialCard);
+      }
+
+      const newProjectFlash = state.detailUpdateFlash || {};
+      if (newProjectFlash.financial) {
+        (tradeInCard || financialCard)?.classList.add("detail-update-frame");
+      }
+      if (newProjectFlash.review) {
+        grid
+          .querySelector(".new-project-team-card")
+          ?.classList.add("detail-update-frame");
+      }
+      if (newProjectFlash.manager) {
+        grid
+          .querySelector(".rep-unified-communication, .new-project-outcome-card")
+          ?.classList.add("detail-update-frame");
       }
 
       $("payloadPreview").textContent = JSON.stringify(payloadFor(rec), null, 2);
@@ -22837,8 +22853,6 @@ function openInstallBaseReviewReason(id) {
 }
 
 function handleRepRowClick(id) {
-  // A row click always opens the normal selected-record workflow.
-  // Install Base communication is opened only from its own communication/FIX control.
   selectRow(id);
 }
   function selectRow(id) {
@@ -22861,6 +22875,23 @@ function handleRepRowClick(id) {
     rowHadIncomingManagerCommunication ||
     rowHadIncomingInstallBaseCommunication ||
     hasUnreadMessageRow(clickedRedHotRecord, "rep");
+
+  // Clear the clicked row's green frame immediately. The table render below
+  // then confirms the persisted acknowledgement on the same first click.
+  document
+    .querySelectorAll(
+      `#tableBody tr[data-record-id="${CSS.escape(selectedId)}"], ` +
+      `#newProjectsTableBody tr[data-record-id="${CSS.escape(selectedId)}"]`
+    )
+    .forEach(row => {
+      row.classList.remove(
+        "unread-message-row",
+        "incoming-communication-flash",
+        "manager-response-flash",
+        "rep-new-row-flash"
+      );
+    });
+
   dismissRepRedHotFlash(clickedRedHotRecord);
 
   document
@@ -22900,7 +22931,7 @@ function handleRepRowClick(id) {
 
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
-  if (rowHadIncomingUnifiedCommunication) {
+  if (rowHadIncomingCommunication) {
     state.unifiedCommunicationOpen = true;
     state.unifiedCommunicationFrameActive = true;
   }
@@ -22911,9 +22942,7 @@ function handleRepRowClick(id) {
     state.repActionOpen = false;
   }
 
-  const recBeforeSeen = state.records.find(
-    r => String(r.id || "") === selectedId
-  );
+  const recBeforeSeen = clickedRedHotRecord;
 
   acknowledgeMessageRow(recBeforeSeen, "rep");
 
@@ -22994,7 +23023,8 @@ function handleRepRowClick(id) {
     !selectionChanged &&
     !seenStateChanged &&
     !recordChanged &&
-    !hasDetailFlash
+    !hasDetailFlash &&
+    !rowHadIncomingCommunication
   ) {
     return;
   }
@@ -23004,7 +23034,7 @@ function handleRepRowClick(id) {
    * Corrected-field updates are not always classified as
    * incoming communication.
    */
-  if (seenStateChanged || rowHadIncomingUnifiedCommunication) {
+  if (seenStateChanged || rowHadIncomingCommunication) {
     renderTable();
     renderNewProjectsTable();
   }
@@ -23016,24 +23046,28 @@ function handleRepRowClick(id) {
     seenStateChanged ||
     recordChanged ||
     hasDetailFlash ||
-    rowHadIncomingUnifiedCommunication
+    rowHadIncomingCommunication
   ) {
     renderDetail();
   }
 
   if (rowHadIncomingCommunication) {
     window.setTimeout(() => {
-      const selector = rowHadIncomingUnifiedCommunication
-        ? ".rep-unified-communication"
-        : hasIncomingManagerCommunication
-          ? ".rep-manager-communication"
-          : hasIncomingInstallBaseCommunication
-            ? ".rep-install-base-match-manager"
-            : ".rep-unified-communication";
-      const card = document.querySelector(selector);
+      const card = document.querySelector(".rep-unified-communication");
       if (!card) return;
       card.classList.add("communication-update-frame");
       card.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  } else if (hasDetailFlash) {
+    window.setTimeout(() => {
+      const updatedField = document.querySelector(
+        "#detailGrid .detail-update-frame, " +
+        "#newProjectDetailGrid .detail-update-frame"
+      );
+      updatedField?.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
     }, 60);
   }
 }
