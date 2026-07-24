@@ -7021,6 +7021,8 @@ const MANAGER_NAME =
 const REP_QUEUE_KEY = "espin_rep_queue";
 const MANAGER_SYNC_KEY = "axis_manager_sync_ping_v1";
 const REP_SYNC_KEY = "axis_rep_sync_ping_v1";
+const SERVICE_DIRECT_RECORDS_KEY = "espin_service_direct_records_v1";
+const SERVICE_DIRECT_SYNC_PING_KEY = "espin_service_direct_sync_ping_v1";
 
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
@@ -9407,6 +9409,43 @@ function readArrayKey(key) {
 function writeArrayKey(key, arr) {
   localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
+
+function syncRepRecordsDirectlyToService(records) {
+  const serviceRecords = (Array.isArray(records) ? records : [])
+    .filter(rec =>
+      rec &&
+      typeof rec === "object" &&
+      rec.rep_deleted !== true
+    )
+    .map(rec => ({
+      ...rec,
+      service_visible: true,
+      service_direct_sync: true,
+      service_direct_source:
+        rec.project_type === "new_project_record"
+          ? "Rep New Project"
+          : "Rep Workspace"
+    }));
+
+  const payload = JSON.stringify(serviceRecords);
+  const previous = localStorage.getItem(SERVICE_DIRECT_RECORDS_KEY) || "[]";
+
+  if (payload === previous) return;
+
+  localStorage.setItem(SERVICE_DIRECT_RECORDS_KEY, payload);
+
+  const ping = String(Date.now());
+  localStorage.setItem(SERVICE_DIRECT_SYNC_PING_KEY, ping);
+  localStorage.setItem("espin_service_sync_ping_v1", ping);
+
+  try {
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: SERVICE_DIRECT_RECORDS_KEY,
+      newValue: payload
+    }));
+  } catch (_) {}
+}
+
     function saveRecords() {
       const records = Array.isArray(state.records) ? state.records : [];
 
@@ -9434,6 +9473,10 @@ function writeArrayKey(key, arr) {
 
       // Protected Rep workspace copy. Manager/Hub pages must never erase this.
       localStorage.setItem(REP_WORKSPACE_BACKUP_KEY, payload);
+
+      // Service receives Rep records directly. Hub does not need to be open
+      // to create or maintain this Service-visible copy.
+      syncRepRecordsDirectlyToService(records);
     }
 
 function readRepWorkspaceBackup() {
@@ -23140,6 +23183,7 @@ function scheduleRepSyncRender() {
   });
   importRepQueueRecords();
   importTradeInSyncRecords();
+  syncRepRecordsDirectlyToService(state.records);
   updateAxisShareStatus();
 
   document.addEventListener("input", e => {
@@ -23266,6 +23310,8 @@ if (showCompletedProjectsBtn) {
     localStorage.removeItem("espin_unified_communication_ping_v1");
     localStorage.removeItem(UNIFIED_SERVICE_MESSAGES_KEY);
     localStorage.removeItem("espin_service_sync_ping_v1");
+    localStorage.removeItem(SERVICE_DIRECT_RECORDS_KEY);
+    localStorage.removeItem(SERVICE_DIRECT_SYNC_PING_KEY);
 
     // Clear ESPIN Connect milestone snapshots shown in Active Projects.
     localStorage.removeItem(ESPIN_ACTIVE_PROJECTS_KEY);
