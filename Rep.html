@@ -21879,13 +21879,23 @@ return true;
   } catch (err) {
     console.error(err);
 
+    const handoffTimedOut = err?.name === "AbortError";
+    const handoffMessage = handoffTimedOut
+      ? "The handoff is taking longer than expected. Return to the Rep page and check Trade-In Projects before trying again."
+      : "ESPIN LINK could not complete the handoff. Please return to the Rep page and try again.";
+
     if (reservedTradeWindow && !reservedTradeWindow.closed) {
       try {
-        reservedTradeWindow.document.body.innerHTML = "<h2>Trade-In App did not open</h2><p>AXIS could not complete the handoff. Please return to the Rep page and try again.</p>";
+        reservedTradeWindow.document.body.innerHTML =
+          `<h2>Trade-In did not open</h2><p>${handoffMessage}</p>`;
       } catch {}
     }
 
-    showBanner("❌ Failed to send");
+    showBanner(
+      handoffTimedOut
+        ? "⚠️ Trade-In handoff timed out. Check Trade-In Projects before retrying."
+        : "❌ Failed to open Trade-In"
+    );
     return false;
   }
 }
@@ -22046,7 +22056,7 @@ return true;
   return true;
 }
 
-    function fetchWithTimeout(url, options = {}, timeout = 12000) {
+    function fetchWithTimeout(url, options = {}, timeout = 45000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
 
