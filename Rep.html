@@ -17888,7 +17888,8 @@ function saveInstallBaseFix(id) {
       ).toLowerCase();
 
       const handoffUrl = new URL(
-        "https://espin-medical-app.vercel.app/EspinConnectHandoff.html"
+        "/removal-install/EspinConnectHandoff.html",
+        window.location.origin
       );
 
       handoffUrl.searchParams.set("project_type", "install");
@@ -21538,7 +21539,10 @@ function openDecisionModal(recordId = state.selectedId, followUpDate = "", actio
   );
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
-  const connectUrl = new URL("https://espin-medical-app.vercel.app/Projects.html");
+  const connectUrl = new URL(
+    "/removal-install/Projects.html",
+    window.location.origin
+  );
 
   connectUrl.searchParams.set("source", "axis_demo");
   connectUrl.searchParams.set("handoff", "disposal_review");
@@ -21628,7 +21632,7 @@ async function sendToEspin(type, rec) {
       const isNewProject = rec.project_type === "new_project_record";
 
       const projectRes = await fetchWithTimeout(
-        "https://espin-equipment.vercel.app/api/admin/equipment",
+        "/api/admin/equipment",
         {
           method: "POST",
           headers: {
@@ -21703,6 +21707,17 @@ async function sendToEspin(type, rec) {
         String(Date.now())
       );
 
+      // Trade-In now runs as a module inside ESPIN LINK. Reuse the current
+      // ESPIN LINK identity so the handoff does not require a second login.
+      const tradeInUserEmail = String(
+        rec.assigned_rep_email ||
+        rec.sales_rep_email ||
+        localStorage.getItem("espinUserEmail") ||
+        email
+      ).toLowerCase().trim();
+      localStorage.setItem("espinEquipment_auth", "true");
+      localStorage.setItem("espinEquipment_userEmail", tradeInUserEmail);
+
       localStorage.setItem("axis_record_id", rec.id || "");
       localStorage.setItem("axis_parent_record_id", rec.id || "");
       localStorage.setItem(
@@ -21725,7 +21740,8 @@ async function sendToEspin(type, rec) {
       );
 
       const tradeUrl = new URL(
-        "https://espin-equipment.vercel.app/equipmentprojects.html"
+        "/equipmentprojects.html",
+        window.location.origin
       );
 
       tradeUrl.searchParams.set("projectId", projectData.id);
@@ -21909,7 +21925,8 @@ return true;
     `Disposal Project ${cleanText(rec.oem_project_id || rec.id)}`;
 
   const handoffUrl = new URL(
-    "https://espin-medical-app.vercel.app/EspinConnectHandoff.html"
+    "/removal-install/EspinConnectHandoff.html",
+    window.location.origin
   );
 
   handoffUrl.searchParams.set("project_type", "disposal");

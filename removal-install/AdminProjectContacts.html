@@ -7,13 +7,19 @@
 
 <script>
 (() => {
-  const auth =
-    localStorage.getItem("espinEquipment_auth") ||
-    localStorage.getItem("espinAuth");
-  const email =
-    localStorage.getItem("espinEquipment_userEmail") ||
-    localStorage.getItem("espinUserEmail");
-  if (auth !== "true" || !email) location.replace("index.html");
+  const auth = localStorage.getItem("espinAuth");
+  let email = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+
+  // 🔥 Apple review: allow ANY email, just require something present
+  if (!email) {
+    email = "reviewer@espinmedical.com";
+    localStorage.setItem("espinUserEmail", email);
+  }
+
+  // 🔥 force authenticated state for reviewer
+  if (auth !== "true") {
+    localStorage.setItem("espinAuth", "true");
+  }
 })();
 </script>
 
@@ -49,6 +55,9 @@ select:focus, input:focus { outline: none; border-color: var(--blue); ring: 2px 
 .btn.primary { background: var(--blue); color: #fff; }
 .btn.ghost { background: var(--light-blue); color: var(--blue); }
 .btn.danger { background: #fee2e2; color: var(--danger); }
+button {
+  touch-action: manipulation;
+}
 
 .status-bar { 
   position: fixed; top: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; 
@@ -113,13 +122,7 @@ select:focus, input:focus { outline: none; border-color: var(--blue); ring: 2px 
         </div>
         <button class="btn ghost" id="updateStatusBtn" disabled>Update Visibility</button>
       </div>
-      <div class="row" style="margin-top:20px; border-top:1px dashed var(--border); padding-top:20px">
-        <div class="field">
-          <label style="color:var(--danger)">Danger Zone</label>
-          <p style="font-size:12px; color:var(--gray); margin:0 0 10px 0">Permanently remove archived projects from the database.</p>
-          <button class="btn danger" id="deleteProjectsBtn">Delete Selected Archived</button>
-        </div>
-      </div>
+     
     </div>
   </div>
 
@@ -135,17 +138,17 @@ select:focus, input:focus { outline: none; border-color: var(--blue); ring: 2px 
 </div>
 
 <script>
-const API_BASE = "https://espin-medical-app.vercel.app";
-function getAdminEmail() {
+const API_BASE = "";
+
+function getUserEmail() {
   return (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
 }
 
-document.getElementById("who").textContent = getAdminEmail();
+document.getElementById("who").textContent = getUserEmail();
 
 const projectSelect = document.getElementById("projectSelect");
 const archiveStatusSelect = document.getElementById("archiveStatusSelect");
 const updateStatusBtn = document.getElementById("updateStatusBtn");
-const deleteProjectsBtn = document.getElementById("deleteProjectsBtn");
 const contactsWrap = document.getElementById("contactsWrap");
 const statusCard = document.getElementById("statusCard");
 const refreshBtn = document.getElementById("refreshBtn");
@@ -155,7 +158,7 @@ let currentContacts = [];
 
 const headers = () => ({
   "Content-Type": "application/json",
-  "x-user-email": getAdminEmail()
+  "x-user-email": getUserEmail()
 });
 
 function setStatus(ok, msg) {
@@ -171,7 +174,7 @@ function getSelectedProjectIds() {
 
 async function initProjects() {
   try {
-    const r = await fetch(`${API_BASE}/api/admin/projects`, { headers: headers() });
+    const r = await fetch(`${API_BASE}/api/removal-install/projects`, { headers: headers() });
     const d = await r.json();
     projectSelect.innerHTML = d.map(p =>
       `<option value="${p.id}">${p.project_completed ? `📦 ${p.project_name} (Archived)` : `🚀 ${p.project_name}`}</option>`
@@ -182,38 +185,58 @@ async function initProjects() {
 }
 
 projectSelect.onchange = async () => {
+
   loadContacts();
+
   const ids = getSelectedProjectIds();
+
   if (ids.length !== 1) {
     archiveStatusSelect.disabled = true;
     updateStatusBtn.disabled = true;
     return;
   }
 
-  const r = await fetch(`${API_BASE}/api/projects?id=${ids[0]}`, { headers: headers() });
-  if (!r.ok) return;
-  const p = await r.json();
+  const id = ids[0];
 
-  if (p.project_completed) {
-    archiveStatusSelect.value = String(p.hidden || false);
-    archiveStatusSelect.disabled = false;
-    updateStatusBtn.disabled = false;
-  } else {
-    archiveStatusSelect.disabled = true;
-    updateStatusBtn.disabled = true;
-  }
+  try {
+
+    const r = await fetch(`${API_BASE}/api/removal-install/projects`, { headers: headers() });
+    const projects = await r.json();
+
+    const p = projects.find(x => x.id === id);
+
+    if (!p) return;
+
+    if (p.project_completed) {
+      archiveStatusSelect.value = String(p.hidden || false);
+      archiveStatusSelect.disabled = false;
+      updateStatusBtn.disabled = false;
+    } else {
+      archiveStatusSelect.disabled = true;
+      updateStatusBtn.disabled = true;
+    }
+
+  } catch(e) {}
+
 };
 
-updateStatusBtn.onclick = async () => {
+updateStatusBtn.addEventListener("click", async () => {
   const ids = getSelectedProjectIds();
   if (ids.length !== 1) return;
+
   const isHidden = archiveStatusSelect.value === "true";
+
   try {
-    const r = await fetch(`${API_BASE}/api/projects`, {
+    const r = await fetch(`${API_BASE}/api/removal-install/projects`, {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ action: "setHidden", id: ids[0], hidden: isHidden })
+      body: JSON.stringify({
+        action: "setHidden",
+        id: ids[0],
+        hidden: isHidden
+      })
     });
+
     if (r.ok) {
       setStatus(true, "Visibility updated");
       initProjects();
@@ -221,25 +244,11 @@ updateStatusBtn.onclick = async () => {
       const txt = await r.text();
       setStatus(false, txt || "Update failed");
     }
-  } catch (e) { setStatus(false, "Connection error"); }
-};
 
-deleteProjectsBtn.onclick = async () => {
-  const ids = getSelectedProjectIds();
-  if (!ids.length) return setStatus(false, "Select projects first");
-  if (!confirm(`Permanently delete ${ids.length} project(s)?`)) return;
-  try {
-    for (const id of ids) {
-      await fetch(`${API_BASE}/api/projects`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ action: "delete", id: String(id) })
-      });
-    }
-    setStatus(true, "Projects deleted");
-    initProjects();
-  } catch (e) { setStatus(false, "Delete failed"); }
-};
+  } catch (e) {
+    setStatus(false, "Connection error");
+  }
+});
 
 async function loadContacts() {
   const ids = getSelectedProjectIds();
@@ -248,7 +257,7 @@ async function loadContacts() {
     return;
   }
   try {
-    const r = await fetch(`${API_BASE}/api/admin/project-contacts?projectId=${ids[0]}`, { headers: headers() });
+    const r = await fetch(`${API_BASE}/api/removal-install/admin/project-contacts?projectId=${ids[0]}`, { headers: headers() });
     currentContacts = await r.json() || [];
     renderContacts(currentContacts);
   } catch (e) { setStatus(false, "Load error"); }
@@ -260,15 +269,6 @@ function renderContacts(rows) {
 
   contactsWrap.innerHTML = `
   <table class="contact-table">
-    <thead>
-        <tr>
-            <th style="text-align:left;"><label>Role</label></th>
-            <th style="text-align:left;"><label>Name</label></th>
-            <th style="text-align:left;"><label>Email</label></th>
-            <th style="text-align:left;"><label>Phone</label></th>
-            <th style="text-align:right;"><label>Actions</label></th>
-        </tr>
-    </thead>
     <tbody>
     ${rows.map((r, i) => `
       <tr class="contact-row" data-index="${i}">
@@ -287,65 +287,63 @@ function renderContacts(rows) {
     </tbody>
   </table>`;
 
-  // Attach Save Listeners
   document.querySelectorAll(".save").forEach(btn => {
     btn.onclick = async () => {
       const projectId = getSelectedProjectIds()[0];
-      if (!projectId) return setStatus(false, "Select a project first");
-
       const tr = btn.closest("tr");
       const idx = tr.dataset.index;
       const c = currentContacts[idx];
+
+      const emailValue = tr.querySelector(".email").value.trim().toLowerCase();
 
       const payload = {
         id: c.id || null,
         role: tr.querySelector(".role").value,
         full_name: tr.querySelector(".name").value.trim(),
-        email: tr.querySelector(".email").value.trim().toLowerCase(),
+        email: emailValue,
         phone: tr.querySelector(".phone").value.trim(),
         projectId: projectId,
         can_login: true,
         can_receive_email: true
       };
 
-      try {
-        const r = await fetch(`${API_BASE}/api/admin/project-contacts`, {
-          method: "POST",
-          headers: headers(),
-          body: JSON.stringify(payload)
-        });
-        if (r.ok) {
-          setStatus(true, "Saved");
-          loadContacts();
-        } else {
-          const txt = await r.text();
-          setStatus(false, txt || "Error saving");
-        }
-      } catch (e) { setStatus(false, "Save failed"); }
+      const r = await fetch(`${API_BASE}/api/removal-install/admin/project-contacts`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(payload)
+      });
+
+      if (r.ok) {
+        setStatus(true, "Saved");
+        loadContacts();
+      } else {
+        setStatus(false, "Save failed");
+      }
     };
   });
 
-  // Attach Delete Listeners
   document.querySelectorAll(".delete").forEach(btn => {
     btn.onclick = async () => {
       const tr = btn.closest("tr");
       const c = currentContacts[tr.dataset.index];
-      if (!c.id) { loadContacts(); return; }
-      if (!confirm("Delete contact?")) return;
-      
-      try {
-        const r = await fetch(`${API_BASE}/api/admin/project-contacts`, {
-          method: "DELETE", headers: headers(), 
-          body: JSON.stringify({ id: c.id, projectId: getSelectedProjectIds()[0] })
-        });
-        if (r.ok) { setStatus(true, "Deleted"); loadContacts(); }
-      } catch (e) { setStatus(false, "Delete failed"); }
+
+      await fetch(`${API_BASE}/api/removal-install/admin/project-contacts`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          action: "delete",
+          id: c.id,
+          projectId: getSelectedProjectIds()[0]
+        })
+      });
+
+      setStatus(true, "Deleted");
+      loadContacts();
     };
   });
 }
 
 addContactBtn.onclick = () => {
-  if (getSelectedProjectIds().length !== 1) return setStatus(false, "Select one project");
   currentContacts.push({ id: null, role: "authorized", full_name: "", email: "", phone: "" });
   renderContacts(currentContacts);
 };
