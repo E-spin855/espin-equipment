@@ -9410,21 +9410,71 @@ function writeArrayKey(key, arr) {
   localStorage.setItem(key, JSON.stringify(Array.isArray(arr) ? arr : []));
 }
 
+function hasStartedRepServiceProject(rec) {
+  if (!rec || typeof rec !== "object") return false;
+
+  const installationStarted = Boolean(
+    rec.install_project_started === true ||
+    rec.install_project_started_at ||
+    rec.rep_action === "installation_project_started" ||
+    rec.rep_status === "installation_project_started" ||
+    rec.project_management_status === "sent_to_espin_connect_install"
+  );
+
+  const removalStarted = Boolean(
+    rec.removal_project_started === true ||
+    rec.removal_project_started_at ||
+    rec.disposal_review_sent_at ||
+    rec.disposal_review_status === "sent" ||
+    rec.rep_action === "send_disposal_review" ||
+    rec.rep_status === "sent_to_disposal_review" ||
+    (
+      rec.connect_sync_status === "handoff_opened" &&
+      rec.disposal_required === true
+    )
+  );
+
+  const projectSnapshots = [
+    ...(Array.isArray(rec.active_project_snapshots)
+      ? rec.active_project_snapshots
+      : []),
+    ...getActiveProjectSnapshotsForRecord(rec)
+  ];
+
+  const connectedProjectStarted = projectSnapshots.some(project => {
+    const type = lower([
+      project?.project_type,
+      project?.type,
+      project?.handoff
+    ].filter(Boolean).join(" "));
+
+    return (
+      type.includes("install") ||
+      type.includes("removal") ||
+      type.includes("disposal")
+    );
+  });
+
+  return installationStarted || removalStarted || connectedProjectStarted;
+}
+
 function syncRepRecordsDirectlyToService(records) {
   const serviceRecords = (Array.isArray(records) ? records : [])
     .filter(rec =>
       rec &&
       typeof rec === "object" &&
-      rec.rep_deleted !== true
+      rec.rep_deleted !== true &&
+      hasStartedRepServiceProject(rec)
     )
     .map(rec => ({
       ...rec,
       service_visible: true,
       service_direct_sync: true,
       service_direct_source:
-        rec.project_type === "new_project_record"
-          ? "Rep New Project"
-          : "Rep Workspace"
+        rec.install_project_started === true ||
+        rec.rep_status === "installation_project_started"
+          ? "Rep Installation Project"
+          : "Rep Removal Project"
     }));
 
   const payload = JSON.stringify(serviceRecords);
