@@ -1,6 +1,7 @@
 import http2 from "node:http2";
 import crypto from "node:crypto";
-import admin from "firebase-admin";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { kv } from "@vercel/kv";
 import { Pool } from "pg";
 
@@ -13,14 +14,21 @@ const pool = new Pool({
 });
 
 /* FIREBASE INIT */
-if (!admin.apps.length) {
+let firebaseReady = getApps().length > 0;
+
+if (!firebaseReady) {
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert(
-        JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-      )
+    const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+    if (!serviceAccount) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT is not configured");
+    }
+
+    initializeApp({
+      credential: cert(JSON.parse(serviceAccount))
     });
 
+    firebaseReady = true;
     console.log("🔥 FCM INITIALIZED");
   } catch (e) {
     console.error("❌ FCM INIT FAILED:", e?.message || e);
@@ -231,11 +239,11 @@ async function sendPushToUsers(title, body, data = {}) {
     );
 
     /* ANDROID */
-    if (android.length) {
+    if (android.length && firebaseReady) {
       console.log("📲 ANDROID PUSH:", targetEmail);
 
       try {
-        const result = await admin.messaging().sendEachForMulticast({
+        const result = await getMessaging().sendEachForMulticast({
           tokens: android,
           data: {
             title: String(title),
@@ -284,9 +292,9 @@ async function sendBadgeOnlyPush(targetEmail = null) {
     );
 
     /* Android badge sync */
-    if (android.length) {
+    if (android.length && firebaseReady) {
       try {
-        await admin.messaging().sendEachForMulticast({
+        await getMessaging().sendEachForMulticast({
           tokens: android,
           data: {
             badge: String(badge)
