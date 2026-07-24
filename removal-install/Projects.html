@@ -398,27 +398,64 @@ function showDeleteModal(id) {
 
 document.getElementById("deleteCancelBtn").onclick = () => {
   document.getElementById("deleteModal").style.display = "none";
+  pendingDeleteId = null;
 };
 
 document.getElementById("deleteConfirmBtn").onclick = async () => {
-  await fetch("/api/removal-install/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-user-email": email },
-    body: JSON.stringify({ action: "delete", id: pendingDeleteId })
-  });
-  document.getElementById("deleteModal").style.display = "none";
-  setTimeout(loadProjectsSafe, 500);
+  const button = document.getElementById("deleteConfirmBtn");
+  const projectId = pendingDeleteId;
+
+  if (!projectId || button.disabled) return;
+
+  button.disabled = true;
+  button.innerText = "Deleting…";
+
+  try {
+    const response = await fetch("/api/removal-install/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": email },
+      body: JSON.stringify({ action: "delete", id: projectId })
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "Project could not be deleted");
+    }
+
+    pendingDeleteId = null;
+    document.getElementById("deleteModal").style.display = "none";
+    await loadProjectsSafe();
+  } catch (error) {
+    console.error("PROJECT DELETE FAILED:", error);
+    alert(error.message || "Project could not be deleted");
+  } finally {
+    button.disabled = false;
+    button.innerText = "Delete";
+  }
 };
 
 /* ===============================
    LOAD PROJECTS
 =============================== */
 let loadingProjects = false;
+let reloadProjectsPending = false;
+
 async function loadProjectsSafe() {
-  if (loadingProjects) return;
-  loadingProjects = true;
-  await loadProjects();
-  loadingProjects = false;
+  if (loadingProjects) {
+    reloadProjectsPending = true;
+    return;
+  }
+
+  do {
+    reloadProjectsPending = false;
+    loadingProjects = true;
+
+    try {
+      await loadProjects();
+    } finally {
+      loadingProjects = false;
+    }
+  } while (reloadProjectsPending);
 }
 
 async function kvGet(key) {
