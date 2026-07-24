@@ -679,6 +679,46 @@ function saveData(data, ping = false){
     localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
   }
 }
+
+function publishTradeDeskProgress(rec, progress = {}){
+  if (!rec) return;
+
+  const now = new Date().toISOString();
+  const payload = {
+    ...rec,
+    ...progress,
+    axis_record_id: rec.axis_record_id || rec.axis_parent_record_id || rec.record_id || "",
+    axis_parent_record_id: rec.axis_parent_record_id || rec.axis_record_id || rec.record_id || "",
+    axis_project_id: rec.axis_project_id || rec.oem_project_id || rec.project_id || "",
+    axis_parent_project_type:
+      rec.axis_parent_project_type ||
+      (rec.axis_source === "new_axis_project" ? "new_project_record" : ""),
+    sync_mode:
+      rec.sync_mode ||
+      (rec.axis_source === "new_axis_project"
+        ? "sync_tradein_to_new_axis_project"
+        : "sync_tradein_to_axis_record"),
+    tradein_sync_received: true,
+    tradein_seen_by_rep: false,
+    last_tradein_update_at: now,
+    updated_at: now
+  };
+
+  let syncRecords = loadArray(TRADEIN_SYNC_KEY);
+  let found = false;
+
+  syncRecords = syncRecords.map(item => {
+    if (!isSameAxisRecord(item, payload)) return item;
+    found = true;
+    return { ...item, ...payload };
+  });
+
+  if (!found) syncRecords.unshift(payload);
+
+  saveArray(TRADEIN_SYNC_KEY, syncRecords);
+  localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(payload));
+  localStorage.setItem(MANAGER_PING_KEY, String(Date.now()));
+}
 function openMailDraft(mailto){
   resetDemoButtons();
 
@@ -1534,6 +1574,8 @@ function prepareBuyerReviewPacket(id, btn = null){
   rec.crm_status = "Buyer Review Packet Prepared";
   rec.buyer_review_link_visible = true;
   rec.review_packet_prepared = true;
+  rec.review_packet_prepared_at = rec.approved_for_bidding_at;
+  rec.tradein_buyer_review_packet_prepared_at = rec.approved_for_bidding_at;
 
   rec.manually_shared_with_buyers = matchingBuyers.map(b => ({
     company: b.company,
@@ -1568,6 +1610,12 @@ function prepareBuyerReviewPacket(id, btn = null){
   };
 
   saveData(data, true);
+  publishTradeDeskProgress(rec, {
+    trade_desk_status: "Trade-In Sent for Bidding",
+    review_packet_prepared: true,
+    review_packet_prepared_at: rec.approved_for_bidding_at,
+    tradein_buyer_review_packet_prepared_at: rec.approved_for_bidding_at
+  });
 
   let packets = loadArray(BUYER_PACKET_KEY);
   const idx = packets.findIndex(p =>
@@ -2473,6 +2521,8 @@ function saveResponseDeadline(id){
   rec.bid_deadline = value;
   rec.bidding_ends_at = value;
   rec.bid_expires_at = value;
+  rec.tradein_acceptance_deadline = value;
+  rec.trade_desk_status = `Trade Desk Bidding Ends on ${value}`;
 
   if (rec.review_packet) {
     rec.review_packet.response_deadline = value;
@@ -2492,6 +2542,14 @@ function saveResponseDeadline(id){
     : [];
 
   saveData(data, true);
+  publishTradeDeskProgress(rec, {
+    response_deadline: value,
+    bid_deadline: value,
+    bidding_ends_at: value,
+    bid_expires_at: value,
+    tradein_acceptance_deadline: value,
+    trade_desk_status: `Trade Desk Bidding Ends on ${value}`
+  });
 
   const packetId = rec.review_packet_id || rec.bid_package_id || getReviewPacketId(rec);
 
