@@ -101,11 +101,10 @@ async function clearAllProjectBadges() {
 }
 async function readBadgesFromKV() {
   try {
-    const r = await fetch("/api/removal-install/kv-get", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: BADGE_KV_KEY })
-    });
+    const r = await fetch(
+      `/api/removal-install/kv-get?key=${encodeURIComponent(BADGE_KV_KEY)}`,
+      { headers: { "x-user-email": userEmail } }
+    );
     const j = await r.json();
     if (!j || !j.value) return [];
     const parsed = Array.isArray(j.value) ? j.value : JSON.parse(j.value);
@@ -119,7 +118,10 @@ async function writeBadgesToKV(list) {
   try {
     await fetch("/api/removal-install/kv-set", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
       body: JSON.stringify({
         key: BADGE_KV_KEY,
         value: JSON.stringify(normalizeKeys(list || []))
@@ -145,7 +147,10 @@ async function writeBadgesToKV(list) {
 
       fetch("/api/removal-install/kv-set", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
         body: JSON.stringify({ key: BADGE_KV_KEY, value: "[]" }),
         keepalive: true
       });

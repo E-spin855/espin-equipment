@@ -46,7 +46,10 @@ export default async function handler(req, res) {
     "project:unread:",
     "project:unread_images:",
     "project:last_seen:",
-    "project:last_seen_images:"
+    "project:last_seen_images:",
+    "project:badges_details:",
+    "project:badges_images:",
+    "ios:badge:counter:"
   ];
 
   const allowed = allowedPrefixes.some(prefix => key.startsWith(prefix));

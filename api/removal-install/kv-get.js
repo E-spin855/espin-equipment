@@ -9,7 +9,7 @@ function clean(v) {
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-email");
 }
 
@@ -20,12 +20,16 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   const email = clean(req.headers["x-user-email"]);
-  const key = String(req.query.key || "").trim();
+  const body =
+    typeof req.body === "string"
+      ? JSON.parse(req.body || "{}")
+      : req.body || {};
+  const key = String(req.query.key || body.key || "").trim();
 
   if (!email) {
     return res.status(401).json({ error: "Missing user email" });
@@ -44,7 +48,9 @@ export default async function handler(req, res) {
     "project:unread:",
     "project:unread_images:",
     "project:last_seen:",
-    "project:last_seen_images:"
+    "project:last_seen_images:",
+    "project:badges_details:",
+    "project:badges_images:"
   ];
 
   const allowed = allowedPrefixes.some(prefix => key.startsWith(prefix));

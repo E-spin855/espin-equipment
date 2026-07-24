@@ -84,11 +84,12 @@ function saveBadgesLocally(list) {
 
 async function syncBadgesFromKV() {
   try {
-    const r = await fetch(`${API_BASE}/api/removal-install/kv-get`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: BADGE_KV_KEY })
-    });
+    const r = await fetch(
+      `${API_BASE}/api/removal-install/kv-get?key=${encodeURIComponent(BADGE_KV_KEY)}`,
+      {
+        headers: { "x-user-email": userEmail }
+      }
+    );
 
     const j = await r.json();
     const val = uniqStrings(safeParseArray(j?.value));
@@ -104,7 +105,10 @@ async function writeBadgesToKV(list) {
     const arr = uniqStrings(list);
     await fetch(`${API_BASE}/api/removal-install/kv-set`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
       body: JSON.stringify({ key: BADGE_KV_KEY, value: JSON.stringify(arr) })
     });
   } catch {}
@@ -118,8 +122,15 @@ function clearBadgesOnExit() {
   localStorage.removeItem(BADGE_STORAGE_KEY);
 
   const payload = JSON.stringify({ key: BADGE_KV_KEY, value: "[]" });
-  const blob = new Blob([payload], { type: "application/json" });
-  navigator.sendBeacon(`${API_BASE}/api/removal-install/kv-set`, blob);
+  fetch(`${API_BASE}/api/removal-install/kv-set`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail
+    },
+    body: payload,
+    keepalive: true
+  }).catch(() => {});
 }
 
 function handleBack() {
