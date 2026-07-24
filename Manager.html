@@ -4692,6 +4692,7 @@ const state = {
   repCommunicationOpen: {},
   repHistoryOpen: {},
   repCommunicationDismissed: {},
+  managerRepActionHistoryOpen: {},
   managerRepActionHistoryDismissed: {},
 repCommunicationManuallyHidden: {}
 };
@@ -6287,24 +6288,28 @@ function toggleManagerRepActionHistory(button) {
   if (!card || !body) return;
 
   const willOpen = body.hasAttribute("hidden");
+  const rec = findSelectedRecord();
+  const recordKey = rec
+    ? getManagerRepActionHistoryRecordKey(rec) || getRecordKey(rec)
+    : "";
 
   if (willOpen) {
+    if (recordKey) state.managerRepActionHistoryOpen[recordKey] = true;
     body.removeAttribute("hidden");
     card.classList.add("history-open");
     card.classList.remove("manager-action-history-update-frame");
     button.textContent = "Hide History";
 
-    const rec = findSelectedRecord();
     if (rec) {
       acknowledgeManagerRepActionHistory(rec);
     }
   } else {
+    if (recordKey) state.managerRepActionHistoryOpen[recordKey] = false;
     body.setAttribute("hidden", "");
     card.classList.remove("history-open");
     card.classList.remove("manager-action-history-update-frame");
     button.textContent = "Open History";
 
-    const rec = findSelectedRecord();
     if (rec) {
       const seenAt = new Date().toISOString();
       const acknowledged = {
@@ -11598,6 +11603,10 @@ function renderDetail() {
 
   const repActionHistoryUnseen =
     hasUnseenManagerRepActionHistory(rec);
+  const repActionHistoryRecordKey =
+    getManagerRepActionHistoryRecordKey(rec) || getRecordKey(rec);
+  const repActionHistoryOpen =
+    state.managerRepActionHistoryOpen[repActionHistoryRecordKey] === true;
 
   grid.innerHTML = `
   ${renderRedHotServiceCard(rec, "manager")}
@@ -11769,8 +11778,8 @@ function renderDetail() {
   <div
     class="${
       repActionHistoryUnseen ? repFollowUpCardClass : "detail-card"
-    } manager-followup-card ${
-      repActionHistoryUnseen
+    } manager-followup-card ${repActionHistoryOpen ? "history-open" : ""} ${
+      repActionHistoryUnseen && !repActionHistoryOpen
         ? "manager-action-history-update-frame"
         : ""
     }"
@@ -11783,13 +11792,13 @@ function renderDetail() {
         class="secondary manager-action-history-toggle"
         onclick="event.stopPropagation(); toggleManagerRepActionHistory(this)"
       >
-        Open History
+        ${repActionHistoryOpen ? "Hide History" : "Open History"}
       </button>
     </div>
 
     ${renderManagerCurrentRepAction(rec)}
 
-    <div class="manager-action-history-body" hidden>
+    <div class="manager-action-history-body" ${repActionHistoryOpen ? "" : "hidden"}>
       ${renderManagerRepActionHistory(rec)}
     </div>
   </div>
