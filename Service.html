@@ -92,7 +92,7 @@
 </main>
 <script>
 const KEYS={main:"espin_lifecycle_demo_records_v1",install:"axis_install_base_records_v1",manager:"axis_manager_queue_v1",rep:"espin_rep_queue",response:"axis_install_base_response_queue_v1",final:"axis_install_base_final_sync_v1",serviceDirect:"espin_service_direct_records_v1",serviceFeed:"espin_service_feed_records_v1",serviceMessages:"espin_service_rep_messages_v1",unifiedCommunication:"espin_unified_communication_v1",resolutionPacket:"espin_red_hot_resolution_packet_v1",activeProjects:"espin_active_project_progress_v1"};
-const PINGS=["axis_install_base_records_ping_v1","axis_install_base_sync_ping_v1","axis_install_base_response_ping_v1","axis_install_base_final_sync_ping_v1","axis_manager_sync_ping_v1","axis_rep_sync_ping_v1","espin_service_direct_sync_ping_v1","espin_red_hot_resolution_ping_v1","espin_service_sync_ping_v1","espin_unified_communication_ping_v1","espin_active_project_progress_v1"];
+const PINGS=["axis_install_base_records_ping_v1","axis_install_base_sync_ping_v1","axis_install_base_response_ping_v1","axis_install_base_final_sync_ping_v1","axis_manager_sync_ping_v1","axis_rep_sync_ping_v1","espin_service_direct_sync_ping_v1","espin_red_hot_resolution_ping_v1","espin_service_sync_ping_v1","espin_unified_communication_ping_v1","espin_active_project_progress_ping_v1"];
 const state={records:[],selected:"",search:"",filter:"",communicationOpen:false,communicationDraft:"",communicationTo:"rep"}; const $=id=>document.getElementById(id); const clean=v=>String(v??"").trim(); const truthy=v=>v===true||v===1||["true","1","yes","active"].includes(clean(v).toLowerCase());
 function esc(v){return clean(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function parse(key,fallback){try{const v=JSON.parse(localStorage.getItem(key)||"");return v??fallback}catch{return fallback}}
@@ -228,7 +228,152 @@ function stableServiceIds(record){return[record.oem_project_id,record.project_id
 function stableServiceMatch(a,b){const left=stableServiceIds(a),right=stableServiceIds(b);return left.some(value=>right.includes(value))}
 function normalizeServiceFeedValue(field,value){if(value instanceof Date&&!Number.isNaN(value.getTime()))return value.toISOString();if(field==="red_hot_alert")return truthy(value);if(field==="oem_service_target_days")return clean(value)===""?"":Number(value);return value??""}
 function serviceFeedUpdateFromRow(sourceRow){const row={};Object.entries(sourceRow||{}).forEach(([key,value])=>row[normalizeServiceFeedKey(key)]=value);const identity={oem_project_id:row.oem_project_id||row.project_id||"",asset_id:row.asset_id||row.equipment_id||"",serial_number:row.serial_number||row.serial||""};const patch={};const context={};SERVICE_FEED_FIELDS.forEach(field=>{if(Object.prototype.hasOwnProperty.call(row,field))patch[field]=normalizeServiceFeedValue(field,row[field])});SERVICE_FEED_CONTEXT_FIELDS.forEach(field=>{if(Object.prototype.hasOwnProperty.call(row,field))context[field]=normalizeServiceFeedValue(field,row[field])});return{identity,patch,context}}
-function applyServiceFeedRows(sourceRows){const updates=(sourceRows||[]).map(serviceFeedUpdateFromRow).filter(update=>stableServiceIds(update.identity).length&&Object.keys(update.patch).length);const importedAt=new Date().toISOString();let serviceFeed=parse(KEYS.serviceFeed,[]);if(!Array.isArray(serviceFeed))serviceFeed=[];updates.forEach(update=>{const incoming={...update.identity,...update.context,...update.patch,service_feed_source:true,service_feed_imported_at:importedAt};const index=serviceFeed.findIndex(record=>stableServiceMatch(record,update.identity));if(index<0)serviceFeed.push(incoming);else serviceFeed[index]={...serviceFeed[index],...incoming}});localStorage.setItem(KEYS.serviceFeed,JSON.stringify(serviceFeed));mapStores(record=>{const update=updates.find(candidate=>stableServiceMatch(record,candidate.identity));return update?{...record,...update.patch}:record});const ping=String(Date.now());PINGS.forEach(key=>localStorage.setItem(key,ping));load();alert(`${updates.length} service feed record${updates.length===1?"":"s"} loaded. Service is the source of RED HOT activation and resolution.`)}
+function upsertServiceRecordArray(key,incoming){
+  let records=parse(key,[]);
+  if(!Array.isArray(records))records=[];
+  const index=records.findIndex(record=>stableServiceMatch(record,incoming));
+  if(index<0)records.unshift(incoming);
+  else records[index]={...records[index],...incoming};
+  localStorage.setItem(key,JSON.stringify(records));
+}
+
+function upsertServiceManagerQueue(incoming){
+  let queue=parse(KEYS.manager,{});
+  if(Array.isArray(queue))queue={"Default Manager":queue};
+  if(!queue||typeof queue!=="object")queue={};
+
+  let matched=false;
+  Object.keys(queue).forEach(bucket=>{
+    const records=Array.isArray(queue[bucket])?queue[bucket]:[];
+    queue[bucket]=records.map(record=>{
+      if(!stableServiceMatch(record,incoming))return record;
+      matched=true;
+      return{...record,...incoming};
+    });
+  });
+
+  if(!matched){
+    const bucket=clean(incoming.manager_name||incoming.owner_group_name)||"Default Manager";
+    if(!Array.isArray(queue[bucket]))queue[bucket]=[];
+    queue[bucket].unshift(incoming);
+  }
+
+  localStorage.setItem(KEYS.manager,JSON.stringify(queue));
+}
+
+function publishImportedServiceRecord(update,importedAt){
+  const identity=update.identity||{};
+  const context=update.context||{};
+  const patch=update.patch||{};
+  const stableId=clean(
+    identity.oem_project_id||
+    identity.asset_id||
+    identity.serial_number
+  );
+  if(!stableId)return;
+
+  const base={
+    ...identity,
+    ...context,
+    ...patch,
+    id:stableId,
+    key:stableId,
+    project_type:"equipment_review_record",
+    source:"OEM Service Field Feed",
+    source_system:context.source_system||"OEM Service Field Feed",
+    service_feed_source:true,
+    service_feed_imported_at:importedAt,
+    service_visible:true,
+    install_base_review_label:"Service Coverage",
+    oem_review_type:"service",
+    review_type:"service"
+  };
+
+  const repPacket={
+    ...base,
+    rep_visible:true,
+    manager_visible:false,
+    manager_only:false,
+    install_base_released_to:"rep",
+    release_destination:"rep",
+    install_base_release_status:"released_to_rep",
+    rep_unseen_update:true,
+    rep_flash_at:patch.service_updated_at||importedAt,
+    rep_flash_type:"service_feed_update"
+  };
+
+  const hubPacket={
+    ...base,
+    install_base_visible:true,
+    rep_visible:false,
+    manager_visible:false,
+    install_base_release_status:"auto_synced",
+    install_base_sync_type:"service_feed_sync",
+    install_base_auto_synced_at:patch.service_updated_at||importedAt
+  };
+
+  const managerPacket={
+    ...base,
+    rep_visible:false,
+    manager_visible:true,
+    manager_only:true,
+    install_base_released_to:"manager",
+    release_destination:"manager",
+    install_base_release_status:"released_to_manager",
+    manager_unseen_update:true,
+    manager_alert_seen:false,
+    manager_flash_at:patch.service_updated_at||importedAt,
+    manager_flash_type:"service_feed_update",
+    manager_flash_text:"Service record updated"
+  };
+
+  upsertServiceRecordArray(KEYS.main,repPacket);
+  upsertServiceRecordArray(KEYS.rep,repPacket);
+  upsertServiceRecordArray(KEYS.install,hubPacket);
+  upsertServiceManagerQueue(managerPacket);
+}
+
+function applyServiceFeedRows(sourceRows){
+  const updates=(sourceRows||[])
+    .map(serviceFeedUpdateFromRow)
+    .filter(update=>
+      stableServiceIds(update.identity).length&&
+      Object.keys(update.patch).length
+    );
+  const importedAt=new Date().toISOString();
+  let serviceFeed=parse(KEYS.serviceFeed,[]);
+  if(!Array.isArray(serviceFeed))serviceFeed=[];
+
+  updates.forEach(update=>{
+    const incoming={
+      ...update.identity,
+      ...update.context,
+      ...update.patch,
+      service_feed_source:true,
+      service_feed_imported_at:importedAt
+    };
+    const index=serviceFeed.findIndex(record=>
+      stableServiceMatch(record,update.identity)
+    );
+    if(index<0)serviceFeed.push(incoming);
+    else serviceFeed[index]={...serviceFeed[index],...incoming};
+
+    publishImportedServiceRecord(update,importedAt);
+  });
+
+  localStorage.setItem(KEYS.serviceFeed,JSON.stringify(serviceFeed));
+  mapStores(record=>{
+    const update=updates.find(candidate=>
+      stableServiceMatch(record,candidate.identity)
+    );
+    return update?{...record,...update.patch}:record;
+  });
+
+  const ping=String(Date.now());
+  PINGS.forEach(key=>localStorage.setItem(key,ping));
+  load();
+  alert(`${updates.length} service feed record${updates.length===1?"":"s"} loaded and synchronized to Rep, Manager, and Hub.`);
+}
 function loadServiceFeedFile(file){if(!file)return;if(typeof XLSX==="undefined"){alert("The Excel reader did not load. Refresh the page and try again.");return}const reader=new FileReader();reader.onload=event=>{try{const workbook=XLSX.read(new Uint8Array(event.target.result),{type:"array",cellDates:true});const sheet=workbook.Sheets[workbook.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sheet,{defval:"",raw:true});applyServiceFeedRows(rows)}catch(error){console.error(error);alert("The Service feed could not be read.")}};reader.readAsArrayBuffer(file)}
 function clearServiceLocalData(){
   if(!confirm("Clear all locally stored ESPIN LINK demo records, service messages, alerts, and project progress from this browser?"))return;
