@@ -9,6 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
   <script src="assets/js/axis-utils.js"></script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -2583,29 +2585,14 @@ button.message-sent-state{
   overflow:hidden;
   border:1px solid rgba(88,184,255,.24);
   border-radius:18px;
-  background:
-    linear-gradient(90deg,rgba(67,176,255,.08) 1px,transparent 1px),
-    linear-gradient(0deg,rgba(67,176,255,.08) 1px,transparent 1px),
-    radial-gradient(circle at 34% 38%,rgba(65,255,156,.12),transparent 26%),
-    radial-gradient(circle at 68% 54%,rgba(0,229,255,.14),transparent 30%),
-    #07111f;
-  background-size:42px 42px,42px 42px,auto,auto,auto;
+  background:#07111f;
   box-shadow:inset 0 0 40px rgba(0,229,255,.05);
 }
-.rep-map-road{
-  position:absolute;
-  height:3px;
-  border-radius:999px;
-  background:linear-gradient(90deg,transparent,rgba(67,176,255,.34),transparent);
-  transform-origin:left center;
-}
-.rep-map-road.r1{left:8%;top:62%;width:82%;transform:rotate(-8deg);}
-.rep-map-road.r2{left:12%;top:26%;width:78%;transform:rotate(14deg);}
-.rep-map-road.r3{left:48%;top:8%;width:58%;transform:rotate(88deg);}
 .rep-map-label{
   position:absolute;
   left:18px;
   top:16px;
+  z-index:4;
   padding:8px 11px;
   border:1px solid rgba(0,229,255,.34);
   border-radius:999px;
@@ -2614,9 +2601,7 @@ button.message-sent-state{
   font-size:12px;
   font-weight:900;
 }
-.rep-map-pin{
-  position:absolute;
-  transform:translate(-50%,-50%);
+.rep-osm-marker{
   display:grid;
   place-items:center;
   width:34px;
@@ -2628,31 +2613,45 @@ button.message-sent-state{
   font-size:12px;
   font-weight:950;
   box-shadow:0 0 22px rgba(0,229,255,.46);
+  cursor:pointer;
 }
-.rep-map-pin.origin{
+.rep-osm-marker.origin{
   width:42px;
   height:42px;
   background:linear-gradient(135deg,#41ff9c,#8effc3);
   box-shadow:0 0 28px rgba(65,255,156,.62);
 }
-.rep-map-pin::after{
-  content:attr(data-label);
-  position:absolute;
-  top:38px;
-  left:50%;
-  transform:translateX(-50%);
-  width:max-content;
-  max-width:170px;
-  padding:5px 8px;
-  border:1px solid rgba(88,184,255,.24);
-  border-radius:10px;
-  background:rgba(7,17,31,.88);
-  color:#e8f6ff;
-  font-size:11px;
-  font-weight:850;
-  white-space:nowrap;
+.rep-proximity-map .maplibregl-canvas{
+  outline:none;
+}
+.rep-proximity-map .maplibregl-ctrl-group{
   overflow:hidden;
-  text-overflow:ellipsis;
+  border:1px solid rgba(88,184,255,.36);
+  border-radius:10px;
+  background:#f7fbff;
+}
+.rep-proximity-map .maplibregl-popup-content{
+  border:1px solid rgba(88,184,255,.34);
+  border-radius:12px;
+  background:#07111f;
+  color:#eef6ff;
+  font-size:12px;
+  font-weight:800;
+  box-shadow:0 10px 30px rgba(0,0,0,.38);
+}
+.rep-proximity-map .maplibregl-popup-close-button{
+  color:#eef6ff;
+}
+.rep-proximity-map-status{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:30px;
+  color:#b8cfe6;
+  text-align:center;
+  font-size:13px;
+  font-weight:850;
 }
 .rep-proximity-list{
   display:grid;
@@ -15416,28 +15415,105 @@ function getRepNearbyAccounts(rec, radiusMiles = 25){
     .slice(0, 6);
 }
 
-function renderRepProximityMapPins(nearby){
-  const positions = [
-    [66,28],
-    [78,56],
-    [50,72],
-    [32,56],
-    [24,30],
-    [58,46]
-  ];
+let repProximityMapInstance = null;
 
-  return nearby.map((item, index) => {
-    const pos = positions[index % positions.length];
-    const label = clean(item.rec.site || item.rec.facility || item.rec.hospital || "Account");
-    return `
-      <div
-        class="rep-map-pin"
-        style="left:${pos[0]}%;top:${pos[1]}%;"
-        data-label="${escapeHtml(label)}"
-        title="${escapeHtml(label)}"
-      >${index + 1}</div>
+function createRepMapMarker(label, origin = false){
+  const marker = document.createElement("div");
+  marker.className = `rep-osm-marker${origin ? " origin" : ""}`;
+  marker.textContent = origin ? "●" : label;
+  return marker;
+}
+
+function initializeRepProximityMap(rec, nearby){
+  const container = document.getElementById("repProximityMapCanvas");
+  if (!container || state.repProximityOpen !== true) return;
+
+  if (repProximityMapInstance) {
+    try { repProximityMapInstance.remove(); } catch (_) {}
+    repProximityMapInstance = null;
+  }
+
+  const origin = getRepRecordCoordinates(rec);
+  if (!origin) return;
+
+  if (typeof maplibregl === "undefined") {
+    container.innerHTML = `
+      <div class="rep-proximity-map-status">
+        The interactive OpenStreetMap library could not be loaded. Check the internet connection and reopen this view.
+      </div>
     `;
-  }).join("");
+    return;
+  }
+
+  const [originLat, originLon] = origin;
+  const map = new maplibregl.Map({
+    container,
+    style:"https://tiles.openfreemap.org/styles/liberty",
+    center:[originLon, originLat],
+    zoom:9.5,
+    attributionControl:true
+  });
+
+  repProximityMapInstance = map;
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-right");
+
+  const bounds = new maplibregl.LngLatBounds();
+  bounds.extend([originLon, originLat]);
+
+  const currentName = clean(
+    rec.site || rec.facility || rec.hospital || "Selected Account"
+  );
+
+  new maplibregl.Marker({
+    element:createRepMapMarker("●", true),
+    anchor:"center"
+  })
+    .setLngLat([originLon, originLat])
+    .setPopup(
+      new maplibregl.Popup({offset:24}).setHTML(
+        `<strong>${escapeHtml(currentName)}</strong><br>Selected account`
+      )
+    )
+    .addTo(map);
+
+  nearby.forEach((item, index) => {
+    const coords = getRepRecordCoordinates(item.rec);
+    if (!coords) return;
+    const [lat, lon] = coords;
+    const name = clean(
+      item.rec.site || item.rec.facility || item.rec.hospital || "Account"
+    );
+    bounds.extend([lon, lat]);
+
+    new maplibregl.Marker({
+      element:createRepMapMarker(String(index + 1)),
+      anchor:"center"
+    })
+      .setLngLat([lon, lat])
+      .setPopup(
+        new maplibregl.Popup({offset:22}).setHTML(
+          `<strong>${escapeHtml(name)}</strong><br>Approx. ${escapeHtml(item.miles)} miles`
+        )
+      )
+      .addTo(map);
+  });
+
+  map.once("load", () => {
+    if (nearby.length) {
+      map.fitBounds(bounds, {
+        padding:52,
+        maxZoom:11,
+        duration:0
+      });
+    }
+    map.resize();
+  });
+}
+
+function scheduleRepProximityMap(rec, nearby){
+  window.requestAnimationFrame(() => {
+    initializeRepProximityMap(rec, nearby);
+  });
 }
 
 function renderRepProximityView(rec){
@@ -15546,7 +15622,7 @@ function renderRepProximityView(rec){
           </div>
 
           <div class="rep-proximity-subtitle">
-            ZIP-based proximity using U.S. Census Bureau 2025 ZCTA representative coordinates. Rep controls visit selection and routing.
+            Interactive OpenStreetMap data with ZIP-based account markers using U.S. Census Bureau 2025 ZCTA representative coordinates. Rep controls visit selection and routing.
           </div>
 
           <div class="rep-proximity-collapsed-summary">
@@ -15669,25 +15745,12 @@ function renderRepProximityView(rec){
           <div class="rep-proximity-layout">
             <div
               class="rep-proximity-map"
+              id="repProximityMapCanvas"
               aria-label="Nearby accounts map preview"
             >
               <div class="rep-map-label">
-                ZIP Proximity View
+                OpenStreetMap · OpenFreeMap Vector View
               </div>
-
-              <div class="rep-map-road r1"></div>
-              <div class="rep-map-road r2"></div>
-              <div class="rep-map-road r3"></div>
-
-              <div
-                class="rep-map-pin origin"
-                style="left:50%;top:50%;"
-                data-label="Selected"
-              >
-                ●
-              </div>
-
-              ${renderRepProximityMapPins(nearby)}
             </div>
 
             <div class="rep-proximity-list">
@@ -15829,6 +15892,14 @@ function retryCensusZctaCoordinates(){
 
 function toggleRepProximityView(){
   state.repProximityOpen = state.repProximityOpen !== true;
+
+  if (
+    state.repProximityOpen !== true &&
+    repProximityMapInstance
+  ) {
+    try { repProximityMapInstance.remove(); } catch (_) {}
+    repProximityMapInstance = null;
+  }
 
   if (
     state.repProximityOpen &&
@@ -16704,6 +16775,16 @@ if (detailGridEl) {
 }
 
 applyDetailUpdateFrames();
+
+if (state.repProximityOpen === true) {
+  scheduleRepProximityMap(
+    rec,
+    getRepNearbyAccounts(
+      rec,
+      Number(state.repProximityRadius || 25)
+    )
+  );
+}
 
 const manualActionSelect = $("manualActionSelect");
 const repActionDraftKey = String(rec.id || rec.key || getRecordKey(rec) || "");
