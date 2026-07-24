@@ -6173,59 +6173,9 @@ tr.red-hot-row.red-hot-update-pulse:is(.unread-message-row,.incoming-communicati
   font-weight:800;
 }
 
-.workflow-alert-date{
-  margin-top:6px;
-  color:#ffe890;
-  font-size:12px;
-  font-weight:900;
-}
-
-.workflow-seven-day-alert{
-  border:2px solid rgba(255,77,77,.96)!important;
-  box-shadow:
-    0 0 0 1px rgba(255,77,77,.28),
-    0 0 24px rgba(255,77,77,.58),
-    0 0 46px rgba(255,77,77,.24)!important;
-  animation:workflowSevenDayAlertPulse 1.05s ease-in-out infinite!important;
-}
-
-.workflow-seven-day-alert::after{
-  content:"7-DAY FOLLOW-UP DUE";
-  position:absolute;
-  top:-12px;
-  right:18px;
-  z-index:20;
-  padding:5px 10px;
-  border-radius:999px;
-  border:1px solid rgba(255,156,156,.96);
-  background:#641923;
-  color:#ffe5e5;
-  font-size:10px;
-  font-weight:950;
-  letter-spacing:.10em;
-  box-shadow:0 0 16px rgba(255,77,77,.46);
-  pointer-events:none;
-}
-
 .new-project-team-card,
 .new-project-tradein-card{
   position:relative;
-}
-
-@keyframes workflowSevenDayAlertPulse{
-  0%,100%{
-    border-color:rgba(255,77,77,.70);
-    box-shadow:
-      0 0 0 1px rgba(255,77,77,.22),
-      0 0 14px rgba(255,77,77,.30);
-  }
-  50%{
-    border-color:rgba(255,156,156,1);
-    box-shadow:
-      0 0 0 2px rgba(255,156,156,.52),
-      0 0 30px rgba(255,77,77,.82),
-      0 0 52px rgba(255,77,77,.24);
-  }
 }
 
 @media(max-width:700px){
@@ -6441,8 +6391,7 @@ button[onclick="closeQuoteModal()"]{
   border-color:rgba(134,239,172,.94)!important;
   box-shadow:0 0 16px rgba(65,255,156,.32)!important;
 }
-button[onclick*="saveNewProjectTradeInCredit"],
-button[onclick*="applyExternalTradeInToQuote"]{
+button[onclick*="saveAndApplyNewProjectTradeInValue"]{
   background:linear-gradient(90deg,#22c55e,#6ee7b7)!important;
   color:#f2fff9!important;
   border-color:rgba(134,239,172,.94)!important;
@@ -18090,27 +18039,6 @@ function saveInstallBaseFix(id) {
       return parsed.toLocaleDateString();
     }
 
-    function workflowAddDays(dateValue, days) {
-      if (!dateValue) return "";
-      const parsed = new Date(`${dateValue}T00:00:00`);
-      if (Number.isNaN(parsed.getTime())) return "";
-      parsed.setDate(parsed.getDate() + Number(days || 0));
-      return parsed.toISOString().slice(0, 10);
-    }
-
-    function workflowAlertIsDue(followUpDate, completed) {
-      if (!followUpDate || completed) return false;
-
-      const alertDate = workflowAddDays(followUpDate, 7);
-      if (!alertDate) return false;
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const due = new Date(`${alertDate}T00:00:00`);
-      return due.getTime() <= today.getTime();
-    }
-
     function saveWorkflowFollowUpDate(input, recordId, team) {
       if (!input || !input.value) return;
 
@@ -18321,23 +18249,10 @@ function saveInstallBaseFix(id) {
       const quoteFollowUpDate = rec.quote_team_followup_date || "";
       const tradeFollowUpDate = rec.trade_desk_followup_date || "";
 
-      const quoteAlertDate = workflowAddDays(quoteFollowUpDate, 7);
-      const tradeAlertDate = workflowAddDays(tradeFollowUpDate, 7);
-
-      const quoteFollowUpDue = workflowAlertIsDue(
-        quoteFollowUpDate,
-        quoteApproved
-      );
-
-      const tradeFollowUpDue = workflowAlertIsDue(
-        tradeFollowUpDate,
-        tradeDeskValueReceived
-      );
-
       grid.innerHTML = `
         <div class="detail-card"><div class="k">Customer / Facility</div><div class="v">${escapeHtml(rec.site || "-")}</div></div>
         <div class="detail-card"><div class="k">New System / Project Name</div><div class="v">${escapeHtml(rec.model || "-")}</div></div>
-        <div class="detail-card new-project-team-card ${quoteFollowUpDue ? "workflow-seven-day-alert" : ""}">
+        <div class="detail-card new-project-team-card">
           <div>
             <div class="k">Quote Value</div>
 
@@ -18406,11 +18321,6 @@ function saveInstallBaseFix(id) {
                     </div>
                   </div>
 
-                  ${
-                    quoteAlertDate
-                      ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(quoteAlertDate))}</div>`
-                      : ""
-                  }
                 `
                 : ""
             }
@@ -18439,7 +18349,7 @@ function saveInstallBaseFix(id) {
             ? ""
             : rec.tradein_sync_received
             ? `
-              <div class="detail-card new-project-tradein-card new-project-team-card ${tradeFollowUpDue ? "workflow-seven-day-alert" : ""}" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
+              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">${escapeHtml(rec.tradein_equipment_make || "-")} ${escapeHtml(rec.tradein_equipment_model || "")}</div>
@@ -18451,9 +18361,8 @@ function saveInstallBaseFix(id) {
                     Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
                   </div>
                   <label style="display:block;margin-top:12px;">Trade-In Reference</label>
-                  <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || "")}" placeholder="Enter trade-in value" />
-                  <button type="button" class="green" style="margin-top:10px;" onclick="saveNewProjectTradeInCredit('${rec.id}')">Save Trade-In Value</button>
-                  <button type="button" class="green" style="margin-top:10px;" onclick="applyExternalTradeInToQuote('${rec.id}')">Apply Trade-In Reference to Quote</button>
+                  <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || externalTradeInValue || "")}" placeholder="Enter trade-in value" />
+                  <button type="button" class="green" style="margin-top:10px;" onclick="saveAndApplyNewProjectTradeInValue('${rec.id}')">Save and Apply Trade-In Value</button>
                 </div>
                 <div class="new-project-team-side trade-team-side">
                   <div class="trade-team-status-block">
@@ -18504,11 +18413,6 @@ function saveInstallBaseFix(id) {
                           </div>
                         </div>
 
-                        ${
-                          tradeAlertDate
-                            ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                            : ""
-                        }
                       `
                       : ""
                   }
@@ -18532,7 +18436,7 @@ function saveInstallBaseFix(id) {
               </div>
             `
             : `
-              <div class="detail-card new-project-tradein-card new-project-team-card ${tradeFollowUpDue ? "workflow-seven-day-alert" : ""}" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
+              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(255,216,77,.35);background:rgba(255,216,77,.07);">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">Not synced yet</div>
@@ -18587,11 +18491,6 @@ function saveInstallBaseFix(id) {
                           </div>
                         </div>
 
-                        ${
-                          tradeAlertDate
-                            ? `<div class="workflow-alert-date">7-day alert: ${escapeHtml(workflowDateOnly(tradeAlertDate))}</div>`
-                            : ""
-                        }
                       `
                       : ""
                   }
@@ -20663,7 +20562,7 @@ queue.unshift(updated);
       render();
     }
 
-    function saveNewProjectTradeInCredit(id) {
+    function saveAndApplyNewProjectTradeInValue(id) {
       const rec = state.records.find(r => r.id === id) || state.records.find(r => r.id === state.selectedId);
 
       if (!rec) {
@@ -20679,7 +20578,13 @@ queue.unshift(updated);
         return;
       }
 
-      const value = Number(input.value || 0);
+      const value = Number(input.value || rec.external_tradein_value || 0);
+
+      if (!value || value <= 0) {
+        alert("Enter a trade-in value to save and apply.");
+        input.focus();
+        return;
+      }
 
       rec.tradein_credit = value;
       rec.trade_in_credit = value;
@@ -20690,6 +20595,8 @@ queue.unshift(updated);
       rec.quote_trade_in_credit = value;
       rec.associated_trade_in_credit = value;
       rec.associatedTradeInCredit = value;
+      rec.external_tradein_status = "applied_to_quote";
+      rec.external_tradein_applied_at = new Date().toISOString();
 
       const quoteAmount = Number(rec.quote_amount || 0);
       const estimatedCost = Number(rec.quote_estimated_cost || 0);
@@ -20702,12 +20609,12 @@ queue.unshift(updated);
 
       rec.manager_unseen_update = true;
       rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "tradein_value_updated";
+      rec.manager_flash_type = "external_tradein_manually_applied";
 
       syncFeedStatus(rec);
       render();
 
-      alert("Trade-in reference saved");
+      alert("Trade-in value saved and applied to quote.");
     }
 
     function applyExternalTradeInToQuote(id = null) {
