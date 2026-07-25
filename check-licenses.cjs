@@ -28,7 +28,29 @@ for (const [pkgPath, info] of Object.entries(lock.packages || {})) {
 
   const name = info.name || pkgPath.replace(/^node_modules\//, "");
   const version = info.version || "";
-  const license = String(info.license || "").trim();
+  const packageJsonPath = path.join(process.cwd(), pkgPath, "package.json");
+  let installedPackage = {};
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      installedPackage = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    } catch {
+      installedPackage = {};
+    }
+  }
+
+  const legacyLicenses = Array.isArray(installedPackage.licenses)
+    ? installedPackage.licenses
+        .map(entry => typeof entry === "string" ? entry : entry && entry.type)
+        .filter(Boolean)
+        .join(" OR ")
+    : "";
+
+  const license = String(
+    info.license ||
+    installedPackage.license ||
+    legacyLicenses ||
+    ""
+  ).trim();
 
   if (!license) {
     unknown.push({ name, version, license: "UNKNOWN" });

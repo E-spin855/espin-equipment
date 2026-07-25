@@ -28,12 +28,15 @@ The following browser libraries are referenced directly by static HTML files and
 | SheetJS / XLSX | 0.18.5 | jsDelivr or approved local copy | CSV/XLS/XLSX import and export | Apache-2.0 |
 | jsPDF | 2.5.1 | jsDelivr or approved local copy | PDF generation | MIT |
 | JSZip | 3.10.1 | jsDelivr or approved local copy | Reading ZIP archives, including Census Gazetteer downloads | MIT |
+| MapLibre GL JS | 5.24.0 | unpkg or approved local copy | Interactive vector-map rendering | BSD-3-Clause |
 
 For release consistency, browser-library URLs should use exact pinned versions or approved local copies.
 
-## Public Data Sources
+## Map and Public Data Sources
 
-Public datasets are documented separately in `ESPIN_LINK_Attributions_and_Data_Sources_v1.0.pdf`.
+Map providers, map data, public datasets, required attribution, and source links are documented in `ESPIN_LINK_Attributions_and_Data_Sources_v1.0.md`.
+
+The interactive map retains visible attribution controls. OpenStreetMap data is used under the Open Database License (ODbL), and OpenFreeMap supplies the vector-map style and tile service under its published terms.
 
 ## Preserved Upstream NOTICE Content
 
@@ -83,7 +86,7 @@ in all copies or substantial portions of the Software.
 
 - `licenses-production.sanitized.json` is the machine-readable production dependency license inventory.
 - `licenses-development.sanitized.json` tracks development-only tooling separately.
-- `THIRD_PARTY_LICENSES_CORRECTED.md` preserves the standard license texts used by production dependencies.
+- `THIRD_PARTY_LICENSES.md` preserves the standard license texts used by production dependencies.
 - This file preserves upstream NOTICE content and directly referenced browser libraries.
 - No GPL, AGPL, or LGPL license was identified in the reviewed production dependency inventory.
 - This document is an operational compliance aid and not a formal legal opinion.
