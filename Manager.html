@@ -4551,6 +4551,7 @@ tr.espin-lab-update-row{
   animation:none!important;
 }
 tr.espin-lab-update-row>td{position:relative;animation:espinLabFieldFlash 1.05s ease-out 1}
+tr.espin-lab-update-row>td:first-child{overflow:visible!important}
 tr.espin-lab-update-row>td:first-child::before{display:none!important}
 .espin-lab-scan{
   position:absolute;z-index:1;top:0;bottom:0;left:-12%;width:calc(var(--espin-lab-row-width,600px) * .12);pointer-events:none;
@@ -4565,8 +4566,15 @@ tr.espin-lab-update-row>td:first-child::before{display:none!important}
 .espin-lab-corner.bl{left:6px;bottom:6px;border-left:1px solid;border-bottom:1px solid}
 .espin-lab-corner.tr{right:6px;top:6px;border-right:1px solid;border-top:1px solid}
 .espin-lab-corner.br{right:6px;bottom:6px;border-right:1px solid;border-bottom:1px solid}
+.espin-lab-update-row>td:first-child>.espin-lab-corner.tr{
+  right:auto;left:calc(var(--espin-lab-visible-width,100vw) - 23px)
+}
+.espin-lab-update-row>td:first-child>.espin-lab-corner.br{
+  right:auto;left:calc(var(--espin-lab-visible-width,100vw) - 23px)
+}
 .espin-lab-update-alert{
-  position:absolute;z-index:7;top:9px;right:14px;display:inline-flex;align-items:center;gap:7px;
+  position:absolute;z-index:7;top:9px;right:auto;left:calc(var(--espin-lab-visible-width,100vw) - 130px);
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
   color:#baffdc;font:800 8px/1 monospace;letter-spacing:.1em;text-transform:uppercase;pointer-events:none;
 }
 .espin-lab-update-alert::before{
@@ -13387,17 +13395,20 @@ window.addEventListener("pageshow", () => {
     });
     (root.matches?.(updateRowSelector) ? [root] : root.querySelectorAll?.(updateRowSelector) || []).forEach(row => {
       row.classList.add("espin-lab-update-row");
-      row.style.setProperty("--espin-lab-row-width",`${row.getBoundingClientRect().width}px`);
+      const viewport = row.closest(".table-wrap,.table-container,.tableWrap") || row.closest("table")?.parentElement;
+      const visibleWidth = Math.min(row.getBoundingClientRect().width,viewport?.clientWidth || window.innerWidth);
+      row.style.setProperty("--espin-lab-row-width",`${visibleWidth}px`);
+      row.style.setProperty("--espin-lab-visible-width",`${visibleWidth}px`);
       const first = row.cells?.[0], last = row.cells?.[row.cells.length - 1];
       if (!first || !last || first.querySelector(".espin-lab-scan")) return;
-      first.insertAdjacentHTML("afterbegin", '<span class="espin-lab-scan" aria-hidden="true"></span><i class="espin-lab-corner tl" aria-hidden="true"></i><i class="espin-lab-corner bl" aria-hidden="true"></i>');
-      last.insertAdjacentHTML("afterbegin", '<i class="espin-lab-corner tr" aria-hidden="true"></i><i class="espin-lab-corner br" aria-hidden="true"></i><span class="espin-lab-update-alert">Unread update</span>');
+      first.insertAdjacentHTML("afterbegin", '<span class="espin-lab-scan" aria-hidden="true"></span><i class="espin-lab-corner tl" aria-hidden="true"></i><i class="espin-lab-corner bl" aria-hidden="true"></i><i class="espin-lab-corner tr" aria-hidden="true"></i><i class="espin-lab-corner br" aria-hidden="true"></i><span class="espin-lab-update-alert">Unread update</span>');
     });
   };
   decorate(document);
   new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
     if (node.nodeType === 1) decorate(node);
   }))).observe(document.body,{childList:true,subtree:true});
+  window.addEventListener("resize",()=>decorate(document),{passive:true});
   document.addEventListener("click", event => {
     const row = event.target.closest?.(updateRowSelector);
     if (!row || event.target.closest?.("button,a,input,select,textarea,label")) return;
