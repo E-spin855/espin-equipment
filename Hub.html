@@ -1820,17 +1820,66 @@ body tr:is(.install-base-response-flash,.install-base-corrected-row-frame,.insta
 body tr.espin-update-powering-down{
   pointer-events:none!important;
   transform-origin:center!important;
-  animation:espinUpdatePowerDown .43s ease-in forwards!important;
+  animation:espinUpdatePowerDown .52s ease-in forwards!important;
 }
 @keyframes espinUpdatePowerDown{
   0%{opacity:1;filter:brightness(1);transform:scaleY(1)}
-  58%{opacity:.84;filter:brightness(1.8);transform:scaleY(.18)}
-  100%{opacity:0;filter:brightness(2.1);transform:scaleY(.02) scaleX(.94)}
+  58%{opacity:.82;filter:brightness(1.75);transform:scaleY(.16)}
+  100%{opacity:0;filter:brightness(2);transform:scaleY(.02) scaleX(.92)}
 }
 @media(prefers-reduced-motion:reduce){
   body::before{display:none}
   body tr:is(.install-base-response-flash,.install-base-corrected-row-frame,.install-base-message-row-frame,.unread-message-row):not(.red-hot-row) td:first-child::after{display:none}
   body tr:is(.install-base-response-flash,.install-base-corrected-row-frame,.install-base-message-row-frame,.unread-message-row):not(.red-hot-row) td{animation:none}
+}
+/* Exact Visual Systems Lab HUD layers. */
+.panel{position:relative}
+.espin-lab-panel-edge{
+  position:absolute;z-index:8;top:0;left:0;width:28%;height:2px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,#24d9ff,transparent);
+  opacity:.88;box-shadow:0 0 14px rgba(36,217,255,.72);
+  animation:espinLabEdgeTravel 4.8s linear infinite;
+}
+tr.espin-lab-update-row{
+  position:relative!important;z-index:2;color:#effff8!important;
+  background:linear-gradient(90deg,rgba(29,124,91,.24),rgba(8,42,49,.30))!important;
+  box-shadow:inset 0 0 0 1px rgba(72,244,168,.72),inset 0 0 24px rgba(72,244,168,.08),0 0 20px rgba(72,244,168,.10)!important;
+}
+tr.espin-lab-update-row>td{position:relative}
+tr.espin-lab-update-row>td:first-child::before{display:none!important}
+.espin-lab-scan{
+  position:absolute;z-index:1;top:0;bottom:0;left:-12%;width:calc(var(--espin-lab-row-width,600px) * .12);pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(101,233,255,.18),transparent);
+  opacity:1;transform:skewX(-12deg);animation:espinLabScanPass .78s ease-out 1;
+}
+.espin-lab-corner{
+  position:absolute;z-index:6;width:17px;height:17px;pointer-events:none;
+  border-color:#48f4a8;filter:drop-shadow(0 0 5px rgba(72,244,168,.85));
+}
+.espin-lab-corner.tl{left:6px;top:6px;border-left:1px solid;border-top:1px solid}
+.espin-lab-corner.bl{left:6px;bottom:6px;border-left:1px solid;border-bottom:1px solid}
+.espin-lab-corner.tr{right:6px;top:6px;border-right:1px solid;border-top:1px solid}
+.espin-lab-corner.br{right:6px;bottom:6px;border-right:1px solid;border-bottom:1px solid}
+.espin-lab-update-alert{
+  position:absolute;z-index:7;top:7px;left:28px;display:inline-flex;align-items:center;gap:5px;
+  color:#baffdc;font:800 8px/1 monospace;letter-spacing:.1em;text-transform:uppercase;pointer-events:none;
+}
+.espin-lab-update-alert::before{
+  content:"";width:5px;height:5px;border-radius:50%;background:#48f4a8;
+  box-shadow:0 0 9px #48f4a8;animation:espinLabUnreadBeacon 1.2s ease-in-out infinite;
+}
+tr.espin-lab-update-row>td{animation:espinLabFieldFlash 1.05s ease-out 1}
+@keyframes espinLabEdgeTravel{from{transform:translateX(-120%)}to{transform:translateX(460%)}}
+@keyframes espinLabScanPass{from{transform:translateX(0) skewX(-12deg)}to{transform:translateX(930%) skewX(-12deg)}}
+@keyframes espinLabFieldFlash{
+  0%{color:#fff;text-shadow:0 0 0 transparent;filter:brightness(1)}
+  25%{color:#dffff0;text-shadow:0 0 11px rgba(72,244,168,.95);filter:brightness(1.65)}
+  100%{color:inherit;text-shadow:none;filter:brightness(1)}
+}
+@keyframes espinLabUnreadBeacon{50%{opacity:.38;transform:scale(.72)}}
+@media(prefers-reduced-motion:reduce){
+  .espin-lab-panel-edge,.espin-lab-scan{display:none}
+  tr.espin-lab-update-row>td,.espin-lab-update-alert::before{animation:none}
 }
 </style>
 </head>
@@ -8189,6 +8238,25 @@ window.addEventListener("pageshow", () => {
 <script>
 (() => {
   const updateRowSelector = "tr:is(.install-base-response-flash,.install-base-corrected-row-frame,.install-base-message-row-frame,.unread-message-row):not(.red-hot-row)";
+  const decorate = root => {
+    document.querySelectorAll(".panel").forEach(panel => {
+      if (!panel.querySelector(":scope > .espin-lab-panel-edge")) {
+        panel.insertAdjacentHTML("afterbegin", '<span class="espin-lab-panel-edge" aria-hidden="true"></span>');
+      }
+    });
+    (root.matches?.(updateRowSelector) ? [root] : root.querySelectorAll?.(updateRowSelector) || []).forEach(row => {
+      row.classList.add("espin-lab-update-row");
+      row.style.setProperty("--espin-lab-row-width",`${row.getBoundingClientRect().width}px`);
+      const first = row.cells?.[0], last = row.cells?.[row.cells.length - 1];
+      if (!first || !last || first.querySelector(".espin-lab-scan")) return;
+      first.insertAdjacentHTML("afterbegin", '<span class="espin-lab-scan" aria-hidden="true"></span><i class="espin-lab-corner tl" aria-hidden="true"></i><i class="espin-lab-corner bl" aria-hidden="true"></i><span class="espin-lab-update-alert">Unread update</span>');
+      last.insertAdjacentHTML("afterbegin", '<i class="espin-lab-corner tr" aria-hidden="true"></i><i class="espin-lab-corner br" aria-hidden="true"></i>');
+    });
+  };
+  decorate(document);
+  new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+    if (node.nodeType === 1) decorate(node);
+  }))).observe(document.body,{childList:true,subtree:true});
   document.addEventListener("click", event => {
     const row = event.target.closest?.(updateRowSelector);
     if (!row || event.target.closest?.("button,a,input,select,textarea,label")) return;
@@ -8205,7 +8273,7 @@ window.addEventListener("pageshow", () => {
       row.classList.remove("espin-update-powering-down");
       row.dataset.espinPowerDownReplay = "1";
       row.click();
-    }, 430);
+    }, 520);
   }, true);
 })();
 </script>
