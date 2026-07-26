@@ -4506,6 +4506,117 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
   body::before{display:none}
   body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.red-hot-row) td:first-child::after{display:none}
 }
+
+/* Visual Systems Prototype alert — replaces Manager's legacy row pulse. */
+#tableBody tr.manager-prototype-alert:not(.red-hot-row){
+  position:relative!important;
+  z-index:2!important;
+  color:#effff8!important;
+  outline:0!important;
+  background:linear-gradient(90deg,rgba(29,124,91,.24),rgba(8,42,49,.30))!important;
+  box-shadow:inset 0 0 0 1px rgba(72,244,168,.72),inset 0 0 24px rgba(72,244,168,.08),0 0 20px rgba(72,244,168,.10)!important;
+  animation:none!important;
+}
+#tableBody tr.manager-prototype-alert:not(.red-hot-row) td{
+  position:relative;
+  background:transparent!important;
+  border-top:0!important;
+  border-bottom-color:rgba(58,119,160,.17)!important;
+  animation:none!important;
+}
+#tableBody tr.manager-prototype-alert:not(.red-hot-row) td:first-child{
+  overflow:visible!important;
+  border-left:0!important;
+}
+#tableBody tr.manager-prototype-alert:not(.red-hot-row) td:last-child{border-right:0!important}
+#tableBody tr.manager-prototype-alert:not(.red-hot-row) td:first-child::after{display:none!important}
+#tableBody tr.manager-prototype-alert.powering-down:not(.red-hot-row){
+  pointer-events:none;
+  transform-origin:center;
+  animation:alert-power-down .52s ease-in forwards!important;
+}
+.manager-prototype-alert .update-alert{
+  position:absolute;
+  top:7px;
+  left:calc(var(--manager-prototype-visible-width,100vw) - 122px);
+  z-index:7;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  color:#baffdc;
+  font:8px monospace;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  white-space:nowrap;
+  pointer-events:none;
+}
+.manager-prototype-alert .update-alert::before{
+  content:"";
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#48f4a8;
+  box-shadow:0 0 9px #48f4a8;
+  animation:unread-beacon 1.2s ease-in-out infinite;
+}
+.manager-prototype-alert .hud-corners{
+  position:absolute;
+  z-index:6;
+  left:6px;
+  top:6px;
+  width:calc(var(--manager-prototype-visible-width,100vw) - 12px);
+  height:calc(100% - 12px);
+  pointer-events:none;
+  opacity:1;
+  filter:drop-shadow(0 0 5px rgba(72,244,168,.85));
+}
+.manager-prototype-alert .hud-corners i{
+  position:absolute;
+  width:17px;
+  height:17px;
+  border-color:#48f4a8;
+}
+.manager-prototype-alert .hud-corners i:nth-child(1){left:0;top:0;border-left:1px solid;border-top:1px solid}
+.manager-prototype-alert .hud-corners i:nth-child(2){right:0;top:0;border-right:1px solid;border-top:1px solid}
+.manager-prototype-alert .hud-corners i:nth-child(3){left:0;bottom:0;border-left:1px solid;border-bottom:1px solid}
+.manager-prototype-alert .hud-corners i:nth-child(4){right:0;bottom:0;border-right:1px solid;border-bottom:1px solid}
+.manager-prototype-alert .scan-beam{
+  position:absolute;
+  z-index:1;
+  inset:0 auto 0 -12%;
+  width:calc(var(--manager-prototype-visible-width,100vw) * .12);
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(101,233,255,.18),transparent);
+  opacity:0;
+  transform:skewX(-12deg);
+}
+.manager-prototype-alert.scanning .scan-beam{
+  opacity:1;
+  animation:scan-pass .78s ease-out 1;
+}
+.manager-prototype-alert.field-flashing .changed-field{
+  animation:field-change-flash 1.05s ease-out 1;
+}
+@keyframes scan-pass{
+  from{transform:translateX(0) skewX(-12deg)}
+  to{transform:translateX(930%) skewX(-12deg)}
+}
+@keyframes field-change-flash{
+  0%{color:#fff;text-shadow:0 0 0 transparent;filter:brightness(1)}
+  25%{color:#dffff0;text-shadow:0 0 11px rgba(72,244,168,.95);filter:brightness(1.65)}
+  100%{color:inherit;text-shadow:none;filter:brightness(1)}
+}
+@keyframes unread-beacon{50%{opacity:.38;transform:scale(.72)}}
+@keyframes alert-power-down{
+  0%{opacity:1;filter:brightness(1);transform:scaleY(1)}
+  58%{opacity:.82;filter:brightness(1.75);transform:scaleY(.16)}
+  100%{opacity:0;filter:brightness(2);transform:scaleY(.02) scaleX(.92)}
+}
+@media(prefers-reduced-motion:reduce){
+  .manager-prototype-alert .scan-beam{display:none}
+  .manager-prototype-alert .update-alert::before,
+  .manager-prototype-alert.field-flashing .changed-field{animation:none}
+}
 </style>
 </head>
 
@@ -13292,6 +13403,78 @@ window.addEventListener("pageshow", () => {
   requestAnimationFrame(resetPageScrollToTop);
   setTimeout(resetPageScrollToTop, 0);
 });
+</script>
+<script>
+(() => {
+  const sourceSelector = "tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.red-hot-row)";
+
+  const decorateManagerAlerts = root => {
+    const rows = root.matches?.(sourceSelector)
+      ? [root]
+      : root.querySelectorAll?.(sourceSelector) || [];
+
+    rows.forEach(row => {
+      const first = row.cells?.[0];
+      if (!first) return;
+
+      const viewport = row.closest(".table-wrap") || row.closest("table")?.parentElement;
+      const visibleWidth = Math.min(
+        row.getBoundingClientRect().width,
+        viewport?.clientWidth || window.innerWidth
+      );
+
+      row.style.setProperty("--manager-prototype-visible-width",`${visibleWidth}px`);
+      row.classList.add("manager-prototype-alert","unread-update");
+
+      if (first.querySelector(".hud-corners")) return;
+
+      first.insertAdjacentHTML(
+        "afterbegin",
+        '<span class="hud-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></span>' +
+        '<span class="scan-beam" aria-hidden="true"></span>' +
+        '<span class="update-alert">Unread update</span>'
+      );
+
+      [...row.cells].forEach(cell => cell.classList.add("changed-field"));
+      row.classList.add("scanning","field-flashing");
+      window.setTimeout(() => row.classList.remove("scanning"),850);
+      window.setTimeout(() => row.classList.remove("field-flashing"),1150);
+    });
+  };
+
+  decorateManagerAlerts(document);
+
+  new MutationObserver(records => records.forEach(record =>
+    record.addedNodes.forEach(node => {
+      if (node.nodeType === 1) decorateManagerAlerts(node);
+    })
+  )).observe(document.body,{childList:true,subtree:true});
+
+  window.addEventListener("resize",()=>decorateManagerAlerts(document),{passive:true});
+
+  document.addEventListener("click",event => {
+    const row = event.target.closest?.(sourceSelector);
+    if (!row || event.target.closest?.("button,a,input,select,textarea,label,[role='button']")) return;
+
+    if (row.dataset.managerPrototypeReplay === "1") {
+      delete row.dataset.managerPrototypeReplay;
+      return;
+    }
+
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    row.classList.add("powering-down");
+
+    window.setTimeout(() => {
+      if (!row.isConnected) return;
+      row.classList.remove("powering-down");
+      row.dataset.managerPrototypeReplay = "1";
+      row.click();
+    },520);
+  },true);
+})();
 </script>
 </body>
 </html>
