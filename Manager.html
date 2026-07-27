@@ -13486,5 +13486,106 @@ window.addEventListener("pageshow", () => {
   },true);
 })();
 </script>
+
+<script id="manager-executive-snapshot-sync">
+(() => {
+  const MANAGER_EXECUTIVE_KEY = "espin_link_manager_executive_v1";
+  const MANAGER_EXECUTIVE_PING_KEY = "espin_link_manager_executive_ping_v1";
+  let lastManagerExecutivePayload = "";
+
+  const txt = value => String(value ?? "").trim();
+  const norm = value => txt(value).toLowerCase();
+  const isCompleted = rec => Boolean(
+    rec?.lifecycle_completed === true ||
+    rec?.project_completed === true ||
+    rec?.completed === true ||
+    [rec?.rep_status, rec?.rep_action, rec?.project_status,
+     rec?.install_base_completion_status, rec?.install_base_response_status]
+      .some(value => /completed|resolved|closed/.test(norm(value)))
+  );
+  const recordId = rec => txt(
+    rec?.id || rec?.key || rec?.record_id || rec?.axis_record_id ||
+    rec?.oem_project_id || rec?.project_id || rec?.serial_number || rec?.serial
+  );
+  const repName = rec => txt(
+    `${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() ||
+    rec?.assigned_rep_name || rec?.sales_rep_name || rec?.rep_owner_name ||
+    rec?.rep_owner || rec?.assigned_rep || rec?.rep_name || rec?.rep
+  );
+  const activityDates = rec => {
+    const values = [
+      rec?.updated_at, rec?.last_updated, rec?.modified_at,
+      rec?.rep_action_updated_at, rec?.manager_flash_at,
+      rec?.active_projects_updated_at, rec?.completed_at,
+      rec?.rep_follow_up_date, rec?.next_action_date
+    ].map(txt).filter(Boolean);
+    if (Array.isArray(rec?.rep_action_history)) {
+      rec.rep_action_history.forEach(item => {
+        const value = txt(item?.date || item?.created_at || item?.timestamp || item?.at);
+        if (value) values.push(value);
+      });
+    }
+    if (Array.isArray(rec?.active_project_snapshots)) {
+      rec.active_project_snapshots.forEach(project => {
+        const value = txt(project?.updated_at || project?.status_updated_at || project?.completed_at);
+        if (value) values.push(value);
+      });
+    }
+    return [...new Set(values)].slice(-60);
+  };
+  const hasRepActivity = rec => Boolean(
+    activityDates(rec).length ||
+    txt(rec?.rep_action || rec?.rep_status || rec?.rep_follow_up_date)
+  );
+
+  function publishManagerExecutiveSnapshot(){
+    try {
+      const records = (typeof state !== "undefined" && Array.isArray(state.records))
+        ? state.records : [];
+      const normalized = records.filter(rec => rec && typeof rec === "object").map(rec => {
+        const completed = isCompleted(rec);
+        return {
+          record_id: recordId(rec),
+          project_id: txt(rec.oem_project_id || rec.project_id || rec.axis_project_id),
+          facility: txt(rec.site || rec.facility || rec.hospital || rec.customer_name),
+          rep_name: repName(rec),
+          active: !completed,
+          completed,
+          rep_activity: hasRepActivity(rec),
+          manager_review: !completed,
+          follow_up_date: txt(rec.rep_follow_up_date || rec.next_action_date || rec.follow_up_date),
+          activity_dates: activityDates(rec),
+          updated_at: txt(rec.updated_at || rec.last_updated || rec.modified_at || new Date().toISOString())
+        };
+      }).filter(rec => rec.record_id);
+      const payload = JSON.stringify({
+        schema_version: 1,
+        source: "Manager.html",
+        source_role: "manager_executive_visibility",
+        generated_at: new Date().toISOString(),
+        records: normalized
+      });
+      if (payload === lastManagerExecutivePayload) return;
+      lastManagerExecutivePayload = payload;
+      localStorage.setItem(MANAGER_EXECUTIVE_KEY, payload);
+      localStorage.setItem(MANAGER_EXECUTIVE_PING_KEY, String(Date.now()));
+    } catch (error) {
+      console.warn("Manager executive snapshot publish skipped:", error);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(publishManagerExecutiveSnapshot, 0);
+    setTimeout(publishManagerExecutiveSnapshot, 500);
+  });
+  window.addEventListener("storage", event => {
+    if (!event.key || event.key === "axis_manager_sync_ping_v1" || event.key === "axis_rep_sync_ping_v1") {
+      setTimeout(publishManagerExecutiveSnapshot, 0);
+    }
+  });
+  setInterval(publishManagerExecutiveSnapshot, 1500);
+})();
+</script>
+
 </body>
 </html>
