@@ -7066,6 +7066,10 @@ body tr:is(.unread-message-row,.incoming-communication-flash,.rep-new-row-flash,
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const REP_WORKSPACE_BACKUP_KEY = "espin_rep_workspace_records_v1";
 
+// Read-only executive snapshot published by Rep, the operational master record.
+const EXECUTIVE_SNAPSHOT_KEY = "espin_link_executive_records_v1";
+const EXECUTIVE_SNAPSHOT_PING_KEY = "espin_link_executive_records_ping_v1";
+
 const MANAGER_QUEUE_KEY = "axis_manager_queue_v1";
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
@@ -9549,6 +9553,248 @@ function syncRepRecordsDirectlyToService(records) {
   } catch (_) {}
 }
 
+    /* =========================================================
+       EXECUTIVE SYNC LAYER
+       Rep is the operational master record. This layer publishes a
+       normalized, read-only snapshot for the VP dashboard. It does not
+       read from Manager and it does not alter any operational record.
+       ========================================================= */
+    function executiveText(value) {
+      return String(value ?? "").trim();
+    }
+
+    function executiveNorm(value) {
+      return executiveText(value).toLowerCase();
+    }
+
+    function executiveNumber(value) {
+      const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function executiveStatusText(rec) {
+      return [
+        rec.project_status,
+        rec.status,
+        rec.rep_status,
+        rec.project_outcome,
+        rec.outcome,
+        rec.quote_status,
+        rec.quote_approval_status,
+        rec.service_status,
+        rec.installation_status,
+        rec.removal_status,
+        rec.manager_review_status,
+        rec.install_base_review,
+        rec.red_hot_status
+      ].map(executiveNorm).join(" ");
+    }
+
+    function executiveIsWon(rec) {
+      const text = executiveStatusText(rec);
+      return /(^|\\s)(won|closed won)(\\s|$)/.test(text) ||
+        rec.new_project_promoted === true ||
+        rec.lifecycle_created_from_quote_won === true;
+    }
+
+    function executiveIsLost(rec) {
+      return /(^|\\s)(lost|closed lost)(\\s|$)/.test(executiveStatusText(rec));
+    }
+
+    function executiveIsCompleted(rec) {
+      if (executiveIsWon(rec)) return true;
+      return /completed|resolved|project complete|closed/.test(executiveStatusText(rec));
+    }
+
+    function executiveIsCritical(rec) {
+      return rec.red_hot_alert === true ||
+        rec.red_hot === true ||
+        /red hot|critical|equipment down|out of service/.test(executiveStatusText(rec));
+    }
+
+    function executiveFollowUpDate(rec) {
+      return executiveText(
+        rec.follow_up_date ||
+        rec.rep_follow_up_date ||
+        rec.next_follow_up_date ||
+        rec.quote_follow_up_alert_date ||
+        rec.trade_follow_up_date ||
+        rec.service_follow_up_date
+      );
+    }
+
+    function executiveIsOverdue(rec) {
+      const raw = executiveFollowUpDate(rec);
+      if (!raw || executiveIsCompleted(rec) || executiveIsLost(rec)) return false;
+      const date = new Date(raw.slice(0, 10) + "T23:59:59");
+      return Number.isFinite(date.getTime()) && date < new Date();
+    }
+
+    function executiveQuoteValue(rec) {
+      return executiveNumber(
+        rec.approved_quote_amount ??
+        rec.quote_approved_amount ??
+        rec.approved_quote_value ??
+        rec.quote_amount ??
+        rec.quote_value ??
+        rec.quote_submitted_amount ??
+        rec.project_value
+      );
+    }
+
+    function executiveTradeValue(rec) {
+      return executiveNumber(
+        rec.trade_in_value ??
+        rec.tradein_value ??
+        rec.trade_value ??
+        rec.quote_trade_in_credit ??
+        rec.trade_in_credit ??
+        rec.tradein_credit ??
+        rec.trade_credit
+      );
+    }
+
+    function executiveState(rec) {
+      return executiveText(
+        rec.state || rec.site_state || rec.facility_state || rec.customer_state || rec.address_state
+      ).toUpperCase();
+    }
+
+    function executiveRegion(rec) {
+      const explicit = executiveText(rec.region || rec.sales_region || rec.territory_region);
+      if (explicit) return explicit;
+      const state = executiveState(rec);
+      const groups = {
+        "Pacific Northwest": ["WA", "OR", "ID", "AK"],
+        "Northern California": ["CA"],
+        "Southwest": ["AZ", "NM", "NV", "UT", "CO"],
+        "Midwest": ["ND", "SD", "NE", "KS", "MN", "IA", "MO", "WI", "IL", "MI", "IN", "OH"],
+        "South": ["TX", "OK", "AR", "LA", "MS", "AL", "TN", "KY", "WV", "VA", "NC", "SC", "GA", "FL"],
+        "Northeast": ["ME", "NH", "VT", "MA", "RI", "CT", "NY", "NJ", "PA", "DE", "MD", "DC"]
+      };
+      for (const [region, states] of Object.entries(groups)) {
+        if (states.includes(state)) return region;
+      }
+      return state || "Unassigned";
+    }
+
+    function executiveActivityDates(rec) {
+      const keys = [
+        "updated_at", "last_updated", "modified_at", "created_at",
+        "rep_action_updated_at", "quote_approval_submitted_at", "quote_approval_decision_at",
+        "quote_approved_at", "quote_last_sync_at", "trade_submitted_at", "trade_received_at",
+        "trade_value_received_at", "service_updated_at", "install_project_started_at",
+        "removal_project_started_at", "project_completed_at", "won_at", "lost_at",
+        "manager_flash_at", "equipment_review_added_at"
+      ];
+      const values = keys.map(key => executiveText(rec[key])).filter(Boolean);
+      if (Array.isArray(rec.rep_action_history)) {
+        rec.rep_action_history.forEach(item => {
+          const value = executiveText(item?.date || item?.created_at || item?.timestamp || item?.at);
+          if (value) values.push(value);
+        });
+      }
+      if (Array.isArray(rec.workflow_history)) {
+        rec.workflow_history.forEach(item => {
+          const value = executiveText(item?.date || item?.created_at || item?.timestamp || item?.at);
+          if (value) values.push(value);
+        });
+      }
+      return [...new Set(values)].slice(-50);
+    }
+
+    function executiveDepartments(rec) {
+      const status = executiveStatusText(rec);
+      const manager = rec.manager_visible === true || rec.synced_to_manager === true ||
+        /manager|review|pending fix|sync hold/.test(status);
+      const quote = rec.quote_approval_requested === true ||
+        /quote|approval/.test(status);
+      const trade = rec.trade_in_submitted === true || rec.tradein_submitted === true ||
+        /trade desk|trade-in|trade in/.test(status);
+      const service = rec.install_project_started === true || rec.removal_project_started === true ||
+        /service|installation|removal|deinstall/.test(status);
+      const installBase = rec.source === "Install Base" || rec.install_base_record === true ||
+        /install base|hub/.test(status + " " + executiveNorm(rec.source));
+      return { rep: true, manager, quote, trade, install_base: installBase, service };
+    }
+
+    function executiveCurrentDepartment(rec, departments) {
+      if (executiveIsCompleted(rec) || executiveIsLost(rec)) return "Completed";
+      if (departments.service) return "Service";
+      if (departments.trade && !executiveTradeValue(rec)) return "Trade Desk";
+      if (departments.quote && !/approved/.test(executiveStatusText(rec))) return "Quote Review";
+      if (departments.manager) return "Manager Review";
+      if (departments.install_base) return "Install Base";
+      return "Rep";
+    }
+
+    function buildExecutiveRecord(rec) {
+      const departments = executiveDepartments(rec);
+      const won = executiveIsWon(rec);
+      const lost = executiveIsLost(rec);
+      const completed = executiveIsCompleted(rec);
+      return {
+        espin_record_id: executiveText(rec.id || rec.record_id || rec.axis_record_id || rec.project_id),
+        project_id: executiveText(rec.oem_project_id || rec.project_id || rec.axis_project_id),
+        facility: executiveText(rec.site || rec.facility || rec.hospital || rec.customer_name),
+        make: executiveText(rec.make),
+        model: executiveText(rec.model),
+        modality: executiveText(rec.modality || rec.equipment_category),
+        serial_number: executiveText(rec.serial_number || rec.serial),
+        rep_name: executiveText(
+          `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
+          rec.assigned_rep_name || rec.assigned_rep || rec.rep_owner_name || rec.rep_owner
+        ),
+        state: executiveState(rec),
+        region: executiveRegion(rec),
+        current_department: executiveCurrentDepartment(rec, departments),
+        departments,
+        status: executiveText(rec.project_status || rec.rep_status || rec.status || rec.quote_status),
+        won,
+        lost,
+        open: !won && !lost,
+        completed,
+        critical: executiveIsCritical(rec),
+        overdue: executiveIsOverdue(rec),
+        follow_up_date: executiveFollowUpDate(rec),
+        quote_value: executiveQuoteValue(rec),
+        trade_value: executiveTradeValue(rec),
+        project_progress: executiveNumber(rec.project_progress || rec.active_project_progress || rec.progress_percent),
+        activity_dates: executiveActivityDates(rec),
+        updated_at: executiveText(rec.updated_at || rec.last_updated || rec.modified_at || new Date().toISOString())
+      };
+    }
+
+    function publishExecutiveSnapshot(records) {
+      try {
+        const normalized = (Array.isArray(records) ? records : [])
+          .filter(rec => rec && typeof rec === "object")
+          .map(buildExecutiveRecord)
+          .filter(rec => rec.espin_record_id);
+
+        const snapshot = {
+          schema_version: 1,
+          source: "Rep.html",
+          source_role: "operational_master_record",
+          generated_at: new Date().toISOString(),
+          records: normalized
+        };
+
+        const payload = JSON.stringify(snapshot);
+        localStorage.setItem(EXECUTIVE_SNAPSHOT_KEY, payload);
+        localStorage.setItem(EXECUTIVE_SNAPSHOT_PING_KEY, String(Date.now()));
+
+        try {
+          window.dispatchEvent(new StorageEvent("storage", {
+            key: EXECUTIVE_SNAPSHOT_KEY,
+            newValue: payload
+          }));
+        } catch (_) {}
+      } catch (error) {
+        console.warn("Executive snapshot publish skipped:", error);
+      }
+    }
+
     function saveRecords() {
       const records = Array.isArray(state.records) ? state.records : [];
 
@@ -9580,6 +9826,9 @@ function syncRepRecordsDirectlyToService(records) {
       // Service receives Rep records directly. Hub does not need to be open
       // to create or maintain this Service-visible copy.
       syncRepRecordsDirectlyToService(records);
+
+      // Rep publishes the single read-only source consumed by the VP page.
+      publishExecutiveSnapshot(records);
     }
 
 function readRepWorkspaceBackup() {
@@ -16629,7 +16878,7 @@ function renderDetail() {
           aria-expanded="${isFinancialRecordCollapsed(rec.id) ? "false" : "true"}"
           onclick="return toggleFinancialRecord('${escapeJs(rec.id)}', event, this)"
         >
-          ${isFinancialRecordCollapsed(rec.id) ? "Open Record" : "Hide Record"}
+          ${isFinancialRecordCollapsed(rec.id) ? "Hide Record" : "Open Record"}
         </button>
       </div>
       <div class="financial-record-collapsed-summary ${isFinancialRecordCollapsed(rec.id) ? "" : "hidden"}">
@@ -18753,7 +19002,7 @@ function saveInstallBaseFix(id) {
       aria-expanded="${isFinancialRecordCollapsed(rec.id) ? "false" : "true"}"
       onclick="return toggleFinancialRecord('${escapeJs(rec.id)}', event, this)"
     >
-      ${isFinancialRecordCollapsed(rec.id) ? "Open Record" : "Hide Record"}
+      ${isFinancialRecordCollapsed(rec.id) ? "Hide Record" : "Open Record"}
     </button>
   </div>
           ${
@@ -23598,6 +23847,16 @@ window.addEventListener("pageshow", () => {
   requestAnimationFrame(resetPageScrollToTop);
   setTimeout(resetPageScrollToTop, 0);
 });
+
+// Ensure a current executive snapshot exists when Rep opens.
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    if (typeof publishExecutiveSnapshot === "function" && typeof state !== "undefined") {
+      publishExecutiveSnapshot(Array.isArray(state.records) ? state.records : []);
+    }
+  }, 250);
+});
+
 </script>
 </body>
 </html>
