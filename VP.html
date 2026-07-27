@@ -52,53 +52,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 .green{color:var(--green)}.orange{color:var(--amber)}.blue{color:var(--cyan)}
 @media(max-width:1200px){.dashboard{grid-template-columns:1fr 1fr;grid-template-areas:"overview financial" "outcomes outcomes" "regions trend"}}
 @media(max-width:800px){.page{width:100%;padding:8px}.frame{padding:24px 18px}.header{grid-template-columns:1fr}.status{min-width:0;width:100%}.dashboard{grid-template-columns:1fr;grid-template-areas:"overview" "financial" "outcomes" "regions" "trend"}.overview-grid,.donut-wrap,.compliance-body,.finance-grid,.outcome-layout{grid-template-columns:1fr}.alert-cards{grid-template-columns:repeat(2,1fr)}.region-line{grid-template-columns:110px 1fr 70px}.trend-chart-wrap{grid-template-columns:42px 1fr}.footer{flex-direction:column;gap:6px}}
-
-/* FULL DEMO RESET CONTROL */
-.header-actions{
-  display:grid;
-  gap:10px;
-  justify-items:stretch;
-}
-.full-demo-reset-btn{
-  width:100%;
-  min-height:42px;
-  padding:10px 14px;
-  cursor:pointer;
-  border:1px solid rgba(255,77,120,.72);
-  background:
-    linear-gradient(180deg,rgba(90,18,43,.94),rgba(44,8,24,.98));
-  color:#ffd7e2;
-  font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
-  font-size:10px;
-  font-weight:700;
-  letter-spacing:.12em;
-  text-transform:uppercase;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.06),
-    0 0 14px rgba(255,77,120,.16);
-}
-.full-demo-reset-btn:hover{
-  border-color:rgba(255,115,151,1);
-  color:#fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.08),
-    0 0 20px rgba(255,77,120,.34);
-}
-.full-demo-reset-btn:active{
-  transform:translateY(1px);
-}
-.full-demo-reset-note{
-  color:#8fb3c8;
-  font-size:8px;
-  line-height:1.4;
-  letter-spacing:.04em;
-  text-align:center;
-  text-transform:uppercase;
-}
-@media(max-width:800px){
-  .header-actions{width:100%}
-}
-
 </style>
 </head>
 <body>
@@ -109,11 +62,10 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
     <div class="lab">VISUAL SYSTEMS LABORATORY</div>
     <div class="title-strip">VP EXECUTIVE OPERATIONS TELEMETRY</div>
   </div>
-  <div class="header-actions">
-    <div class="status"><div class="status-orb"></div><div><b>SYSTEM SYNCHRONIZED</b><span id="clock">LIVE READ-ONLY VIEW</span></div></div>
-    <button type="button" id="fullDemoResetBtn" class="full-demo-reset-btn">Full Demo Reset</button>
-    <div class="full-demo-reset-note">Clears ESPIN LINK demo records in this browser</div>
-  </div>
+  <div style="display:grid;gap:10px">
+<div class="status"><div class="status-orb"></div><div><b>SYSTEM SYNCHRONIZED</b><span id="clock">LIVE READ-ONLY VIEW</span></div></div>
+<button id="vpClearBtn" style="padding:10px;border:1px solid rgba(255,77,120,.6);background:#4a1020;color:#fff;cursor:pointer;font-family:inherit;">Clear Local Data</button>
+</div>
 </header>
 
 <main class="dashboard">
@@ -199,55 +151,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   const SNAPSHOT_KEY = "espin_link_executive_records_v1";
   const MANAGER_SNAPSHOT_KEY = "espin_link_manager_executive_v1";
   const SERVICE_SNAPSHOT_KEY = "espin_link_service_executive_v1";
-
-  const FULL_DEMO_RESET_EXACT_KEYS = [
-    SNAPSHOT_KEY,
-    MANAGER_SNAPSHOT_KEY,
-    SERVICE_SNAPSHOT_KEY
-  ];
-
-  function isEspinDemoKey(key){
-    const normalized = String(key || "").toLowerCase();
-    return normalized.includes("espin") || normalized.includes("axis");
-  }
-
-  function clearFullDemoData(){
-    const confirmed = window.confirm(
-      "FULL DEMO RESET\n\n" +
-      "This will permanently clear all ESPIN LINK demo records and snapshots stored in this browser, including Rep, Manager, Hub, Service, and VP data.\n\n" +
-      "Continue?"
-    );
-    if (!confirmed) return;
-
-    const keysToRemove = new Set(FULL_DEMO_RESET_EXACT_KEYS);
-
-    for (let index = 0; index < localStorage.length; index += 1){
-      const key = localStorage.key(index);
-      if (isEspinDemoKey(key)) keysToRemove.add(key);
-    }
-
-    const sessionKeysToRemove = [];
-    for (let index = 0; index < sessionStorage.length; index += 1){
-      const key = sessionStorage.key(index);
-      if (isEspinDemoKey(key)) sessionKeysToRemove.push(key);
-    }
-
-    sessionKeysToRemove.forEach(key => sessionStorage.removeItem(key));
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-
-    render();
-  const fullDemoResetBtn = $("fullDemoResetBtn");
-  if (fullDemoResetBtn){
-    fullDemoResetBtn.addEventListener("click", clearFullDemoData);
-  }
-    tick();
-
-    window.alert(
-      "Full demo reset complete. ESPIN LINK demo records were cleared from this browser."
-    );
-    window.location.reload();
-  }
-
   const $ = id => document.getElementById(id);
   const num = value => {
     const parsed = Number(String(value ?? 0).replace(/[$,]/g, ""));
@@ -276,6 +179,16 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   const snapshot = () => readSnapshot(SNAPSHOT_KEY);
   const managerSnapshot = () => readSnapshot(MANAGER_SNAPSHOT_KEY);
   const serviceSnapshot = () => readSnapshot(SERVICE_SNAPSHOT_KEY);
+
+
+  function clearVpLocalData(){
+    if(!confirm("Clear VP local data?")) return;
+    localStorage.removeItem(SNAPSHOT_KEY);
+    localStorage.removeItem(MANAGER_SNAPSHOT_KEY);
+    localStorage.removeItem(SERVICE_SNAPSHOT_KEY);
+    render();
+    tick();
+  }
 
   function setBar(id, value, max){
     const element = $(id);
@@ -417,6 +330,8 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   render();
   setInterval(tick, 1000);
   setInterval(render, 2500);
+  const vpBtn=$("vpClearBtn");
+  if(vpBtn) vpBtn.addEventListener("click",clearVpLocalData);
   window.addEventListener("storage", event => {
     if (!event.key || [SNAPSHOT_KEY, MANAGER_SNAPSHOT_KEY, SERVICE_SNAPSHOT_KEY].includes(event.key)) render();
   });
