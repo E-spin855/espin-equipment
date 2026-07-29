@@ -937,11 +937,11 @@ td:nth-child(11) .manager-waiting-badge{
   min-width:54px;
   max-width:100%;
   min-height:34px;
-  padding:6px 10px;
+  padding:6px 12px;
   margin:0 auto;
 
-  border:2px solid rgba(65,255,156,.88);
-  border-radius:14px;
+  border:2px solid #41ff9c;
+  border-radius:999px;
 
   background:rgba(65,255,156,.14);
   color:#eafff4;
@@ -951,10 +951,18 @@ td:nth-child(11) .manager-waiting-badge{
   line-height:1.05;
   text-align:center;
   white-space:nowrap;
+  cursor:pointer;
 
   box-shadow:
-    0 0 0 1px rgba(65,255,156,.18),
-    0 0 15px rgba(65,255,156,.40);
+    0 0 0 1px rgba(65,255,156,.22),
+    0 0 16px rgba(65,255,156,.58);
+}
+
+.manager-corrected-value:hover{
+  background:rgba(65,255,156,.20);
+  box-shadow:
+    0 0 0 1px rgba(65,255,156,.28),
+    0 0 20px rgba(65,255,156,.72);
 }
   /* =========================================================
      ROW HIGHLIGHTS
@@ -4843,6 +4851,7 @@ const MANAGER_FINANCIAL_SEEN_KEY = "axis_manager_financial_seen_v1";
 const INSTALL_BASE_RESPONSE_KEY = "axis_install_base_response_queue_v1";
 const INSTALL_BASE_RESPONSE_PING_KEY = "axis_install_base_response_ping_v1";
 const MANAGER_SEEN_FIX_KEY = "axis_manager_seen_install_base_fixes_v1";
+const MANAGER_CORRECTED_FIELD_SEEN_KEY = "axis_manager_corrected_field_seen_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
@@ -8851,17 +8860,75 @@ function managerCorrectedFieldsList(rec) {
   return Array.from(new Set([...fromString, ...fromObject]));
 }
 
+function getManagerCorrectedFieldSeenToken(rec, fieldName) {
+  const baseToken =
+    getManagerRecordBaseTokens(rec)
+      .map(managerTokenClean)
+      .filter(Boolean)[0] ||
+    managerTokenClean(rec?.id || rec?.key || getRecordKey(rec));
+
+  return [
+    baseToken,
+    getManagerRepFixRevision(rec),
+    String(fieldName || "").toLowerCase().trim()
+  ].join("::field::");
+}
+
+function readManagerCorrectedFieldSeen() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(MANAGER_CORRECTED_FIELD_SEEN_KEY) || "[]"
+    );
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function hasManagerSeenCorrectedField(rec, fieldName) {
+  const token = getManagerCorrectedFieldSeenToken(rec, fieldName);
+  return readManagerCorrectedFieldSeen().includes(token);
+}
+
+function acknowledgeManagerCorrectedValue(event, recordId, fieldName) {
+  event?.stopPropagation();
+
+  const rec =
+    state.records.find(item =>
+      String(item.id || item.key || getRecordKey(item)) ===
+      String(recordId || "")
+    ) ||
+    findSelectedRecord();
+
+  if (!rec) return;
+
+  const token = getManagerCorrectedFieldSeenToken(rec, fieldName);
+  const seen = readManagerCorrectedFieldSeen();
+
+  if (!seen.includes(token)) {
+    seen.push(token);
+    localStorage.setItem(
+      MANAGER_CORRECTED_FIELD_SEEN_KEY,
+      JSON.stringify(seen)
+    );
+  }
+
+  const pill = event?.currentTarget;
+  if (pill) {
+    pill.replaceWith(
+      document.createRange().createContextualFragment(
+        pill.innerHTML
+      )
+    );
+  }
+
+  renderTable();
+  renderDetail();
+}
+
 function wasManagerFieldCorrected(rec, fieldName) {
   if (!isManagerRecordFixed(rec)) return false;
-
-  const correctionIsUnseen =
-    rec.manager_unseen_update === true &&
-    hasUnseenManagerIncomingEvent(rec) &&
-    hasUnseenManagerCorrectionRow(rec);
-
-  if (!correctionIsUnseen) {
-    return false;
-  }
+  if (hasManagerSeenCorrectedField(rec, fieldName)) return false;
 
   const fixedFields = managerCorrectedFieldsList(rec);
 
@@ -8873,29 +8940,29 @@ function wasManagerFieldCorrected(rec, fieldName) {
     serial: ["serial", "serial_number", "system_serial"],
     dom: ["dom", "year", "manufacture_year"],
     age: ["dom", "year", "manufacture_year"],
-	    site: [
-	      "site",
-	      "facility",
-	      "hospital",
-	      "hospital_name",
-	      "customer",
-	      "location"
-	    ],
-	    territory: [
-	      "territory",
-	      "manager_region",
-	      "manager_territory",
-	      "region"
-	    ],
-	    manager_region: [
-	      "territory",
-	      "manager_region",
-	      "manager_territory",
-	      "region"
-	    ],
-	    owner: [
-	      "owner",
-	      "manager",
+    site: [
+      "site",
+      "facility",
+      "hospital",
+      "hospital_name",
+      "customer",
+      "location"
+    ],
+    territory: [
+      "territory",
+      "manager_region",
+      "manager_territory",
+      "region"
+    ],
+    manager_region: [
+      "territory",
+      "manager_region",
+      "manager_territory",
+      "region"
+    ],
+    owner: [
+      "owner",
+      "manager",
       "manager_name",
       "owner_group",
       "owner_group_name"
@@ -8919,11 +8986,21 @@ function wasManagerFieldCorrected(rec, fieldName) {
 
   return fixedFields.some(field => aliases.includes(field));
 }
+
 function renderManagerCorrectedValue(rec, fieldName, normalHtml) {
   if (!wasManagerFieldCorrected(rec, fieldName)) return normalHtml;
 
+  const recordId = String(rec.id || rec.key || getRecordKey(rec));
+
   return `
-    <span class="manager-corrected-value">
+    <span
+      class="manager-corrected-value"
+      role="button"
+      tabindex="0"
+      title="Click to clear corrected-value highlight"
+      onclick="acknowledgeManagerCorrectedValue(event, '${escapeJs(recordId)}', '${escapeJs(fieldName)}')"
+      onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); acknowledgeManagerCorrectedValue(event, '${escapeJs(recordId)}', '${escapeJs(fieldName)}'); }"
+    >
       ${normalHtml}
     </span>
   `;
@@ -13324,6 +13401,7 @@ if (clearBtn) {
     localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
 
     localStorage.removeItem(MANAGER_SEEN_FIX_KEY);
+    localStorage.removeItem(MANAGER_CORRECTED_FIELD_SEEN_KEY);
     localStorage.removeItem(MANAGER_FINANCIAL_SEEN_KEY);
     localStorage.removeItem(MANAGER_REP_ADDED_SEEN_KEY);
     localStorage.removeItem(MANAGER_REP_ROW_SEEN_KEY);
