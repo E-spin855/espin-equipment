@@ -6099,6 +6099,7 @@ function createHubPreloadedRecords() {
       source: sourceWorkbook,
       hub_source: sourceWorkbook,
       project_type: "equipment_review_record",
+      manager_preloaded_sync: true,
       manager_visible: true,
       manager_only: false,
       rep_visible: true,
@@ -10965,6 +10966,31 @@ function getComputedManagerInstallBaseReviewReason(rec) {
   return "Install Base review context is attached to this record.";
 }
 
+function managerReviewReasonMatchesLabel(label, reason) {
+  const normalizedLabel = lower(label || "");
+  const normalizedReason = lower(reason || "");
+  if (!normalizedLabel || !normalizedReason) return false;
+
+  const keywords = {
+    "equipment age": ["age", "dom", "manufacture", "year"],
+    "replacement planning": ["replacement", "age", "lifecycle"],
+    "service coverage": ["service", "coverage", "agreement", "support"],
+    "utilization": ["utilization", "throughput", "capacity"],
+    "capital planning": ["capital", "budget", "planning"],
+    "data check": ["data", "missing", "manufacture", "modality"],
+    "ownership": ["ownership", "territory", "assigned rep", "owner"],
+    "ownership change": ["ownership", "owner"],
+    "project / asset": ["project", "asset", "milestone"],
+    "asset status": ["asset", "status", "model"],
+    "modernization review": ["upgrade", "software", "workflow", "modernization"],
+    "upgrade": ["upgrade", "software", "workflow"]
+  };
+
+  const expected = keywords[normalizedLabel];
+  if (!expected) return true;
+  return expected.some(keyword => normalizedReason.includes(keyword));
+}
+
 function getOriginalInstallBaseReviewReasonForManager(rec){
   const currentLabel = getManagerVisibleInstallBaseReviewLabel(rec);
 
@@ -10987,15 +11013,12 @@ function getOriginalInstallBaseReviewReasonForManager(rec){
   const valid = candidates
     .map(v => clean(v))
     .filter(Boolean)
-    .find(v => !badFixText.test(v));
+    .find(v =>
+      (rec.manager_preloaded_sync === true || !badFixText.test(v)) &&
+      managerReviewReasonMatchesLabel(currentLabel, v)
+    );
 
-  if (
-    currentLabel === "Equipment Age" &&
-    (
-      !valid ||
-      badFixText.test(valid)
-    )
-  ) {
+  if (currentLabel === "Equipment Age") {
     return getComputedManagerInstallBaseReviewReason(rec);
   }
 

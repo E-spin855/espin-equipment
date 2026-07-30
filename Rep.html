@@ -9369,7 +9369,38 @@ function getRepComputedNormalInstallBaseReviewReason(rec) {
   return primaryReason || "Install Base review available for this equipment.";
 }
 
+function repReviewReasonMatchesLabel(label, reason) {
+  const normalizedLabel = lower(label || "");
+  const normalizedReason = lower(reason || "");
+  if (!normalizedLabel || !normalizedReason) return false;
+
+  const keywords = {
+    "equipment age": ["age", "dom", "manufacture", "year"],
+    "replacement planning": ["replacement", "age", "lifecycle"],
+    "service coverage": ["service", "coverage", "agreement", "support"],
+    "utilization": ["utilization", "throughput", "capacity"],
+    "capital planning": ["capital", "budget", "planning"],
+    "data check": ["data", "missing", "manufacture", "modality"],
+    "ownership": ["ownership", "territory", "assigned rep", "owner"],
+    "ownership change": ["ownership", "owner"],
+    "project / asset": ["project", "asset", "milestone"],
+    "asset status": ["asset", "status", "model"],
+    "modernization review": ["upgrade", "software", "workflow", "modernization"],
+    "upgrade": ["upgrade", "software", "workflow"]
+  };
+
+  const expected = keywords[normalizedLabel];
+  if (!expected) return true;
+  return expected.some(keyword => normalizedReason.includes(keyword));
+}
+
 function getRepOriginalInstallBaseReviewReason(rec) {
+  const visibleLabel = normalizeOemReviewLabelForRep(rec);
+
+  if (visibleLabel === "Equipment Age") {
+    return getRepComputedNormalInstallBaseReviewReason(rec);
+  }
+
   const candidates = [
     rec.original_oem_review_reason,
     rec.original_install_base_review_reason,
@@ -9385,7 +9416,13 @@ function getRepOriginalInstallBaseReviewReason(rec) {
   const valid = candidates
     .map(v => clean(v))
     .filter(Boolean)
-    .find(v => !looksLikeTemporaryInstallBaseFixReason(v));
+    .find(v =>
+      (
+        rec.manager_preloaded_sync === true ||
+        !looksLikeTemporaryInstallBaseFixReason(v)
+      ) &&
+      repReviewReasonMatchesLabel(visibleLabel, v)
+    );
 
   return valid || getRepComputedNormalInstallBaseReviewReason(rec);
 }
@@ -9432,6 +9469,24 @@ function normalizeOemReviewLabelForRep(rec) {
     rec.original_install_base_review_label ||
     ""
   );
+
+  if (rec?.manager_preloaded_sync === true && directLabel) {
+    const normalizedDirectLabel = lower(directLabel);
+
+    if (normalizedDirectLabel.includes("service")) return "Service Coverage";
+    if (normalizedDirectLabel.includes("utilization")) return "Utilization";
+    if (normalizedDirectLabel.includes("replacement")) return "Replacement Planning";
+    if (normalizedDirectLabel.includes("capital") || normalizedDirectLabel.includes("planning")) return "Capital Planning";
+    if (normalizedDirectLabel.includes("age") || normalizedDirectLabel.includes("lifecycle")) return "Equipment Age";
+    if (normalizedDirectLabel.includes("ownership change")) return "Ownership Change";
+    if (normalizedDirectLabel.includes("ownership")) return "Ownership";
+    if (normalizedDirectLabel.includes("data")) return "Data Check";
+    if (normalizedDirectLabel.includes("project")) return "Project / Asset";
+    if (normalizedDirectLabel.includes("status")) return "Asset Status";
+    if (normalizedDirectLabel.includes("upgrade")) return "Modernization Review";
+
+    return directLabel;
+  }
 
   const raw = lower(
     rec.oem_review_type ||
