@@ -20797,21 +20797,45 @@ function upsertEspinActiveProject(project) {
   let records = readEspinActiveProjects();
   const index = records.findIndex(
     item => {
-      const incomingOperation = clean(project.operation_id).toLowerCase();
-      const existingOperation = clean(item?.operation_id).toLowerCase();
+      const getProjectOperationType = value => {
+        const typeText = clean(
+          value?.operation_type ||
+          value?.project_type ||
+          value?.type ||
+          value?.handoff ||
+          value?.project_name ||
+          ""
+        ).toLowerCase();
+
+        return (
+          typeText === "install" ||
+          (
+            /install/.test(typeText) &&
+            !/deinstall|de-install|removal|disposal/.test(typeText)
+          )
+        )
+          ? "install"
+          : "deinstall";
+      };
+
+      const incomingType = getProjectOperationType(project);
+      const existingType = getProjectOperationType(item);
+
+      // Installation and de-install/removal are separate linked projects.
+      // Even when ESPIN Connect reuses an operation/project identifier, one
+      // type must never overwrite the other in the shared progress storage.
+      if (incomingType !== existingType) return false;
+
+      const incomingOperation = clean(
+        project.operation_id || project.project_id
+      ).toLowerCase();
+      const existingOperation = clean(
+        item?.operation_id || item?.project_id
+      ).toLowerCase();
+
       if (incomingOperation && existingOperation) {
         return incomingOperation === existingOperation;
       }
-
-      const incomingType = /install/i.test(clean(project.operation_type || project.project_type)) &&
-        !/deinstall|removal|disposal/i.test(clean(project.operation_type || project.project_type))
-        ? "install"
-        : "deinstall";
-      const existingType = /install/i.test(clean(item?.operation_type || item?.project_type)) &&
-        !/deinstall|removal|disposal/i.test(clean(item?.operation_type || item?.project_type))
-        ? "install"
-        : "deinstall";
-      if (incomingType !== existingType) return false;
 
       return Boolean(
         clean(project.source_record_id) &&
