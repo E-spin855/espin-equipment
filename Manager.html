@@ -8163,6 +8163,27 @@ function renderReviewCondition(rec) {
 
   return `<span class="${cls}">${escapeHtml(shortText)}</span>`;
 }
+
+function getManagerStableRecordOrder(rec) {
+  const canonicalRows = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS];
+  const canonicalIndex = canonicalRows.findIndex(row =>
+    String(row.oem_project_id || "") === String(rec?.oem_project_id || "")
+  );
+
+  return {
+    group: canonicalIndex >= 0 ? 0 : 1,
+    index: canonicalIndex >= 0 ? canonicalIndex : Number.MAX_SAFE_INTEGER,
+    key: String(
+      rec?.oem_project_id ||
+      rec?.project_id ||
+      rec?.asset_id ||
+      rec?.id ||
+      getRecordKey(rec) ||
+      ""
+    )
+  };
+}
+
 function getDisplayOrderWeight(rec) {
   if (!rec) return 0;
 
@@ -9742,23 +9763,14 @@ function renderTable() {
   }));
 
   records = records.sort((a, b) => {
-    const aRedHot = isRedHotServiceAlert(a);
-    const bRedHot = isRedHotServiceAlert(b);
-    if (aRedHot !== bRedHot) return bRedHot ? 1 : -1;
+    const left = getManagerStableRecordOrder(a);
+    const right = getManagerStableRecordOrder(b);
 
-    const latestUpdateDifference =
-      getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
-    if (latestUpdateDifference) return latestUpdateDifference;
-
-    const aUpdated = shouldManagerRowFlash(a) || hasUnreadMessageRow(a, "manager");
-    const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
-
-    if (aUpdated !== bUpdated) return Number(bUpdated) - Number(aUpdated);
-    if (aUpdated && bUpdated) {
-      const timeDifference = getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
-      if (timeDifference) return timeDifference;
-    }
-    return getDisplayOrderWeight(b) - getDisplayOrderWeight(a);
+    return (
+      left.group - right.group ||
+      left.index - right.index ||
+      left.key.localeCompare(right.key)
+    );
   });
 
   if (!records.length) {
