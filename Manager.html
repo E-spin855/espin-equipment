@@ -6111,7 +6111,24 @@ function createHubPreloadedRecords() {
   });
 }
 
-function normalizePreloadedManagerPresentation(rec) {
+function getCanonicalPreloadedRepName(row) {
+  return (
+    row?.assigned_rep_name ||
+    row?.sales_rep_name ||
+    `${row?.sales_rep_first || ""} ${row?.sales_rep_last || ""}`.trim()
+  );
+}
+
+function getPreloadedManagerRepAlias(row) {
+  const names = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS]
+    .map(getCanonicalPreloadedRepName)
+    .filter((name, index, list) => name && list.indexOf(name) === index);
+  const index = names.indexOf(getCanonicalPreloadedRepName(row));
+
+  return index >= 0 ? `Rep ${index + 1}` : "Unassigned";
+}
+
+function normalizePreloadedManagerPresentation(rec, useManagerRepAlias = true) {
   if (!rec) return rec;
 
   const canonical = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS].find(row =>
@@ -6120,10 +6137,9 @@ function normalizePreloadedManagerPresentation(rec) {
 
   if (!canonical) return rec;
 
-  const repName =
-    canonical.assigned_rep_name ||
-    canonical.sales_rep_name ||
-    `${canonical.sales_rep_first || ""} ${canonical.sales_rep_last || ""}`.trim();
+  const repName = useManagerRepAlias
+    ? getPreloadedManagerRepAlias(canonical)
+    : getCanonicalPreloadedRepName(canonical);
   const facility = canonical.site || canonical.facility || canonical.facility_name;
   const nameParts = String(repName || "").split(/\s+/).filter(Boolean);
 
@@ -6165,7 +6181,7 @@ function syncPreloadedRecordsToRep() {
       release_destination: "rep",
       install_base_released_to: "rep",
       install_base_release_status: "auto_synced"
-    });
+    }, false);
   });
 
   writeArrayKey(STORAGE_KEY, synced);
