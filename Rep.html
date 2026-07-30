@@ -19495,6 +19495,83 @@ function saveInstallBaseFix(id) {
   }
 }
 
+    function createEspinOperationId(operationType) {
+      const uuidValue =
+        window.crypto?.randomUUID?.() ||
+        `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+      return `op-${operationType}-${uuidValue}`;
+    }
+
+    function stableEspinIdentifier(prefix, value) {
+      const text = String(value || "").trim().toLowerCase();
+      let hash = 2166136261;
+      for (const char of text) {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+      }
+      return `${prefix}-${(hash >>> 0).toString(36)}`;
+    }
+
+    function getEspinProjectGroupId(rec) {
+      const existing = clean(
+        rec.project_group_id ||
+        rec.replacement_project_group_id ||
+        rec.linked_replacement_group_id
+      );
+      if (existing) return existing;
+
+      rec.project_group_id =
+        `group-${window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`}`;
+      return rec.project_group_id;
+    }
+
+    function buildEspinOperationContext(rec, operationType) {
+      const sourceRecordId = clean(rec.id || rec.key);
+      const assetId = clean(
+        rec.asset_id ||
+        rec.equipment_id ||
+        rec.oem_project_id ||
+        rec.project_id
+      );
+      const serialNumber = clean(
+        rec.serial_number ||
+        rec.serial ||
+        rec.system_serial
+      );
+      const facility = clean(
+        rec.site ||
+        rec.facility ||
+        rec.hospital ||
+        rec.customer_name
+      );
+      const facilityId = clean(
+        rec.facility_id ||
+        rec.site_id ||
+        rec.account_id
+      ) || stableEspinIdentifier(
+        "facility",
+        rec.site_address || rec.address || facility
+      );
+
+      return {
+        operation_id: createEspinOperationId(operationType),
+        operation_type: operationType,
+        project_group_id: getEspinProjectGroupId(rec),
+        facility_id: facilityId,
+        facility,
+        asset_id: assetId,
+        serial_number: serialNumber,
+        source_record_id: sourceRecordId,
+        equipment_model: clean(rec.model || rec.equipment_model)
+      };
+    }
+
+    function appendEspinOperationParams(url, operation) {
+      Object.entries(operation).forEach(([key, value]) => {
+        if (clean(value)) url.searchParams.set(key, clean(value));
+      });
+    }
+
     function startInstallationProject(id, followUpDate = "", actionLabel = "Start Installation Project") {
       const rec = state.records.find(r => String(r.id) === String(id));
       if (!rec) {
@@ -19509,6 +19586,7 @@ function saveInstallBaseFix(id) {
 
       const cleanText = value => String(value || "").trim();
       const now = new Date().toISOString();
+      const operation = buildEspinOperationContext(rec, "install");
 
       const repEmail = cleanText(
         rec.sales_rep_email ||
@@ -19525,6 +19603,7 @@ function saveInstallBaseFix(id) {
 
       handoffUrl.searchParams.set("project_type", "install");
       handoffUrl.searchParams.set("handoff", "installation_project");
+      appendEspinOperationParams(handoffUrl, operation);
 
       handoffUrl.searchParams.set(
         "project_name",
@@ -19584,6 +19663,8 @@ function saveInstallBaseFix(id) {
       );
 
       rec.install_project_started = true;
+      rec.install_operation_id = operation.operation_id;
+      rec.project_group_id = operation.project_group_id || rec.project_group_id || "";
       rec.install_project_started_at = now;
       rec.service_visible = true;
       rec.service_sync_type = "installation_project";
@@ -20437,6 +20518,11 @@ function getActiveProjectRecordKeys(rec) {
     rec.project_id,
     rec.axis_project_id,
     rec.axis_record_id,
+    rec.source_record_id,
+    rec.asset_id,
+    rec.equipment_id,
+    rec.serial_number,
+    rec.serial,
     rec.linked_axis_project_id,
     rec.linked_new_project_id
   ]
@@ -20447,50 +20533,63 @@ function getActiveProjectRecordKeys(rec) {
 function activeProjectMatchesSelectedRecord(project, rec) {
   if (!project || !rec) return false;
 
-  const recordKeys = getActiveProjectRecordKeys(rec);
-  const projectKeys = [
-    project.axis_record_id,
-    project.record_id,
-    project.linked_record_id,
-    project.axis_project_id,
-    project.project_id,
-    project.source_record_id
-  ]
-    .map(value => clean(value).toLowerCase())
-    .filter(Boolean);
+  const normalized = value => clean(value).toLowerCase();
+  const recordOperationIds = [
+    rec.operation_id,
+    rec.install_operation_id,
+    rec.deinstall_operation_id
+  ].map(normalized).filter(Boolean);
+  const projectOperationId = normalized(project.operation_id);
 
-  if (projectKeys.some(key => recordKeys.includes(key))) {
+  if (projectOperationId && recordOperationIds.includes(projectOperationId)) {
     return true;
   }
 
-  const recordFacility = clean(
-    rec.site || rec.facility || rec.hospital || ""
-  ).toLowerCase();
-
-  const projectFacility = clean(project.facility || "").toLowerCase();
-
-  const recordProjectName = clean(
-    rec.new_project_name ||
-    rec.project_name ||
-    rec.model ||
-    ""
-  ).toLowerCase();
-
-  const projectName = clean(project.project_name || "").toLowerCase();
-
-  return Boolean(
-    (recordFacility && projectFacility && recordFacility === projectFacility) ||
-    (recordProjectName && projectName &&
-      (projectName.includes(recordProjectName) ||
-       recordProjectName.includes(projectName)))
+  const sourceRecordIds = [
+    rec.id,
+    rec.key,
+    rec.source_record_id,
+    rec.axis_record_id
+  ].map(normalized).filter(Boolean);
+  const projectSourceId = normalized(
+    project.source_record_id ||
+    project.axis_record_id ||
+    project.record_id ||
+    project.linked_record_id
   );
+  if (projectSourceId && sourceRecordIds.includes(projectSourceId)) return true;
+
+  const recordAssetIds = [
+    rec.asset_id,
+    rec.equipment_id,
+    rec.oem_project_id,
+    rec.project_id
+  ].map(normalized).filter(Boolean);
+  const projectAssetId = normalized(
+    project.asset_id ||
+    project.equipment_id ||
+    project.axis_project_id
+  );
+  if (projectAssetId && recordAssetIds.includes(projectAssetId)) return true;
+
+  const recordSerials = [
+    rec.serial_number,
+    rec.serial,
+    rec.system_serial
+  ].map(normalized).filter(Boolean);
+  const projectSerial = normalized(
+    project.serial_number ||
+    project.serial ||
+    project.system_serial
+  );
+  return Boolean(projectSerial && recordSerials.includes(projectSerial));
 }
 
 function getActiveProjectSnapshotsForRecord(rec) {
   if (!rec) return [];
 
   return readEspinActiveProjects()
-    .filter(project => project && project.project_id)
+    .filter(project => project && (project.operation_id || project.project_id))
     .filter(project => activeProjectMatchesSelectedRecord(project, rec))
     .map(project => ({
       ...project,
@@ -20520,7 +20619,7 @@ function renderActiveProjects() {
   }
 
   let projects = readEspinActiveProjects()
-    .filter(project => project && project.project_id)
+    .filter(project => project && (project.operation_id || project.project_id))
     .filter(project => activeProjectMatchesSelectedRecord(project, selectedRecord))
     .filter(project => {
       if (!state.selectedRep) return true;
@@ -20542,12 +20641,24 @@ function renderActiveProjects() {
     const total = Math.max(milestones.length, 1);
     const progress = Math.max(0, Math.min(100, Number.isFinite(Number(project.progress)) ? Number(project.progress) : Math.round(completed / total * 100)));
     const complete = progress >= 100;
-    const open = activeProjectOpenState[project.project_id] === true;
+    const projectCardId = project.operation_id || project.project_id;
+    const open = activeProjectOpenState[projectCardId] === true;
     const currentStage = project.current_stage || (complete ? "Project Completed" : "Project In Progress");
     const typeLabel = String(project.project_type || "project").replace(/_/g," ");
-    const isInstallationProject = /install/i.test(
-      String(project.project_type || project.type || project.handoff || project.project_name || "")
+    const projectTypeText = String(
+      project.operation_type ||
+      project.project_type ||
+      project.type ||
+      project.handoff ||
+      project.project_name ||
+      ""
     );
+    const isInstallationProject =
+      clean(project.operation_type).toLowerCase() === "install" ||
+      (
+        /install/i.test(projectTypeText) &&
+        !/deinstall|de-install|removal|disposal/i.test(projectTypeText)
+      );
     const projectDisplayName = isInstallationProject
       ? "Installation Project"
       : (project.project_name || project.project_id);
@@ -20570,10 +20681,10 @@ function renderActiveProjects() {
 
     return `
       <article class="active-project-card ${projectTypeClass} ${complete ? "complete" : ""} ${open ? "open" : ""}">
-        <button type="button" class="active-project-summary" onclick="toggleActiveProjectCard('${escapeJs(project.project_id)}')">
+        <button type="button" class="active-project-summary" onclick="toggleActiveProjectCard('${escapeJs(projectCardId)}')">
           <div>
             <div class="active-project-name">${escapeHtml(projectDisplayName)}</div>
-            <div class="active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project.facility || "ESPIN Connect")}</div>
+            <div class="active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project.equipment_model || project.model || project.equipment || "Equipment")} · ${escapeHtml(project.serial_number ? `S/N ${project.serial_number}` : project.asset_id ? `Asset ${project.asset_id}` : "Identifier unavailable")} · ${escapeHtml(project.facility || "ESPIN Connect")}</div>
             <div class="sci-progress-row">
               <div class="sci-progress-track"><div class="sci-progress-fill" style="width:${progress}%"></div></div>
               <div class="sci-progress-percent">${progress}%</div>
@@ -20636,7 +20747,7 @@ window.addEventListener("storage", event => {
 });
 
 function upsertEspinActiveProject(project) {
-  if (!project || !project.project_id) return;
+  if (!project || (!project.operation_id && !project.project_id)) return;
 
   const selectedRecord = state.records.find(
     record => String(record.id) === String(state.selectedId)
@@ -20648,6 +20759,31 @@ function upsertEspinActiveProject(project) {
       axis_record_id:
         project.axis_record_id ||
         selectedRecord.id ||
+        "",
+      source_record_id:
+        project.source_record_id ||
+        selectedRecord.id ||
+        selectedRecord.key ||
+        "",
+      asset_id:
+        project.asset_id ||
+        selectedRecord.asset_id ||
+        selectedRecord.equipment_id ||
+        selectedRecord.oem_project_id ||
+        "",
+      serial_number:
+        project.serial_number ||
+        selectedRecord.serial_number ||
+        selectedRecord.serial ||
+        "",
+      equipment_model:
+        project.equipment_model ||
+        selectedRecord.model ||
+        "",
+      facility:
+        project.facility ||
+        selectedRecord.site ||
+        selectedRecord.facility ||
         "",
       axis_project_id:
         project.axis_project_id ||
@@ -20664,7 +20800,32 @@ function upsertEspinActiveProject(project) {
 
   let records = readEspinActiveProjects();
   const index = records.findIndex(
-    item => String(item?.project_id || "") === String(project.project_id)
+    item => {
+      const incomingOperation = clean(project.operation_id).toLowerCase();
+      const existingOperation = clean(item?.operation_id).toLowerCase();
+      if (incomingOperation && existingOperation) {
+        return incomingOperation === existingOperation;
+      }
+
+      const incomingType = /install/i.test(clean(project.operation_type || project.project_type)) &&
+        !/deinstall|removal|disposal/i.test(clean(project.operation_type || project.project_type))
+        ? "install"
+        : "deinstall";
+      const existingType = /install/i.test(clean(item?.operation_type || item?.project_type)) &&
+        !/deinstall|removal|disposal/i.test(clean(item?.operation_type || item?.project_type))
+        ? "install"
+        : "deinstall";
+      if (incomingType !== existingType) return false;
+
+      return Boolean(
+        clean(project.source_record_id) &&
+        clean(item?.source_record_id) === clean(project.source_record_id) ||
+        clean(project.asset_id) &&
+        clean(item?.asset_id) === clean(project.asset_id) ||
+        clean(project.serial_number) &&
+        clean(item?.serial_number) === clean(project.serial_number)
+      );
+    }
   );
 
   if (index >= 0) {
@@ -20702,7 +20863,10 @@ window.addEventListener("message", event => {
 
   if (
     !message ||
-    message.type !== "ESPIN_ACTIVE_PROJECT_UPDATED" ||
+    ![
+      "ESPIN_ACTIVE_PROJECT_UPDATED",
+      "ESPIN_OPERATION_PROJECT_CREATED"
+    ].includes(message.type) ||
     !message.project
   ) {
     return;
@@ -23576,6 +23740,7 @@ return true;
   }
 
   const cleanText = value => String(value || "").trim();
+  const operation = buildEspinOperationContext(rec, "deinstall");
   const modality = cleanText(rec.modality).toUpperCase() || "OTHER";
   const repEmail = cleanText(
     rec.sales_rep_email ||
@@ -23607,6 +23772,7 @@ return true;
 
   handoffUrl.searchParams.set("project_type", "disposal");
   handoffUrl.searchParams.set("handoff", "disposal_review");
+  appendEspinOperationParams(handoffUrl, operation);
 
   handoffUrl.searchParams.set("project_name", projectName);
   handoffUrl.searchParams.set(
@@ -23666,6 +23832,8 @@ return true;
   const now = new Date().toISOString();
 
   rec.submitted_to = "espin_connect";
+  rec.deinstall_operation_id = operation.operation_id;
+  rec.project_group_id = operation.project_group_id || rec.project_group_id || "";
   rec.connect_sync_status = "handoff_opened";
   rec.connect_handoff_at = now;
   rec.disposal_required = Boolean(disposalRequired);

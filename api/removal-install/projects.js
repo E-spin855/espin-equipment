@@ -2,6 +2,7 @@
 // PATH: /api/projects.js
 
 import { Pool } from "pg";
+import { kv } from "@vercel/kv";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -34,6 +35,37 @@ function clean(email) {
 
 function getTzFromZip() {
   return "UTC";
+}
+
+const OPERATION_FIELDS = [
+  "operation_id",
+  "operation_type",
+  "project_group_id",
+  "facility_id",
+  "facility",
+  "asset_id",
+  "serial_number",
+  "source_record_id",
+  "equipment_model"
+];
+
+function operationMetadata(body = {}) {
+  return Object.fromEntries(
+    OPERATION_FIELDS
+      .map(field => [field, String(body[field] ?? "").trim()])
+      .filter(([, value]) => value)
+  );
+}
+
+async function addOperationMetadata(project) {
+  if (!project?.id) return project;
+  try {
+    const metadata =
+      await kv.get(`espin:operation:${project.id}`) || {};
+    return { ...project, ...metadata };
+  } catch {
+    return project;
+  }
 }
 
 /* ===============================
@@ -86,7 +118,7 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      return res.status(200).json(rows[0]);
+      return res.status(200).json(await addOperationMetadata(rows[0]));
     }
 
     /* ===============================
@@ -135,7 +167,9 @@ export default async function handler(req, res) {
         [email]
       );
 
-      return res.status(200).json(rows);
+      return res.status(200).json(
+        await Promise.all(rows.map(addOperationMetadata))
+      );
     }
 
     /* ===============================
@@ -157,6 +191,7 @@ export default async function handler(req, res) {
         await client.query(`DELETE FROM project_contacts WHERE project_id=$1`, [projectId]);
         await client.query(`DELETE FROM project_events WHERE project_id=$1`, [projectId]);
         await client.query(`DELETE FROM projects WHERE id=$1`, [projectId]);
+        try { await kv.del(`espin:operation:${projectId}`); } catch {}
 
         return res.status(200).json({ ok: true });
       }
@@ -272,7 +307,12 @@ const { rows } = await client.query(
     source || "lifecycle"
   ]
 );
-return res.status(201).json(rows[0]);
+const createdProject = rows[0];
+const createdMetadata = operationMetadata(body);
+if (createdProject?.id && Object.keys(createdMetadata).length) {
+  await kv.set(`espin:operation:${createdProject.id}`, createdMetadata);
+}
+return res.status(201).json({ ...createdProject, ...createdMetadata });
     }
 
     /* ===============================
@@ -325,7 +365,20 @@ return res.status(201).json(rows[0]);
         return res.status(404).json({ error: "Project not found" });
       }
 
-      return res.status(200).json(rows[0]);
+      const existingMetadata =
+        await kv.get(`espin:operation:${projectId}`) || {};
+      const updatedMetadata = {
+        ...existingMetadata,
+        ...operationMetadata(req.body || {})
+      };
+      if (Object.keys(updatedMetadata).length) {
+        await kv.set(`espin:operation:${projectId}`, updatedMetadata);
+      }
+
+      return res.status(200).json({
+        ...rows[0],
+        ...updatedMetadata
+      });
     }
 
     return res.status(405).json({ error: "Method not allowed" });

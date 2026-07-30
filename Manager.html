@@ -6518,23 +6518,21 @@ function showResetButtonSuccess(button, successText = "Reset Complete ✓") {
 function sameRecord(a, b) {
   if (!a || !b) return false;
 
-  const aProject = clean(a.oem_project_id || a.project_id || a.asset_id || a.equipment_id || a.project || "");
-  const bProject = clean(b.oem_project_id || b.project_id || b.asset_id || b.equipment_id || b.project || "");
+  const aOperation = clean(a.operation_id);
+  const bOperation = clean(b.operation_id);
+  if (aOperation && bOperation) return aOperation === bOperation;
+
+  const aSource = clean(a.source_record_id || a.axis_record_id || a.record_id || a.id || a.key || "");
+  const bSource = clean(b.source_record_id || b.axis_record_id || b.record_id || b.id || b.key || "");
+  if (aSource && bSource && aSource === bSource) return true;
+
+  const aProject = clean(a.asset_id || a.equipment_id || a.oem_project_id || a.project_id || "");
+  const bProject = clean(b.asset_id || b.equipment_id || b.oem_project_id || b.project_id || "");
+  if (aProject && bProject && aProject === bProject) return true;
+
   const aSerial = clean(a.serial_number || a.serial || a.system_serial || a.equipment_serial || "");
   const bSerial = clean(b.serial_number || b.serial || b.system_serial || b.equipment_serial || "");
-  const aSite = clean(a.site || a.facility || a.hospital || a.hospital_name || a.customer || a.customer_name || a.location || "");
-  const bSite = clean(b.site || b.facility || b.hospital || b.hospital_name || b.customer || b.customer_name || b.location || "");
-
-  if (aProject && bProject && aProject === bProject) {
-    if (aSerial && bSerial && aSerial === bSerial) return true;
-    if (aSite && bSite && aSite === bSite) return true;
-  }
-
-  if (aSerial && bSerial && aSite && bSite && aSerial === bSerial && aSite === bSite) return true;
-
-  const aKey = getRecordKey(a);
-  const bKey = getRecordKey(b);
-  if (aKey && bKey && aKey === bKey) return true;
+  if (aSerial && bSerial && aSerial === bSerial) return true;
 
   const aDurable = clean(a.manager_sync_key || a.axis_sync_key || a.original_key || a.install_base_release_id || a.manager_release_id || a.release_id || "");
   const bDurable = clean(b.manager_sync_key || b.axis_sync_key || b.original_key || b.install_base_release_id || b.manager_release_id || b.release_id || "");
@@ -7415,7 +7413,7 @@ function renderManagerActiveProjects(rec) {
       ? rec.active_project_snapshots
       : []
   )
-    .filter(project => project && project.project_id)
+    .filter(project => project && (project.operation_id || project.project_id))
     .sort(
       (a, b) =>
         new Date(b.updated_at || 0) -
@@ -7475,8 +7473,11 @@ function renderManagerActiveProjects(rec) {
             );
 
             const complete = progress >= 100;
+            const projectCardId =
+              project.operation_id ||
+              project.project_id;
             const open =
-              managerActiveProjectOpenState[project.project_id] === true;
+              managerActiveProjectOpenState[projectCardId] === true;
 
             const currentStage =
               project.current_stage ||
@@ -7488,15 +7489,20 @@ function renderManagerActiveProjects(rec) {
               project.project_type || "project"
             ).replace(/_/g, " ");
 
-            const isInstallationProject = /install/i.test(
-              String(
+            const projectTypeText = String(
+                project.operation_type ||
                 project.project_type ||
                 project.type ||
                 project.handoff ||
                 project.project_name ||
                 ""
-              )
             );
+            const isInstallationProject =
+              clean(project.operation_type).toLowerCase() === "install" ||
+              (
+                /install/i.test(projectTypeText) &&
+                !/deinstall|de-install|removal|disposal/i.test(projectTypeText)
+              );
 
             const projectDisplayName = isInstallationProject
               ? "Installation Project"
@@ -7543,7 +7549,7 @@ function renderManagerActiveProjects(rec) {
                 <button
                   type="button"
                   class="active-project-summary"
-                  onclick="toggleManagerActiveProjectCard('${String(project.project_id).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')"
+                  onclick="toggleManagerActiveProjectCard('${String(projectCardId).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')"
                 >
                   <div>
                     <div class="active-project-name">
@@ -7552,6 +7558,19 @@ function renderManagerActiveProjects(rec) {
 
                     <div class="active-project-meta">
                       ${escapeHtml(typeLabel)} ·
+                      ${escapeHtml(
+                        project.equipment_model ||
+                        project.model ||
+                        project.equipment ||
+                        "Equipment"
+                      )} ·
+                      ${escapeHtml(
+                        project.serial_number
+                          ? `S/N ${project.serial_number}`
+                          : project.asset_id
+                            ? `Asset ${project.asset_id}`
+                            : "Identifier unavailable"
+                      )} ·
                       ${escapeHtml(
                         project.facility ||
                         "ESPIN Connect"

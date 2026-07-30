@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
 <meta charset="UTF-8">
 <title>Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -468,6 +469,14 @@ function getAxisDemoProjectFromUrl() {
     make: params.get("make") || "",
     model: params.get("model") || "",
     serial_number: params.get("serial_number") || "",
+    operation_id: params.get("operation_id") || "",
+    operation_type: params.get("operation_type") || "install",
+    project_group_id: params.get("project_group_id") || "",
+    facility_id: params.get("facility_id") || "",
+    asset_id: params.get("asset_id") || "",
+    source_record_id: params.get("source_record_id") || params.get("axis_record_id") || "",
+    equipment_model: params.get("equipment_model") || params.get("model") || "",
+    facility: params.get("facility") || "",
     dom: params.get("dom") || "",
     disposal_required: params.get("disposal_required") === "true",
     magnet_event: params.get("magnet_event") || "",
@@ -558,6 +567,10 @@ if (axisDemoProject) {
         </div>
 
         <p>${p.site_address || ""} ${p.zip_code || ""}</p>
+        <p><strong>Operation:</strong> Install</p>
+        <p><strong>Equipment:</strong> ${p.equipment_model || p.model || p.equipment || "N/A"}</p>
+        <p><strong>Identifier:</strong> ${p.serial_number ? `S/N ${p.serial_number}` : p.asset_id || "N/A"}</p>
+        <p><strong>Facility:</strong> ${p.facility || p.project_name || "N/A"}</p>
         <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
 
      ${shouldShowFromBlock(p) ? `
@@ -571,7 +584,13 @@ if (axisDemoProject) {
       `;
 
       card.onclick = () => {
-        location.href = `install_management.html?id=${p.id}`;
+        const destination = new URL("install_management.html", location.href);
+        destination.searchParams.set("id", p.id);
+        destination.searchParams.set("projectId", p.id);
+        window.EspinOperation.fields.forEach(field => {
+          if (p[field]) destination.searchParams.set(field, p[field]);
+        });
+        location.href = destination.toString();
       };
 
       if (isAdmin) {

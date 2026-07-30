@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Creating Espin Connect Project</title>
@@ -115,8 +116,12 @@
       clean(params.get("project_type")).toLowerCase() === "install"
         ? "install"
         : "disposal";
+    const operationType =
+      clean(params.get("operation_type")).toLowerCase() === "install"
+        ? "install"
+        : "deinstall";
 
-    const payload = {
+    const payload = window.EspinOperation.enrich({
       project_name:
         clean(params.get("project_name")) ||
         (projectType === "install"
@@ -138,11 +143,23 @@
       contact_phone: clean(params.get("contact_phone")),
       contact_email: clean(params.get("contact_email")),
       project_type: projectType,
+      operation_type: operationType,
+      operation_id: clean(params.get("operation_id")),
+      project_group_id: clean(params.get("project_group_id")),
+      facility_id: clean(params.get("facility_id")),
+      facility: clean(params.get("facility")),
+      asset_id: clean(params.get("asset_id")),
+      serial_number: clean(params.get("serial_number")),
+      source_record_id: clean(
+        params.get("source_record_id") ||
+        params.get("axis_record_id")
+      ),
+      equipment_model: clean(params.get("equipment_model")),
       source:
         projectType === "install"
           ? "espin_link_installation_project"
           : "espin_link_disposal_review"
-    };
+    });
 
     try {
       const response = await fetch("/api/removal-install/projects", {
@@ -166,6 +183,7 @@
       if (!projectId) throw new Error("Project was created without a project ID.");
 
       localStorage.setItem("activeProjectId", projectId);
+      window.EspinOperation.saveContext(projectId);
 
       card.classList.add("success");
       card.querySelector("h1").textContent = "Project created";
@@ -200,6 +218,25 @@
         "axis_project_id",
         clean(params.get("axis_project_id"))
       );
+      window.EspinOperation.fields.forEach(field => {
+        const value = clean(payload[field]);
+        if (value) destination.searchParams.set(field, value);
+      });
+
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: "ESPIN_OPERATION_PROJECT_CREATED",
+            project: {
+              ...payload,
+              project_id: projectId,
+              project_url: destination.toString()
+            }
+          }, "*");
+        }
+      } catch (error) {
+        console.warn("Created operation could not be returned to Rep.", error);
+      }
 
       setTimeout(() => location.replace(destination.toString()), 500);
     } catch (error) {
