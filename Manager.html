@@ -10117,6 +10117,31 @@ function renderTable() {
   }));
 
   records = records.sort((a, b) => {
+    const aHasUpdate = Boolean(
+      shouldManagerRowFlash(a) ||
+      hasUnreadMessageRow(a, "manager") ||
+      hasUnseenManagerCorrectionRow(a) ||
+      hasUnseenManagerIncomingEvent(a)
+    );
+    const bHasUpdate = Boolean(
+      shouldManagerRowFlash(b) ||
+      hasUnreadMessageRow(b, "manager") ||
+      hasUnseenManagerCorrectionRow(b) ||
+      hasUnseenManagerIncomingEvent(b)
+    );
+
+    if (aHasUpdate !== bHasUpdate) {
+      return aHasUpdate ? -1 : 1;
+    }
+
+    if (aHasUpdate && bHasUpdate) {
+      const updateDifference =
+        getManagerLatestUpdateTime(b) -
+        getManagerLatestUpdateTime(a);
+
+      if (updateDifference) return updateDifference;
+    }
+
     const left = getManagerStableRecordOrder(a);
     const right = getManagerStableRecordOrder(b);
 
@@ -13500,6 +13525,19 @@ if (
     if (!card) return;
     card.classList.add("communication-update-frame");
     card.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 60);
+} else if (state.managerUpdateHighlight || state.correctedFieldHighlightId) {
+  window.setTimeout(() => {
+    const updatedField = document.querySelector(
+      "#detailGrid .manager-field-update-frame, " +
+      "#detailGrid .detail-update-frame, " +
+      "#detailGrid .corrected-field-highlight"
+    );
+
+    updatedField?.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
   }, 60);
 }
 }
