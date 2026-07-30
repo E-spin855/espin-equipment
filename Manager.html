@@ -6128,7 +6128,37 @@ function getPreloadedManagerRepAlias(row) {
   return index >= 0 ? `Rep ${index + 1}` : "Unassigned";
 }
 
-function normalizePreloadedManagerPresentation(rec, useManagerRepAlias = true) {
+function getCanonicalPreloadedFacility(row) {
+  return row?.site || row?.facility || row?.facility_name || "";
+}
+
+function getManagerFacilityLetter(index) {
+  let value = index + 1;
+  let label = "";
+
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+
+  return label;
+}
+
+function getPreloadedManagerFacilityAlias(row) {
+  const facilities = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS]
+    .map(getCanonicalPreloadedFacility)
+    .filter((facility, index, list) =>
+      facility && list.indexOf(facility) === index
+    );
+  const index = facilities.indexOf(getCanonicalPreloadedFacility(row));
+
+  return index >= 0
+    ? `Facility ${getManagerFacilityLetter(index)}`
+    : "Unknown Facility";
+}
+
+function normalizePreloadedManagerPresentation(rec, useManagerAliases = true) {
   if (!rec) return rec;
 
   const canonical = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS].find(row =>
@@ -6137,10 +6167,12 @@ function normalizePreloadedManagerPresentation(rec, useManagerRepAlias = true) {
 
   if (!canonical) return rec;
 
-  const repName = useManagerRepAlias
+  const repName = useManagerAliases
     ? getPreloadedManagerRepAlias(canonical)
     : getCanonicalPreloadedRepName(canonical);
-  const facility = canonical.site || canonical.facility || canonical.facility_name;
+  const facility = useManagerAliases
+    ? getPreloadedManagerFacilityAlias(canonical)
+    : getCanonicalPreloadedFacility(canonical);
   const nameParts = String(repName || "").split(/\s+/).filter(Boolean);
 
   return {
