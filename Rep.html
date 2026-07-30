@@ -12662,6 +12662,16 @@ function getMyEquipmentReviewRecords() {
         rec.project_type = "equipment_review_record";
       }
 
+      // Repair older FIX responses that incorrectly converted the Rep's
+      // preloaded workspace copy into a Manager-only copy.
+      if (rec?.manager_preloaded_sync === true) {
+        rec.rep_visible = true;
+        rec.manager_visible = false;
+        rec.manager_only = false;
+        rec.release_destination = "rep";
+        rec.install_base_released_to = "rep";
+      }
+
       if (!recordMatchesSelectedRep(rec)) return false;
 
       if (isRepCreated) return true;
@@ -15601,7 +15611,9 @@ const updated = {
 
     rep_visible: true,
     install_base_visible: true,
-    manager_visible: true,
+    // Keep the Rep workspace copy visible. syncToManagerQueue() creates the
+    // separate Manager-visible packet after the local record is saved.
+    manager_visible: false,
 
     install_base_show_communication: false,
     install_base_has_open_issue: false,
@@ -15787,6 +15799,10 @@ if (outstandingFixFields.length) {
   const outboundInstallBaseResponse = {
     ...updated,
     key,
+    // This same packet is also stored in the Rep queue. It must remain a Rep
+    // copy; Manager visibility is applied only by syncToManagerQueue().
+    manager_visible: false,
+    rep_visible: true,
     source: "Rep Response",
     source_system: "Rep Review Page",
     install_base_response_seen: false,
