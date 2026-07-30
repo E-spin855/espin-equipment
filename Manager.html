@@ -6164,17 +6164,21 @@ function getPreloadedManagerFacilityAlias(row) {
     : "Unknown Facility";
 }
 
-function normalizePreloadedManagerPresentation(rec, useManagerAliases = true) {
+function normalizePreloadedManagerPresentation(
+  rec,
+  useManagerRepAlias = true,
+  useManagerFacilityAlias = useManagerRepAlias
+) {
   if (!rec) return rec;
 
   const canonical = getPreloadedCanonicalRow(rec);
 
   if (!canonical) return rec;
 
-  const repName = useManagerAliases
+  const repName = useManagerRepAlias
     ? getPreloadedManagerRepAlias(canonical)
     : getCanonicalPreloadedRepName(canonical);
-  const facility = useManagerAliases
+  const facility = useManagerFacilityAlias
     ? getPreloadedManagerFacilityAlias(canonical)
     : getCanonicalPreloadedFacility(canonical);
   const nameParts = String(repName || "").split(/\s+/).filter(Boolean);
@@ -6217,7 +6221,7 @@ function syncPreloadedRecordsToRep() {
       release_destination: "rep",
       install_base_released_to: "rep",
       install_base_release_status: "auto_synced"
-    }, false);
+    }, false, true);
   });
 
   writeArrayKey(STORAGE_KEY, synced);
@@ -6225,6 +6229,10 @@ function syncPreloadedRecordsToRep() {
   const repQueue = mergeRecordsByKey(
     synced.filter(rec => defaultKeys.has(getRecordKey(rec))),
     readArrayKey(REP_QUEUE_KEY)
+  ).map(rec =>
+    defaultKeys.has(getRecordKey(rec))
+      ? normalizePreloadedManagerPresentation(rec, false, true)
+      : rec
   );
   writeArrayKey(REP_QUEUE_KEY, repQueue);
 
