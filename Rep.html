@@ -1,5 +1,4 @@
-<!-- FILE: Single Rep Equipment Review Workspace v17.html -->
-<!-- VERSION: 17.5 - Single Rep Edition; clean startup update state -->
+<!-- FILE: Equipment Review Workspace.html -->
 <!-- PATH: /Equipment Review Workspace.html -->
 
 <!DOCTYPE html>
@@ -15,7 +14,7 @@
   <script src="assets/js/axis-utils.js"></script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Single Rep ESPIN LINK Workspace — Version 17.5</title>
+  <title>Single Rep ESPIN LINK Workspace</title>
 
   <style>
     :root{
@@ -7373,9 +7372,9 @@ body tr:is(
   <div class="shell">
     <div class="hero">
       <div class="title-wrap">
-        <h1>Single Rep Equipment Review Workspace</h1>
+        <h1>OEM REP Equipment Review Workspace</h1>
         <p class="subtitle">
-          A focused workspace for one OEM representative. Records are received through the existing Manager and ESPIN LINK synchronization channels; this page no longer imports or loads master records.
+          Single-rep Equipment Review Workspace. This demo shows one rep using ESPIN LINK with her assigned OEM records, Hub-synced install-base records, and her own locally added install-base records.
         </p>
 
         <div class="disclaimer">
@@ -7390,8 +7389,8 @@ body tr:is(
 
         <div class="strip">
           <div class="chip">Client-side only until explicit action</div>
-          <div class="chip">Manager-synchronized records</div>
-          <div class="chip">Single Rep workspace</div>
+          <div class="chip">CSV / Excel import</div>
+          <div class="chip">My own install base</div>
           <div class="chip">Rep action log</div>
           <div class="chip">Quote follow-up visibility</div>
         </div>
@@ -7411,33 +7410,50 @@ body tr:is(
       <div>
         <div class="panel">
           <div class="panel-head">
-            <h2>Single Rep Controls</h2>
-            <span class="mini">Rep workspace only</span>
+            <h2>Local Inputs</h2>
+            <span class="mini">OEM browser only</span>
           </div>
 
           <div class="panel-body">
+            <div class="row">
+              <label for="csvInput">Upload CSV / Excel</label>
+              <input id="csvInput" type="file" accept=".csv,.xlsx,.xls" />
+            </div>
+
             <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary" id="clearBtn">Reset My Work</button>
+              <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+              <button type="button" class="green" id="addOwnInstallBaseBtn">Add My Install Base</button>
               <button type="button" class="secondary" id="addNewProjectBtn">Add New Project</button>
             </div>
 
             <div class="row">
-              <label for="axisShareToggle">Trade-In Sync Visibility</label>
-              <select id="axisShareToggle">
-                <option value="on">On — display trade-in updates already submitted to ESPIN LINK</option>
-                <option value="off">Off — hide trade-in updates in this view</option>
-              </select>
-            </div>
+  <label for="axisShareToggle">Trade-In Sync Visibility</label>
+  <select id="axisShareToggle">
+    <option value="on">On — display trade-in updates already submitted to ESPIN LINK</option>
+    <option value="off">Off — hide trade-in updates in this view</option>
+  </select>
+</div>
 
             <div class="footer-note" id="axisShareStatus">ESPIN LINK sharing is currently on.</div>
+
             <div class="footer-note">
-              Master records are preserved and received through the original synchronization channels. Reset My Work clears only this Rep's local action state and temporary workspace settings.
+              This view can be filtered to one selected rep while still receiving Hub / Install Base sync, CSV / Excel upload, and rep-entered install-base records.
             </div>
           </div>
         </div>
       </div>
 
       <div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Demo Rep Menu</h2>
+            <span class="mini">Switch assigned rep view</span>
+          </div>
+          <div class="panel-body" id="repFeed" style="max-height:260px;overflow:auto;">
+            <div class="mini">No reps available</div>
+          </div>
+        </div>
+
         <div class="panel">
           <div class="panel-head">
             <h2>Follow-Up Alert Center</h2>
@@ -7890,65 +7906,7 @@ body tr:is(
     </div>
   </div>
 
-  
-<script id="rep-v17-5-clean-startup-migration">
-(function () {
-  var migrationKey = "single_rep_v17_5_clean_startup_done";
-
-  if (localStorage.getItem(migrationKey) === "1") return;
-
-  var arrayKeys = [
-    "espin_lifecycle_demo_records_v1",
-    "espin_rep_workspace_records_v1",
-    "axis_rep_queue_v1"
-  ];
-
-  function neutralizeRecord(rec) {
-    if (!rec || typeof rec !== "object") return rec;
-
-    return Object.assign({}, rec, {
-      manager_unseen_update: false,
-      manager_alert_seen: true,
-      manager_response_seen_by_rep: true,
-      install_base_correction_seen_by_rep: true,
-      install_base_manager_seen_by_rep: true,
-      manager_message_seen_by_rep: true,
-      rep_new_update: false,
-      rep_new_update_seen: true,
-      rep_flash_type: "",
-      rep_flash_text: "",
-      manager_flash_type: "",
-      manager_flash_text: "",
-      manager_flash_at: "",
-      rep_new_update_at: ""
-    });
-  }
-
-  arrayKeys.forEach(function (key) {
-    try {
-      var value = JSON.parse(localStorage.getItem(key) || "[]");
-
-      if (Array.isArray(value)) {
-        localStorage.setItem(
-          key,
-          JSON.stringify(value.map(neutralizeRecord))
-        );
-      } else if (value && typeof value === "object") {
-        Object.keys(value).forEach(function (recordKey) {
-          value[recordKey] = neutralizeRecord(value[recordKey]);
-        });
-        localStorage.setItem(key, JSON.stringify(value));
-      }
-    } catch (error) {
-      console.warn("Could not normalize Rep startup state:", key, error);
-    }
-  });
-
-  localStorage.setItem(migrationKey, "1");
-})();
-</script>
-
-<script>
+  <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const REP_WORKSPACE_BACKUP_KEY = "espin_rep_workspace_records_v1";
 
@@ -8002,9 +7960,13 @@ function getRecordRepName(rec) {
 }
 
 function recordMatchesSelectedRep(rec) {
-  // Version 17 is a single-Rep workspace. Manager routing decides which
-  // records arrive here, so the Rep page never applies a second user filter.
-  return Boolean(rec);
+  if (!rec) return false;
+  if (!state.selectedRep) return true;
+
+  const selected = clean(state.selectedRep).toLowerCase();
+  const recordRep = clean(getRecordRepName(rec)).toLowerCase();
+
+  return Boolean(recordRep) && recordRep === selected;
 }
 
 function getSelectedRepParts() {
@@ -10001,24 +9963,7 @@ const managerFixTime =
   incoming.install_base_correction_at ||
   incoming.install_base_response_at ||
   incoming.manager_response_at ||
-  "";
-
-// Only show an unread Manager update when this sync contains a genuinely
-// newer Manager-originated event. Historical/preloaded correction fields
-// must not recreate an unread alert every time the workspace opens.
-const incomingManagerFixMs = Date.parse(managerFixTime || "") || 0;
-const existingManagerFixMs = Date.parse(
-  existingRepRecord?.install_base_correction_at ||
-  existingRepRecord?.install_base_response_at ||
-  existingRepRecord?.manager_response_at ||
-  existingRepRecord?.rep_flash_at ||
-  ""
-) || 0;
-const isNewIncomingManagerFix = Boolean(
-  isIncomingManagerFix &&
-  incomingManagerFixMs > 0 &&
-  (!existingRepRecord || incomingManagerFixMs > existingManagerFixMs)
-);
+  new Date().toISOString();
 
 const repRecord = {
       ...incoming,
@@ -10045,23 +9990,23 @@ const repRecord = {
       rep_visible: true,
       manager_visible: false,
 // Manager FIX received by Rep: pulse the row until clicked.
-manager_response_seen_by_rep: isNewIncomingManagerFix
+manager_response_seen_by_rep: isIncomingManagerFix
   ? false
   : incoming.manager_response_seen_by_rep,
 
-install_base_fixed_seen_by_rep: isNewIncomingManagerFix
+install_base_fixed_seen_by_rep: isIncomingManagerFix
   ? false
   : incoming.install_base_fixed_seen_by_rep,
 
-rep_unseen_update: isNewIncomingManagerFix
+rep_unseen_update: isIncomingManagerFix
   ? true
   : incoming.rep_unseen_update === true,
 
-rep_flash_at: isNewIncomingManagerFix
+rep_flash_at: isIncomingManagerFix
   ? managerFixTime
   : (incoming.rep_flash_at || ""),
 
-rep_flash_type: isNewIncomingManagerFix
+rep_flash_type: isIncomingManagerFix
   ? "manager_fix"
   : (incoming.rep_flash_type || ""),
       oem_review_label: reviewLabel,
@@ -10247,24 +10192,6 @@ const hubArrivalTime =
   item.install_base_auto_synced_at ||
   new Date().toISOString();
 const restartRedHotFlash = isNewerRedHotPushFromHub(item, existing);
-const incomingManagerFixTime =
-  item.install_base_correction_at ||
-  item.install_base_response_at ||
-  item.manager_response_at ||
-  "";
-const incomingManagerFixMs = Date.parse(incomingManagerFixTime || "") || 0;
-const existingManagerFixMs = Date.parse(
-  existing?.install_base_correction_at ||
-  existing?.install_base_response_at ||
-  existing?.manager_response_at ||
-  existing?.rep_flash_at ||
-  ""
-) || 0;
-const isNewIncomingManagerFix = Boolean(
-  isIncomingManagerFix &&
-  incomingManagerFixMs > 0 &&
-  (!existing || incomingManagerFixMs > existingManagerFixMs)
-);
     const releasedRecord = {
       ...item,
       red_hot_acknowledged: restartRedHotFlash
@@ -10276,15 +10203,31 @@ const isNewIncomingManagerFix = Boolean(
       red_hot_acknowledged_by: restartRedHotFlash
         ? ""
         : (existing?.red_hot_acknowledged_by || item.red_hot_acknowledged_by || ""),
-      // Loading/synchronizing a record is not an update notification.
-      // Rep alerts are reserved for actual Manager-originated changes.
-      install_base_release_new: false,
-      install_base_release_seen: true,
-      install_base_release_seen_at:
-        item.install_base_release_seen_at || hubArrivalTime,
-      rep_unseen_update: false,
-      rep_flash_at: "",
-      rep_flash_type: "",
+      // A genuinely new clean row synced from Hub must pulse green
+      // until the Rep clicks the row.
+      install_base_release_new: isNewHubRow
+        ? true
+        : item.install_base_release_new === true,
+
+      install_base_release_seen: isNewHubRow
+        ? false
+        : item.install_base_release_seen,
+
+      install_base_release_seen_at: isNewHubRow
+        ? ""
+        : (item.install_base_release_seen_at || ""),
+
+      rep_unseen_update: isNewHubRow
+        ? true
+        : item.rep_unseen_update === true,
+
+      rep_flash_at: isNewHubRow
+        ? hubArrivalTime
+        : (item.rep_flash_at || ""),
+
+      rep_flash_type: isNewHubRow
+        ? "hub_new_record"
+        : (item.rep_flash_type || ""),
       source:
         lower(item.hub_source || item.source || "").includes("install base")
           ? "Install Base"
@@ -10309,17 +10252,17 @@ const isNewIncomingManagerFix = Boolean(
         : (item.rep_selected_manual_action_label || item.rep_action_label || ""),
 
       manager_response_seen_by_rep:
-  isNewIncomingManagerFix
+  isIncomingManagerFix
     ? false
     : (item.manager_response_seen_by_rep ?? true),
 
 rep_unseen_update:
-  isNewIncomingManagerFix
+  isIncomingManagerFix
     ? true
     : item.rep_unseen_update === true,
 
 rep_flash_at:
-  isNewIncomingManagerFix
+  isIncomingManagerFix
     ? (
         item.install_base_correction_at ||
         item.install_base_response_at ||
@@ -10328,12 +10271,12 @@ rep_flash_at:
     : (item.rep_flash_at || ""),
 
 rep_flash_type:
-  isNewIncomingManagerFix
+  isIncomingManagerFix
     ? "manager_fix"
     : (item.rep_flash_type || ""),
 
 install_base_fixed_seen_by_rep:
-  isNewIncomingManagerFix
+  isIncomingManagerFix
     ? false
     : item.install_base_fixed_seen_by_rep
     };
@@ -12337,7 +12280,52 @@ function renderStats() {
     }
 
     function renderRepMenu() {
-      // Multi-Rep switching was intentionally removed in Version 17.
+      const el = $("repFeed");
+      if (!el) return;
+
+      const repCounts = new Map();
+      state.records.forEach(rec => {
+        const rep = getRecordRepName(rec) || "Unassigned";
+        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
+      });
+      const reps = [...repCounts.keys()];
+
+      if (!reps.length) {
+        el.innerHTML = `<div class="mini">No reps available</div>`;
+        return;
+      }
+
+      el.innerHTML = `
+        <div class="btns" style="margin-bottom:12px;">
+          <button type="button" class="secondary" onclick="state.selectedRep=null; render();">
+            Show All
+          </button>
+        </div>
+
+        ${reps.map(rep => {
+          const safeRep = escapeHtml(rep);
+          const jsRep = String(rep).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+          const count = repCounts.get(rep);
+          const active = state.selectedRep === rep;
+
+          return `
+            <div
+              style="
+                padding:10px 12px;
+                margin-bottom:8px;
+                border-radius:12px;
+                border:1px solid ${active ? "rgba(65,255,156,.55)" : "rgba(88,184,255,.18)"};
+                background:${active ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.55)"};
+                cursor:pointer;
+              "
+              onclick="state.selectedRep='${jsRep}'; render();"
+            >
+              <strong>${safeRep}</strong>
+              <div class="mini">${count} assigned record(s)</div>
+            </div>
+          `;
+        }).join("")}
+      `;
     }
 
     function renderFollowUpAlertCenter() {
@@ -12991,13 +12979,7 @@ function bindIncomingCommunicationFrameDismissal() {
   const panel = $("newProjectsPanel");
   const tbody = $("newProjectsTableBody");
   const newProjects = state.records
-    // Show this panel only for projects explicitly created by the Rep
-    // through the Add New Project form. Synced/preloaded project records
-    // remain in state for workflow compatibility but are not displayed here.
-    .filter(r =>
-      r.project_type === "new_project_record" &&
-      r.rep_manually_added_project === true
-    )
+    .filter(r => r.project_type === "new_project_record")
     .filter(recordMatchesSelectedRep);
 
   if (!newProjects.length) {
@@ -14043,7 +14025,6 @@ function renderTable() {
 
   tbody.innerHTML = sorted.map(rec => {
     const hasUnseenManagerResponse =
-      hasActualManagerOriginatedUpdate(rec) &&
       hasUnseenManagerCommunication(rec) &&
       hasDirectIncomingManagerTarget(rec);
 
@@ -14069,7 +14050,6 @@ function renderTable() {
       hasUnseenHubFixRequest(rec);
 
 const hasUnseenManagerFix =
-  hasActualManagerOriginatedUpdate(rec) &&
   (
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "manager_correction_sent" ||
@@ -14087,7 +14067,6 @@ const hasUnseenManagerFix =
       isRedHotServiceAlert(rec) &&
       !isRepRedHotFlashDismissed(rec) &&
       hasRepUpdateAfterRedHotAcknowledgement(rec) &&
-      hasActualManagerOriginatedUpdate(rec) &&
       (
         hasUnseenManagerResponse ||
         hasUnseenHubCommunication ||
@@ -14103,27 +14082,22 @@ const hasUnseenManagerFix =
         ? "selected"
         : "",
 
-      hasActualManagerOriginatedUpdate(rec) &&
-      (hasUnseenManagerResponse || hasUnseenHubCommunication)
+      hasUnseenManagerResponse || hasUnseenHubCommunication
         ? "incoming-communication-flash"
         : "",
 
-      hasActualManagerOriginatedUpdate(rec) &&
-      (
-        hasUnseenInstallBaseUpdate ||
-        hasUnseenFixedData ||
-        hasUnseenManagerFix ||
-        hasUnseenHubFix ||
-        (rec.tradein_sync_received && rec.tradein_seen_by_rep !== true)
-      )
-        ? "rep-new-row-flash"
-        : "",
+      hasUnseenInstallBaseUpdate ||
+hasUnseenFixedData ||
+hasUnseenManagerFix ||
+hasUnseenHubFix ||
+(rec.tradein_sync_received && rec.tradein_seen_by_rep !== true)
+  ? "rep-new-row-flash"
+  : "",
 
       isRepAttentionAlertActive(rec)
         ? "rep-attention-alert-row"
         : "",
 
-      hasActualManagerOriginatedUpdate(rec) &&
       hasUnreadMessageRow(rec, "rep")
         ? "unread-message-row"
         : ""
@@ -18021,29 +17995,8 @@ function renderFieldOrFixData(rec, fieldName, valueHtml) {
 
   return valueHtml;
 }
-
-/*
- * Version 17.3:
- * Rep update visuals and FIX controls are allowed only when the record
- * contains a genuine Manager-originated event. Historical/preloaded FIX
- * fields alone are not sufficient.
- */
-function hasActualManagerOriginatedUpdate(rec) {
-  if (!rec) return false;
-
-  return Boolean(
-    rec.manager_unseen_update === true ||
-    rec.manager_alert_seen === false ||
-    rec.manager_response_seen_by_rep === false ||
-    rec.install_base_correction_seen_by_rep === false ||
-    rec.install_base_manager_seen_by_rep === false ||
-    rec.manager_message_seen_by_rep === false
-  );
-}
-
 function getFixDataBadge(rec, fieldName) {
   if (!rec) return "";
-  if (!hasActualManagerOriginatedUpdate(rec)) return "";
 
   const normalizeFixField = value => {
     const field = String(value || "")
@@ -19384,9 +19337,7 @@ function saveInstallBaseFix(id) {
           <body>
             <h1>Opening Espin Connect</h1>
             <p>Preparing the installation project...</p>
-          
-
-</body>
+          </body>
           </html>
         `);
         newTab.document.close();
@@ -21146,9 +21097,6 @@ const repLast = repNameParts.slice(1).join(" ") || "Rep";
         source: "New ESPIN LINK Project",
         project_type: "new_project_record",
         new_project_badge: true,
-        // Explicit marker used by the Rep UI so only projects manually
-        // added from this page appear in New Project Review Items.
-        rep_manually_added_project: true,
         new_project_created_at: now,
 
         oem_project_id: `NEW-${Date.now()}`,
@@ -24263,8 +24211,18 @@ function handleRepRowClick(id) {
    */
   let seenStateChanged = false;
 
-  // Seen-state is kept as UI state only; selecting a row does not mutate records.
-  seenStateChanged = false;
+  if (
+    previousSelectedId &&
+    previousSelectedId !== selectedId
+  ) {
+    seenStateChanged =
+      markRepRowUpdateSeen(previousSelectedId) ||
+      seenStateChanged;
+  }
+
+  seenStateChanged =
+    markRepRowUpdateSeen(selectedId) ||
+    seenStateChanged;
 
   state.selectedId = selectedId;
   state.installBaseCommunicationOpen = false;
@@ -24281,7 +24239,7 @@ function handleRepRowClick(id) {
 
   const recBeforeSeen = clickedRedHotRecord;
 
-  // Message acknowledgement is not persisted by a row click.
+  acknowledgeMessageRow(recBeforeSeen, "rep");
 
   state.detailUpdateFlash =
     getDetailUpdateFlashState(recBeforeSeen);
@@ -24327,9 +24285,30 @@ function handleRepRowClick(id) {
     r => String(r.id || "") === selectedId
   );
 
-  // Row selection is UI-only in Version 17. Opening a record must never write
-  // to the synchronized record or alter unrelated business fields.
-  const recordChanged = false;
+  let recordChanged = false;
+
+  if (rec) {
+    if (rec.tradein_seen_by_rep !== true) {
+      rec.tradein_seen_by_rep = true;
+      recordChanged = true;
+    }
+
+    if (
+      !hasIncomingCommunication &&
+      rec.manager_response_action &&
+      !rec.manager_response_seen_by_rep
+    ) {
+      rec.manager_response_seen_by_rep = true;
+      rec.manager_response_seen_at =
+        new Date().toISOString();
+
+      recordChanged = true;
+    }
+
+    if (recordChanged) {
+      saveRecords();
+    }
+  }
 
   const hasDetailFlash = Object.values(
     state.detailUpdateFlash || {}
@@ -24602,8 +24581,8 @@ function scheduleRepSyncRender() {
     render();
   });
 
-  // Rep-side master record creation was removed; Manager owns record loading.
-  $("addNewProjectBtn")?.addEventListener("click", openNewProjectModal);
+  $("addOwnInstallBaseBtn").addEventListener("click", openOwnInstallBaseModal);
+  $("addNewProjectBtn").addEventListener("click", openNewProjectModal);
 const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 
 if (hideCompletedProjectBtn) {
@@ -24644,51 +24623,56 @@ if (showCompletedProjectsBtn) {
   });
 
   $("clearBtn").addEventListener("click", () => {
-    const confirmed = window.confirm(
-      "Reset this Rep's local actions and temporary workspace state? Synchronized records and Manager history will be preserved."
-    );
-    if (!confirmed) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(REP_WORKSPACE_BACKUP_KEY);
+    localStorage.removeItem(MANAGER_QUEUE_KEY);
+    localStorage.removeItem("espin_rep_queue");
+    localStorage.removeItem("axis_manager_sync_ping_v1");
+    localStorage.removeItem("axis_tradein_sync_records_v1");
+    localStorage.removeItem("axis_tradein_last_sync_v1");
+    localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
+    localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
+    localStorage.removeItem(QUOTE_APPROVAL_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
+    localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
+    localStorage.removeItem(UNIFIED_COMMUNICATION_KEY);
+    localStorage.removeItem("espin_unified_communication_ping_v1");
+    localStorage.removeItem(UNIFIED_SERVICE_MESSAGES_KEY);
+    localStorage.removeItem("espin_service_sync_ping_v1");
+    localStorage.removeItem(SERVICE_DIRECT_RECORDS_KEY);
+    localStorage.removeItem(SERVICE_DIRECT_SYNC_PING_KEY);
 
-    const repActionFields = [
-      "rep_manual_priority", "sales_priority", "priority_updated_at", "manual_priority",
-      "rep_attention_alert_enabled", "rep_attention_alert_type", "rep_attention_target_date",
-      "rep_attention_months_before", "rep_attention_alert_note", "rep_attention_alert_configured_at",
-      "rep_attention_alert_dismissed_at", "rep_selected_manual_action",
-      "rep_selected_manual_action_label", "rep_action", "rep_action_label", "rep_notes",
-      "rep_follow_up_date", "rep_last_action_at", "tradein_seen_by_rep",
-      "manager_response_seen_by_rep", "manager_response_seen_at",
-      "install_base_reply_to_rep_seen", "rep_update_seen", "rep_update_seen_at"
-    ];
+    // Clear ESPIN Connect milestone snapshots shown in Active Projects.
+    localStorage.removeItem(ESPIN_ACTIVE_PROJECTS_KEY);
 
-    state.records = (state.records || []).map(record => {
-      const cleanRecord = { ...record };
-      repActionFields.forEach(field => delete cleanRecord[field]);
-      return cleanRecord;
+    // Clear expanded/collapsed state for project cards.
+    Object.keys(activeProjectOpenState).forEach(projectId => {
+      delete activeProjectOpenState[projectId];
     });
 
-    state.selectedId = null;
-    state.repActionDrafts = {};
-    state.managerCommunicationOpen = {};
-    state.managerHistoryOpen = {};
-    state.installBaseCommunicationOpen = false;
-    state.installBaseFixResponseOpen = false;
-    state.installBaseFixResponseRecordId = "";
-    state.installBaseCommunicationDismissedId = "";
-    state.installBaseCommunicationDismissedSignature = "";
-    state.installBaseHistoryOpen = false;
-    state.repAttentionAlertOpen = false;
-    state.repProximityOpen = false;
-    state.repActionOpen = false;
-    state.unifiedCommunicationOpen = false;
-    state.unifiedCommunicationFrameActive = false;
-    state.detailUpdateFlash = {};
+   state.records = [];
+state.selectedId = null;
+state.selectedRep = null;
+state.showCompleted = true;
+state.installBaseCommunicationOpen = false;
+state.unifiedCommunicationOpen = false;
+state.unifiedCommunicationFrameActive = false;
 
-    // Preserve every synchronized/master record. Only the Rep workspace copy
-    // and shared copy are updated with Rep-owned action fields removed.
-    saveRecords();
+const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+
+if (showCompletedProjectsBtn) {
+  showCompletedProjectsBtn.classList.add("hidden");
+}
+
+    $("csvInput").value = "";
     render();
   });
 
+  $("csvInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    handleCSVUpload(file);
+  });
 
   setInterval(() => {
     const tradeInChanged = importTradeInSyncRecords();
@@ -24735,45 +24719,5 @@ window.addEventListener("load", () => {
 });
 
 </script>
-<script id="rep-real-manager-update-guard">
-(function () {
-  function cleanFalseUpdateVisuals() {
-    document
-      .querySelectorAll(
-        "#tableBody tr[data-record-id], #newProjectsTableBody tr[data-record-id]"
-      )
-      .forEach(function (row) {
-        var id = String(row.dataset.recordId || "");
-        var rec =
-          window.state &&
-          Array.isArray(window.state.records)
-            ? window.state.records.find(function (item) {
-                return String(item.id || item.key || "") === id;
-              })
-            : null;
-
-        if (
-          typeof window.hasActualManagerOriginatedUpdate === "function" &&
-          !window.hasActualManagerOriginatedUpdate(rec)
-        ) {
-          row.classList.remove(
-            "unread-message-row",
-            "incoming-communication-flash",
-            "manager-response-flash",
-            "rep-new-row-flash",
-            "red-hot-update-pulse"
-          );
-        }
-      });
-  }
-
-  document.addEventListener("DOMContentLoaded", function () {
-    cleanFalseUpdateVisuals();
-    window.setTimeout(cleanFalseUpdateVisuals, 100);
-    window.setTimeout(cleanFalseUpdateVisuals, 500);
-  });
-})();
-</script>
-
 </body>
 </html>
