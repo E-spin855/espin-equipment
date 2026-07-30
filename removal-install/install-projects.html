@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="operation-context.js"></script>
 <meta charset="UTF-8">
 <title>Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -647,7 +648,37 @@ if (axisDemoProject) {
       `;
 
       card.onclick = () => {
-        location.href = `install_management.html?id=${p.id}`;
+        const destination = new URL("install_management.html", location.href);
+        destination.searchParams.set("id", p.id);
+        destination.searchParams.set("projectId", p.id);
+
+        if (window.EspinOperation?.context) {
+          Object.assign(window.EspinOperation.context, {
+            operation_id: p.operation_id || window.EspinOperation.context.operation_id || "",
+            operation_type: p.operation_type || window.EspinOperation.context.operation_type || "install",
+            project_group_id: p.project_group_id || "",
+            facility_id: p.facility_id || "",
+            facility_name: p.facility_name || p.facility || p.project_name || "",
+            facility: p.facility || p.facility_name || p.project_name || "",
+            source_record_id: p.source_record_id || p.axis_record_id || "",
+            asset_id: p.asset_id || "",
+            serial_number: p.serial_number || p.serial || "",
+            make: p.make || p.manufacturer || "",
+            model: p.model || "",
+            modality: p.modality || "",
+            equipment_model: p.equipment_model || p.model || p.equipment || "",
+            equipment_source: p.equipment_source || "",
+            equipment_verified: p.equipment_verified || ""
+          });
+
+          window.EspinOperation.saveContext?.(p.id);
+        }
+
+        const destinationUrl = window.EspinOperation?.url
+          ? window.EspinOperation.url(destination)
+          : destination.toString();
+
+        location.href = destinationUrl;
       };
 
       if (isAdmin) {
