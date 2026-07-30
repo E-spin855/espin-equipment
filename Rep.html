@@ -7415,7 +7415,7 @@ body tr:is(
 
           <div class="panel-body">
             <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
+              <button type="button" class="secondary" id="clearBtn">Reset Rep Actions</button>
               <button type="button" class="secondary" id="addNewProjectBtn">Add New Project</button>
             </div>
 
@@ -7430,7 +7430,7 @@ body tr:is(
             <div class="footer-note" id="axisShareStatus">ESPIN LINK sharing is currently on.</div>
 
             <div class="footer-note">
-              This view receives Hub / Install Base sync and rep-entered install-base records for one rep.
+              Reset clears rep-entered actions while preserving Manager-synced records and rep-created projects.
             </div>
           </div>
         </div>
@@ -10120,6 +10120,98 @@ function isAllowedRepWorkspaceRecord(rec) {
     rec.lifecycle_created_from_quote_won === true ||
     rec.rep_created_new_project === true
   );
+}
+
+function resetRepActionFieldsOnly(rec) {
+  if (!rec || typeof rec !== "object") return rec;
+
+  const reset = { ...rec };
+  const openFix = Boolean(
+    !isRepInstallBaseFixCompleted(rec) &&
+    (
+      rec.install_base_manual_route === true ||
+      rec.install_base_sync_type === "manual_clarification" ||
+      rec.install_base_release_status === "released_to_rep" ||
+      clean(rec.install_base_fix_request_fields || rec.install_base_issue_field)
+    )
+  );
+
+  Object.keys(reset).forEach(key => {
+    if (
+      /^quote_/.test(key) ||
+      (
+        key !== "rep_action_required" &&
+        /^rep_(action|status|notes|hidden|deleted|follow_up|last_action|selected|manager_message|priority|attention|flash|new_update)/.test(key)
+      )
+    ) {
+      delete reset[key];
+    }
+  });
+
+  return {
+    ...reset,
+    rep_status: openFix ? "clarification_needed" : "needed",
+    rep_action: openFix ? "fix_install_base_data" : "",
+    rep_action_label: openFix ? "FIX" : "",
+    rep_action_notes: "",
+    rep_action_history: [],
+    rep_selected_action: "",
+    rep_selected_action_label: "",
+    rep_selected_manual_action: "",
+    rep_selected_manual_action_label: "",
+    rep_notes: "",
+    rep_hidden: false,
+    rep_deleted: false,
+    rep_follow_up_date: "",
+    rep_last_action_at: "",
+    lifecycle_completed: false,
+    completed_at: "",
+    completed_by: "",
+    quote_seen: false,
+    manager_unseen_update: false,
+    manager_update_seen_at: "",
+    manager_flash_at: "",
+    manager_flash_type: "",
+    manager_flash_text: ""
+  };
+}
+
+function resetRepActionsInStoredValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(resetRepActionsInStoredValue);
+  }
+
+  if (!value || typeof value !== "object") return value;
+
+  const isEquipmentRecord = Boolean(
+    value.oem_project_id ||
+    value.asset_id ||
+    value.serial_number ||
+    value.site
+  );
+
+  if (isEquipmentRecord) return resetRepActionFieldsOnly(value);
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      resetRepActionsInStoredValue(child)
+    ])
+  );
+}
+
+function resetStoredRepActionsOnly(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return;
+
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify(resetRepActionsInStoredValue(JSON.parse(raw)))
+    );
+  } catch (err) {
+    console.warn(`Could not reset rep actions in ${key}:`, err);
+  }
 }
 
    function loadRecords(preserveSelection = true) {
@@ -24680,48 +24772,42 @@ if (showCompletedProjectsBtn) {
   });
 
   $("clearBtn").addEventListener("click", () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(REP_WORKSPACE_BACKUP_KEY);
-    localStorage.removeItem(MANAGER_QUEUE_KEY);
-    localStorage.removeItem("espin_rep_queue");
-    localStorage.removeItem("axis_manager_sync_ping_v1");
-    localStorage.removeItem("axis_tradein_sync_records_v1");
-    localStorage.removeItem("axis_tradein_last_sync_v1");
-    localStorage.removeItem(UNMATCHED_TRADEIN_KEY);
-    localStorage.removeItem("axis_processed_tradein_sync_keys_v1");
-    localStorage.removeItem(QUOTE_APPROVAL_KEY);
-    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-    localStorage.removeItem(QUOTE_APPROVAL_PING_KEY);
-    localStorage.removeItem(UNIFIED_COMMUNICATION_KEY);
-    localStorage.removeItem("espin_unified_communication_ping_v1");
-    localStorage.removeItem(UNIFIED_SERVICE_MESSAGES_KEY);
-    localStorage.removeItem("espin_service_sync_ping_v1");
-    localStorage.removeItem(SERVICE_DIRECT_RECORDS_KEY);
-    localStorage.removeItem(SERVICE_DIRECT_SYNC_PING_KEY);
-
-    // Clear ESPIN Connect milestone snapshots shown in Active Projects.
-    localStorage.removeItem(ESPIN_ACTIVE_PROJECTS_KEY);
+    [
+      STORAGE_KEY,
+      REP_WORKSPACE_BACKUP_KEY,
+      MANAGER_QUEUE_KEY,
+      REP_QUEUE_KEY,
+      QUOTE_APPROVAL_KEY,
+      QUOTE_APPROVAL_SYNC_KEY,
+      SERVICE_DIRECT_RECORDS_KEY
+    ].forEach(resetStoredRepActionsOnly);
 
     // Clear expanded/collapsed state for project cards.
     Object.keys(activeProjectOpenState).forEach(projectId => {
       delete activeProjectOpenState[projectId];
     });
 
-   state.records = [];
-state.selectedId = null;
-state.selectedRep = null;
-state.showCompleted = true;
-state.installBaseCommunicationOpen = false;
-state.unifiedCommunicationOpen = false;
-state.unifiedCommunicationFrameActive = false;
+    state.records = state.records.map(resetRepActionFieldsOnly);
+    state.selectedId = null;
+    state.showCompleted = true;
+    state.installBaseCommunicationOpen = false;
+    state.unifiedCommunicationOpen = false;
+    state.unifiedCommunicationFrameActive = false;
+    state.myEquipmentReviewSearch = "";
+    state.myEquipmentReviewState = "";
+    state.myEquipmentReviewCollapsedUpdate = false;
 
-const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+    saveRecords();
+    localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
-if (showCompletedProjectsBtn) {
-  showCompletedProjectsBtn.classList.add("hidden");
-}
+    const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
+
+    if (showCompletedProjectsBtn) {
+      showCompletedProjectsBtn.classList.add("hidden");
+    }
 
     render();
+    showBanner("Rep actions reset. Synced records and projects preserved.");
   });
 
   setInterval(() => {
