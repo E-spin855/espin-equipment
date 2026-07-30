@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Manager Review Workspace — Stable</title>
+<title>Manager Review Workspace</title>
 <style>
 :root{color-scheme:dark;--bg:#07101c;--panel:#101d2c;--line:#29405a;--text:#eef6ff;--muted:#98acc2;--gold:#ffd84d;--green:#41ff9c;--red:#ff6b78;--blue:#57b8ff}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#15263b 0,#07101c 48%);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}
@@ -26,9 +26,8 @@ tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#172a40}tr.selected{outl
   <section class="panel">
     <div class="bar">
       <h2 style="margin-right:auto">Authoritative Records</h2>
-      <button id="addRecordBtn" class="primary">Add Manager Record</button>
-      <label class="file-label">Import CSV<input id="csvInput" type="file" accept=".csv,text/csv" hidden></label>
       <button id="checkEventsBtn">Check Rep Events</button>
+      <button id="resetBtn" class="danger">Clear My Work</button>
     </div>
     <div class="bar">
       <input id="searchInput" placeholder="Search ID, equipment, facility, status…" style="max-width:420px">
@@ -36,9 +35,14 @@ tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#172a40}tr.selected{outl
       <span id="recordCount" class="badge"></span>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Record ID</th><th>Project ID</th><th>Make</th><th>Model</th><th>Modality</th><th>Serial</th><th>DOM</th><th>Age</th><th>Facility</th><th>Trade-In Ref</th><th>Install Base Review</th><th>Status</th><th>Source</th><th>Update</th></tr></thead>
+      <thead><tr><th>Record ID</th><th>Rep</th><th>Project ID</th><th>Make</th><th>Model</th><th>Modality</th><th>Serial</th><th>DOM</th><th>Age</th><th>Facility</th><th>Trade-In Ref</th><th>Install Base Review</th><th>Status</th><th>Source</th><th>Update</th></tr></thead>
       <tbody id="recordsBody"></tbody>
     </table></div>
+  </section>
+
+  <section class="panel">
+    <div class="bar"><h2 style="margin-right:auto">Rep Roster</h2><input id="newRepName" placeholder="Rep name" style="max-width:260px"><button id="addRepBtn" class="primary">Add Rep</button></div>
+    <div id="repRoster" class="bar"></div>
   </section>
 
   <div class="grid two">
@@ -58,31 +62,33 @@ tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#172a40}tr.selected{outl
   </section>
 </main>
 
-<dialog id="recordDialog">
-  <form method="dialog" id="recordForm" class="panel" style="min-width:min(900px,90vw)">
-    <h2>Add Authoritative Record</h2><div class="form-grid" style="margin-top:14px">
-      <div><label>Record ID</label><input name="id" required></div><div><label>Project ID</label><input name="projectId"></div><div><label>Facility</label><input name="facility" required placeholder="North Valley Imaging"></div>
-      <div><label>Make</label><input name="make"></div><div><label>Model</label><input name="model"></div><div><label>Modality</label><input name="modality"></div>
-      <div><label>Serial</label><input name="serial"></div><div><label>Date of Manufacture</label><input name="dom"></div><div><label>Trade-In Reference</label><input name="tradeInRef"></div>
-      <div><label>Install Base Review</label><input name="installBaseReview"></div><div><label>Status</label><input name="status" value="Open"></div><div><label>Source</label><input name="source" value="Manager Import"></div>
-    </div><div class="bar" style="justify-content:flex-end"><button value="cancel">Cancel</button><button id="saveRecordBtn" value="default" class="primary">Save Record</button></div>
-  </form>
-</dialog>
-
 <script>
 "use strict";
 const KEYS=Object.freeze({
   records:"manager_authoritative_records_v1",repEvents:"rep_to_manager_events_v1",managerEvents:"manager_to_rep_events_v1",
   managerProcessed:"manager_processed_event_ids_v1",repProcessed:"rep_processed_event_ids_v1",
   managerAck:"manager_acknowledged_event_ids_v1",repAck:"rep_acknowledged_event_ids_v1",
-  repUi:"rep_ui_state_v1",repDrafts:"rep_drafts_v1"
+  repUi:"rep_ui_state_v1",repDrafts:"rep_drafts_v1",reps:"manager_rep_roster_v1",baseline:"manager_original_records_v1"
 });
 const TYPES=Object.freeze({
   FIX_REQUEST:"MANAGER_FIX_REQUEST",FIX_DECISION:"MANAGER_CORRECTION_DECISION",PROJECT_DECISION:"MANAGER_NEW_PROJECT_DECISION",MESSAGE_TO_REP:"MANAGER_MESSAGE",
   CORRECTION:"REP_CORRECTION_SUBMITTED",NEW_PROJECT:"REP_NEW_PROJECT_SUBMITTED",REP_ACTION:"REP_ACTION_SUBMITTED",
   REP_MESSAGE:"REP_MESSAGE",QUOTE:"REP_QUOTE_ACTIVITY",PROJECT_ACTIVITY:"REP_PROJECT_ACTIVITY"
 });
-const MANAGER_FIELDS=["id","projectId","make","model","modality","serial","dom","age","facility","tradeInRef","installBaseReview","status","source","managerDecision","approvalStatus"];
+const MANAGER_FIELDS=["id","rep","projectId","make","model","modality","serial","dom","age","facility","tradeInRef","installBaseReview","status","source","managerDecision","approvalStatus"];
+const DEFAULT_REPS=Object.freeze(["Rep 1","Rep 2","Rep 3"]);
+const DEFAULT_RECORDS=Object.freeze([
+  {id:"REC-001",rep:"Rep 1",projectId:"PRJ-001",make:"Acme Medical",model:"Vision 100",modality:"CT",serial:"SN-1001",dom:"",facility:"Facility A"},
+  {id:"REC-002",rep:"Rep 1",projectId:"PRJ-002",make:"Acme Medical",model:"Magnet 200",modality:"",serial:"SN-1002",dom:"2018",facility:"Facility B"},
+  {id:"REC-003",rep:"Rep 1",projectId:"PRJ-003",make:"Nova Systems",model:"Echo 3",modality:"Ultrasound",serial:"SN-1003",dom:"2020",facility:"Facility C"},
+  {id:"REC-004",rep:"Rep 1",projectId:"PRJ-004",make:"Nova Systems",model:"Ray 4",modality:"X-Ray",serial:"SN-1004",dom:"2017",facility:"Facility A"},
+  {id:"REC-005",rep:"Rep 2",projectId:"PRJ-005",make:"Apex Imaging",model:"Scan 5",modality:"MRI",serial:"SN-1005",dom:"2019",facility:"Facility B"},
+  {id:"REC-006",rep:"Rep 2",projectId:"PRJ-006",make:"Apex Imaging",model:"View 6",modality:"CT",serial:"SN-1006",dom:"2016",facility:"Facility C"},
+  {id:"REC-007",rep:"Rep 2",projectId:"PRJ-007",make:"Vertex Health",model:"Pulse 7",modality:"Ultrasound",serial:"SN-1007",dom:"2021",facility:"Facility A"},
+  {id:"REC-008",rep:"Rep 3",projectId:"PRJ-008",make:"Vertex Health",model:"Scope 8",modality:"Endoscopy",serial:"SN-1008",dom:"2015",facility:"Facility B"},
+  {id:"REC-009",rep:"Rep 3",projectId:"PRJ-009",make:"Orion Medical",model:"Ray 9",modality:"X-Ray",serial:"SN-1009",dom:"2022",facility:"Facility C"},
+  {id:"REC-010",rep:"Rep 3",projectId:"PRJ-010",make:"Orion Medical",model:"Scan 10",modality:"PET",serial:"SN-1010",dom:"2018",facility:"Facility A"}
+].map((r,i)=>Object.freeze({...r,age:r.dom?new Date().getFullYear()-Number(r.dom):"",tradeInRef:"",installBaseReview:"Standard Review",status:"Open",source:"Preloaded",displayOrder:i})));
 const $=id=>document.getElementById(id);
 const read=(key,fallback)=>{try{const v=JSON.parse(localStorage.getItem(key)||"null");return v??fallback}catch{return fallback}};
 const write=(key,value,reason,recordId="",eventId="")=>{
@@ -94,10 +100,11 @@ const ids=key=>new Set(read(key,[]));
 const uuid=()=>crypto.randomUUID?.()||("evt-"+Date.now()+"-"+Math.random().toString(36).slice(2));
 const age=dom=>{const y=Number(String(dom||"").match(/\b(19|20)\d{2}\b/)?.[0]);return y?new Date().getFullYear()-y:""};
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let state={records:[],selectedId:null,repEvents:[],pending:new Map(),newProjects:new Map(),search:"",sort:"order",logs:[]};
+let state={records:[],reps:[],selectedId:null,repEvents:[],pending:new Map(),newProjects:new Map(),search:"",sort:"order",logs:[]};
 
 function logSync(entry){state.logs.unshift(entry);state.logs=state.logs.slice(0,40);if($("syncLog"))$("syncLog").textContent=state.logs.map(x=>`${x.at} ${x.app} wrote ${x.key} (${x.reason}) record=${x.recordId||"-"} event=${x.eventId||"-"}`).join("\n")}
-function loadRecords(){state.records=read(KEYS.records,[]).map((r,i)=>({...r,displayOrder:Number.isFinite(r.displayOrder)?r.displayOrder:i}));}
+function cloneDefaults(){return DEFAULT_RECORDS.map(r=>({...r}))}
+function loadRecords(){const saved=read(KEYS.records,null);state.records=(Array.isArray(saved)&&saved.length?saved:cloneDefaults()).map((r,i)=>({...r,displayOrder:Number.isFinite(r.displayOrder)?r.displayOrder:i}));state.reps=read(KEYS.reps,[...DEFAULT_REPS]);if(!read(KEYS.baseline,null))write(KEYS.baseline,cloneDefaults(),"save-original-state");if(!saved)publishManagerSnapshot(state.records,"initialize-default-records")}
 function publishManagerSnapshot(records,reason,recordId="",eventId=""){write(KEYS.records,records,reason,recordId,eventId)}
 function enqueueManagerEvent(type,recordId,payload){const event={eventId:uuid(),type,recordId,createdAt:new Date().toISOString(),sender:"manager",payload};const q=read(KEYS.managerEvents,[]);q.push(event);write(KEYS.managerEvents,q,"intentional-manager-event",recordId,event.eventId);return event}
 function acknowledgeManagerEvent(eventId){const ack=ids(KEYS.managerAck);ack.add(eventId);write(KEYS.managerAck,[...ack],"manager-acknowledged-rep-event","",eventId);renderAll()}
@@ -107,8 +114,14 @@ function processRepEvents(){
   for(const event of all){
     if(!event?.eventId||processed.has(event.eventId))continue;
     processed.add(event.eventId);changed=true;
-    if(event.type===TYPES.CORRECTION)state.pending.set(event.eventId,event);
-    if(event.type===TYPES.NEW_PROJECT)state.newProjects.set(event.eventId,event);
+    if(event.type===TYPES.CORRECTION){
+      const record=state.records.find(r=>r.id===event.recordId),corrected=event.payload?.correctedFields||{};
+      if(record){const next={...record,...corrected};next.age=age(next.dom);state.records=state.records.map(r=>r.id===record.id?next:r);publishManagerSnapshot(state.records,"rep-correction-synced",record.id,event.eventId)}
+    }
+    if(event.type===TYPES.NEW_PROJECT){
+      const p=event.payload?.project||{};
+      if(!state.records.some(r=>r.id===p.id)){const rec={...p,rep:event.rep?.name||"Rep 1",age:age(p.dom),installBaseReview:"New Project",status:"Open",source:"Rep Project",displayOrder:state.records.length};state.records.push(rec);publishManagerSnapshot(state.records,"rep-project-synced",rec.id,event.eventId)}
+    }
     if(!state.repEvents.some(item=>item.eventId===event.eventId))state.repEvents.push(event);
     console.debug("[SYNC]",{app:"manager",action:"received-rep-event",eventId:event.eventId,recordId:event.recordId});
   }
@@ -161,11 +174,12 @@ function filteredRecords(){
   const q=state.search.toLowerCase();let rows=state.records.filter(r=>!q||Object.values(r).some(v=>String(v).toLowerCase().includes(q)));
   rows=[...rows];if(state.sort==="id")rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));else if(state.sort==="facility")rows.sort((a,b)=>String(a.facility).localeCompare(String(b.facility)));else rows.sort((a,b)=>a.displayOrder-b.displayOrder);return rows
 }
+function missingFields(r){return ["dom","modality"].filter(k=>!String(r[k]||"").trim())}
 function recordHasUnread(id){const ack=ids(KEYS.managerAck);return state.repEvents.some(e=>e.recordId===id&&!ack.has(e.eventId))}
 function renderTable(){
   const rows=filteredRecords();$("recordCount").textContent=`${rows.length} records`;
   $("recordsBody").innerHTML=rows.length?rows.map(r=>`<tr data-id="${esc(r.id)}" class="${r.id===state.selectedId?"selected ":""}${recordHasUnread(r.id)?"new-update":""}">
-    <td>${esc(r.id)}</td><td>${esc(r.projectId)}</td><td>${esc(r.make)}</td><td>${esc(r.model)}</td><td>${esc(r.modality)}</td><td>${esc(r.serial)}</td><td>${esc(r.dom)}</td><td>${esc(r.age)}</td><td>${esc(r.facility)}</td><td>${esc(r.tradeInRef)}</td><td>${esc(r.installBaseReview)}</td><td>${esc(r.status)}</td><td>${esc(r.source)}</td><td>${recordHasUnread(r.id)?'<span class="badge green">🟢 New Update</span>':"-"}</td></tr>`).join(""):`<tr><td colspan="14" class="empty">No authoritative records. Import CSV or add a Manager record.</td></tr>`;
+    <td>${esc(r.id)}</td><td>${esc(r.rep)}</td><td>${esc(r.projectId)}</td><td>${esc(r.make)}</td><td>${esc(r.model)}</td><td>${esc(r.modality)}</td><td>${esc(r.serial)}</td><td>${esc(r.dom)}</td><td>${esc(r.age)}</td><td>${esc(r.facility)}</td><td>${esc(r.tradeInRef)}</td><td>${esc(r.installBaseReview)}</td><td>${esc(r.status)}</td><td>${esc(r.source)}</td><td>${missingFields(r).length?'<span class="badge gold">Await Rep Fix</span>':recordHasUnread(r.id)?'<span class="badge green">🟢 New Update</span>':"-"}</td></tr>`).join(""):`<tr><td colspan="15" class="empty">No records.</td></tr>`;
   document.querySelectorAll("#recordsBody tr[data-id]").forEach(tr=>tr.addEventListener("click",()=>selectRow(tr.dataset.id)));
 }
 function renderDetail(){
@@ -181,8 +195,8 @@ function renderInbox(){
   const ack=ids(KEYS.managerAck),events=[...state.repEvents].sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
   $("inboxCount").textContent=String(events.filter(e=>!ack.has(e.eventId)).length);
   $("eventInbox").innerHTML=events.length?events.map(e=>{const unread=!ack.has(e.eventId),payload=e.payload||{};let body="";
-    if(e.type===TYPES.CORRECTION)body=`<div class="kv">${Object.entries(payload.correctedFields||{}).map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join("")}</div><p>${esc(payload.notes)}</p><div class="bar"><button class="primary" data-accept-correction="${e.eventId}">Accept</button><button class="danger" data-reject-correction="${e.eventId}">Reject</button></div>`;
-    else if(e.type===TYPES.NEW_PROJECT)body=`<div class="kv">${Object.entries(payload.project||{}).map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join("")}</div><div class="bar"><button class="primary" data-accept-project="${e.eventId}">Accept Project</button><button class="danger" data-reject-project="${e.eventId}">Reject</button></div>`;
+    if(e.type===TYPES.CORRECTION)body=`<div class="notice ok">Rep correction synchronized.</div><div class="kv">${Object.entries(payload.correctedFields||{}).map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join("")}</div><p>${esc(payload.notes)}</p><button data-ack="${e.eventId}">Acknowledge</button>`;
+    else if(e.type===TYPES.NEW_PROJECT)body=`<div class="notice ok">Rep-created project synchronized.</div><div class="kv">${Object.entries(payload.project||{}).map(([k,v])=>`<b>${esc(k)}</b><span>${esc(v)}</span>`).join("")}</div><button data-ack="${e.eventId}">Acknowledge</button>`;
     else body=`<pre style="white-space:pre-wrap">${esc(JSON.stringify(payload,null,2))}</pre><button data-ack="${e.eventId}">Acknowledge</button>`;
     return `<article class="event ${unread?"unread":""}"><h3>${esc(e.type)}</h3><div class="meta">${esc(e.recordId)} · ${esc(e.createdAt)} · ${esc(e.eventId)}</div>${body}</article>`}).join(""):`<div class="empty">No Rep events.</div>`;
   document.querySelectorAll("[data-accept-correction]").forEach(b=>b.onclick=()=>decideCorrection(b.dataset.acceptCorrection,true));
@@ -191,7 +205,8 @@ function renderInbox(){
   document.querySelectorAll("[data-reject-project]").forEach(b=>b.onclick=()=>decideNewProject(b.dataset.rejectProject,false));
   document.querySelectorAll("[data-ack]").forEach(b=>b.onclick=()=>acknowledgeManagerEvent(b.dataset.ack));
 }
-function renderAll(){renderTable();renderDetail();renderInbox()}
+function renderRoster(){$("repRoster").innerHTML=state.reps.map(name=>`<span class="badge">${esc(name)}</span>`).join("")}
+function renderAll(){renderTable();renderDetail();renderInbox();renderRoster()}
 
 function addRecord(data){
   if(state.records.some(r=>r.id===data.id))return alert("Record ID already exists.");
@@ -200,11 +215,10 @@ function addRecord(data){
 }
 function parseCsv(text){const lines=text.replace(/\r/g,"").split("\n").filter(Boolean);if(lines.length<2)return[];const split=line=>{const a=[];let s="",q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){s+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){a.push(s);s=""}else s+=c}a.push(s);return a};const h=split(lines[0]).map(x=>x.trim());return lines.slice(1).map(line=>Object.fromEntries(split(line).map((v,i)=>[h[i],v])))}
 
-$("addRecordBtn").onclick=()=>$("recordDialog").showModal();
-$("saveRecordBtn").onclick=e=>{e.preventDefault();const d=Object.fromEntries(new FormData($("recordForm")));addRecord(d);$("recordForm").reset();$("recordDialog").close()};
-$("csvInput").onchange=async e=>{const file=e.target.files[0];if(!file)return;for(const row of parseCsv(await file.text()))addRecord(row);e.target.value=""};
+$("addRepBtn").onclick=()=>{const name=$("newRepName").value.trim();if(!name||state.reps.includes(name))return;state.reps.push(name);write(KEYS.reps,state.reps,"manager-added-rep");$("newRepName").value="";renderRoster()};
+$("resetBtn").onclick=()=>{Object.values(KEYS).filter(k=>k!==KEYS.baseline).forEach(k=>localStorage.removeItem(k));state.records=cloneDefaults();state.reps=[...DEFAULT_REPS];state.repEvents=[];state.selectedId=null;publishManagerSnapshot(state.records,"restore-original-state");write(KEYS.reps,state.reps,"restore-original-reps");renderAll()};
 $("checkEventsBtn").onclick=processRepEvents;$("searchInput").oninput=e=>{state.search=e.target.value;renderTable()};$("sortSelect").onchange=e=>{state.sort=e.target.value;renderTable()};
-window.addEventListener("storage",e=>{if(e.key===KEYS.repEvents)processRepEvents()});
+window.addEventListener("storage",e=>{if(e.key===KEYS.repEvents){rebuildInboxFromQueue();processRepEvents()}if(e.key===KEYS.records||e.key===KEYS.reps){loadRecords();renderAll()}});
 loadRecords();rebuildInboxFromQueue();processRepEvents();renderAll();
 </script>
 </body>

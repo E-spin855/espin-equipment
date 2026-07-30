@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Single Rep Workspace — Stable</title>
+<title>Single Rep Workspace</title>
 <style>
 :root{color-scheme:dark;--bg:#07101c;--panel:#101d2c;--line:#29405a;--text:#eef6ff;--muted:#98acc2;--gold:#ffd84d;--green:#41ff9c;--red:#ff6b78;--blue:#57b8ff}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#15263b 0,#07101c 48%);color:var(--text);font:14px/1.45 Inter,system-ui,sans-serif}button,input,select,textarea{font:inherit}button{cursor:pointer}
@@ -20,7 +20,7 @@ tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#172a40}tr.selected{outl
 </style>
 </head>
 <body>
-<header><h1>Single Rep Workspace</h1><div class="sub">Sales Representative · read-only Manager projection · intentional Rep events only</div></header>
+<header><h1>Single Rep Workspace</h1><div class="sub">Rep 1 · records assigned by Manager</div></header>
 <main class="wrap grid">
   <section class="panel">
     <div class="bar"><h2 style="margin-right:auto">My Equipment Review Records</h2><button id="addProjectBtn" class="primary">Add New Project</button><button id="checkUpdatesBtn">Check for Updates</button><button id="resetBtn" class="danger">Reset My Work</button></div>
@@ -47,12 +47,12 @@ tr[data-id]{cursor:pointer}tr[data-id]:hover{background:#172a40}tr.selected{outl
 
 <script>
 "use strict";
-const CURRENT_REP=Object.freeze({id:"rep-001",name:"Sales Representative"});
+const CURRENT_REP=Object.freeze({id:"rep-001",name:"Rep 1"});
 const KEYS=Object.freeze({
   records:"manager_authoritative_records_v1",repEvents:"rep_to_manager_events_v1",managerEvents:"manager_to_rep_events_v1",
   managerProcessed:"manager_processed_event_ids_v1",repProcessed:"rep_processed_event_ids_v1",
   managerAck:"manager_acknowledged_event_ids_v1",repAck:"rep_acknowledged_event_ids_v1",
-  repUi:"rep_ui_state_v1",repDrafts:"rep_drafts_v1"
+  repUi:"rep_ui_state_v1",repDrafts:"rep_drafts_v1",reps:"manager_rep_roster_v1",baseline:"manager_original_records_v1"
 });
 const TYPES=Object.freeze({FIX_REQUEST:"MANAGER_FIX_REQUEST",FIX_DECISION:"MANAGER_CORRECTION_DECISION",PROJECT_DECISION:"MANAGER_NEW_PROJECT_DECISION",MESSAGE_TO_REP:"MANAGER_MESSAGE",CORRECTION:"REP_CORRECTION_SUBMITTED",NEW_PROJECT:"REP_NEW_PROJECT_SUBMITTED",REP_ACTION:"REP_ACTION_SUBMITTED",REP_MESSAGE:"REP_MESSAGE",QUOTE:"REP_QUOTE_ACTIVITY",PROJECT_ACTIVITY:"REP_PROJECT_ACTIVITY"});
 const REP_FIELDS=["notes","recommendedAction","followUpDate","quoteActivity","projectActivity","correctionResponses","requestedCorrectedValues","newProjectSubmission","communicationMessage","draftState"];
@@ -76,6 +76,8 @@ function processManagerEvents(){
 function eventsForRecord(recordId){return state.managerEvents.filter(e=>e.recordId===recordId)}
 function unreadEvents(recordId){const ack=ids(KEYS.repAck);return eventsForRecord(recordId).filter(e=>!ack.has(e.eventId)&&(e.type===TYPES.FIX_REQUEST||e.type===TYPES.MESSAGE_TO_REP||e.type===TYPES.FIX_DECISION))}
 function activeFix(recordId){
+  const record=state.records.find(r=>r.id===recordId),automaticFields=record?["dom","modality"].filter(k=>!String(record[k]||"").trim()):[];
+  if(automaticFields.length)return {eventId:"automatic-"+recordId,payload:{requestedFields:automaticFields,message:"Complete the missing record data."}};
   const ack=ids(KEYS.repAck),decisions=state.managerEvents.filter(e=>e.type===TYPES.FIX_DECISION&&e.recordId===recordId);
   const closed=new Set(decisions.map(e=>e.payload?.correctionEventId).filter(Boolean));
   read(KEYS.repEvents,[]).filter(e=>e.type===TYPES.CORRECTION&&e.recordId===recordId).forEach(e=>{if(e.payload?.requestEventId)closed.add(e.payload.requestEventId)});
@@ -88,11 +90,11 @@ function selectRow(id){
   for(const event of unreadEvents(id))acknowledgeRepEvent(event.eventId);
   renderAll()
 }
-function filteredRecords(){const q=state.search.toLowerCase();let rows=state.records.filter(r=>!q||Object.values(r).some(v=>String(v).toLowerCase().includes(q)));rows=[...rows];if(state.sort==="id")rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));else if(state.sort==="facility")rows.sort((a,b)=>String(a.facility).localeCompare(String(b.facility)));else rows.sort((a,b)=>a.displayOrder-b.displayOrder);return rows}
+function filteredRecords(){const q=state.search.toLowerCase();let rows=state.records.filter(r=>r.rep===CURRENT_REP.name).filter(r=>!q||Object.values(r).some(v=>String(v).toLowerCase().includes(q)));rows=[...rows];if(state.sort==="id")rows.sort((a,b)=>String(a.id).localeCompare(String(b.id)));else if(state.sort==="facility")rows.sort((a,b)=>String(a.facility).localeCompare(String(b.facility)));else rows.sort((a,b)=>a.displayOrder-b.displayOrder);return rows}
 function renderTable(){
   const rows=filteredRecords();$("recordCount").textContent=`${rows.length} records`;
   $("recordsBody").innerHTML=rows.length?rows.map(r=>{const unread=unreadEvents(r.id),fix=activeFix(r.id),requested=new Set(fix?.payload?.requestedFields||[]);
-    const cell=(field,value)=>requested.has(field)?`<button class="fix" data-open-fix="${esc(r.id)}">Fix ${esc(field.toUpperCase())}</button>`:esc(value);
+    const cell=(field,value)=>requested.has(field)?`<button class="fix" data-open-fix="${esc(r.id)}">Fix</button>`:esc(value);
     return `<tr data-id="${esc(r.id)}" class="${r.id===state.selectedId?"selected ":""}${unread.length?"unread":""}"><td>${esc(r.id)}</td><td>${esc(r.projectId)}</td><td>${cell("make",r.make)}</td><td>${cell("model",r.model)}</td><td>${cell("modality",r.modality)}</td><td>${cell("serial",r.serial)}</td><td>${cell("dom",r.dom)}</td><td>${esc(r.age)}</td><td>${cell("facility",r.facility)}</td><td>${cell("tradeInRef",r.tradeInRef)}</td><td>${esc(r.installBaseReview)}</td><td>${esc(r.status)}</td><td>${esc(r.source)}</td><td>${unread.length?'<span class="badge green">Unread Update</span>':"-"}</td></tr>`}).join(""):`<tr><td colspan="14" class="empty">No Manager records yet. The Rep cannot load or create master records.</td></tr>`;
   document.querySelectorAll("#recordsBody tr[data-id]").forEach(tr=>tr.onclick=e=>{if(e.target.closest("[data-open-fix]"))return;selectRow(tr.dataset.id)});
   document.querySelectorAll("[data-open-fix]").forEach(b=>b.onclick=()=>{selectRow(b.dataset.openFix);$("correctionSection")?.scrollIntoView({behavior:"smooth",block:"center"})})
@@ -117,19 +119,21 @@ function submitRepAction(recordId){enqueueRepEvent(TYPES.REP_ACTION,recordId,{re
 function sendRepMessage(recordId){const message=$("repMessage").value.trim();if(!message)return;enqueueRepEvent(TYPES.REP_MESSAGE,recordId,{message});$("repMessage").value=""}
 function submitNewProject(data){const id="NEW-"+Date.now();const project={id,projectId:data.projectId||id,facility:data.facility,modality:data.modality,make:data.make||"",model:data.model||"",serial:data.serial||"",dom:data.dom||"",tradeInRef:data.tradeInRef||"",notes:data.notes||""};enqueueRepEvent(TYPES.NEW_PROJECT,id,{project});renderProjects()}
 function projectDecision(eventId){return [...state.managerEvents].reverse().find(e=>e.type===TYPES.PROJECT_DECISION&&e.payload?.submissionEventId===eventId)}
-function renderProjects(){const events=read(KEYS.repEvents,[]).filter(e=>e.type===TYPES.NEW_PROJECT);$("projectCount").textContent=String(events.length);$("projectsBody").innerHTML=events.length?events.map(e=>{const p=e.payload?.project||{},d=projectDecision(e.eventId);return `<tr><td>${esc(p.id)}</td><td>${esc(p.facility)}</td><td>${esc([p.make,p.model,p.modality].filter(Boolean).join(" "))}</td><td>${esc(p.serial)}</td><td>${esc(p.dom)}</td><td>${esc(e.createdAt)}</td><td>${d?esc(d.payload?.message):"Pending Manager review"}</td></tr>`}).join(""):`<tr><td colspan="7" class="empty">No projects submitted. This table starts empty.</td></tr>`}
+function renderProjects(){const events=read(KEYS.repEvents,[]).filter(e=>e.type===TYPES.NEW_PROJECT);$("projectCount").textContent=String(events.length);$("projectsBody").innerHTML=events.length?events.map(e=>{const p=e.payload?.project||{},d=projectDecision(e.eventId);return `<tr><td>${esc(p.id)}</td><td>${esc(p.facility)}</td><td>${esc([p.make,p.model,p.modality].filter(Boolean).join(" "))}</td><td>${esc(p.serial)}</td><td>${esc(p.dom)}</td><td>${esc(e.createdAt)}</td><td>${d?esc(d.payload?.message):"Synced to Manager"}</td></tr>`}).join(""):`<tr><td colspan="7" class="empty">No projects submitted. This table starts empty.</td></tr>`}
 function renderUpdates(){const ack=ids(KEYS.repAck),events=[...state.managerEvents].sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));$("updateCount").textContent=String(events.filter(e=>!ack.has(e.eventId)).length);$("managerUpdates").innerHTML=events.length?events.map(e=>`<article class="event ${ack.has(e.eventId)?"":"unread"}"><h3>${esc(e.type)}</h3><div class="meta">${esc(e.recordId)} · ${esc(e.createdAt)}</div><pre style="white-space:pre-wrap">${esc(JSON.stringify(e.payload||{},null,2))}</pre>${ack.has(e.eventId)?"":`<button data-ack="${e.eventId}">Acknowledge</button>`}</article>`).join(""):`<div class="empty">No Manager updates.</div>`;document.querySelectorAll("[data-ack]").forEach(b=>b.onclick=()=>acknowledgeRepEvent(b.dataset.ack))}
 function renderAll(){renderTable();renderDetail();renderProjects();renderUpdates()}
 function resetMyWork(){
-  if(!confirm("Reset drafts and Rep-only UI preferences? Records, events, messages, and history are preserved."))return;
-  [KEYS.repUi,KEYS.repDrafts].forEach(k=>localStorage.removeItem(k));state.ui={};state.selectedId=null;state.search="";state.sort="order";$("searchInput").value="";$("sortSelect").value="order";console.debug("[SYNC]",{app:"rep",action:"reset-rep-ui-only"});renderAll()
+  const baseline=read(KEYS.baseline,read(KEYS.records,[]));
+  Object.values(KEYS).filter(k=>k!==KEYS.baseline).forEach(k=>localStorage.removeItem(k));
+  localStorage.setItem(KEYS.records,JSON.stringify(baseline));localStorage.setItem(KEYS.reps,JSON.stringify(["Rep 1","Rep 2","Rep 3"]));
+  state.ui={};state.managerEvents=[];state.records=baseline;state.selectedId=null;state.search="";state.sort="order";$("searchInput").value="";$("sortSelect").value="order";console.debug("[SYNC]",{app:"rep",action:"restore-original-state"});renderAll()
 }
 
 $("addProjectBtn").onclick=()=>$("projectDialog").showModal();
 $("submitProjectBtn").onclick=e=>{e.preventDefault();const data=Object.fromEntries(new FormData($("projectForm")));submitNewProject(data);$("projectForm").reset();$("projectDialog").close()};
 $("checkUpdatesBtn").onclick=()=>{loadManagerSnapshot();processManagerEvents()};
 $("resetBtn").onclick=resetMyWork;$("searchInput").oninput=e=>{state.search=e.target.value;renderTable()};$("sortSelect").onchange=e=>{state.sort=e.target.value;renderTable()};
-window.addEventListener("storage",e=>{if(e.key===KEYS.records){loadManagerSnapshot();renderAll()}if(e.key===KEYS.managerEvents)processManagerEvents()});
+window.addEventListener("storage",e=>{if(e.key===KEYS.records){loadManagerSnapshot();renderAll()}if(e.key===KEYS.managerEvents)processManagerEvents();if(e.key===KEYS.repEvents)renderProjects()});
 loadManagerSnapshot();state.selectedId=state.ui.selectedRecordId||null;processManagerEvents();renderAll();
 </script>
 </body>
