@@ -6,7 +6,6 @@
 <head>
   <meta charset="UTF-8" />
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="assets/js/axis-utils.js"></script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -4639,6 +4638,15 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
   .manager-prototype-alert .update-alert::before,
   .manager-prototype-alert.field-flashing .changed-field{animation:none}
 }
+
+/* Evaluation Edition: Team Overview and reset control */
+.team-overview-panel{margin-bottom:18px}
+.team-overview-table{min-width:980px}
+.team-overview-table th,.team-overview-table td{padding:13px 14px}
+.team-overview-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.clear-manager-actions-btn{border:1px solid rgba(255,107,107,.55)!important;background:rgba(255,107,107,.12)!important;color:#ffdede!important;box-shadow:none!important}
+.clear-manager-actions-btn:hover{background:rgba(255,107,107,.22)!important}
+.grid{grid-template-columns:minmax(0,1fr)!important}
 </style>
 </head>
 
@@ -4675,6 +4683,22 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
       </div>
     </div>
 
+    <div class="panel team-overview-panel">
+      <div class="panel-head">
+        <h2>Team Overview</h2>
+        <div class="team-overview-actions">
+          <span class="mini">Rep workload</span>
+          <button type="button" class="clear-manager-actions-btn" id="clearManagerActionsBtn">Clear Manager Changes</button>
+        </div>
+      </div>
+      <div class="panel-body table-wrap">
+        <table class="team-overview-table">
+          <thead><tr><th>Rep</th><th>Territory</th><th>Active</th><th>Waiting</th><th>Overdue</th><th>Last Activity</th></tr></thead>
+          <tbody id="teamOverviewBody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="stats">
       <div class="stat"><div class="k">Total Records</div><div class="v" id="statTotal">0</div></div>
       <div class="stat"><div class="k">OEM Review Notes</div><div class="v" id="statReady">0</div></div>
@@ -4683,30 +4707,6 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
     </div>
 
     <div class="grid">
-      <div>
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Local Inputs</h2>
-            <span class="mini">OEM browser only</span>
-          </div>
-
-          <div class="panel-body">
-            <div class="row">
-              <label for="csvInput">Upload CSV / Excel</label>
-              <input id="csvInput" type="file" accept=".xlsx,.xls,.csv" />
-            </div>
-
-            <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
-            </div>
-
-            <div class="footer-note">
-              CSV upload is optional. If the rep page already has records in browser storage, this manager page will load and merge those records automatically.
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div>
         <div class="panel">
           <div class="panel-head">
@@ -4755,7 +4755,7 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
           <select id="managerRecordViewFilter" onchange="updateManagerRecordView(this.value)" aria-label="Filter by record type">
             <option value="">All Records</option>
             <option value="install_base">Install Base</option>
-            <option value="project">Rep-Created Projects</option>
+            <option value="project">Projects Created by Reps</option>
           </select>
           <select id="managerModalityFilter" onchange="updateManagerModality(this.value)" aria-label="Filter by modality">
             <option value="">All Modalities</option>
@@ -4790,7 +4790,7 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
                   <th>DOM</th>
 	                  <th>Age</th>
 	                  <th>Trade-In Ref</th>
-	                  <th>Rep Name</th>
+	                  <th>Assigned Rep</th>
 	                  <th>Facility</th>
 	                  <th>Install Base Review</th>
 <th>Record Status</th>
@@ -4858,7 +4858,7 @@ const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 
 const MANAGER_NAME =
   new URLSearchParams(window.location.search).get("manager") ||
-  "Default Manager";
+  "Manager";
 
 const state = {
   records: [],
@@ -4886,6 +4886,76 @@ repCommunicationManuallyHidden: {}
 };
 
 const $ = (id) => document.getElementById(id);
+
+
+const EVALUATION_REP_MAP = new Map();
+const EVALUATION_FACILITY_MAP = new Map();
+const EVALUATION_TERRITORY_MAP = new Map();
+
+function evaluationLabel(map, raw, prefix) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  if (/^(Rep|Facility|Territory)\s+\d+$/i.test(value) || /^(Rep|Facility|Territory)\s+[A-Z]$/i.test(value)) return value;
+  const key = value.toLowerCase();
+  if (!map.has(key)) map.set(key, `${prefix} ${map.size + 1}`);
+  return map.get(key);
+}
+function fictionalRep(index) { return `Rep ${(index % 4) + 1}`; }
+function fictionalFacility(index) { return `Facility ${String.fromCharCode(65 + (index % 4))}`; }
+function fictionalTerritory(index) { return `Territory ${String.fromCharCode(65 + (index % 4))}`; }
+function fictionalRepNumber(repName) {
+  const match = String(repName || "").match(/(\d+)/);
+  return Math.min(4, Math.max(1, Number(match?.[1] || 1)));
+}
+function sanitizeEvaluationRecord(input, recordIndex = 0) {
+  if (!input || typeof input !== "object") return input;
+  if (Array.isArray(input)) return input.map((item, index) => sanitizeEvaluationRecord(item, index));
+  const out = { ...input };
+  const repName = fictionalRep(recordIndex);
+  const repNumber = fictionalRepNumber(repName);
+  const facilityName = fictionalFacility(recordIndex);
+  const territoryName = fictionalTerritory(repNumber - 1);
+  for (const [key, raw] of Object.entries(out)) {
+    if (raw && typeof raw === "object") { out[key] = sanitizeEvaluationRecord(raw, recordIndex); continue; }
+    const k = key.toLowerCase();
+    const value = String(raw ?? "");
+    if (/^(sales_rep_first|sales_rep_last|rep_first|rep_last|representative_first|representative_last)$/.test(k)) out[key] = "";
+    else if (/(assigned_rep|rep_name|rep_owner|sales_rep|representative|owner_name|rep$)/.test(k) && !/(manager|regional)/.test(k)) out[key] = repName;
+    else if (/(facility|hospital|customer_name|customer$|site_name|site$|account_name|account$|organization_name|health_system|location_name|location$)/.test(k)) out[key] = facilityName;
+    else if (/(territory|region_name|sales_area)/.test(k)) out[key] = territoryName;
+    else if (/(email)/.test(k)) out[key] = `rep${repNumber}@example.demo`;
+    else if (/(phone|mobile|telephone)/.test(k)) out[key] = `(555) 010-100${repNumber}`;
+    else if (/(street|address|address1|address2)/.test(k)) out[key] = `${100 + recordIndex} Demo Parkway`;
+    else if (k === "city") out[key] = "Demo City";
+    else if (k === "state" || k === "province") out[key] = "AA";
+    else if (/(zip|postal)/.test(k)) out[key] = "00000";
+    else if (/(manager_name|manager$)/.test(k)) out[key] = "Manager";
+    else if (/(regional_vp|vp_name)/.test(k)) out[key] = "Regional VP";
+    else if (/(manufacturer|make|brand)/.test(k) && value) out[key] = `Manufacturer ${recordIndex % 2 ? "B" : "A"}`;
+    else if (/(model)/.test(k) && value) out[key] = recordIndex % 2 ? "Model B200" : "Model A100";
+    else if (/(serial)/.test(k) && value) out[key] = `SN-${String(100001 + recordIndex).padStart(6, "0")}`;
+  }
+  ["assigned_rep_name","assigned_rep","rep_name","rep","rep_owner","rep_owner_name","sales_rep_name","sales_rep","representative","owner_name"].forEach(field => {
+    if (field in out || field === "assigned_rep_name") out[field] = repName;
+  });
+  out.sales_rep_first = "";
+  out.sales_rep_last = "";
+  out.assigned_rep_email = `rep${repNumber}@example.demo`;
+  out.rep_email = `rep${repNumber}@example.demo`;
+  out.sales_rep_email = `rep${repNumber}@example.demo`;
+  out.assigned_rep_phone = `(555) 010-100${repNumber}`;
+  out.rep_phone = `(555) 010-100${repNumber}`;
+  out.sales_rep_phone = `(555) 010-100${repNumber}`;
+  if ("facility" in out || "site" in out || "hospital" in out || "facility_name" in out || "hospital_name" in out || "customer" in out || "customer_name" in out || "account_name" in out || "organization_name" in out || "health_system" in out || "location" in out) {
+    out.facility = facilityName; out.site = facilityName; out.hospital = facilityName; out.facility_name = facilityName; out.hospital_name = facilityName; out.customer = facilityName; out.customer_name = facilityName; out.account_name = facilityName; out.organization_name = facilityName; out.health_system = facilityName; out.location = facilityName;
+  }
+  out.territory = territoryName;
+  out.region_name = territoryName;
+  return out;
+}
+function sanitizeEvaluationRecords(records) {
+  return (Array.isArray(records) ? records : []).map((record, index) => sanitizeEvaluationRecord(record, index));
+}
 
 const AxisFallback = {
   todayISO() {
@@ -5552,7 +5622,8 @@ function pingLifecycleSync() {
 function readArrayKey(key) {
   try {
     const data = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(data) ? data : [];
+    return sanitizeEvaluationRecords(Array.isArray(data) ? data : [])
+      .filter(rec => !isManagerPreloadedNewProject(rec));
   } catch {
     return [];
   }
@@ -5697,8 +5768,9 @@ function readManagerQueueRecords() {
     const data = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
 
     if (Array.isArray(data)) {
-      return data
+      return sanitizeEvaluationRecords(data)
         .filter(Boolean)
+        .filter(rec => !isManagerPreloadedNewProject(rec))
         .filter(rec => isManagerRepActionUpdate(rec) || shouldManagerAcceptHubRecord(rec));
     }
 
@@ -5707,9 +5779,9 @@ function readManagerQueueRecords() {
     // Always flatten all manager queue buckets.
     // Rep action packets must pass through even when they do not look like
     // normal Hub-routed install-base records.
-    return Object.values(data)
-      .flat()
+    return sanitizeEvaluationRecords(Object.values(data).flat())
       .filter(Boolean)
+      .filter(rec => !isManagerPreloadedNewProject(rec))
       .filter(rec => isManagerRepActionUpdate(rec) || shouldManagerAcceptHubRecord(rec));
   } catch {
     return [];
@@ -5717,6 +5789,8 @@ function readManagerQueueRecords() {
 }
 
 function writeManagerQueueRecord(rec) {
+  if (!rec || isManagerPreloadedNewProject(rec)) return;
+  rec = sanitizeEvaluationRecord(rec);
   let data = {};
 
   try {
@@ -5736,7 +5810,7 @@ function writeManagerQueueRecord(rec) {
     rec.manager_name ||
     rec.owner_group_name ||
     MANAGER_NAME ||
-    "Default Manager";
+    "Manager";
 
   // De-dupe across every Manager queue bucket, not only the current bucket.
   // Hub can send the same FIX more than once, and ownership/manager routing can
@@ -6178,23 +6252,30 @@ manager_flash_text: isFreshRepUpdate
   return Array.from(map.values());
 }
 function getRepName(rec) {
-  return (
-    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-    rec.assigned_rep_name ||
+  const raw = String(
+    rec?.assigned_rep_name || rec?.assigned_rep || rec?.rep_owner ||
+    rec?.rep_owner_name || rec?.sales_rep_name || rec?.sales_rep ||
+    rec?.rep_name || rec?.rep || rec?.owner_name ||
+    `${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() ||
     "Unassigned"
-  );
+  ).trim();
+  return evaluationLabel(EVALUATION_REP_MAP, raw, "Rep");
 }
 
 function getRepEmail(rec) {
-  return rec.sales_rep_email || rec.assigned_rep_email || "";
+  const n = (getRepName(rec).match(/\d+/) || ["1"])[0];
+  return `rep${n}@example.demo`;
 }
 
 function getRepPhone(rec) {
-  return rec.sales_rep_phone || rec.assigned_rep_phone || "";
+  const n = String((getRepName(rec).match(/\d+/) || ["1"])[0]).padStart(2, "0");
+  return `(555) 010-10${n}`;
 }
 
 function getFacility(rec) {
-  return rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location || "Unknown Facility";
+  const raw = rec?.site || rec?.facility || rec?.facility_name || rec?.hospital || rec?.hospital_name || rec?.customer || rec?.customer_name || rec?.account_name || rec?.organization_name || rec?.health_system || rec?.location || "";
+  if (!raw) return "Facility A";
+  return evaluationLabel(EVALUATION_FACILITY_MAP, raw, "Facility");
 }
 
 function getFollowUpDate(rec) {
@@ -8464,8 +8545,44 @@ function acknowledgeManagerRepRowUpdate(rec) {
   } catch (_) {}
 }
 
+function isManagerAwaitingRepFixOnly(rec) {
+  if (!rec) return false;
+
+  const requestedFields = typeof getManagerExplicitFixFields === "function"
+    ? getManagerExplicitFixFields(rec)
+    : new Set();
+
+  const route = lower(
+    rec.axis_manual_route_target ||
+    rec.manual_route_target ||
+    rec.install_base_released_to ||
+    rec.release_destination ||
+    rec.fix_destination ||
+    ""
+  );
+
+  const awaitingRepFix = requestedFields.size > 0 && route !== "manager";
+  if (!awaitingRepFix) return false;
+
+  // A true incoming Rep correction/update may still use the green update state.
+  const incomingRepUpdate = Boolean(
+    rec.install_base_correction_status === "corrected_by_rep" ||
+    rec.install_base_response_status === "rep_correction_sent" ||
+    rec.install_base_fix_status === "rep_reviewed" ||
+    lower(rec.manager_flash_type) === "rep_update" ||
+    rec.rep_new_update === true ||
+    rec.rep_update_pending === true
+  );
+
+  return !incomingRepUpdate;
+}
+
 function shouldManagerRowFlash(rec) {
   if (!rec) return false;
+
+  // Awaiting Rep Fix is a manager-created workflow state, not a new Rep update.
+  // Keep the status badge visible but never apply the full-row green highlight.
+  if (isManagerAwaitingRepFixOnly(rec)) return false;
 
   // An acknowledgement for this exact update wins over stale unseen flags
   // copied back from older Rep / Hub records. A real new update changes the
@@ -9019,19 +9136,7 @@ function isCompletedManagerRecord(rec) {
   );
 }
 function renderManagerRepOwnerCell(rec) {
-  const repOwner = String(
-    rec.assigned_rep_name ||
-    rec.assigned_rep ||
-    rec.rep_owner ||
-    rec.rep_owner_name ||
-    rec.sales_rep_name ||
-    rec.sales_rep ||
-    rec.rep_name ||
-    rec.rep ||
-    rec.owner_name ||
-    `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
-    ""
-  ).trim();
+  const repOwner = getRepName(rec);
 
   const normalized = repOwner.toLowerCase();
   const isMissing = !repOwner || [
@@ -9253,10 +9358,76 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
 }
 
 
+function getManagerQueueIdentity(rec, index = 0) {
+  if (!rec || typeof rec !== "object") return `manager-record-${index}`;
+
+  // The Manager queue represents one row per project. Legacy storage may hold
+  // several copies with different temporary ids/keys after a record is opened
+  // or synchronized. Prefer the durable project id so those copies collapse.
+  const projectId = clean(
+    rec.oem_project_id ||
+    rec.project_id ||
+    rec.asset_id ||
+    rec.equipment_id ||
+    rec.project ||
+    ""
+  );
+  if (projectId) return `project:${projectId.toLowerCase()}`;
+
+  const serial = clean(
+    rec.serial_number ||
+    rec.serial ||
+    rec.system_serial ||
+    rec.equipment_serial ||
+    ""
+  );
+  const facility = clean(
+    rec.site ||
+    rec.facility ||
+    rec.hospital ||
+    rec.hospital_name ||
+    rec.customer ||
+    rec.customer_name ||
+    rec.location ||
+    ""
+  );
+  if (serial && facility) return `asset:${serial.toLowerCase()}|${facility.toLowerCase()}`;
+
+  return `record:${clean(getRecordKey(rec) || rec.key || rec.id || `manager-record-${index}`).toLowerCase()}`;
+}
+
+function dedupeManagerRecords(records) {
+  const unique = new Map();
+
+  (Array.isArray(records) ? records : []).forEach((rec, index) => {
+    if (!rec || typeof rec !== "object") return;
+
+    const stableKey = getManagerQueueIdentity(rec, index);
+    const existing = unique.get(stableKey);
+    if (!existing) {
+      unique.set(stableKey, rec);
+      return;
+    }
+
+    // Merge matching copies so newer manager/rep fields are retained while the
+    // queue still renders exactly one row for the project.
+    const existingTime = getManagerLatestUpdateTime(existing);
+    const candidateTime = getManagerLatestUpdateTime(rec);
+    const older = candidateTime >= existingTime ? existing : rec;
+    const newer = candidateTime >= existingTime ? rec : existing;
+    unique.set(stableKey, { ...older, ...newer });
+  });
+
+  return [...unique.values()];
+}
+
 function renderTable() {
   const tbody = $("tableBody");
   renderManagerAdvancedFilters();
 
+  // Legacy storage could merge the same record more than once. Normalize the
+  // working set before rendering so one click can select only one row.
+  state.records = dedupeManagerRecords(state.records);
   let records = [...state.records];
 
   if (!state.showCompleted) {
@@ -9288,25 +9459,60 @@ function renderTable() {
     age: state.managerAge
   }));
 
-  records = records.sort((a, b) => {
-    const aRedHot = isRedHotServiceAlert(a);
-    const bRedHot = isRedHotServiceAlert(b);
-    if (aRedHot !== bRedHot) return bRedHot ? 1 : -1;
+  // Keep the Manager queue in a stable visual order. Status changes,
+  // acknowledgements, and Awaiting Rep Fix clicks may update timestamps and
+  // alert flags, but they must never move an existing row.
+  const recordIdForOrder = rec =>
+    String(rec?.project_id || rec?.projectId || rec?.record_id || rec?.id || rec?.key || getRecordKey(rec) || "");
 
-    const latestUpdateDifference =
-      getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
-    if (latestUpdateDifference) return latestUpdateDifference;
+  if (!Array.isArray(state.managerStableQueueOrder)) {
+    // Preserve the original first-load priority order once, then freeze it.
+    records = records.sort((a, b) => {
+      const aRedHot = isRedHotServiceAlert(a);
+      const bRedHot = isRedHotServiceAlert(b);
+      if (aRedHot !== bRedHot) return bRedHot ? 1 : -1;
 
-    const aUpdated = shouldManagerRowFlash(a) || hasUnreadMessageRow(a, "manager");
-    const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
+      const latestUpdateDifference =
+        getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
+      if (latestUpdateDifference) return latestUpdateDifference;
 
-    if (aUpdated !== bUpdated) return Number(bUpdated) - Number(aUpdated);
-    if (aUpdated && bUpdated) {
-      const timeDifference = getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
-      if (timeDifference) return timeDifference;
-    }
-    return getDisplayOrderWeight(b) - getDisplayOrderWeight(a);
-  });
+      const aUpdated = shouldManagerRowFlash(a) || hasUnreadMessageRow(a, "manager");
+      const bUpdated = shouldManagerRowFlash(b) || hasUnreadMessageRow(b, "manager");
+
+      if (aUpdated !== bUpdated) return Number(bUpdated) - Number(aUpdated);
+      if (aUpdated && bUpdated) {
+        const timeDifference =
+          getManagerLatestUpdateTime(b) - getManagerLatestUpdateTime(a);
+        if (timeDifference) return timeDifference;
+      }
+      return getDisplayOrderWeight(b) - getDisplayOrderWeight(a);
+    });
+
+    state.managerStableQueueOrder = records
+      .map(recordIdForOrder)
+      .filter(Boolean);
+  } else {
+    // Add genuinely new records at the end without disturbing existing rows.
+    const known = new Set(state.managerStableQueueOrder);
+    records.forEach(rec => {
+      const id = recordIdForOrder(rec);
+      if (id && !known.has(id)) {
+        state.managerStableQueueOrder.push(id);
+        known.add(id);
+      }
+    });
+
+    const orderIndex = new Map(
+      state.managerStableQueueOrder.map((id, index) => [id, index])
+    );
+
+    records = records.sort((a, b) => {
+      const aIndex = orderIndex.get(recordIdForOrder(a));
+      const bIndex = orderIndex.get(recordIdForOrder(b));
+      return (aIndex ?? Number.MAX_SAFE_INTEGER) -
+             (bIndex ?? Number.MAX_SAFE_INTEGER);
+    });
+  }
 
   if (!records.length) {
     tbody.innerHTML = `
@@ -9340,6 +9546,7 @@ function renderTable() {
       hasUnseenManagerRepRowUpdate(rec)
     );
     const managerUpdatePending = Boolean(
+      !isManagerAwaitingRepFixOnly(rec) &&
       isNewestManagerUpdate &&
       !isManagerRepRowUpdateAcknowledged(rec) &&
       (
@@ -9476,6 +9683,11 @@ function renderTable() {
       </tr>
     `;
   }).join("");
+
+  // Selection acknowledgements can change timestamps and alert flags. Keep the
+  // visible queue in the exact same order for this interaction so the clicked
+  // row does not jump up or down the page.
+  state.preserveQueueOrderOnce = null;
 }
 function findSelectedRecord() {
   if (!state.selectedId) return null;
@@ -10186,7 +10398,7 @@ manager_alert_seen: false,
       replacement.manager_name ||
       replacement.owner_group_name ||
       MANAGER_NAME ||
-      "Default Manager";
+      "Manager";
 
     if (!Array.isArray(next[bucketName])) next[bucketName] = [];
     next[bucketName].unshift(replacement);
@@ -10254,6 +10466,7 @@ manager_alert_seen: false,
 
 	  showBanner("Correction sent back to Install Base.");
   renderStats();
+  renderTeamOverview();
   renderRepMenu();
   renderTable();
   renderDetail();
@@ -10550,6 +10763,34 @@ function getOriginalInstallBaseReviewReasonForManager(rec){
   return valid || getComputedManagerInstallBaseReviewReason(rec);
 }
 
+function getCanonicalInstallBaseReviewMessage(rec) {
+  const label = getManagerVisibleInstallBaseReviewLabel(rec);
+  const dom = clean(rec.dom || rec.manufacture_year || rec.year || "");
+  const age = ageFromDom(dom);
+
+  const messages = {
+    "Service Coverage": "Review current service coverage, response experience, and support exposure.",
+    "Utilization": "Review current utilization, workflow demand, and capacity needs.",
+    "Replacement Planning": "Review replacement timing, lifecycle risk, and continuity needs.",
+    "Capital Planning": "Review capital planning timing, budget readiness, and funding horizon.",
+    "Source Mismatch": "Review conflicting source data and confirm the authoritative record.",
+    "Data Check": "Review record completeness and validate the highlighted data fields.",
+    "Project / Asset": "Review project linkage, asset identity, and evaluation status.",
+    "Site / Account": "Review facility assignment, account context, and site details.",
+    "Asset Status": "Review current asset status, ownership, and disposition.",
+    "Ownership": "Review assigned ownership, representative, and territory alignment.",
+    "Ownership Change": "Review the ownership change and confirm representative and territory alignment.",
+    "Modernization Review": "Review modernization requirements, upgrade path, and supportability.",
+    "Equipment Age": dom && age !== null && age !== undefined && age !== ""
+      ? `Review equipment age based on DOM ${dom} (${age} years) and confirm lifecycle implications.`
+      : dom
+        ? `Review equipment age based on DOM ${dom} and confirm lifecycle implications.`
+        : "Review equipment age and confirm lifecycle implications."
+  };
+
+  return messages[label] || `${label || "Install Base"} review.`;
+}
+
 function getInstallBaseReviewReasonForManager(rec) {
   const serialNow = getCurrentManagerSerialNumber(rec);
 
@@ -10559,14 +10800,17 @@ function getInstallBaseReviewReasonForManager(rec) {
 
   const activeFixReason = getManagerActiveFixReason(rec);
 
-	  if (
-	    hasUnresolvedManagerInstallBaseIssues(rec) &&
-	    activeFixReason
-	  ) {
+  if (
+    hasUnresolvedManagerInstallBaseIssues(rec) &&
+    activeFixReason
+  ) {
     return activeFixReason;
   }
 
-  return getOriginalInstallBaseReviewReasonForManager(rec);
+  // The visible Install Base Review message is derived from the same resolved
+  // label that creates the badge. This prevents inherited/template text from
+  // describing a different review condition than the displayed badge.
+  return getCanonicalInstallBaseReviewMessage(rec);
 }
 function arrangeManagerWorkflowLayout() {
   const grid = $("detailGrid");
@@ -12223,6 +12467,8 @@ if (!completed) {
   }
 }
 function syncRecordEverywhere(updatedRec) {
+  if (!updatedRec || isManagerPreloadedNewProject(updatedRec)) return;
+  updatedRec = sanitizeEvaluationRecord(updatedRec);
   const key = getRecordKey(updatedRec);
   const rec = { ...updatedRec, key };
 
@@ -12237,10 +12483,15 @@ function syncRecordEverywhere(updatedRec) {
 
   if (!foundMain) main.unshift(rec);
 
+  // Collapse any stale copies before saving. This prevents each click/update
+  // cycle from accumulating another row with a different temporary id.
+  main = dedupeManagerRecords(main);
   writeArrayKey(STORAGE_KEY, main);
   writeManagerQueueRecord(rec);
 
-  state.records = mergeRecordsByKey(main, readManagerQueueRecords());
+  state.records = dedupeManagerRecords(
+    mergeRecordsByKey(main, readManagerQueueRecords())
+  );
   pingLifecycleSync();
 }
 
@@ -12444,6 +12695,18 @@ function getTimelineHighlightForRecord(rec) {
 function selectRow(id) {
   const selectedId = clean(id);
 
+  // Preserve the current visual order and viewport while acknowledgement flags
+  // are saved. Without this, clearing an "Awaiting Rep Fix" alert changes the
+  // sort inputs and makes records jump around during the click.
+  const tableBodyBeforeSelection = $("tableBody");
+  state.preserveQueueOrderOnce = tableBodyBeforeSelection
+    ? Array.from(tableBodyBeforeSelection.querySelectorAll("tr[data-record-id]"))
+        .map(row => String(row.dataset.recordId || ""))
+        .filter(Boolean)
+    : null;
+  const selectionWindowScrollY = window.scrollY;
+  const selectionTableScrollLeft = tableBodyBeforeSelection?.closest(".table-wrap")?.scrollLeft || 0;
+
   // Acknowledge the record being left before opening another row.
   const previousRec = findSelectedRecord();
 
@@ -12552,12 +12815,7 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
     // A row click is only a Manager-side acknowledgement. Sending the
     // acknowledged record back through every page creates a fresh update
     // event, so the green frame returns after the next render or reload.
-    writeManagerQueueRecord(updated);
-
-    state.records = mergeRecordsByKey(
-      readArrayKey(STORAGE_KEY),
-      readManagerQueueRecords()
-    );
+    
   }
 
   // Clear every row-update acknowledgement path for this record.
@@ -12595,10 +12853,7 @@ if (repCommunicationUi?.history?.some(item => lower(item.sender) === "rep")) {
       : item;
   });
 
-  // Preserve the bucketed queue structure while saving this acknowledgement.
-  // Flattening the queue caused the next Rep sync to discard every previously
-  // acknowledged record and restore their stale green frames.
-  writeManagerQueueRecord(updated);
+  
 
 state.selectedId = updated.id;
 
@@ -12634,6 +12889,13 @@ if (finalizedSelectedRecord) {
 }
 
 renderTable();
+
+// Restore the viewport after the table is rebuilt. This prevents the page from
+// visibly snapping when the clicked record's acknowledgement state changes.
+window.scrollTo({ top: selectionWindowScrollY, left: window.scrollX, behavior: "auto" });
+const tableWrapAfterSelection = $("tableBody")?.closest(".table-wrap");
+if (tableWrapAfterSelection) tableWrapAfterSelection.scrollLeft = selectionTableScrollLeft;
+
 managerStorageSignature = getManagerStorageSignature();
 
 if (
@@ -13131,7 +13393,302 @@ function showCompletedManagerProjects() {
   render();
   showBanner("Completed projects are visible.");
 }
+
+function getEvaluationRep(rec) {
+  return getRepName(rec);
+}
+function getEvaluationTerritory(rec) {
+  return evaluationLabel(EVALUATION_TERRITORY_MAP, rec?.territory || rec?.rep_territory || rec?.sales_territory || "Unassigned", "Territory");
+}
+
+function isRepGeneratedProject(rec) {
+  if (!rec) return false;
+  const projectType = String(rec.project_type || rec.axis_parent_project_type || "").trim().toLowerCase();
+  const sourceText = [
+    rec.source, rec.source_system, rec.record_origin, rec.project_source,
+    rec.rep_source, rec.created_by_role
+  ].map(v => String(v || "").trim().toLowerCase()).join(" ");
+  return Boolean(
+    projectType === "new_project_record" ||
+    projectType === "new_sales_project" ||
+    rec.rep_created_new_project === true ||
+    rec.created_by_rep === true ||
+    rec.created_by_role === "rep" ||
+    sourceText.includes("rep-created") ||
+    sourceText.includes("rep created") ||
+    sourceText.includes("rep workspace") ||
+    sourceText.includes("rep won project")
+  );
+}
+
+function isManagerPreloadedNewProject(rec) {
+  if (!rec) return false;
+
+  // Rep-created projects are valid Manager inputs, including projects whose
+  // current workflow status is "New". Only Manager-originated or legacy
+  // preloaded New records are excluded.
+  if (isRepGeneratedProject(rec)) return false;
+
+  const projectId = String(
+    rec.oem_project_id || rec.project_id || rec.asset_id || rec.id || ""
+  ).trim().toLowerCase();
+  const status = String(rec.record_status || rec.status || rec.project_status || "").trim().toLowerCase();
+  const sourceText = [rec.source, rec.source_system, rec.record_origin, rec.project_source, rec.created_by_role]
+    .map(v => String(v || "").trim().toLowerCase()).join(" ");
+  return Boolean(
+    projectId.startsWith("new-") ||
+    status === "new" ||
+    sourceText.includes("manager-created") ||
+    sourceText.includes("manager created") ||
+    sourceText.includes("preloaded new project")
+  );
+}
+
+function renderTeamOverview() {
+  const body = $("teamOverviewBody"); if (!body) return;
+  const now = Date.now(); const groups = new Map();
+  state.records.forEach(rec => {
+    const rep = getEvaluationRep(rec); const territory = getEvaluationTerritory(rec);
+    if (!groups.has(rep)) groups.set(rep,{rep,territory,active:0,waiting:0,overdue:0,last:0});
+    const g=groups.get(rep); const status=lower(rec.record_status||rec.status||rec.project_status||"");
+    if (!status.includes("completed") && !status.includes("closed")) g.active++;
+    if (status.includes("waiting") || status.includes("awaiting")) g.waiting++;
+    const follow=Date.parse(rec.follow_up_date||rec.followup_date||rec.next_follow_up||""); if (follow && follow < now && !status.includes("completed")) g.overdue++;
+    const last=Date.parse(rec.updated_at||rec.last_activity_at||rec.modified_at||rec.created_at||""); if(last>g.last) g.last=last;
+  });
+  const rows=[...groups.values()].sort((a,b)=>a.rep.localeCompare(b.rep));
+  body.innerHTML = rows.length ? rows.map(g=>`<tr><td>${escapeHtml(g.rep)}</td><td>${escapeHtml(g.territory)}</td><td>${g.active}</td><td>${g.waiting}</td><td>${g.overdue}</td><td>${g.last?new Date(g.last).toLocaleDateString():"No activity"}</td></tr>`).join("") : `<tr><td colspan="6" class="mini">No rep records available.</td></tr>`;
+}
+function clearManagerChangesOnly() {
+  if (!confirm("Clear manager-entered changes and start over? Pre-loaded and rep data will remain.")) return;
+  const clean = state.records.map(rec => {
+    const next = { ...rec };
+    Object.keys(next).forEach(key => {
+      const k=key.toLowerCase();
+      if (/^(manager_response|manager_action|manager_note|manager_status|manager_decision|manager_followup|manager_follow_up|manager_ack|manager_seen|manager_message|manager_update)/.test(k)) delete next[key];
+      if (/^(red_hot_acknowledged|quote_seen)$/.test(k)) delete next[key];
+    });
+    return sanitizeEvaluationRecord(next);
+  });
+  writeArrayKey(STORAGE_KEY, clean);
+  writeArrayKey(MANAGER_QUEUE_KEY, clean);
+  [INSTALL_BASE_RESPONSE_KEY, INSTALL_BASE_FINAL_SYNC_KEY, QUOTE_APPROVAL_KEY, QUOTE_APPROVAL_SYNC_KEY, MANAGER_SEEN_FIX_KEY, MANAGER_CORRECTED_FIELD_SEEN_KEY, MANAGER_FINANCIAL_SEEN_KEY, MANAGER_REP_ADDED_SEEN_KEY, MANAGER_REP_ROW_SEEN_KEY, MANAGER_CORRECTION_ROW_SEEN_KEY, MANAGER_INCOMING_EVENT_SEEN_KEY, MESSAGE_ROW_ACK_KEY, MANAGER_UNIFIED_COMMUNICATION_KEY, MANAGER_SERVICE_MESSAGES_KEY].forEach(k=>{ if (typeof k!=="undefined") localStorage.removeItem(k); });
+  localStorage.removeItem("espin_unified_communication_ping_v1"); localStorage.removeItem("espin_service_sync_ping_v1");
+  state.selectedId=null; state.timelineHighlight=null; state.correctedFieldHighlightId=null; state.managerUpdateHighlight=null;
+  render(); showBanner("Manager changes cleared. Pre-loaded data retained.");
+}
+function purgeEvaluationExcludedRecords() {
+  const arrayKeys = [
+    STORAGE_KEY,
+    INSTALL_BASE_KEY,
+    INSTALL_BASE_RESPONSE_KEY,
+    INSTALL_BASE_FINAL_SYNC_KEY,
+    REP_QUEUE_KEY
+  ].filter(key => typeof key !== "undefined" && key);
+
+  arrayKeys.forEach(key => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) || "[]");
+      if (!Array.isArray(raw)) return;
+      const cleaned = sanitizeEvaluationRecords(raw)
+        .filter(rec => !isManagerPreloadedNewProject(rec));
+      if (JSON.stringify(raw) !== JSON.stringify(cleaned)) {
+        localStorage.setItem(key, JSON.stringify(cleaned));
+      }
+    } catch {}
+  });
+
+  try {
+    const rawQueue = JSON.parse(localStorage.getItem(MANAGER_QUEUE_KEY) || "{}");
+    if (Array.isArray(rawQueue)) {
+      const cleaned = sanitizeEvaluationRecords(rawQueue)
+        .filter(rec => !isManagerPreloadedNewProject(rec));
+      localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(cleaned));
+    } else if (rawQueue && typeof rawQueue === "object") {
+      const cleanedQueue = {};
+      Object.entries(rawQueue).forEach(([bucket, records]) => {
+        cleanedQueue[bucket] = sanitizeEvaluationRecords(Array.isArray(records) ? records : [])
+          .filter(rec => !isManagerPreloadedNewProject(rec));
+      });
+      localStorage.setItem(MANAGER_QUEUE_KEY, JSON.stringify(cleanedQueue));
+    }
+  } catch {}
+}
+
+
+
+// Evaluation Edition demo portfolio: 5 durable records per rep, sequentially numbered.
+function ensureEvaluationDemoPortfolio(records) {
+  const source = Array.isArray(records) ? records.filter(Boolean) : [];
+  const byProjectId = new Map();
+
+  source.forEach((record, index) => {
+    const rawId = String(
+      record.oem_project_id || record.project_id || record.asset_id ||
+      record.id || record.key || `record-${index + 1}`
+    ).trim();
+    if (!rawId || /^new-/i.test(rawId)) return;
+    if (!byProjectId.has(rawId.toLowerCase())) byProjectId.set(rawId.toLowerCase(), record);
+  });
+
+  const templates = Array.from(byProjectId.values());
+  const portfolio = [];
+  const modalities = ["MRI", "CT", "Ultrasound", "X-Ray", "Mammography"];
+  const installBaseReviews = [
+    ["Service Coverage", "service_review"],
+    ["Utilization", "utilization_review"],
+    ["Replacement Planning", "replacement_planning"],
+    ["Capital Planning", "capital_planning"],
+    ["Equipment Age", "lifecycle_review"],
+    ["Data Check", "data_check"],
+    ["Asset Status", "asset_status"],
+    ["Project / Asset", "project_review"],
+    ["Site / Account", "site_review"],
+    ["Modernization Review", "upgrade_review"]
+  ];
+
+  for (let index = 0; index < 20; index += 1) {
+    const sequence = index + 1;
+    const repNumber = Math.floor(index / 5) + 1;
+    const projectId = `REP-IB-${String(sequence).padStart(3, "0")}`;
+    const template = templates[index] || templates[index % Math.max(templates.length, 1)] || {};
+    const facilityLetter = String.fromCharCode(64 + repNumber);
+    const manufacturerLetter = index % 2 === 0 ? "A" : "B";
+    const year = 2011 + (index % 12);
+    const [reviewLabel, reviewType] = installBaseReviews[index % installBaseReviews.length];
+
+    const record = sanitizeEvaluationRecord({
+      ...template,
+      id: projectId,
+      key: projectId,
+      asset_id: projectId,
+      project_id: projectId,
+      oem_project_id: projectId,
+      assigned_rep: `Rep ${repNumber}`,
+      assigned_rep_name: `Rep ${repNumber}`,
+      rep_name: `Rep ${repNumber}`,
+      rep_owner: `Rep ${repNumber}`,
+      sales_rep: `Rep ${repNumber}`,
+      territory: `Territory ${facilityLetter}`,
+      sales_territory: `Territory ${facilityLetter}`,
+      facility: `Facility ${facilityLetter}`,
+      facility_name: `Facility ${facilityLetter}`,
+      site: `Facility ${facilityLetter}`,
+      manufacturer: `Manufacturer ${manufacturerLetter}`,
+      make: `Manufacturer ${manufacturerLetter}`,
+      model: manufacturerLetter === "A" ? "Model A100" : "Model B200",
+      modality: modalities[index % modalities.length],
+      serial: `SN-${String(100001 + index).padStart(6, "0")}`,
+      serial_number: `SN-${String(100001 + index).padStart(6, "0")}`,
+      dom: year,
+      year_of_manufacture: year,
+      age: new Date().getFullYear() - year,
+      oem_review_label: reviewLabel,
+      review_label: reviewLabel,
+      install_base_review_label: reviewLabel,
+      original_install_base_review_label: reviewLabel,
+      oem_review_type: reviewType,
+      review_type: reviewType,
+      install_base_review_type: reviewType,
+      oem_review_reason: "",
+      review_reason: "",
+      install_base_review_reason: "",
+      original_install_base_review_reason: "",
+      // Demo portfolio records are durable assigned records. Do not inherit a
+      // legacy "New" status from a source template, because that status is
+      // reserved for projects arriving from the Rep workspace.
+      record_status: "Assigned",
+      status: "Assigned",
+      created_by_rep: true,
+      created_by_role: "rep",
+      source: "Rep Workspace",
+      record_origin: "rep-created",
+      rep_created_new_project: false
+    }, index);
+
+    // sanitizeEvaluationRecord assigns by record index; enforce the intended 5-per-rep grouping.
+    record.assigned_rep = `Rep ${repNumber}`;
+    record.assigned_rep_name = `Rep ${repNumber}`;
+    record.rep_name = `Rep ${repNumber}`;
+    record.rep_owner = `Rep ${repNumber}`;
+    record.sales_rep = `Rep ${repNumber}`;
+    record.territory = `Territory ${facilityLetter}`;
+    record.sales_territory = `Territory ${facilityLetter}`;
+    record.facility = `Facility ${facilityLetter}`;
+    record.facility_name = `Facility ${facilityLetter}`;
+    record.site = `Facility ${facilityLetter}`;
+
+    // Evaluation Edition v16 starts with exactly two records already waiting
+    // on the representative. New Update is intentionally not preloaded; it
+    // appears only after the Rep corrects and submits one of these records.
+    if (sequence === 19 || sequence === 20) {
+      const requestedField = sequence === 19 ? "serial" : "dom";
+      const requestText = sequence === 19
+        ? "Please verify and enter the serial number."
+        : "Please confirm the Date of Manufacture before approval.";
+
+      record.manager_workflow_state = "awaiting_rep_fix";
+      record.workflow_state = "awaiting_rep_fix";
+      record.manager_awaiting_rep_fix = true;
+      record.rep_fix_requested = true;
+      record.rep_fix_requested_by = "Manager";
+      record.rep_fix_requested_at = record.rep_fix_requested_at || new Date().toISOString();
+      record.requested_fix_fields = [requestedField];
+      record.install_base_fix_fields = [requestedField];
+      record.axis_manual_route_target = "rep";
+      record.manual_route_target = "rep";
+      record.release_destination = "rep";
+      record.fix_destination = "rep";
+      record.manager_response_action = "needs_rep_update";
+      record.manager_response_notes = requestText;
+      record.manager_response_at = record.manager_response_at || record.rep_fix_requested_at;
+      record.manager_response_seen_by_rep = false;
+      record.manager_unseen_update = false;
+      record.rep_new_update = false;
+      record.rep_update_pending = false;
+      record.manager_flash_at = "";
+      record.manager_flash_type = "";
+      record.manager_flash_text = "";
+
+      if (requestedField === "serial") {
+        record.serial = "";
+        record.serial_number = "";
+      } else {
+        record.dom = "";
+        record.year_of_manufacture = "";
+        record.age = "";
+      }
+    } else {
+      // The other 18 records are clean baseline records with no pending FIX
+      // or preloaded Rep-update state.
+      record.manager_workflow_state = "";
+      record.workflow_state = "";
+      record.manager_awaiting_rep_fix = false;
+      record.rep_fix_requested = false;
+      record.requested_fix_fields = [];
+      record.install_base_fix_fields = [];
+      record.axis_manual_route_target = "";
+      record.manual_route_target = "";
+      record.release_destination = "";
+      record.fix_destination = "";
+      record.manager_response_action = "";
+      record.manager_response_notes = "";
+      record.manager_unseen_update = false;
+      record.rep_new_update = false;
+      record.rep_update_pending = false;
+      record.manager_flash_at = "";
+      record.manager_flash_type = "";
+      record.manager_flash_text = "";
+    }
+
+    portfolio.push(record);
+  }
+
+  return portfolio;
+}
+
 function render() {
+  purgeEvaluationExcludedRecords();
   // Existing Manager records that are still valid.
   const main = readArrayKey(STORAGE_KEY)
     .filter(shouldManagerKeepLocalRecord);
@@ -13151,7 +13708,7 @@ function render() {
   const installBaseFinalSync =
     readArrayKey(INSTALL_BASE_FINAL_SYNC_KEY);
 
- state.records = mergeRecordsByKey(
+ state.records = sanitizeEvaluationRecords(mergeRecordsByKey(
   main,
 
   // Older response copies first.
@@ -13163,18 +13720,29 @@ function render() {
 
   // Explicit Manager routing must have final priority.
   managerQueue
-)
+))
 .map(mergeInstallManagerTextIntoManagerRecord)
 .filter(rec => {
     if (!rec) return false;
+
+    // Evaluation Edition: Manager does not originate or preload New projects.
+    // New projects appear only after they are created in the Rep workspace.
+    if (isManagerPreloadedNewProject(rec)) return false;
 
     // Always preserve Rep activity and normal Manager records.
     if (isManagerRepActionUpdate(rec)) return true;
     if (!isManagerInstallBaseLikeRecord(rec)) return true;
 
-    // Preserve clean Hub records and records explicitly routed to Manager.
+    // Preserve clean Install Base records and records explicitly routed to Manager.
     return shouldManagerAcceptHubRecord(rec);
   });
+
+  state.records = ensureEvaluationDemoPortfolio(state.records);
+
+  // Keep the complete 20-record Evaluation portfolio durable across record
+  // opens, edits, and rerenders. This writes only the normalized fictional
+  // portfolio and does not create Manager-originated New projects.
+  writeArrayKey(STORAGE_KEY, state.records);
 
   if (
     state.selectedId &&
@@ -13189,6 +13757,7 @@ function render() {
   }
 
   renderStats();
+  renderTeamOverview();
   renderRepMenu();
   renderTable();
   renderDetail();
@@ -13229,7 +13798,7 @@ if (tableBody) {
       return;
     }
 
-    if (e.target.closest("button, input, select, textarea, label, a, [contenteditable='true'], [role='button']")) {
+    if (e.target.closest("button, input, select, textarea, label, a, .awaiting-rep-fix, [contenteditable='true'], [role='button']")) {
       return;
     }
 
@@ -13368,72 +13937,9 @@ if (tableBody) {
     renderDetail();
   });
 
-	  const csvInput = $("csvInput");
-  if (csvInput) {
-    csvInput.addEventListener("change", (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (!window.XLSX) {
-        alert("Excel reader did not load. Check internet/CDN access.");
-        return;
-      }
-      handleCSVUpload(file);
-    });
-  }
+	  const clearManagerActionsBtn = $("clearManagerActionsBtn");
+  if (clearManagerActionsBtn) clearManagerActionsBtn.addEventListener("click", clearManagerChangesOnly);
 
-  const clearBtn = $("clearBtn");
-if (clearBtn) {
-  clearBtn.addEventListener("click", () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(MANAGER_QUEUE_KEY);
-    localStorage.removeItem(MANAGER_SYNC_KEY);
-
-    localStorage.removeItem(INSTALL_BASE_KEY);
-    localStorage.removeItem(INSTALL_BASE_RESPONSE_KEY);
-    localStorage.removeItem(INSTALL_BASE_RESPONSE_PING_KEY);
-    localStorage.removeItem(INSTALL_BASE_FINAL_SYNC_KEY);
-    localStorage.removeItem(INSTALL_BASE_FINAL_SYNC_PING_KEY);
-
-    localStorage.removeItem(INSTALL_MANAGER_CHAT_KEY);
-    localStorage.removeItem("espin_install_manager_text_ping_v1");
-
-    localStorage.removeItem(QUOTE_APPROVAL_KEY);
-    localStorage.removeItem(QUOTE_APPROVAL_SYNC_KEY);
-
-    localStorage.removeItem(MANAGER_SEEN_FIX_KEY);
-    localStorage.removeItem(MANAGER_CORRECTED_FIELD_SEEN_KEY);
-    localStorage.removeItem(MANAGER_FINANCIAL_SEEN_KEY);
-    localStorage.removeItem(MANAGER_REP_ADDED_SEEN_KEY);
-    localStorage.removeItem(MANAGER_REP_ROW_SEEN_KEY);
-    localStorage.removeItem(MANAGER_CORRECTION_ROW_SEEN_KEY);
-    localStorage.removeItem(MANAGER_INCOMING_EVENT_SEEN_KEY);
-    localStorage.removeItem(MESSAGE_ROW_ACK_KEY);
-    localStorage.removeItem(MANAGER_UNIFIED_COMMUNICATION_KEY);
-    localStorage.removeItem("espin_unified_communication_ping_v1");
-    localStorage.removeItem(MANAGER_SERVICE_MESSAGES_KEY);
-    localStorage.removeItem("espin_service_sync_ping_v1");
-
-    state.records = [];
-    state.selectedId = null;
-    state.selectedRep = null;
-    state.timelineHighlight = null;
-    state.correctedFieldHighlightId = null;
-    state.managerUpdateHighlight = null;
-    state.installBaseCommunicationOpen = {};
-    state.installBaseHistoryOpen = {};
-    state.installBaseCommunicationDismissed = {};
-    state.repCommunicationOpen = {};
-    state.repHistoryOpen = {};
-    state.repCommunicationDismissed = {};
-    state.repCommunicationManuallyHidden = {};
-    state.unifiedCommunicationOpen = false;
-
-    if (csvInput) csvInput.value = "";
-
-    render();
-    showBanner("Manager local data cleared.");
-  });
-}
 const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 
 if (hideCompletedProjectBtn) {
@@ -13585,11 +14091,7 @@ window.addEventListener("pageshow", () => {
     rec?.id || rec?.key || rec?.record_id || rec?.axis_record_id ||
     rec?.oem_project_id || rec?.project_id || rec?.serial_number || rec?.serial
   );
-  const repName = rec => txt(
-    `${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() ||
-    rec?.assigned_rep_name || rec?.sales_rep_name || rec?.rep_owner_name ||
-    rec?.rep_owner || rec?.assigned_rep || rec?.rep_name || rec?.rep
-  );
+  const repName = rec => getRepName(rec);
   const activityDates = rec => {
     const values = [
       rec?.updated_at, rec?.last_updated, rec?.modified_at,
@@ -13663,6 +14165,177 @@ window.addEventListener("pageshow", () => {
   });
   setInterval(publishManagerExecutiveSnapshot, 1500);
 })();
+
+
+
+/* =========================================================
+   EVALUATION EDITION v16 — ORIGINAL REP FIX FLOW RESTORATION
+   Source of truth: original Manager.html FIX workflow.
+   ========================================================= */
+(function restoreOriginalRepFixFlow(){
+  function nowIso(){ return new Date().toISOString(); }
+
+  function repFixFields(rec){
+    const fields = typeof getManagerExplicitFixFields === "function"
+      ? Array.from(getManagerExplicitFixFields(rec) || [])
+      : [];
+    return fields.length ? fields : ["record"];
+  }
+
+  function isAwaitingRepFix(rec){
+    if (!rec) return false;
+    const status = String(rec.manager_workflow_state || rec.workflow_state || "").toLowerCase();
+    return Boolean(
+      rec.manager_awaiting_rep_fix === true ||
+      rec.rep_fix_requested === true ||
+      status === "awaiting_rep_fix"
+    ) && !isRepInstallBaseFix(rec);
+  }
+
+  function applyAwaitingRepFix(rec, notes){
+    const at = nowIso();
+    const fields = repFixFields(rec);
+    return {
+      ...rec,
+      manager_workflow_state: "awaiting_rep_fix",
+      workflow_state: "awaiting_rep_fix",
+      manager_awaiting_rep_fix: true,
+      rep_fix_requested: true,
+      rep_fix_requested_at: at,
+      rep_fix_requested_by: "Manager",
+      requested_fix_fields: fields,
+      install_base_fix_fields: fields,
+      axis_manual_route_target: "rep",
+      manual_route_target: "rep",
+      release_destination: "rep",
+      fix_destination: "rep",
+      manager_response_action: "needs_rep_update",
+      manager_response_notes: notes || rec.manager_response_notes || "Manager requested updates from the representative.",
+      manager_response_at: at,
+      manager_response_seen_by_rep: false,
+      manager_unseen_update: false,
+      rep_new_update: false,
+      rep_update_pending: false,
+      manager_flash_at: "",
+      manager_flash_type: "",
+      manager_flash_text: ""
+    };
+  }
+
+  // Keep the original send-to-Rep communication, then persist the distinct
+  // Awaiting Rep Fix workflow state. This state never uses the green update row.
+  const originalSaveManagerResponse = window.saveManagerResponse;
+  window.saveManagerResponse = function(){
+    const rec = typeof findSelectedRecord === "function" ? findSelectedRecord() : null;
+    const action = document.getElementById("managerResponseAction")?.value || "";
+    const notes = document.getElementById("managerResponseNotes")?.value || "";
+
+    if (action !== "needs_rep_update") {
+      return originalSaveManagerResponse.apply(this, arguments);
+    }
+    if (!rec) { alert("Open a record first"); return; }
+
+    // Capture the exact visible queue order BEFORE any storage sync or render.
+    // syncRecordEverywhere() may trigger a render, so capturing afterward is too late.
+    const tableBodyBeforeFix = document.getElementById("tableBody");
+    const queueOrder = tableBodyBeforeFix
+      ? Array.from(tableBodyBeforeFix.querySelectorAll("tr[data-record-id]"))
+          .map(row => String(row.dataset.recordId || ""))
+          .filter(Boolean)
+      : [];
+    const queueScrollY = window.scrollY;
+    const queueWrapBeforeFix = tableBodyBeforeFix?.closest(".table-wrap");
+    const queueScrollLeft = queueWrapBeforeFix?.scrollLeft || 0;
+
+    // Make the preserved order available to every render that can occur during sync.
+    state.preserveQueueOrderOnce = queueOrder.slice();
+
+    const updated = applyAwaitingRepFix(rec, notes);
+    syncRecordEverywhere(updated);
+    syncManagerResponseToRep(updated);
+    state.selectedId = updated.id || updated.key || getRecordKey(updated);
+
+    const actionField = document.getElementById("managerResponseAction");
+    const notesField = document.getElementById("managerResponseNotes");
+    if (actionField) actionField.value = "";
+    if (notesField) notesField.value = "";
+
+    const banner = document.getElementById("resultBanner");
+    if (banner) {
+      banner.style.display = "block";
+      banner.textContent = "Manager requested a Rep fix.";
+      setTimeout(() => { banner.style.display = "none"; banner.textContent = ""; }, 2500);
+    }
+    if (typeof flashManagerMessageSentButton === "function") {
+      flashManagerMessageSentButton("sendManagerRepMessageBtn", "Fix Requested");
+    }
+    render();
+    const tb = document.getElementById("tableBody");
+    if (tb && queueOrder.length) {
+      const rowMap = new Map(
+        Array.from(tb.querySelectorAll("tr[data-record-id]"))
+          .map(row => [String(row.dataset.recordId || ""), row])
+      );
+      queueOrder.forEach(id => {
+        const row = rowMap.get(id);
+        if (row) tb.appendChild(row);
+      });
+    }
+
+    // Restore the user's viewport and horizontal table position as well.
+    const queueWrapAfterFix = tb?.closest(".table-wrap");
+    if (queueWrapAfterFix) queueWrapAfterFix.scrollLeft = queueScrollLeft;
+    window.scrollTo(window.scrollX, queueScrollY);
+
+    // Clear the one-shot preservation only after the final DOM order is restored.
+    state.preserveQueueOrderOnce = null;
+  };
+
+  // Evaluation placeholder: Awaiting Rep Fix is display-only. Clicking it must
+  // not select, acknowledge, rerender, synchronize, or mutate any record.
+  document.addEventListener("click", function(event){
+    const placeholder = event.target?.closest?.(".awaiting-rep-fix");
+    if (!placeholder) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }, true);
+
+  // Preserve the original meaning: only a correction submitted by the Rep is
+  // a green New Update. A Manager-created waiting state is badge/message only.
+  const originalShouldManagerRowFlash = window.shouldManagerRowFlash;
+  window.shouldManagerRowFlash = function(rec){
+    if (isAwaitingRepFix(rec)) return false;
+    return originalShouldManagerRowFlash.call(this, rec);
+  };
+
+  // When a Rep correction arrives, close the waiting state while preserving
+  // the original correction flags and audit fields used by Manager.html.
+  const originalMergeRecordsByKey = window.mergeRecordsByKey;
+  if (typeof originalMergeRecordsByKey === "function") {
+    window.mergeRecordsByKey = function(){
+      const records = originalMergeRecordsByKey.apply(this, arguments);
+      return records.map(rec => {
+        if (!rec || !isRepInstallBaseFix(rec)) return rec;
+        return {
+          ...rec,
+          manager_workflow_state: "new_update",
+          workflow_state: "new_update",
+          manager_awaiting_rep_fix: false,
+          rep_fix_requested: false,
+          rep_new_update: true,
+          rep_update_pending: true,
+          manager_unseen_update: true,
+          manager_flash_type: "rep_update",
+          manager_flash_text: "Representative submitted updated information for manager review.",
+          manager_flash_at: rec.manager_flash_at || rec.install_base_correction_at || rec.install_base_fixed_at || nowIso()
+        };
+      });
+    };
+  }
+})();
+
+// Evaluation Edition records are sanitized at the data layer; preserve original UI titles.
 </script>
 
 </body>
