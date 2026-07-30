@@ -9998,6 +9998,89 @@ function renderRedHotServiceCard(rec, audience = "viewer") {
 }
 
 
+const MANAGER_RED_HOT_DISMISSED_SIGNATURES_KEY =
+  "axis_manager_red_hot_dismissed_signatures_v1";
+
+function getManagerRedHotRecordKey(rec) {
+  return String(getRecordKey(rec) || rec?.id || rec?.key || "").trim();
+}
+
+function getManagerRedHotFlashSignature(rec) {
+  if (!rec) return "";
+
+  const conversationSignature = [
+    ...(Array.isArray(rec.install_base_conversation_history)
+      ? rec.install_base_conversation_history
+      : []),
+    ...(Array.isArray(rec.manager_conversation_history)
+      ? rec.manager_conversation_history
+      : []),
+    ...(Array.isArray(rec.rep_manager_conversation_history)
+      ? rec.rep_manager_conversation_history
+      : [])
+  ].map(item => [
+    item?.sender || "",
+    item?.at || item?.created_at || item?.timestamp || "",
+    item?.message || item?.note || item?.text || ""
+  ].join("|")).join("||");
+
+  return [
+    rec.install_base_released_at || "",
+    rec.install_base_auto_synced_at || "",
+    rec.install_base_response_at || "",
+    rec.install_base_correction_at || "",
+    rec.rep_last_action_at || "",
+    rec.rep_action_event_at || "",
+    rec.rep_manager_message_at || "",
+    rec.manager_flash_at || "",
+    rec.updated_at || "",
+    rec.service_updated_at || "",
+    rec.red_hot_created_at || "",
+    rec.red_hot_updated_at || "",
+    rec.red_hot_synced_at || "",
+    rec.red_hot_reason || "",
+    rec.red_hot_status || "",
+    conversationSignature
+  ].join("::");
+}
+
+function getManagerRedHotDismissedSignatures() {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(MANAGER_RED_HOT_DISMISSED_SIGNATURES_KEY) || "{}"
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function isManagerRedHotFlashDismissed(rec) {
+  const key = getManagerRedHotRecordKey(rec);
+  if (!key) return false;
+
+  const dismissed = getManagerRedHotDismissedSignatures();
+  return dismissed[key] === getManagerRedHotFlashSignature(rec);
+}
+
+function dismissManagerRedHotFlash(rec) {
+  if (!isRedHotServiceAlert(rec)) return;
+
+  const key = getManagerRedHotRecordKey(rec);
+  if (!key) return;
+
+  const dismissed = getManagerRedHotDismissedSignatures();
+  dismissed[key] = getManagerRedHotFlashSignature(rec);
+
+  localStorage.setItem(
+    MANAGER_RED_HOT_DISMISSED_SIGNATURES_KEY,
+    JSON.stringify(dismissed)
+  );
+}
+
+
 function renderTable() {
   const tbody = $("tableBody");
   renderManagerAdvancedFilters();
@@ -10100,10 +10183,12 @@ function renderTable() {
 
     const selectedClass = [
       isRedHotServiceAlert(rec) ? "red-hot-row" : "",
-      isRedHotServiceAlert(rec) && !espinTruthy(rec.red_hot_acknowledged)
+      isRedHotServiceAlert(rec) &&
+      !isManagerRedHotFlashDismissed(rec)
         ? "red-hot-row-pulse"
         : "",
       isRedHotServiceAlert(rec) &&
+      !isManagerRedHotFlashDismissed(rec) &&
       latestManagerRowShouldFlash
         ? "red-hot-update-pulse"
         : "",
@@ -14006,15 +14091,11 @@ if (tableBody) {
     );
 
     if (clickedRecord) {
-      if (
-        isRedHotServiceAlert(clickedRecord) &&
-        !espinTruthy(clickedRecord.red_hot_acknowledged)
-      ) {
-        clickedRecord.red_hot_acknowledged = true;
-        clickedRecord.red_hot_acknowledged_at = new Date().toISOString();
-        clickedRecord.red_hot_acknowledged_by = "Manager";
-        writeManagerQueueRecord(clickedRecord);
-        row.classList.remove("red-hot-row-pulse");
+      if (isRedHotServiceAlert(clickedRecord)) {
+        // Manager read state is local to the Manager workspace. Do not change
+        // the shared Red Hot acknowledgement used by the Rep or other pages.
+        dismissManagerRedHotFlash(clickedRecord);
+        row.classList.remove("red-hot-row-pulse", "red-hot-update-pulse");
       }
 
       acknowledgeManagerRepRowUpdate(clickedRecord);
