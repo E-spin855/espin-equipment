@@ -435,6 +435,35 @@ async function saveProject() {
     });
 
     if (r.ok) {
+      let saved = null;
+      try {
+        const rawSaved = await r.clone().text();
+        saved = rawSaved ? JSON.parse(rawSaved) : null;
+      } catch {}
+
+      const savedId = String(
+        saved?.id ||
+        saved?.projectId ||
+        id ||
+        ""
+      ).trim();
+
+      if (savedId) {
+        const cachedProject = {
+          ...payload,
+          ...(saved && typeof saved === "object" ? saved : {}),
+          id: savedId,
+          projectId: savedId
+        };
+        const existing = getCachedInstallProjects();
+        saveCachedInstallProjects([
+          cachedProject,
+          ...existing.filter(item =>
+            String(item?.id || item?.projectId || "") !== savedId
+          )
+        ]);
+      }
+
       closeProjectModal();
       setTimeout(loadProjectsSafe, 500);
     } else {
@@ -468,6 +497,11 @@ document.getElementById("deleteConfirmBtn").onclick = async () => {
     headers: { "Content-Type": "application/json", "x-user-email": email },
     body: JSON.stringify({ action: "delete", id: pendingDeleteId })
   });
+  const remaining = getCachedInstallProjects().filter(item =>
+    String(item?.id || item?.projectId || "") !== String(pendingDeleteId || "")
+  );
+  saveCachedInstallProjects(remaining);
+
   document.getElementById("deleteModal").style.display = "none";
   setTimeout(loadProjectsSafe, 500);
 };
@@ -495,6 +529,43 @@ async function kvGet(key) {
     return 0;
   }
 }
+const INSTALL_PROJECT_CACHE_KEY = "espin_install_projects_cache_v1";
+
+function getCachedInstallProjects() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INSTALL_PROJECT_CACHE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedInstallProjects(projects) {
+  try {
+    localStorage.setItem(
+      INSTALL_PROJECT_CACHE_KEY,
+      JSON.stringify(Array.isArray(projects) ? projects : [])
+    );
+  } catch (error) {
+    console.warn("Could not update installation project cache:", error);
+  }
+}
+
+function mergeProjectsById(serverProjects, cachedProjects) {
+  const merged = new Map();
+
+  for (const project of [...cachedProjects, ...serverProjects]) {
+    if (!project || typeof project !== "object") continue;
+    const id = String(project.id || project.projectId || "").trim();
+    if (!id) continue;
+
+    const current = merged.get(id) || {};
+    merged.set(id, { ...current, ...project, id });
+  }
+
+  return Array.from(merged.values());
+}
+
 function senderName(p) {
   return `${p.sales_rep_first || ""} ${p.sales_rep_last || ""}`.trim();
 }
@@ -597,8 +668,12 @@ async function loadProjects() {
 
     list.innerHTML = "";
 
-    const seen = new Set();
-    projects = projects.filter(p => p && typeof p === "object" && !seen.has(p.id) && seen.add(p.id));
+    const cachedProjects = getCachedInstallProjects();
+    projects = mergeProjectsById(projects, cachedProjects);
+
+    // Keep the local cache aligned with the latest server data while preserving
+    // handoff-created projects that the API has not returned yet.
+    saveCachedInstallProjects(projects);
 const axisDemoProject = getAxisDemoProjectFromUrl();
 
 if (axisDemoProject) {
