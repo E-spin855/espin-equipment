@@ -273,6 +273,27 @@
       border:1px solid rgba(88,184,255,.18);
       box-shadow:none;
     }
+
+    .reset-action-btn{
+      transition:transform .12s ease,background .2s ease,border-color .2s ease,box-shadow .2s ease;
+    }
+
+    .reset-action-btn:active{
+      transform:scale(.96);
+    }
+
+    .reset-action-btn.reset-button-pressed{
+      background:linear-gradient(90deg,#41ff9c,#9affc7)!important;
+      color:#04120b!important;
+      border-color:#baffd5!important;
+      box-shadow:0 0 0 3px rgba(65,255,156,.25),0 0 28px rgba(65,255,156,.75)!important;
+      animation:resetButtonSuccessPulse .55s ease-in-out 2;
+    }
+
+    @keyframes resetButtonSuccessPulse{
+      0%,100%{transform:scale(1)}
+      50%{transform:scale(1.04)}
+    }
 .row-action-btn{
   display:inline-flex;
   align-items:center;
@@ -7415,7 +7436,7 @@ body tr:is(
 
           <div class="panel-body">
             <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary" id="clearBtn">Reset Rep Actions</button>
+              <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Rep Actions</button>
               <button type="button" class="secondary" id="addNewProjectBtn">Add New Project</button>
             </div>
 
@@ -21657,6 +21678,22 @@ function showBanner(text) {
     banner.textContent = "";
   }, 2500);
 }
+
+function showResetButtonSuccess(button, successText = "Reset Complete ✓") {
+  if (!button) return;
+
+  const originalText = button.dataset.originalText || button.textContent;
+  button.dataset.originalText = originalText;
+  button.classList.add("reset-button-pressed");
+  button.textContent = successText;
+  button.disabled = true;
+
+  window.setTimeout(() => {
+    button.classList.remove("reset-button-pressed");
+    button.textContent = originalText;
+    button.disabled = false;
+  }, 1800);
+}
     function saveRepAction() {
       const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -24766,7 +24803,7 @@ if (showCompletedProjectsBtn) {
     el.addEventListener("change", updateQuotePreview);
   });
 
-  $("clearBtn").addEventListener("click", () => {
+  $("clearBtn").addEventListener("click", event => {
     [
       STORAGE_KEY,
       REP_WORKSPACE_BACKUP_KEY,
@@ -24807,6 +24844,7 @@ if (showCompletedProjectsBtn) {
     }
 
     render();
+    showResetButtonSuccess(event.currentTarget);
     showBanner("Rep actions reset. Synced records and projects preserved.");
   });
 

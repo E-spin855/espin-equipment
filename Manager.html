@@ -311,6 +311,27 @@
     box-shadow:none;
   }
 
+  .reset-action-btn{
+    transition:transform .12s ease,background .2s ease,border-color .2s ease,box-shadow .2s ease;
+  }
+
+  .reset-action-btn:active{
+    transform:scale(.96);
+  }
+
+  .reset-action-btn.reset-button-pressed{
+    background:linear-gradient(90deg,#41ff9c,#9affc7)!important;
+    color:#04120b!important;
+    border-color:#baffd5!important;
+    box-shadow:0 0 0 3px rgba(65,255,156,.25),0 0 28px rgba(65,255,156,.75)!important;
+    animation:resetButtonSuccessPulse .55s ease-in-out 2;
+  }
+
+  @keyframes resetButtonSuccessPulse{
+    0%,100%{transform:scale(1)}
+    50%{transform:scale(1.04)}
+  }
+
   button.green{
     border:1px solid rgba(65,255,156,.58);
     background:linear-gradient(90deg,#41ff9c,#8effc3);
@@ -4692,7 +4713,7 @@ body tr:is(.unread-message-row,.manager-row-flash,.manager-response-flash):not(.
 
           <div class="panel-body">
             <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary" id="clearBtn">Reset Rep Actions</button>
+              <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Manager's Action</button>
             </div>
 
             <div class="footer-note">
@@ -6317,6 +6338,92 @@ function resetStoredRepActions(key) {
   } catch (err) {
     console.warn(`Could not reset rep actions in ${key}:`, err);
   }
+}
+
+function resetManagerActionFields(rec) {
+  if (!rec || typeof rec !== "object") return rec;
+
+  const reset = { ...rec };
+  [
+    "manager_response_action",
+    "manager_response_date",
+    "manager_response_notes",
+    "manager_response_at",
+    "manager_response_by",
+    "manager_response_sent_to_rep",
+    "manager_response_seen_by_rep",
+    "manager_response_seen_at",
+    "manager_message",
+    "manager_message_to_install_base",
+    "manager_message_to_install_base_at",
+    "manager_message_to_install_base_by",
+    "manager_message_to_install_base_seen",
+    "manager_review",
+    "manager_review_request",
+    "manager_install_base_ack_signature",
+    "manager_seen_release_id",
+    "manager_update_seen_at",
+    "manager_flash_at",
+    "manager_flash_type",
+    "manager_flash_text"
+  ].forEach(key => delete reset[key]);
+
+  reset.manager_alert_seen = false;
+  reset.manager_unseen_update = false;
+  reset.quote_seen = false;
+
+  return reset;
+}
+
+function resetManagerActionsInStoredValue(value) {
+  if (Array.isArray(value)) return value.map(resetManagerActionsInStoredValue);
+  if (!value || typeof value !== "object") return value;
+
+  const isEquipmentRecord = Boolean(
+    value.oem_project_id ||
+    value.asset_id ||
+    value.serial_number ||
+    value.site
+  );
+
+  if (isEquipmentRecord) return resetManagerActionFields(value);
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      resetManagerActionsInStoredValue(child)
+    ])
+  );
+}
+
+function resetStoredManagerActions(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return;
+
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify(resetManagerActionsInStoredValue(JSON.parse(raw)))
+    );
+  } catch (error) {
+    console.warn(`Could not reset Manager actions in ${key}.`, error);
+  }
+}
+
+function showResetButtonSuccess(button, successText = "Reset Complete ✓") {
+  if (!button) return;
+
+  const originalText = button.dataset.originalText || button.textContent;
+  button.dataset.originalText = originalText;
+  button.classList.add("reset-button-pressed");
+  button.textContent = successText;
+  button.disabled = true;
+
+  window.setTimeout(() => {
+    button.classList.remove("reset-button-pressed");
+    button.textContent = originalText;
+    button.disabled = false;
+  }, 1800);
 }
 
 function sameRecord(a, b) {
@@ -13906,9 +14013,9 @@ if (tableBody) {
     renderDetail();
   });
 
-  const clearBtn = $("clearBtn");
+const clearBtn = $("clearBtn");
 if (clearBtn) {
-  clearBtn.addEventListener("click", () => {
+  clearBtn.addEventListener("click", event => {
     [
       STORAGE_KEY,
       MANAGER_QUEUE_KEY,
@@ -13918,9 +14025,8 @@ if (clearBtn) {
       INSTALL_BASE_FINAL_SYNC_KEY,
       QUOTE_APPROVAL_KEY,
       QUOTE_APPROVAL_SYNC_KEY
-    ].forEach(resetStoredRepActions);
+    ].forEach(resetStoredManagerActions);
 
-    state.records = [];
     state.selectedId = null;
     state.selectedRep = null;
     state.managerQueueSearch = "";
@@ -13943,7 +14049,8 @@ if (clearBtn) {
 
     render();
     pingLifecycleSync();
-    showBanner("Rep actions reset. Original Hub records restored.");
+    showResetButtonSuccess(event.currentTarget);
+    showBanner("Manager actions reset. Equipment records and Rep actions preserved.");
   });
 }
 const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
