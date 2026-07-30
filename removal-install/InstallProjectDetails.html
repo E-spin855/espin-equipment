@@ -357,6 +357,19 @@ function getInstallationMilestoneSnapshot() {
 
 function syncInstallationProjectToRep() {
   const operationContext = window.EspinOperation.context;
+
+  // An installation must have its own operation identity. If this page was
+  // opened from a de-install workflow, do not reuse that operation ID.
+  if (
+    !operationContext.operation_id ||
+    operationContext.operation_type !== "install"
+  ) {
+    operationContext.operation_id =
+      window.EspinOperation.newOperationId("install");
+    operationContext.operation_type = "install";
+    window.EspinOperation.saveContext();
+  }
+
   const urlParams = new URLSearchParams(location.search);
   const projectCompletedRow = [...document.querySelectorAll(".toggle")]
     .find(row =>
