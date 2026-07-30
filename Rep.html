@@ -10559,15 +10559,23 @@ function hasStartedRepServiceProject(rec) {
 
   const connectedProjectStarted = projectSnapshots.some(project => {
     const type = lower([
+      project?.operation_type,
       project?.project_type,
       project?.type,
-      project?.handoff
+      project?.handoff,
+      project?.project_name
     ].filter(Boolean).join(" "));
 
     return (
-      type.includes("install") ||
+      (
+        type.includes("install") &&
+        !type.includes("deinstall") &&
+        !type.includes("de-install")
+      ) ||
       type.includes("removal") ||
-      type.includes("disposal")
+      type.includes("disposal") ||
+      type.includes("deinstall") ||
+      type.includes("de-install")
     );
   });
 
@@ -10582,16 +10590,33 @@ function syncRepRecordsDirectlyToService(records) {
       rec.rep_deleted !== true &&
       hasStartedRepServiceProject(rec)
     )
-    .map(rec => ({
-      ...rec,
-      service_visible: true,
-      service_direct_sync: true,
-      service_direct_source:
-        rec.install_project_started === true ||
-        rec.rep_status === "installation_project_started"
-          ? "Rep Installation Project"
-          : "Rep Removal Project"
-    }));
+    .map(rec => {
+      const activeProjectSnapshots = getActiveProjectSnapshotsForRecord(rec);
+      const hasInstallationProject = activeProjectSnapshots.some(project =>
+        getActiveProjectOperationType(project) === "install"
+      );
+
+      return {
+        ...rec,
+        active_project_snapshots: activeProjectSnapshots,
+        active_projects_updated_at:
+          activeProjectSnapshots.reduce(
+            (latest, project) =>
+              new Date(project?.updated_at || project?.status_updated_at || 0).getTime() > new Date(latest || 0).getTime()
+                ? (project.updated_at || project.status_updated_at)
+                : latest,
+            rec.active_projects_updated_at || ""
+          ) || rec.active_projects_updated_at || "",
+        service_visible: true,
+        service_direct_sync: true,
+        service_direct_source:
+          rec.install_project_started === true ||
+          rec.rep_status === "installation_project_started" ||
+          hasInstallationProject
+            ? "Rep Installation Project"
+            : "Rep Removal Project"
+      };
+    });
 
   const payload = JSON.stringify(serviceRecords);
   const previous = localStorage.getItem(SERVICE_DIRECT_RECORDS_KEY) || "[]";
