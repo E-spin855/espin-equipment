@@ -20460,6 +20460,33 @@ function readEspinActiveProjects() {
   }
 }
 
+function getActiveProjectOperationType(project) {
+  const typeText = clean(
+    project?.operation_type ||
+    project?.project_type ||
+    project?.type ||
+    project?.handoff ||
+    project?.project_name ||
+    ""
+  ).toLowerCase();
+
+  return (
+    typeText === "install" ||
+    (
+      /install/.test(typeText) &&
+      !/deinstall|de-install|removal|disposal/.test(typeText)
+    )
+  )
+    ? "install"
+    : "deinstall";
+}
+
+function getActiveProjectIdentity(project) {
+  const type = getActiveProjectOperationType(project);
+  const id = clean(project?.operation_id || project?.project_id).toLowerCase();
+  return id ? `${type}::${id}` : "";
+}
+
 function formatActiveProjectDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -20616,7 +20643,11 @@ function renderActiveProjects() {
     const total = Math.max(milestones.length, 1);
     const progress = Math.max(0, Math.min(100, Number.isFinite(Number(project.progress)) ? Number(project.progress) : Math.round(completed / total * 100)));
     const complete = progress >= 100;
-    const projectCardId = project.operation_id || project.project_id;
+    const projectCardId =
+      project.active_project_id ||
+      getActiveProjectIdentity(project) ||
+      project.operation_id ||
+      project.project_id;
     const open = activeProjectOpenState[projectCardId] === true;
     const currentStage = project.current_stage || (complete ? "Project Completed" : "Project In Progress");
     const projectTypeText = String(
@@ -20794,59 +20825,40 @@ function upsertEspinActiveProject(project) {
     };
   }
 
+  const incomingType = getActiveProjectOperationType(project);
+  const incomingIdentity = getActiveProjectIdentity(project);
+
+  project = {
+    ...project,
+    operation_type: incomingType,
+    active_project_id: incomingIdentity || clean(project.active_project_id)
+  };
+
   let records = readEspinActiveProjects();
-  const index = records.findIndex(
-    item => {
-      const getProjectOperationType = value => {
-        const typeText = clean(
-          value?.operation_type ||
-          value?.project_type ||
-          value?.type ||
-          value?.handoff ||
-          value?.project_name ||
-          ""
-        ).toLowerCase();
+  const index = records.findIndex(item => {
+    const existingType = getActiveProjectOperationType(item);
 
-        return (
-          typeText === "install" ||
-          (
-            /install/.test(typeText) &&
-            !/deinstall|de-install|removal|disposal/.test(typeText)
-          )
-        )
-          ? "install"
-          : "deinstall";
-      };
+    // Different operation types can never replace one another.
+    if (incomingType !== existingType) return false;
 
-      const incomingType = getProjectOperationType(project);
-      const existingType = getProjectOperationType(item);
+    const existingIdentity =
+      clean(item?.active_project_id) ||
+      getActiveProjectIdentity(item);
 
-      // Installation and de-install/removal are separate linked projects.
-      // Even when ESPIN Connect reuses an operation/project identifier, one
-      // type must never overwrite the other in the shared progress storage.
-      if (incomingType !== existingType) return false;
-
-      const incomingOperation = clean(
-        project.operation_id || project.project_id
-      ).toLowerCase();
-      const existingOperation = clean(
-        item?.operation_id || item?.project_id
-      ).toLowerCase();
-
-      if (incomingOperation && existingOperation) {
-        return incomingOperation === existingOperation;
-      }
-
-      return Boolean(
-        clean(project.source_record_id) &&
-        clean(item?.source_record_id) === clean(project.source_record_id) ||
-        clean(project.asset_id) &&
-        clean(item?.asset_id) === clean(project.asset_id) ||
-        clean(project.serial_number) &&
-        clean(item?.serial_number) === clean(project.serial_number)
-      );
+    if (incomingIdentity && existingIdentity) {
+      return incomingIdentity === existingIdentity;
     }
-  );
+
+    // Legacy fallback is allowed only within the same operation type.
+    return Boolean(
+      clean(project.source_record_id) &&
+      clean(item?.source_record_id) === clean(project.source_record_id) ||
+      clean(project.asset_id) &&
+      clean(item?.asset_id) === clean(project.asset_id) ||
+      clean(project.serial_number) &&
+      clean(item?.serial_number) === clean(project.serial_number)
+    );
+  });
 
   if (index >= 0) {
     records[index] = { ...records[index], ...project };
