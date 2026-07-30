@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="operation-context.js"></script>
 <meta charset="UTF-8">
 <title>Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -243,6 +242,21 @@ html, body{
       <option value="OTHER">Other</option>
     </select>
 
+
+    <div class="small-note" id="equipmentSourceNote">Enter equipment information manually.</div>
+
+    <label>Manufacturer</label>
+    <input id="mManufacturer" placeholder="Enter manufacturer">
+
+    <label>Model</label>
+    <input id="mModel" placeholder="Enter model">
+
+    <label>Serial Number <span style="font-weight:400;">(optional)</span></label>
+    <input id="mSerial" placeholder="Enter serial number">
+
+    <label>Equipment Description</label>
+    <input id="mEquipmentDescription" placeholder="Enter equipment description">
+
     <div id="mriBlock" style="display:none;">
       <div class="small-note">MRI Specific Task</div>
       <label>Magnet Event Required?</label>
@@ -275,20 +289,16 @@ html, body{
 </div>
 
 <div class="nav">
-  <a href="../Rep.html">🔗<br>Espin Link</a>
-  <a href="install-projects.html" class="active">🛠️<br>Projects</a>
+  <a href="Home.html">🏠<br>Home</a>
+  <a href="Projects.html" class="active">🛠️<br>Projects</a>
 </div>
 
 <!-- ONLY SCRIPT SECTION CHANGED -->
 
 <script>
-let email =
-  localStorage.getItem("espinUserEmail") ||
-  localStorage.getItem("espinEquipment_userEmail") ||
-  "info@espinmedical.com";
+let email = localStorage.getItem("espinUserEmail");
 email = String(email || "").toLowerCase().trim();
-localStorage.setItem("espinAuth", "true");
-localStorage.setItem("espinUserEmail", email);
+if (!email) location.replace("index.html");
 
 const ADMIN_EMAIL = "info@espinmedical.com";
 const isAdmin =
@@ -313,6 +323,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   loadProjectsSafe();
+
+  const syncedInstallationProject = getInstallationProjectFromUrl();
+  if (syncedInstallationProject && isAdmin) {
+    openProjectModal(syncedInstallationProject);
+  }
 });
 /* ===============================
    MODAL
@@ -323,6 +338,15 @@ function openProjectModal(project = null) {
   document.getElementById("inpAddress").value = project ? project.site_address : "";
   document.getElementById("inpZip").value = project ? (project.zip_code || "") : "";
   document.getElementById("mModality").value = project ? project.modality : "";
+  document.getElementById("mManufacturer").value = project ? (project.manufacturer || project.make || "") : "";
+  document.getElementById("mModel").value = project ? (project.model || "") : "";
+  document.getElementById("mSerial").value = project ? (project.serial_number || project.serial || "") : "";
+  document.getElementById("mEquipmentDescription").value = project
+    ? (project.equipment_description || project.equipment || "")
+    : "";
+  document.getElementById("equipmentSourceNote").textContent = project && project.equipment_source === "sales_project"
+    ? "Equipment information synced from ESPIN LINK New Project. You may edit it if needed."
+    : "Enter equipment information manually.";
   document.getElementById("mMagnet").value = project ? (project.magnet_event || "") : "";
   document.getElementById("mDisposal").value = project ? String(project.disposal_required ?? false) : "false";
 
@@ -334,6 +358,31 @@ function openProjectModal(project = null) {
 
 function closeProjectModal() {
   document.getElementById("projectModal").style.display = "none";
+}
+
+
+function getInstallationProjectFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const isInstallHandoff =
+    String(params.get("project_type") || params.get("created_type") || "").toLowerCase() === "install" ||
+    String(params.get("handoff") || "").toLowerCase() === "installation_project";
+
+  if (!isInstallHandoff) return null;
+
+  return {
+    id: "",
+    project_name: params.get("project_name") || "Installation Project",
+    site_address: params.get("site_address") || "",
+    zip_code: params.get("zip_code") || "",
+    modality: (params.get("modality") || "OTHER").toUpperCase(),
+    manufacturer: params.get("make") || params.get("manufacturer") || "",
+    model: params.get("model") || "",
+    serial_number: params.get("serial_number") || params.get("serial") || "",
+    equipment_description: params.get("equipment_description") || params.get("equipment") || "",
+    equipment_source: params.get("equipment_source") || "sales_project",
+    magnet_event: params.get("magnet_event") || "",
+    disposal_required: false
+  };
 }
 
 /* ===============================
@@ -357,6 +406,17 @@ async function saveProject() {
   site_address: document.getElementById("inpAddress").value,
   zip_code: document.getElementById("inpZip").value,
   modality: modality,
+  manufacturer: document.getElementById("mManufacturer").value.trim(),
+  make: document.getElementById("mManufacturer").value.trim(),
+  model: document.getElementById("mModel").value.trim(),
+  serial_number: document.getElementById("mSerial").value.trim(),
+  equipment_description: document.getElementById("mEquipmentDescription").value.trim(),
+  equipment: document.getElementById("mEquipmentDescription").value.trim() ||
+    [
+      document.getElementById("mManufacturer").value.trim(),
+      document.getElementById("mModel").value.trim()
+    ].filter(Boolean).join(" "),
+  equipment_source: "manual_entry",
   magnet_event: modality === "MRI"
     ? document.getElementById("mMagnet").value
     : null,
@@ -364,7 +424,7 @@ async function saveProject() {
     document.getElementById("mDisposal").value === "true"
 };
   try {
-    const r = await fetch("/api/removal-install/projects", {
+    const r = await fetch("/api/projects", {
       method: id ? "PUT" : "POST",
       headers: {
         "Content-Type": "application/json",
@@ -402,7 +462,7 @@ document.getElementById("deleteCancelBtn").onclick = () => {
 };
 
 document.getElementById("deleteConfirmBtn").onclick = async () => {
-  await fetch("/api/removal-install/projects", {
+  await fetch("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-user-email": email },
     body: JSON.stringify({ action: "delete", id: pendingDeleteId })
@@ -424,7 +484,7 @@ async function loadProjectsSafe() {
 
 async function kvGet(key) {
   try {
-    const r = await fetch(`/api/removal-install/kv-get?key=${encodeURIComponent(key)}`, {
+    const r = await fetch(`/api/kv-get?key=${encodeURIComponent(key)}`, {
       headers: { "x-user-email": email }
     });
     if (!r.ok) return 0;
@@ -469,14 +529,6 @@ function getAxisDemoProjectFromUrl() {
     make: params.get("make") || "",
     model: params.get("model") || "",
     serial_number: params.get("serial_number") || "",
-    operation_id: params.get("operation_id") || "",
-    operation_type: params.get("operation_type") || "install",
-    project_group_id: params.get("project_group_id") || "",
-    facility_id: params.get("facility_id") || "",
-    asset_id: params.get("asset_id") || "",
-    source_record_id: params.get("source_record_id") || params.get("axis_record_id") || "",
-    equipment_model: params.get("equipment_model") || params.get("model") || "",
-    facility: params.get("facility") || "",
     dom: params.get("dom") || "",
     disposal_required: params.get("disposal_required") === "true",
     magnet_event: params.get("magnet_event") || "",
@@ -494,7 +546,7 @@ async function loadProjects() {
   try {
     console.log("Loading projects for:", email);
 
-    const r = await fetch("/api/removal-install/projects", {
+    const r = await fetch("/api/projects", {
       method: "GET",
       headers: {
         "x-user-email": email
@@ -520,7 +572,22 @@ async function loadProjects() {
     let projects = [];
 
     try {
-      projects = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      if (Array.isArray(parsed)) {
+        projects = parsed;
+      } else if (Array.isArray(parsed?.projects)) {
+        projects = parsed.projects;
+      } else if (Array.isArray(parsed?.data)) {
+        projects = parsed.data;
+      } else if (Array.isArray(parsed?.items)) {
+        projects = parsed.items;
+      } else if (parsed && typeof parsed === "object") {
+        const values = Object.values(parsed);
+        projects = values.every(item => item && typeof item === "object")
+          ? values
+          : [];
+      }
     } catch (e) {
       console.error("Invalid JSON from /api/projects:", raw);
       list.innerHTML = `<p style="text-align:center;color:red;">Invalid project response.</p>`;
@@ -530,11 +597,7 @@ async function loadProjects() {
     list.innerHTML = "";
 
     const seen = new Set();
-    projects = projects.filter(p => !seen.has(p.id) && seen.add(p.id));
-    projects.sort((a,b) =>
-      String(a.project_group_id || a.id).localeCompare(String(b.project_group_id || b.id)) ||
-      new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    );
+    projects = projects.filter(p => p && typeof p === "object" && !seen.has(p.id) && seen.add(p.id));
 const axisDemoProject = getAxisDemoProjectFromUrl();
 
 if (axisDemoProject) {
@@ -571,11 +634,6 @@ if (axisDemoProject) {
         </div>
 
         <p>${p.site_address || ""} ${p.zip_code || ""}</p>
-        <p><strong>Operation:</strong> Install</p>
-        ${p.project_group_id ? `<p><strong>Related group:</strong> ${p.project_group_id}</p>` : ""}
-        <p><strong>Equipment:</strong> ${p.equipment_model || p.model || p.equipment || "N/A"}</p>
-        <p><strong>Identifier:</strong> ${p.serial_number ? `S/N ${p.serial_number}` : p.asset_id || "N/A"}</p>
-        <p><strong>Facility:</strong> ${p.facility_name || p.facility || "N/A"}</p>
         <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
 
      ${shouldShowFromBlock(p) ? `
@@ -589,13 +647,7 @@ if (axisDemoProject) {
       `;
 
       card.onclick = () => {
-        const destination = new URL("install_management.html", location.href);
-        destination.searchParams.set("id", p.id);
-        destination.searchParams.set("projectId", p.id);
-        window.EspinOperation.fields.forEach(field => {
-          if (p[field]) destination.searchParams.set(field, p[field]);
-        });
-        location.href = destination.toString();
+        location.href = `install_management.html?id=${p.id}`;
       };
 
       if (isAdmin) {
