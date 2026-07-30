@@ -6205,6 +6205,43 @@ function normalizePreloadedManagerPresentation(
   };
 }
 
+function prepareManagerRecordForRepSync(rec) {
+  const missingFields = getManagerMissingInstallBaseIssueFields(rec)
+    .filter(issue => !wasManagerFieldCorrected(rec, issue.key));
+
+  if (!missingFields.length) {
+    return {
+      ...rec,
+      install_base_sync_type: "hub_preloaded",
+      install_base_manual_route: false,
+      install_base_fix_request_fields: "",
+      install_base_rep_fix_request_fields: "",
+      install_base_issue_field: "",
+      install_base_issue_reason: "",
+      rep_fix_required: ""
+    };
+  }
+
+  const fieldKeys = missingFields.map(issue => issue.key).join(",");
+  const fieldLabels = missingFields.map(issue => issue.label).join(", ");
+  const reason = `Missing Manager record data: ${fieldLabels}.`;
+
+  return {
+    ...rec,
+    install_base_sync_type: "manual_clarification",
+    install_base_manual_route: true,
+    install_base_release_status: "released_to_rep",
+    install_base_fix_request_fields: fieldKeys,
+    install_base_rep_fix_request_fields: fieldKeys,
+    install_base_fix_request_field: missingFields[0].key,
+    install_base_issue_field: fieldKeys,
+    install_base_issue_type: "missing_data",
+    install_base_issue_reason: reason,
+    install_base_action_label: "FIX",
+    rep_fix_required: reason
+  };
+}
+
 function syncPreloadedRecordsToRep() {
   const defaults = createHubPreloadedRecords();
   const defaultKeys = new Set(defaults.map(getRecordKey));
@@ -6213,7 +6250,8 @@ function syncPreloadedRecordsToRep() {
   const synced = mergeRecordsByKey(defaults, existing).map(rec => {
     if (!defaultKeys.has(getRecordKey(rec))) return rec;
 
-    return normalizePreloadedManagerPresentation({
+    return prepareManagerRecordForRepSync(
+      normalizePreloadedManagerPresentation({
       ...rec,
       manager_preloaded_sync: true,
       rep_visible: true,
@@ -6222,7 +6260,8 @@ function syncPreloadedRecordsToRep() {
       release_destination: "rep",
       install_base_released_to: "rep",
       install_base_release_status: "auto_synced"
-    }, false, true);
+      }, false, true)
+    );
   });
 
   writeArrayKey(STORAGE_KEY, synced);
@@ -6232,7 +6271,9 @@ function syncPreloadedRecordsToRep() {
     readArrayKey(REP_QUEUE_KEY)
   ).map(rec =>
     defaultKeys.has(getRecordKey(rec))
-      ? normalizePreloadedManagerPresentation(rec, false, true)
+      ? prepareManagerRecordForRepSync(
+          normalizePreloadedManagerPresentation(rec, false, true)
+        )
       : rec
   );
   writeArrayKey(REP_QUEUE_KEY, repQueue);
