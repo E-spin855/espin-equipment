@@ -4910,6 +4910,31 @@ function fictionalRepNumber(repName) {
 function sanitizeEvaluationRecord(input, recordIndex = 0) {
   if (!input || typeof input !== "object") return input;
   if (Array.isArray(input)) return input.map((item, index) => sanitizeEvaluationRecord(item, index));
+
+  const projectType = String(
+    input.project_type ||
+    input.axis_parent_project_type ||
+    ""
+  ).trim().toLowerCase();
+  const isRepCreatedNewProject = Boolean(
+    (
+      projectType === "new_project_record" ||
+      projectType === "new_sales_project"
+    ) &&
+    (
+      input.rep_created_new_project === true ||
+      input.new_project_badge === true ||
+      input.is_new_project === true ||
+      input.created_by_rep === true ||
+      String(input.created_by_role || "").toLowerCase() === "rep"
+    )
+  );
+
+  // A Rep-created New project is already authored inside the fictional Rep
+  // workspace. Preserve its project fields verbatim so Manager displays the
+  // same record that Rep submitted instead of remapping it by queue index.
+  if (isRepCreatedNewProject) return { ...input };
+
   const out = { ...input };
   const repName = fictionalRep(recordIndex);
   const repNumber = fictionalRepNumber(repName);
@@ -13572,9 +13597,27 @@ function purgeEvaluationExcludedRecords() {
 // Evaluation Edition demo portfolio: 5 durable records per rep, sequentially numbered.
 function ensureEvaluationDemoPortfolio(records) {
   const source = Array.isArray(records) ? records.filter(Boolean) : [];
+  const repCreatedNewProjects = source.filter(record => {
+    const projectType = lower(
+      record?.project_type ||
+      record?.axis_parent_project_type ||
+      ""
+    );
+
+    return Boolean(
+      projectType === "new_project_record" ||
+      projectType === "new_sales_project" ||
+      record?.rep_created_new_project === true ||
+      record?.new_project_badge === true ||
+      record?.is_new_project === true
+    );
+  });
+  const portfolioSource = source.filter(
+    record => !repCreatedNewProjects.includes(record)
+  );
   const byProjectId = new Map();
 
-  source.forEach((record, index) => {
+  portfolioSource.forEach((record, index) => {
     const rawId = String(
       record.oem_project_id || record.project_id || record.asset_id ||
       record.id || record.key || `record-${index + 1}`
@@ -13866,7 +13909,33 @@ function ensureEvaluationDemoPortfolio(records) {
     portfolio.push(record);
   }
 
-  return portfolio;
+  const portfolioKeys = new Set(
+    portfolio.map(record =>
+      String(
+        record.id ||
+        record.key ||
+        record.oem_project_id ||
+        record.project_id ||
+        ""
+      ).toLowerCase()
+    )
+  );
+  const validRepProjects = repCreatedNewProjects.filter(record => {
+    const key = String(
+      record.id ||
+      record.key ||
+      record.oem_project_id ||
+      record.project_id ||
+      ""
+    ).toLowerCase();
+    if (!key || portfolioKeys.has(key)) return false;
+    portfolioKeys.add(key);
+    return true;
+  });
+
+  // The Manager owns no preloaded New projects. Only projects created and
+  // synchronized by Rep are appended to the durable evaluation portfolio.
+  return [...portfolio, ...validRepProjects];
 }
 
 function render() {
