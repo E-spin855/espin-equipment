@@ -6107,8 +6107,45 @@ function createHubPreloadedRecords() {
     };
 
     base.key = getRecordKey(base);
-    return resetRepActionFields(base);
+    return normalizePreloadedManagerPresentation(resetRepActionFields(base));
   });
+}
+
+function normalizePreloadedManagerPresentation(rec) {
+  if (!rec) return rec;
+
+  const canonical = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS].find(row =>
+    String(row.oem_project_id || "") === String(rec.oem_project_id || "")
+  );
+
+  if (!canonical) return rec;
+
+  const repName =
+    canonical.assigned_rep_name ||
+    canonical.sales_rep_name ||
+    `${canonical.sales_rep_first || ""} ${canonical.sales_rep_last || ""}`.trim();
+  const facility = canonical.site || canonical.facility || canonical.facility_name;
+  const nameParts = String(repName || "").split(/\s+/).filter(Boolean);
+
+  return {
+    ...rec,
+    make: "Generic OEM",
+    site: facility,
+    site_name: facility,
+    facility,
+    facility_name: facility,
+    hospital_name: facility,
+    customer_name: facility,
+    account_name: facility,
+    assigned_rep_name: repName,
+    assigned_rep: repName,
+    sales_rep_name: repName,
+    sales_rep: repName,
+    rep_owner: repName,
+    rep_name: repName,
+    sales_rep_first: nameParts[0] || "",
+    sales_rep_last: nameParts.slice(1).join(" ")
+  };
 }
 
 function syncPreloadedRecordsToRep() {
@@ -6119,7 +6156,7 @@ function syncPreloadedRecordsToRep() {
   const synced = mergeRecordsByKey(defaults, existing).map(rec => {
     if (!defaultKeys.has(getRecordKey(rec))) return rec;
 
-    return {
+    return normalizePreloadedManagerPresentation({
       ...rec,
       manager_preloaded_sync: true,
       rep_visible: true,
@@ -6128,7 +6165,7 @@ function syncPreloadedRecordsToRep() {
       release_destination: "rep",
       install_base_released_to: "rep",
       install_base_release_status: "auto_synced"
-    };
+    });
   });
 
   writeArrayKey(STORAGE_KEY, synced);
@@ -13509,6 +13546,7 @@ function render() {
   // Explicit Manager routing must have final priority.
   managerQueue
 )
+.map(normalizePreloadedManagerPresentation)
 .map(mergeInstallManagerTextIntoManagerRecord)
 .filter(rec => {
     if (!rec) return false;
