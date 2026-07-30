@@ -9684,8 +9684,6 @@ function recordRequiresTerritoryFix(rec) {
 function isRepRoutingComplete(rec) {
   if (!hasValidAssignedRep(rec)) return false;
 
-  // Manager-embedded baseline records are explicitly released to the Rep
-  // workspace, including informational rows with OEM data-check notices.
   if (rec?.manager_preloaded_sync === true) return true;
 
   if (
@@ -10177,10 +10175,7 @@ function resetRepActionFieldsOnly(rec) {
 }
 
 function resetRepActionsInStoredValue(value) {
-  if (Array.isArray(value)) {
-    return value.map(resetRepActionsInStoredValue);
-  }
-
+  if (Array.isArray(value)) return value.map(resetRepActionsInStoredValue);
   if (!value || typeof value !== "object") return value;
 
   const isEquipmentRecord = Boolean(
@@ -24787,6 +24782,11 @@ if (showCompletedProjectsBtn) {
       delete activeProjectOpenState[projectId];
     });
 
+    // Rehydrate from all synchronized stores before saving so queue-only or
+    // off-screen records cannot be overwritten by the visible subset.
+    loadRecords(false);
+    importRepQueueRecords();
+    mergeInstallBaseQueueIntoRepRecords();
     state.records = state.records.map(resetRepActionFieldsOnly);
     state.selectedId = null;
     state.showCompleted = true;
