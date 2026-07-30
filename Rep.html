@@ -10144,14 +10144,62 @@ function isAllowedRepWorkspaceRecord(rec) {
 function resetRepActionFieldsOnly(rec) {
   if (!rec || typeof rec !== "object") return rec;
 
-  const reset = { ...rec };
+  const resetValues =
+    rec.manager_preloaded_sync === true &&
+    rec.manager_reset_values &&
+    typeof rec.manager_reset_values === "object"
+      ? rec.manager_reset_values
+      : (
+          String(rec.oem_project_id || rec.id || "") === "REP-IB-003"
+            ? { modality: "" }
+            : {}
+        );
+  const reset = { ...rec, ...resetValues };
+
+  [
+    "install_base_correction_status",
+    "install_base_fix_status",
+    "install_base_response_status",
+    "install_base_response_from",
+    "install_base_corrected_at",
+    "install_base_corrected_by",
+    "install_base_corrected_fields",
+    "install_base_latest_corrected_fields",
+    "install_base_corrected_values",
+    "install_base_corrected_field_values",
+    "corrected_fields",
+    "corrected_values",
+    "corrected_field_values",
+    "install_base_field_fix_sent_fields",
+    "install_base_field_fix_sent_at",
+    "install_base_field_fix_sent_by",
+    "manager_corrected_field",
+    "manager_corrected_fields"
+  ].forEach(key => delete reset[key]);
+
+  if (
+    reset.manager_preloaded_sync === true &&
+    String(reset.oem_project_id || reset.id || "") === "REP-IB-003"
+  ) {
+    reset.install_base_sync_type = "manual_clarification";
+    reset.install_base_manual_route = true;
+    reset.install_base_release_status = "released_to_rep";
+    reset.install_base_fix_request_fields = "modality";
+    reset.install_base_rep_fix_request_fields = "modality";
+    reset.install_base_fix_request_field = "modality";
+    reset.install_base_issue_field = "modality";
+    reset.install_base_issue_type = "missing_data";
+    reset.install_base_issue_reason = "Missing Manager record data: Modality.";
+    reset.install_base_action_label = "FIX";
+    reset.rep_fix_required = "Missing Manager record data: Modality.";
+  }
   const openFix = Boolean(
-    !isRepInstallBaseFixCompleted(rec) &&
+    !isRepInstallBaseFixCompleted(reset) &&
     (
-      rec.install_base_manual_route === true ||
-      rec.install_base_sync_type === "manual_clarification" ||
-      rec.install_base_release_status === "released_to_rep" ||
-      clean(rec.install_base_fix_request_fields || rec.install_base_issue_field)
+      reset.install_base_manual_route === true ||
+      reset.install_base_sync_type === "manual_clarification" ||
+      reset.install_base_release_status === "released_to_rep" ||
+      clean(reset.install_base_fix_request_fields || reset.install_base_issue_field)
     )
   );
 

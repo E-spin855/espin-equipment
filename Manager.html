@@ -6227,12 +6227,27 @@ function normalizePreloadedManagerPresentation(
 }
 
 function prepareManagerRecordForRepSync(rec) {
+  const originalPreloadedRecord = createHubPreloadedRecords()
+    .find(item => getRecordKey(item) === getRecordKey(rec));
+  const managerResetValues = originalPreloadedRecord
+    ? {
+        make: originalPreloadedRecord.make || "",
+        model: originalPreloadedRecord.model || "",
+        modality: originalPreloadedRecord.modality || "",
+        serial_number: originalPreloadedRecord.serial_number || "",
+        dom: originalPreloadedRecord.dom ?? "",
+        age: originalPreloadedRecord.age ?? "",
+        site: originalPreloadedRecord.site || "",
+        site_name: originalPreloadedRecord.site_name || originalPreloadedRecord.site || ""
+      }
+    : (rec.manager_reset_values || {});
   const missingFields = getManagerMissingInstallBaseIssueFields(rec)
     .filter(issue => !wasManagerFieldCorrected(rec, issue.key));
 
   if (!missingFields.length) {
     return {
       ...rec,
+      manager_reset_values: managerResetValues,
       install_base_sync_type: "hub_preloaded",
       install_base_manual_route: false,
       install_base_fix_request_fields: "",
@@ -6249,6 +6264,7 @@ function prepareManagerRecordForRepSync(rec) {
 
   return {
     ...rec,
+    manager_reset_values: managerResetValues,
     install_base_sync_type: "manual_clarification",
     install_base_manual_route: true,
     install_base_release_status: "released_to_rep",
@@ -6386,7 +6402,28 @@ function resetManagerActionsInStoredValue(value) {
     value.site
   );
 
-  if (isEquipmentRecord) return resetManagerActionFields(value);
+  if (isEquipmentRecord) {
+    const original = createHubPreloadedRecords()
+      .find(item => getRecordKey(item) === getRecordKey(value));
+
+    if (original) {
+      return resetRepActionFields({
+        ...original,
+        manager_reset_values: {
+          make: original.make || "",
+          model: original.model || "",
+          modality: original.modality || "",
+          serial_number: original.serial_number || "",
+          dom: original.dom ?? "",
+          age: original.age ?? "",
+          site: original.site || "",
+          site_name: original.site_name || original.site || ""
+        }
+      });
+    }
+
+    return resetManagerActionFields(value);
+  }
 
   return Object.fromEntries(
     Object.entries(value).map(([key, child]) => [
@@ -14048,6 +14085,7 @@ if (clearBtn) {
     state.unifiedCommunicationOpen = false;
 
     render();
+    syncPreloadedRecordsToRep();
     pingLifecycleSync();
     showResetButtonSuccess(event.currentTarget);
     showBanner("Manager actions reset. Equipment records and Rep actions preserved.");
