@@ -24934,37 +24934,66 @@ if (showCompletedProjectsBtn) {
   });
 
   $("clearBtn").addEventListener("click", event => {
-    [
+    const originalRecords = state.records
+      .filter(rec => rec?.manager_preloaded_sync === true)
+      .map(resetRepActionFieldsOnly)
+      .map(rec => ({
+        ...rec,
+        rep_visible: true,
+        manager_visible: false,
+        manager_only: false,
+        release_destination: "rep",
+        install_base_released_to: "rep"
+      }));
+
+    const fullResetKeys = [
       STORAGE_KEY,
       REP_WORKSPACE_BACKUP_KEY,
       MANAGER_QUEUE_KEY,
       REP_QUEUE_KEY,
       QUOTE_APPROVAL_KEY,
       QUOTE_APPROVAL_SYNC_KEY,
-      SERVICE_DIRECT_RECORDS_KEY
-    ].forEach(resetStoredRepActionsOnly);
+      SERVICE_DIRECT_RECORDS_KEY,
+      INSTALL_BASE_KEY,
+      INSTALL_BASE_RESPONSE_KEY,
+      INSTALL_BASE_FINAL_SYNC_KEY,
+      ESPIN_ACTIVE_PROJECTS_KEY,
+      EXECUTIVE_SNAPSHOT_KEY,
+      UNIFIED_SERVICE_MESSAGES_KEY,
+      UNIFIED_COMMUNICATION_KEY,
+      UNMATCHED_TRADEIN_KEY,
+      ESPIN_MOBILE_PLAN_KEY,
+      FINANCIAL_RECORD_COLLAPSE_KEY,
+      REP_FACILITY_DETAILS_KEY,
+      MESSAGE_FIELD_ACK_KEY,
+      MESSAGE_ROW_ACK_KEY,
+      REP_RED_HOT_DISMISSED_SIGNATURES_KEY
+    ];
+
+    fullResetKeys.forEach(key => localStorage.removeItem(key));
 
     // Clear expanded/collapsed state for project cards.
     Object.keys(activeProjectOpenState).forEach(projectId => {
       delete activeProjectOpenState[projectId];
     });
 
-    // Rehydrate from all synchronized stores before saving so queue-only or
-    // off-screen records cannot be overwritten by the visible subset.
-    loadRecords(false);
-    importRepQueueRecords();
-    mergeInstallBaseQueueIntoRepRecords();
-    state.records = state.records.map(resetRepActionFieldsOnly);
+    state.records = originalRecords;
     state.selectedId = null;
+    state.selectedRep = null;
     state.showCompleted = true;
     state.installBaseCommunicationOpen = false;
     state.unifiedCommunicationOpen = false;
     state.unifiedCommunicationFrameActive = false;
     state.myEquipmentReviewSearch = "";
     state.myEquipmentReviewState = "";
+    state.repRecordView = "";
+    state.repModality = "";
+    state.repDom = "";
+    state.repAge = "";
     state.myEquipmentReviewCollapsedUpdate = false;
 
     saveRecords();
+    writeArrayKey(REP_QUEUE_KEY, originalRecords);
     localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
 
     const showCompletedProjectsBtn = $("showCompletedProjectsBtn");
@@ -24975,7 +25004,7 @@ if (showCompletedProjectsBtn) {
 
     render();
     showResetButtonSuccess(event.currentTarget);
-    showBanner("Rep actions reset. Synced records and projects preserved.");
+    showBanner("Full reset complete. New projects removed and original records restored.");
   });
 
   setInterval(() => {
