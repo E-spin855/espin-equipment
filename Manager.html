@@ -6119,6 +6119,12 @@ function getCanonicalPreloadedRepName(row) {
   );
 }
 
+function getPreloadedCanonicalRow(rec) {
+  return [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS].find(row =>
+    String(row.oem_project_id || "") === String(rec?.oem_project_id || "")
+  );
+}
+
 function getPreloadedManagerRepAlias(row) {
   const names = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS]
     .map(getCanonicalPreloadedRepName)
@@ -6161,9 +6167,7 @@ function getPreloadedManagerFacilityAlias(row) {
 function normalizePreloadedManagerPresentation(rec, useManagerAliases = true) {
   if (!rec) return rec;
 
-  const canonical = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS].find(row =>
-    String(row.oem_project_id || "") === String(rec.oem_project_id || "")
-  );
+  const canonical = getPreloadedCanonicalRow(rec);
 
   if (!canonical) return rec;
 
@@ -6604,6 +6608,9 @@ manager_flash_text: isFreshRepUpdate
   return Array.from(map.values());
 }
 function getRepName(rec) {
+  const canonical = getPreloadedCanonicalRow(rec);
+  if (canonical) return getPreloadedManagerRepAlias(canonical);
+
   return (
     `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() ||
     rec.assigned_rep_name ||
@@ -6620,6 +6627,9 @@ function getRepPhone(rec) {
 }
 
 function getFacility(rec) {
+  const canonical = getPreloadedCanonicalRow(rec);
+  if (canonical) return getPreloadedManagerFacilityAlias(canonical);
+
   return rec.site || rec.facility || rec.hospital || rec.hospital_name || rec.customer || rec.customer_name || rec.location || "Unknown Facility";
 }
 
@@ -9446,6 +9456,7 @@ function isCompletedManagerRecord(rec) {
 }
 function renderManagerRepOwnerCell(rec) {
   const repOwner = String(
+    getRepName(rec) ||
     rec.assigned_rep_name ||
     rec.assigned_rep ||
     rec.rep_owner ||
