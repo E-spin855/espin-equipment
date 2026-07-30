@@ -7416,7 +7416,6 @@ body tr:is(
           <div class="panel-body">
             <div class="btns" style="margin-bottom:16px;">
               <button type="button" class="secondary" id="clearBtn">Clear Local Data</button>
-              <button type="button" class="green" id="addOwnInstallBaseBtn">Add My Install Base</button>
               <button type="button" class="secondary" id="addNewProjectBtn">Add New Project</button>
             </div>
 
@@ -9626,6 +9625,10 @@ function recordRequiresTerritoryFix(rec) {
 function isRepRoutingComplete(rec) {
   if (!hasValidAssignedRep(rec)) return false;
 
+  // Manager-embedded baseline records are explicitly released to the Rep
+  // workspace, including informational rows with OEM data-check notices.
+  if (rec?.manager_preloaded_sync === true) return true;
+
   if (
     recordRequiresTerritoryFix(rec) &&
     !hasValidAssignedTerritory(rec)
@@ -10048,6 +10051,18 @@ install_base_review_reason: originalInstallBaseReviewReason,
     saveRecords();
   }
 }
+function isAllowedRepWorkspaceRecord(rec) {
+  if (!rec) return false;
+
+  return Boolean(
+    rec.manager_preloaded_sync === true ||
+    isRepNewProjectIntakeRecord(rec) ||
+    rec.new_project_promoted === true ||
+    rec.lifecycle_created_from_quote_won === true ||
+    rec.rep_created_new_project === true
+  );
+}
+
    function loadRecords(preserveSelection = true) {
   const previousSelectedId = state.selectedId;
 
@@ -10066,7 +10081,7 @@ install_base_review_reason: originalInstallBaseReviewReason,
   const combinedRecords = mergeSharedRecordsIntoRepBackup(
     protectedRepRecords,
     sharedRecords
-  );
+  ).filter(isAllowedRepWorkspaceRecord);
 
   state.records = combinedRecords.map(rec => {
     const isRepCreated =
@@ -24565,7 +24580,6 @@ function scheduleRepSyncRender() {
     render();
   });
 
-  $("addOwnInstallBaseBtn").addEventListener("click", openOwnInstallBaseModal);
   $("addNewProjectBtn").addEventListener("click", openNewProjectModal);
 const hideCompletedProjectBtn = $("hideCompletedProjectBtn");
 

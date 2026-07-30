@@ -6111,6 +6111,30 @@ function createHubPreloadedRecords() {
   });
 }
 
+function syncPreloadedRecordsToRep() {
+  const defaults = createHubPreloadedRecords();
+  const defaultKeys = new Set(defaults.map(getRecordKey));
+  const existing = readArrayKey(STORAGE_KEY);
+
+  const synced = mergeRecordsByKey(defaults, existing).map(rec => {
+    if (!defaultKeys.has(getRecordKey(rec))) return rec;
+
+    return {
+      ...rec,
+      manager_preloaded_sync: true,
+      rep_visible: true,
+      manager_visible: false,
+      manager_only: false,
+      release_destination: "rep",
+      install_base_released_to: "rep",
+      install_base_release_status: "auto_synced"
+    };
+  });
+
+  writeArrayKey(STORAGE_KEY, synced);
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+}
+
 function resetRepActionsInStoredValue(value) {
   if (Array.isArray(value)) {
     return value.map(resetRepActionsInStoredValue);
@@ -13535,6 +13559,7 @@ function safeRender(context = "render") {
 }
 
 function init() {
+  syncPreloadedRecordsToRep();
   safeRender("startup");
 
  const tableBody = $("tableBody");
