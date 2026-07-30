@@ -7416,6 +7416,9 @@ function renderManagerActiveProjects(rec) {
     .filter(project => project && (project.operation_id || project.project_id))
     .sort(
       (a, b) =>
+        clean(a.project_group_id || a.operation_id).localeCompare(
+          clean(b.project_group_id || b.operation_id)
+        ) ||
         new Date(b.updated_at || 0) -
         new Date(a.updated_at || 0)
     );
@@ -7485,10 +7488,6 @@ function renderManagerActiveProjects(rec) {
                 ? "Project Completed"
                 : "Project In Progress");
 
-            const typeLabel = String(
-              project.project_type || "project"
-            ).replace(/_/g, " ");
-
             const projectTypeText = String(
                 project.operation_type ||
                 project.project_type ||
@@ -7510,6 +7509,9 @@ function renderManagerActiveProjects(rec) {
             const projectTypeClass = isInstallationProject
               ? "installation-project"
               : "removal-project";
+            const typeLabel = isInstallationProject
+              ? "Installation"
+              : "Removal";
 
             const currentIndex = milestones.findIndex(
               milestone => milestone.completed !== true
@@ -7572,10 +7574,16 @@ function renderManagerActiveProjects(rec) {
                             : "Identifier unavailable"
                       )} ·
                       ${escapeHtml(
+                        project.facility_name ||
                         project.facility ||
                         "ESPIN Connect"
                       )}
                     </div>
+                    ${project.project_group_id ? `
+                      <div class="active-project-count">
+                        Related group: ${escapeHtml(project.project_group_id)}
+                      </div>
+                    ` : ""}
 
                     <div class="sci-progress-row">
                       <div class="sci-progress-track">

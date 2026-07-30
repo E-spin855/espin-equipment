@@ -35,11 +35,19 @@ const OPERATION_FIELDS = [
   "operation_type",
   "project_group_id",
   "facility_id",
+  "facility_name",
   "facility",
   "asset_id",
   "serial_number",
   "source_record_id",
-  "equipment_model"
+  "make",
+  "model",
+  "modality",
+  "equipment_model",
+  "equipment_source",
+  "equipment_verified",
+  "created_at",
+  "created_by"
 ];
 
 function operationMetadata(body = {}) {

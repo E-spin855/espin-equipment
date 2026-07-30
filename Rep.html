@@ -19455,13 +19455,6 @@ function saveInstallBaseFix(id) {
   }
 }
 
-    function createEspinOperationId(operationType) {
-      const uuidValue =
-        window.crypto?.randomUUID?.() ||
-        `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-      return `op-${operationType}-${uuidValue}`;
-    }
-
     function stableEspinIdentifier(prefix, value) {
       const text = String(value || "").trim().toLowerCase();
       let hash = 2166136261;
@@ -19514,15 +19507,27 @@ function saveInstallBaseFix(id) {
       );
 
       return {
-        operation_id: createEspinOperationId(operationType),
         operation_type: operationType,
         project_group_id: getEspinProjectGroupId(rec),
         facility_id: facilityId,
+        facility_name: facility,
         facility,
         asset_id: assetId,
         serial_number: serialNumber,
         source_record_id: sourceRecordId,
-        equipment_model: clean(rec.model || rec.equipment_model)
+        make: clean(rec.make || rec.manufacturer || rec.oem),
+        model: clean(rec.model || rec.equipment_model),
+        modality: clean(rec.modality),
+        equipment_model: clean(rec.model || rec.equipment_model),
+        equipment_source: operationType === "install" ? "sales_project" : "install_base",
+        equipment_verified: Boolean(sourceRecordId || assetId || serialNumber),
+        created_by: clean(
+          rec.sales_rep_email ||
+          rec.assigned_rep_email ||
+          rec.rep_email ||
+          localStorage.getItem("espinUserEmail") ||
+          "anonymous-rep"
+        )
       };
     }
 
@@ -19623,7 +19628,6 @@ function saveInstallBaseFix(id) {
       );
 
       rec.install_project_started = true;
-      rec.install_operation_id = operation.operation_id;
       rec.project_group_id = operation.project_group_id || rec.project_group_id || "";
       rec.install_project_started_at = now;
       rec.service_visible = true;
@@ -20504,6 +20508,12 @@ function activeProjectMatchesSelectedRecord(project, rec) {
   if (projectOperationId && recordOperationIds.includes(projectOperationId)) {
     return true;
   }
+  if (
+    normalized(project.project_group_id) &&
+    normalized(project.project_group_id) === normalized(rec.project_group_id)
+  ) {
+    return true;
+  }
 
   const sourceRecordIds = [
     rec.id,
@@ -20586,7 +20596,12 @@ function renderActiveProjects() {
       const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
       return !rep || rep === clean(state.selectedRep).toLowerCase();
     })
-    .sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+    .sort((a,b) =>
+      clean(a.project_group_id || a.operation_id).localeCompare(
+        clean(b.project_group_id || b.operation_id)
+      ) ||
+      new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
+    );
 
   if (summary) summary.textContent = `${projects.length} synchronized project${projects.length === 1 ? "" : "s"}`;
 
@@ -20604,7 +20619,6 @@ function renderActiveProjects() {
     const projectCardId = project.operation_id || project.project_id;
     const open = activeProjectOpenState[projectCardId] === true;
     const currentStage = project.current_stage || (complete ? "Project Completed" : "Project In Progress");
-    const typeLabel = String(project.project_type || "project").replace(/_/g," ");
     const projectTypeText = String(
       project.operation_type ||
       project.project_type ||
@@ -20625,6 +20639,7 @@ function renderActiveProjects() {
     const projectTypeClass = isInstallationProject
       ? "installation-project"
       : "removal-project";
+    const typeLabel = isInstallationProject ? "Installation" : "Removal";
 
     const milestoneHtml = milestones.map((milestone, index) => {
       const isDone = milestone.completed === true;
@@ -20644,7 +20659,8 @@ function renderActiveProjects() {
         <button type="button" class="active-project-summary" onclick="toggleActiveProjectCard('${escapeJs(projectCardId)}')">
           <div>
             <div class="active-project-name">${escapeHtml(projectDisplayName)}</div>
-            <div class="active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project.equipment_model || project.model || project.equipment || "Equipment")} · ${escapeHtml(project.serial_number ? `S/N ${project.serial_number}` : project.asset_id ? `Asset ${project.asset_id}` : "Identifier unavailable")} · ${escapeHtml(project.facility || "ESPIN Connect")}</div>
+            <div class="active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project.equipment_model || project.model || project.equipment || "Equipment")} · ${escapeHtml(project.serial_number ? `S/N ${project.serial_number}` : project.asset_id ? `Asset ${project.asset_id}` : "Identifier unavailable")} · ${escapeHtml(project.facility_name || project.facility || "ESPIN Connect")}</div>
+            ${project.project_group_id ? `<div class="active-project-count">Related group: ${escapeHtml(project.project_group_id)}</div>` : ""}
             <div class="sci-progress-row">
               <div class="sci-progress-track"><div class="sci-progress-fill" style="width:${progress}%"></div></div>
               <div class="sci-progress-percent">${progress}%</div>
@@ -20709,11 +20725,31 @@ window.addEventListener("storage", event => {
 function upsertEspinActiveProject(project) {
   if (!project || (!project.operation_id && !project.project_id)) return;
 
-  const selectedRecord = state.records.find(
-    record => String(record.id) === String(state.selectedId)
-  );
+  const selectedRecord =
+    state.records.find(record =>
+      clean(project.source_record_id || project.axis_record_id) &&
+      clean(record.id || record.key) === clean(project.source_record_id || project.axis_record_id)
+    ) ||
+    state.records.find(record =>
+      clean(project.asset_id) &&
+      clean(record.asset_id || record.equipment_id || record.oem_project_id) === clean(project.asset_id)
+    ) ||
+    state.records.find(record =>
+      clean(project.serial_number) &&
+      clean(record.serial_number || record.serial) === clean(project.serial_number)
+    ) ||
+    state.records.find(record => String(record.id) === String(state.selectedId));
 
   if (selectedRecord) {
+    if (project.operation_id) {
+      if (/^install$/i.test(clean(project.operation_type))) {
+        selectedRecord.install_operation_id = project.operation_id;
+      } else {
+        selectedRecord.deinstall_operation_id = project.operation_id;
+      }
+      selectedRecord.project_group_id =
+        project.project_group_id || selectedRecord.project_group_id || "";
+    }
     project = {
       ...project,
       axis_record_id:
@@ -20810,6 +20846,7 @@ function upsertEspinActiveProject(project) {
     selectedRecord.manager_flash_type = "active_project_update";
     selectedRecord.manager_flash_text = "Active Project milestone updated";
     selectedRecord.manager_flash_at = selectedRecord.active_projects_updated_at;
+    saveRecords();
     syncToManagerQueue(selectedRecord);
   }
 
@@ -23744,7 +23781,6 @@ return true;
   const now = new Date().toISOString();
 
   rec.submitted_to = "espin_connect";
-  rec.deinstall_operation_id = operation.operation_id;
   rec.project_group_id = operation.project_group_id || rec.project_group_id || "";
   rec.connect_sync_status = "handoff_opened";
   rec.connect_handoff_at = now;

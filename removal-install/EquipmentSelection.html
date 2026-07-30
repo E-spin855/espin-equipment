@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Equipment Selection · ESPIN Connect</title>
+  <script src="operation-context.js"></script>
+  <style>
+    :root{--navy:#071426;--panel:#0d2037;--line:#27506c;--cyan:#25d9bb;--blue:#1686e8;--text:#edf7ff;--muted:#9db4c7;--warn:#ffc857}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(135deg,#06101e,#0a1c31);color:var(--text);font:15px/1.45 system-ui,sans-serif;min-height:100vh}
+    main{max-width:1120px;margin:auto;padding:32px 20px 70px}.eyebrow{color:var(--cyan);font-weight:900;letter-spacing:.16em;text-transform:uppercase}
+    h1{font-size:clamp(28px,5vw,48px);margin:5px 0 8px} h2{margin:0 0 12px} .sub{color:var(--muted);font-size:17px}
+    .steps{display:flex;gap:8px;margin:26px 0}.step{flex:1;padding:10px;border-bottom:3px solid var(--line);color:var(--muted);font-weight:800}.step.active{border-color:var(--cyan);color:var(--text)}
+    .panel{background:rgba(13,32,55,.94);border:1px solid var(--line);border-radius:18px;padding:22px;margin-top:18px;box-shadow:0 18px 48px #0005}
+    .toolbar,.actions,.facts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.toolbar{justify-content:space-between}
+    .badge{display:inline-flex;padding:6px 10px;border-radius:99px;background:#123a52;color:#aef5e9;font-weight:900;text-transform:uppercase;font-size:12px}
+    .cards{display:grid;gap:12px;margin-top:16px}.equipment{display:grid;grid-template-columns:32px 1.4fr repeat(4,1fr);gap:12px;align-items:center;padding:16px;border:1px solid var(--line);border-radius:14px;cursor:pointer;background:#091a2e}
+    .equipment:hover,.equipment.selected{border-color:var(--cyan);box-shadow:0 0 0 2px #25d9bb33}.equipment strong{display:block}.label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em}
+    button,.button{border:0;border-radius:11px;padding:12px 17px;background:var(--blue);color:white;font-weight:850;cursor:pointer;text-decoration:none;display:inline-block}
+    button.secondary{background:#18334c;border:1px solid var(--line)}button.confirm{background:var(--cyan);color:#05201d}button:disabled{opacity:.45;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}label{display:grid;gap:6px;color:var(--muted);font-weight:700}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);background:#071426;color:var(--text);font:inherit}
+    .review{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.fact{padding:13px;border:1px solid var(--line);border-radius:10px}.fact span{display:block;color:var(--muted);font-size:12px}.notice{padding:14px;border:1px solid #806520;background:#302813;border-radius:10px;color:#ffe6a0;margin:14px 0}
+    .hidden{display:none!important}.empty{color:var(--muted);padding:26px;text-align:center;border:1px dashed var(--line);border-radius:12px}
+    @media(max-width:760px){.equipment{grid-template-columns:28px 1fr}.equipment>div:nth-child(n+3){grid-column:2}.grid,.review{grid-template-columns:1fr}.steps{font-size:11px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">ESPIN Connect</div>
+  <h1 id="title">Select equipment</h1>
+  <div class="sub" id="subtitle"></div>
+  <div class="steps"><div class="step">1 · Workflow</div><div class="step active">2 · Equipment</div><div class="step">3 · Confirm</div><div class="step">4 · Manage</div></div>
+
+  <section class="panel" id="selectionPanel">
+    <div class="toolbar"><div><h2>Equipment at this facility</h2><span class="badge" id="typeBadge"></span></div><button class="secondary" id="manualBtn">Enter manually</button></div>
+    <div id="candidateList" class="cards"></div>
+    <div class="actions" style="margin-top:18px"><button id="reviewBtn" disabled>Review selected equipment</button></div>
+  </section>
+
+  <section class="panel hidden" id="manualPanel">
+    <h2>Manual equipment intake</h2>
+    <p class="sub">Enter as much equipment information as possible. An asset ID or serial number is required; if both are unavailable, ESPIN Connect will issue a temporary ID pending verification.</p>
+    <div class="grid">
+      <label>Make<input id="manualMake"></label><label>Model<input id="manualModel" required></label>
+      <label>Modality<input id="manualModality"></label><label>Serial number<input id="manualSerial"></label>
+      <label>Asset ID<input id="manualAsset"></label><label>Status<select id="manualStatus"><option>Pending</option><option>Purchased</option><option>In service</option><option>Out of service</option></select></label>
+    </div>
+    <div class="actions" style="margin-top:18px"><button class="secondary" id="cancelManual">Back</button><button id="reviewManual">Review equipment</button></div>
+  </section>
+
+  <section class="panel hidden" id="reviewPanel">
+    <h2>Review and confirm</h2><div class="review" id="reviewFacts"></div>
+    <div id="verificationNotice" class="notice hidden"></div><div id="duplicateNotice" class="notice hidden"></div>
+    <div class="actions" style="margin-top:18px"><button class="secondary" id="backBtn">Back</button><button class="confirm" id="confirmBtn">Confirm and create project</button><a class="button hidden" id="openExisting">Open existing project</a></div>
+  </section>
+
+  <section class="panel hidden" id="createdPanel">
+    <h2>Equipment project created</h2><p id="createdSummary"></p>
+    <div class="actions"><a class="button" id="openManagement">Open Management</a><a class="button" id="addAnother">Add another equipment</a></div>
+  </section>
+</main>
+<script>
+(function(){
+  const params=new URLSearchParams(location.search), clean=v=>String(v??"").trim(), lower=v=>clean(v).toLowerCase();
+  const type=/^(install)$/i.test(clean(params.get("operation_type")||params.get("selected_type")||params.get("project_type")))?"install":"deinstall";
+  const base=window.EspinOperation.context;
+  const facilityId=clean(params.get("facility_id")||base.facility_id);
+  const facilityName=clean(params.get("facility_name")||params.get("facility")||base.facility_name||base.facility);
+  const groupId=clean(params.get("project_group_id")||base.project_group_id);
+  const KEYS=["espin_lifecycle_demo_records_v1","espin_rep_workspace_records_v1","espin_rep_queue","axis_install_base_records_v1","espin_synced_equipment_v1","espin_sales_projects_v1"];
+  let selected=null, duplicate=null;
+  const $=id=>document.getElementById(id);
+  $("title").textContent=`Select equipment for ${type==="install"?"Installation":"Removal"}`;
+  $("subtitle").textContent=facilityName?`Facility: ${facilityName}`:"Choose the particular equipment before creating this project.";
+  $("typeBadge").textContent=type==="install"?"Installation":"Removal";
+
+  function arrayFrom(value){
+    if(Array.isArray(value))return value;
+    if(!value||typeof value!=="object")return[];
+    return Object.values(value).flatMap(item=>Array.isArray(item)?item:(item&&typeof item==="object"?[item]:[]));
+  }
+  function get(r,...names){for(const n of names){if(clean(r?.[n]))return clean(r[n]);}return""}
+  function normalize(r,source){
+    const recordType=lower(get(r,"equipment_source","source","project_type"));
+    return {
+      facility_id:get(r,"facility_id","site_id","account_id")||facilityId,
+      facility_name:get(r,"facility_name","facility","customer_facility","site_name")||facilityName,
+      asset_id:get(r,"asset_id","equipment_id","asset_tag"),
+      serial_number:get(r,"serial_number","serial","system_serial"),
+      make:get(r,"make","manufacturer","oem"),
+      model:get(r,"model","equipment_model","equipment","system_model"),
+      modality:get(r,"modality","equipment_type"),
+      source_record_id:get(r,"source_record_id","axis_record_id","record_id","id","project_id"),
+      equipment_source:recordType.includes("sale")||source.includes("sales")?"sales_project":recordType.includes("install_base")||source.includes("install_base")?"install_base":"synced",
+      equipment_verified:true,
+      status:get(r,"status","equipment_status","project_status")||"Available",
+      current_operation_status:get(r,"current_operation_status","operation_status","progress_status")||"None"
+    };
+  }
+  function sameFacility(r){
+    if(facilityId&&r.facility_id)return lower(r.facility_id)===lower(facilityId);
+    if(facilityName&&r.facility_name)return lower(r.facility_name)===lower(facilityName);
+    return !facilityId&&!facilityName;
+  }
+  function identity(r){return lower(r.source_record_id)||lower(r.asset_id)||lower(r.serial_number)}
+  let raw=[];
+  KEYS.forEach(key=>{try{raw.push(...arrayFrom(JSON.parse(localStorage.getItem(key)||"[]")).map(r=>normalize(r,key)))}catch(_){}});
+  const origin=normalize(Object.fromEntries([...params.entries()]),type==="install"?"sales_project":"install_base");
+  if(identity(origin))raw.unshift(origin);
+  const seen=new Set(), candidates=raw.filter(sameFacility).filter(r=>identity(r)&&!seen.has(`${r.equipment_source}|${identity(r)}`)&&seen.add(`${r.equipment_source}|${identity(r)}`));
+  function esc(v){const d=document.createElement("div");d.textContent=clean(v)||"—";return d.innerHTML}
+  function render(){
+    if(!candidates.length){$("candidateList").innerHTML='<div class="empty">No synchronized equipment was found. Use <b>Enter manually</b> to continue.</div>';return}
+    $("candidateList").innerHTML=candidates.map((r,i)=>`<div class="equipment" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>${esc(r.equipment_source.replace("_"," "))}</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`).join("");
+    document.querySelectorAll(".equipment").forEach(card=>card.onclick=()=>{document.querySelectorAll(".equipment").forEach(c=>c.classList.remove("selected"));card.classList.add("selected");card.querySelector("input").checked=true;selected=candidates[+card.dataset.i];$("reviewBtn").disabled=false});
+  }
+  function show(id){["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+  function manualRecord(){
+    let asset=clean($("manualAsset").value),serial=clean($("manualSerial").value),verified=Boolean(asset||serial);
+    if(!verified)asset=`TEMP-EQ-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+    return {facility_id:facilityId,facility_name:facilityName,asset_id:asset,serial_number:serial,make:clean($("manualMake").value),model:clean($("manualModel").value)||"Manually entered equipment",modality:clean($("manualModality").value),source_record_id:"",equipment_source:"manual",equipment_verified:verified,status:clean($("manualStatus").value),current_operation_status:"None"};
+  }
+  function activeOperations(){try{const a=JSON.parse(localStorage.getItem("espin_equipment_operations_v1")||"[]");return Array.isArray(a)?a:[]}catch(_){return[]}}
+  function duplicateFor(r){return activeOperations().find(o=>lower(o.operation_type)===type&&["source_record_id","asset_id","serial_number"].some(k=>lower(r[k])&&lower(r[k])===lower(o[k]))&&!/complete|cancel|archiv/.test(lower(o.status)))}
+  function review(r){
+    selected=r;duplicate=duplicateFor(r);show("reviewPanel");
+    document.querySelectorAll(".step")[2].classList.add("active");
+    const facts=[["Operation",type==="install"?"Installation":"Removal"],["Equipment",[r.make,r.model].filter(Boolean).join(" ")||"Equipment"],["Modality",r.modality],["Serial number",r.serial_number],["Asset ID",r.asset_id],["Facility",r.facility_name||r.facility_id],["Source",r.equipment_source],["Verification",r.equipment_verified?"Verified identifier":"Pending verification"]];
+    $("reviewFacts").innerHTML=facts.map(([a,b])=>`<div class="fact"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join("");
+    $("verificationNotice").classList.toggle("hidden",r.equipment_verified);$("verificationNotice").textContent="A temporary equipment ID will be used. This manually entered equipment is pending verification.";
+    $("duplicateNotice").classList.toggle("hidden",!duplicate);$("openExisting").classList.toggle("hidden",!duplicate);$("confirmBtn").disabled=Boolean(duplicate);
+    if(duplicate){$("duplicateNotice").textContent="An active project already exists for this equipment and operation type."; $("openExisting").href=duplicate.project_url||managementUrl(duplicate)}
+  }
+  function managementUrl(operation){
+    const path=type==="install"?"install_management.html":"management.html",u=new URL(path,location.href);
+    Object.entries(operation).forEach(([k,v])=>{if(["string","number","boolean"].includes(typeof v)&&clean(v)!=="")u.searchParams.set(k,String(v))});
+    if(operation.project_id){u.searchParams.set("projectId",operation.project_id);u.searchParams.set("id",operation.project_id)}
+    return u.toString();
+  }
+  async function confirm(){
+    $("confirmBtn").disabled=true;$("confirmBtn").textContent="Creating…";
+    const operation={...selected,operation_id:window.EspinOperation.newOperationId(type),operation_type:type,project_group_id:groupId||`group-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,facility_id:facilityId||selected.facility_id,facility_name:facilityName||selected.facility_name,facility:facilityName||selected.facility_name,created_at:new Date().toISOString(),created_by:clean(params.get("created_by")||localStorage.getItem("espinUserEmail")||"anonymous-rep"),status:"active"};
+    operation.equipment_model=operation.model;
+    const payload={...operation,project_name:`${operation.model||"Equipment"} · ${type==="install"?"Installation":"Removal"}`,equipment:[operation.make,operation.model].filter(Boolean).join(" "),site_address:clean(params.get("site_address")),zip_code:clean(params.get("zip_code")),modality:operation.modality||"OTHER",project_type:type==="install"?"install":"disposal",sales_rep_email:clean(localStorage.getItem("espinUserEmail")||params.get("sales_rep_email")||"rep1@espinlink.demo"),source:"espin_link_equipment_intake"};
+    try{
+      const response=await fetch("/api/removal-install/projects",{method:"POST",headers:{"Content-Type":"application/json","x-user-email":payload.sales_rep_email},body:JSON.stringify(payload)});
+      const result=await response.json().catch(()=>({}));
+      if(response.status===409&&result.existing){duplicate=result.existing;review(selected);return}
+      if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);
+      operation.project_id=clean(result.id||result.projectId);operation.project_url=managementUrl(operation);
+      const records=activeOperations();records.unshift(operation);localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records));
+      localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation));localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation));localStorage.setItem("activeProjectId",operation.project_id);
+      window.EspinOperation.upsertActiveProject(operation);
+      try{window.opener?.postMessage({type:"ESPIN_OPERATION_PROJECT_CREATED",project:operation},"*")}catch(_){}
+      $("createdSummary").textContent=`${type==="install"?"Installation":"Removal"} for ${[operation.make,operation.model].filter(Boolean).join(" ")} is ready. Operation ${operation.operation_id}.`;
+      $("openManagement").href=operation.project_url;
+      const another=new URL(location.href);["operation_id","asset_id","serial_number","source_record_id","make","model","equipment_model","equipment_source","equipment_verified","created_at"].forEach(k=>another.searchParams.delete(k));another.searchParams.set("project_group_id",operation.project_group_id);$("addAnother").href=another.toString();
+      show("createdPanel");document.querySelectorAll(".step")[3].classList.add("active");
+    }catch(error){alert(`Project could not be created: ${error.message}`);$("confirmBtn").disabled=false;$("confirmBtn").textContent="Confirm and create project"}
+  }
+  $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
+  render();
+})();
+</script>
+</body>
+</html>

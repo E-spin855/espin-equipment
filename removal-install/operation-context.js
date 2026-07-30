@@ -6,11 +6,19 @@
     "operation_type",
     "project_group_id",
     "facility_id",
+    "facility_name",
+    "facility",
     "asset_id",
     "serial_number",
+    "make",
+    "model",
+    "modality",
     "source_record_id",
+    "equipment_source",
+    "equipment_verified",
+    "created_at",
+    "created_by",
     "equipment_model",
-    "facility"
   ];
   const clean = value => String(value ?? "").trim();
   const normalizeType = value => {
@@ -43,8 +51,13 @@
     ),
     project_group_id: clean(params.get("project_group_id")),
     facility_id: clean(params.get("facility_id")),
+    facility_name: clean(params.get("facility_name") || params.get("facility")),
+    facility: clean(params.get("facility") || params.get("facility_name")),
     asset_id: clean(params.get("asset_id")),
     serial_number: clean(params.get("serial_number")),
+    make: clean(params.get("make")),
+    model: clean(params.get("model") || params.get("equipment_model")),
+    modality: clean(params.get("modality")),
     source_record_id: clean(
       params.get("source_record_id") ||
       params.get("axis_record_id")
@@ -53,7 +66,10 @@
       params.get("equipment_model") ||
       params.get("model")
     ),
-    facility: clean(params.get("facility"))
+    equipment_source: clean(params.get("equipment_source")),
+    equipment_verified: clean(params.get("equipment_verified")),
+    created_at: clean(params.get("created_at")),
+    created_by: clean(params.get("created_by"))
   };
   let stored = {};
   for (const key of [
@@ -76,7 +92,8 @@
     context.asset_id ||
     context.serial_number
   );
-  if (!context.operation_id && reliable) {
+  const intakePath = /EspinConnectHandoff|project_type|EquipmentSelection/i.test(location.pathname);
+  if (!context.operation_id && reliable && !intakePath) {
     context.operation_id =
       `legacy-${context.operation_type}-${hash([
         context.source_record_id,
@@ -156,13 +173,36 @@
   function url(value) {
     const target = new URL(value, location.href);
     CONTEXT_FIELDS.forEach(field => {
-      if (clean(context[field])) target.searchParams.set(field, context[field]);
+      if (clean(context[field]) && !target.searchParams.has(field)) {
+        target.searchParams.set(field, context[field]);
+      }
     });
     if (activeProjectId) {
       target.searchParams.set("projectId", activeProjectId);
       target.searchParams.set("id", activeProjectId);
     }
     return target.toString();
+  }
+
+  function newOperationId(type = context.operation_type) {
+    const suffix = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return `op-${normalizeType(type)}-${suffix}`;
+  }
+
+  function hasReliableEquipmentId(record = context) {
+    return Boolean(clean(
+      record.source_record_id ||
+      record.asset_id ||
+      record.serial_number
+    ));
+  }
+
+  function hasValidOperationId(record = context) {
+    return /^(?:op|legacy)-(?:install|deinstall)-[a-z0-9._-]+$/i.test(
+      clean(record.operation_id)
+    );
   }
 
   function upsertActiveProject(project) {
@@ -223,16 +263,29 @@
     strip.id = "espinOperationIdentity";
     strip.style.cssText =
       "position:relative;z-index:20;margin:10px auto;padding:10px 14px;max-width:1100px;border:1px solid #9fb7cc;border-radius:10px;background:#eef6fc;color:#17324a;font:700 13px/1.4 system-ui,sans-serif";
-    strip.textContent = [
+    const label = document.createElement("span");
+    label.textContent = [
       context.operation_type === "install" ? "INSTALL" : "DE-INSTALL",
-      context.equipment_model || "Equipment",
+      context.model || context.equipment_model || "Equipment",
       context.serial_number
         ? `S/N ${context.serial_number}`
         : context.asset_id
           ? `Asset ${context.asset_id}`
           : "",
-      context.facility || context.facility_id
+      context.facility_name || context.facility || context.facility_id
     ].filter(Boolean).join(" · ");
+    strip.appendChild(label);
+    if (/management/i.test(location.pathname)) {
+      const add = document.createElement("a");
+      const next = new URL("/removal-install/EquipmentSelection.html", location.origin);
+      ["operation_type", "project_group_id", "facility_id", "facility_name", "facility"].forEach(field => {
+        if (clean(context[field])) next.searchParams.set(field, context[field]);
+      });
+      add.href = next.toString();
+      add.textContent = "Add another equipment";
+      add.style.cssText = "float:right;color:#0066b2;text-decoration:none";
+      strip.appendChild(add);
+    }
     document.body.insertBefore(strip, document.body.firstChild);
   });
 
@@ -243,6 +296,9 @@
     identity,
     matches,
     url,
+    newOperationId,
+    hasReliableEquipmentId,
+    hasValidOperationId,
     saveContext,
     upsertActiveProject
   };
