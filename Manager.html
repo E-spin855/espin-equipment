@@ -5723,8 +5723,42 @@ function money(v) {
   return "$" + Number(v || 0).toLocaleString();
 }
 
+function anonymizeIdentityText(value) {
+  let text = String(value ?? "");
+  const replacements = [
+    ["Lisa Tran", "Rep 1"],
+    ["Marcus Lee", "Rep 2"],
+    ["Priya Shah", "Rep 3"],
+    ["Nina Patel", "Rep 4"],
+    ["Omar Reed", "Rep 5"],
+    ["Elena Morris", "Rep 6"],
+    ["Maya Chen", "Rep 7"],
+    ["Jordan Blake", "Rep 8"],
+    ["Karen Whitfield", "Manager 1"],
+    ["Sarah Kim", "Manager 2"],
+    ["David Moreno", "Manager 3"],
+    ["Angela Brooks", "Manager 4"],
+    ["Michelle Reed", "Manager 5"],
+    ["lisa.tran@oem-demo.com", "rep1@example.com"],
+    ["marcus.lee@oem-demo.com", "rep2@example.com"],
+    ["priya.shah@oem-demo.com", "rep3@example.com"],
+    ["nina.patel@oem-demo.com", "rep4@example.com"],
+    ["omar.reed@oem-demo.com", "rep5@example.com"],
+    ["elena.morris@oem-demo.com", "rep6@example.com"],
+    ["maya.chen@oem-demo.com", "rep7@example.com"],
+    ["jordan.blake@oem-demo.com", "rep8@example.com"]
+  ];
+
+  replacements.forEach(([original, anonymous]) => {
+    const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text.replace(new RegExp(escaped, "gi"), anonymous);
+  });
+
+  return text;
+}
+
 function escapeHtml(v) {
-  return String(v ?? "")
+  return anonymizeIdentityText(v)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -6157,6 +6191,15 @@ function getPreloadedManagerRepAlias(row) {
   return index >= 0 ? `Rep ${index + 1}` : "Unassigned";
 }
 
+function getPreloadedManagerAlias(row) {
+  const names = [...HUB_PRELOADED_ROWS, ...REP_PRELOADED_ROWS]
+    .map(item => String(item?.manager_name || "").trim())
+    .filter((name, index, list) => name && list.indexOf(name) === index);
+  const index = names.indexOf(String(row?.manager_name || "").trim());
+
+  return index >= 0 ? `Manager ${index + 1}` : "Manager";
+}
+
 function getCanonicalPreloadedFacility(row) {
   return row?.site || row?.facility || row?.facility_name || "";
 }
@@ -6204,6 +6247,7 @@ function normalizePreloadedManagerPresentation(
   const facility = useManagerFacilityAlias
     ? getPreloadedManagerFacilityAlias(canonical)
     : getCanonicalPreloadedFacility(canonical);
+  const managerName = getPreloadedManagerAlias(canonical);
   const nameParts = String(repName || "").split(/\s+/).filter(Boolean);
 
   return {
@@ -6225,6 +6269,8 @@ function normalizePreloadedManagerPresentation(
     sales_rep: repName,
     rep_owner: repName,
     rep_name: repName,
+    manager_name: managerName,
+    owner_group_name: managerName,
     sales_rep_first: nameParts[0] || "",
     sales_rep_last: nameParts.slice(1).join(" ")
   };
@@ -6301,7 +6347,7 @@ function syncPreloadedRecordsToRep() {
       release_destination: "rep",
       install_base_released_to: "rep",
       install_base_release_status: "auto_synced"
-      }, false, true)
+      }, true, true)
     );
   });
 
@@ -6313,7 +6359,7 @@ function syncPreloadedRecordsToRep() {
   ).map(rec =>
     defaultKeys.has(getRecordKey(rec))
       ? prepareManagerRecordForRepSync(
-          normalizePreloadedManagerPresentation(rec, false, true)
+          normalizePreloadedManagerPresentation(rec, true, true)
         )
       : rec
   );
