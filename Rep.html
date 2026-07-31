@@ -20772,6 +20772,10 @@ window.addEventListener("storage", event => {
 function upsertEspinActiveProject(project) {
   if (!project || (!project.operation_id && !project.project_id)) return;
 
+  // Resolve the operation type before linking IDs so installation and removal
+  // are always stored as two independent projects for the same record.
+  const incomingType = getActiveProjectOperationType(project);
+
   const selectedRecord =
     state.records.find(record =>
       clean(project.source_record_id || project.axis_record_id) &&
@@ -20789,7 +20793,7 @@ function upsertEspinActiveProject(project) {
 
   if (selectedRecord) {
     if (project.operation_id) {
-      if (/^install$/i.test(clean(project.operation_type))) {
+      if (incomingType === "install") {
         selectedRecord.install_operation_id = project.operation_id;
       } else {
         selectedRecord.deinstall_operation_id = project.operation_id;
@@ -20841,7 +20845,6 @@ function upsertEspinActiveProject(project) {
     };
   }
 
-  const incomingType = getActiveProjectOperationType(project);
   const incomingIdentity = getActiveProjectIdentity(project);
 
   project = {
@@ -20851,6 +20854,46 @@ function upsertEspinActiveProject(project) {
   };
 
   let records = readEspinActiveProjects();
+
+  // Preserve previously synchronized snapshots before merging the latest
+  // ESPIN Connect update. This prevents a new Installation project from
+  // replacing an existing Removal project (and vice versa).
+  const preservedSnapshots = Array.isArray(selectedRecord?.active_project_snapshots)
+    ? selectedRecord.active_project_snapshots
+    : [];
+
+  preservedSnapshots.forEach(snapshot => {
+    if (!snapshot || (!snapshot.operation_id && !snapshot.project_id)) return;
+
+    const snapshotType = getActiveProjectOperationType(snapshot);
+    const snapshotIdentity =
+      clean(snapshot.active_project_id) || getActiveProjectIdentity(snapshot);
+
+    const alreadyPresent = records.some(item => {
+      if (getActiveProjectOperationType(item) !== snapshotType) return false;
+
+      const itemIdentity =
+        clean(item?.active_project_id) || getActiveProjectIdentity(item);
+
+      if (snapshotIdentity && itemIdentity) {
+        return snapshotIdentity === itemIdentity;
+      }
+
+      return Boolean(
+        clean(snapshot.operation_id) &&
+        clean(item?.operation_id) === clean(snapshot.operation_id)
+      );
+    });
+
+    if (!alreadyPresent) {
+      records.push({
+        ...snapshot,
+        operation_type: snapshotType,
+        active_project_id: snapshotIdentity
+      });
+    }
+  });
+
   const index = records.findIndex(item => {
     const existingType = getActiveProjectOperationType(item);
 
