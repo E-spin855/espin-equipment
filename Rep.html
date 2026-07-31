@@ -25259,6 +25259,23 @@ if (showCompletedProjectsBtn) {
 
     fullResetKeys.forEach(key => localStorage.removeItem(key));
 
+    // Synchronize a full reset with ESPIN Connect Project Details.
+    // ProjectDetails.html listens for this timestamp and clears all persisted
+    // installation/removal milestone values for the opened project.
+    const espinConnectResetAt = new Date().toISOString();
+    localStorage.setItem("espin_connect_full_reset_v1", espinConnectResetAt);
+    try {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "espin_connect_full_reset_v1",
+          newValue: espinConnectResetAt,
+          storageArea: localStorage
+        })
+      );
+    } catch (error) {
+      window.dispatchEvent(new Event("espin-connect-full-reset"));
+    }
+
     // Clear expanded/collapsed state for project cards.
     Object.keys(activeProjectOpenState).forEach(projectId => {
       delete activeProjectOpenState[projectId];
