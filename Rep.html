@@ -20486,22 +20486,25 @@ function readEspinActiveProjects() {
 }
 
 function getActiveProjectOperationType(project) {
-  const typeText = clean(
-    project?.operation_type ||
-    project?.project_type ||
-    project?.type ||
-    project?.handoff ||
-    project?.project_name ||
-    ""
-  ).toLowerCase();
+  const typeText = [
+    project?.operation_type,
+    project?.project_type,
+    project?.type,
+    project?.handoff,
+    project?.project_name,
+    project?.service_sync_type
+  ]
+    .map(value => clean(value).toLowerCase())
+    .filter(Boolean)
+    .join(" ");
 
-  return (
-    typeText === "install" ||
-    (
-      /install/.test(typeText) &&
-      !/deinstall|de-install|removal|disposal/.test(typeText)
-    )
-  )
+  // Removal/de-install markers always win. This keeps an existing removal
+  // project red even when a later installation sync adds install metadata.
+  if (/deinstall|de-install|removal|disposal/.test(typeText)) {
+    return "deinstall";
+  }
+
+  return /(^|\s)install(?:ation)?(?:\s|$)|installation_project/.test(typeText)
     ? "install"
     : "deinstall";
 }
@@ -20675,20 +20678,8 @@ function renderActiveProjects() {
       project.project_id;
     const open = activeProjectOpenState[projectCardId] === true;
     const currentStage = project.current_stage || (complete ? "Project Completed" : "Project In Progress");
-    const projectTypeText = String(
-      project.operation_type ||
-      project.project_type ||
-      project.type ||
-      project.handoff ||
-      project.project_name ||
-      ""
-    );
     const isInstallationProject =
-      clean(project.operation_type).toLowerCase() === "install" ||
-      (
-        /install/i.test(projectTypeText) &&
-        !/deinstall|de-install|removal|disposal/i.test(projectTypeText)
-      );
+      getActiveProjectOperationType(project) === "install";
     const projectDisplayName = isInstallationProject
       ? "Installation Project"
       : (project.project_name || project.project_id);
