@@ -20610,22 +20610,76 @@ function activeProjectMatchesSelectedRecord(project, rec) {
   return Boolean(projectSerial && recordSerials.includes(projectSerial));
 }
 
+function getActiveProjectTimestamp(project) {
+  return new Date(
+    project?.updated_at ||
+    project?.status_updated_at ||
+    project?.active_projects_updated_at ||
+    project?.created_at ||
+    0
+  ).getTime() || 0;
+}
+
+function collapseActiveProjectsForRecord(projects, rec) {
+  const grouped = new Map();
+
+  (Array.isArray(projects) ? projects : []).forEach(project => {
+    if (!project || (!project.operation_id && !project.project_id)) return;
+    if (rec && !activeProjectMatchesSelectedRecord(project, rec)) return;
+
+    const type = getActiveProjectOperationType(project);
+    const existing = grouped.get(type);
+
+    if (!existing) {
+      grouped.set(type, {
+        ...project,
+        operation_type: type,
+        milestones: Array.isArray(project.milestones)
+          ? project.milestones.map(milestone => ({ ...milestone }))
+          : []
+      });
+      return;
+    }
+
+    const existingTime = getActiveProjectTimestamp(existing);
+    const incomingTime = getActiveProjectTimestamp(project);
+    const newer = incomingTime >= existingTime ? project : existing;
+    const older = newer === project ? existing : project;
+    const newerMilestones = Array.isArray(newer.milestones) ? newer.milestones : [];
+    const olderMilestones = Array.isArray(older.milestones) ? older.milestones : [];
+    const milestones = newerMilestones.length >= olderMilestones.length
+      ? newerMilestones
+      : olderMilestones;
+
+    const merged = {
+      ...older,
+      ...newer,
+      operation_type: type,
+      milestones: milestones.map(milestone => ({ ...milestone }))
+    };
+
+    merged.active_project_id =
+      getActiveProjectIdentity(merged) ||
+      clean(merged.active_project_id) ||
+      `${type}::${clean(merged.project_group_id || merged.source_record_id || merged.asset_id || merged.serial_number)}`;
+
+    grouped.set(type, merged);
+  });
+
+  return Array.from(grouped.values()).sort((a, b) =>
+    getActiveProjectTimestamp(b) - getActiveProjectTimestamp(a)
+  );
+}
+
 function getActiveProjectSnapshotsForRecord(rec) {
   if (!rec) return [];
 
-  return readEspinActiveProjects()
-    .filter(project => project && (project.operation_id || project.project_id))
-    .filter(project => activeProjectMatchesSelectedRecord(project, rec))
-    .map(project => ({
-      ...project,
-      milestones: Array.isArray(project.milestones)
-        ? project.milestones.map(milestone => ({ ...milestone }))
-        : []
-    }))
-    .sort((a, b) =>
-      new Date(b.updated_at || 0).getTime() -
-      new Date(a.updated_at || 0).getTime()
-    );
+  return collapseActiveProjectsForRecord(
+    readEspinActiveProjects()
+      .filter(project => project && (project.operation_id || project.project_id))
+      .filter(project => activeProjectMatchesSelectedRecord(project, rec)),
+    rec
+  );
 }
 
 function renderActiveProjects() {
@@ -20643,20 +20697,17 @@ function renderActiveProjects() {
     return;
   }
 
-  let projects = readEspinActiveProjects()
-    .filter(project => project && (project.operation_id || project.project_id))
-    .filter(project => activeProjectMatchesSelectedRecord(project, selectedRecord))
-    .filter(project => {
-      if (!state.selectedRep) return true;
-      const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
-      return !rep || rep === clean(state.selectedRep).toLowerCase();
-    })
-    .sort((a,b) =>
-      clean(a.project_group_id || a.operation_id).localeCompare(
-        clean(b.project_group_id || b.operation_id)
-      ) ||
-      new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
-    );
+  let projects = collapseActiveProjectsForRecord(
+    readEspinActiveProjects()
+      .filter(project => project && (project.operation_id || project.project_id))
+      .filter(project => activeProjectMatchesSelectedRecord(project, selectedRecord))
+      .filter(project => {
+        if (!state.selectedRep) return true;
+        const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
+        return !rep || rep === clean(state.selectedRep).toLowerCase();
+      }),
+    selectedRecord
+  );
 
   if (summary) summary.textContent = `${projects.length} synchronized project${projects.length === 1 ? "" : "s"}`;
 
@@ -20923,6 +20974,23 @@ function upsertEspinActiveProject(project) {
     records[index] = { ...records[index], ...project };
   } else {
     records.unshift(project);
+  }
+
+  // Keep only one Installation and one Removal project for the selected
+  // equipment record. Older duplicate snapshots are merged into the newest
+  // project of the same type instead of rendering as separate cards.
+  if (selectedRecord) {
+    const unrelatedRecords = records.filter(item =>
+      !activeProjectMatchesSelectedRecord(item, selectedRecord)
+    );
+    const relatedRecords = records.filter(item =>
+      activeProjectMatchesSelectedRecord(item, selectedRecord)
+    );
+
+    records = [
+      ...collapseActiveProjectsForRecord(relatedRecords, selectedRecord),
+      ...unrelatedRecords
+    ];
   }
 
   const serializedProjects = JSON.stringify(records);
