@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="operation-context.js"></script>
-<meta charset="UTF-8">
+  <meta charset="UTF-8">
 <title>Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -313,6 +312,15 @@ html, body{
 <!-- ONLY SCRIPT SECTION CHANGED -->
 
 <script>
+const ESPIN_OPERATION_FIELDS = [
+  "operation_id","operation_type","project_group_id","facility_id",
+  "facility_name","facility","source_record_id","tradein_record_id",
+  "equipment_source","make","model","equipment_model","equipment",
+  "modality","serial_number","asset_id","dom","status","created_at",
+  "created_by","sales_rep_first","sales_rep_last","sales_rep_company",
+  "sales_rep_phone","sales_rep_email"
+];
+
 let email =
   localStorage.getItem("espinUserEmail") ||
   localStorage.getItem("espinEquipment_userEmail") ||
@@ -560,10 +568,29 @@ async function loadProjects() {
   const list = document.getElementById("projectList");
 
   try {
+    const currentUrl = new URL(window.location.href);
+    const hadProjectHandoff =
+      currentUrl.searchParams.has("operation_id") ||
+      currentUrl.searchParams.has("projectId") ||
+      currentUrl.searchParams.has("id");
+
+    if (
+      hadProjectHandoff &&
+      currentUrl.searchParams.get("source") !== "axis_demo"
+    ) {
+      currentUrl.search = "";
+      history.replaceState(null, "", currentUrl.toString());
+    }
     console.log("Loading projects for:", email);
 
-    const r = await fetch("/api/removal-install/projects", {
-      method: "GET",
+    const projectsApiUrl = new URL(
+        "/api/removal-install/projects",
+        window.location.origin
+      );
+      projectsApiUrl.search = "";
+
+      const r = await fetch(projectsApiUrl.toString(), {
+        method: "GET",
       headers: {
         "x-user-email": email
       },
@@ -719,7 +746,7 @@ if (axisDemoProject) {
         const destination = new URL("management.html", location.href);
         destination.searchParams.set("id", p.id);
         destination.searchParams.set("projectId", p.id);
-        window.EspinOperation.fields.forEach(field => {
+        ESPIN_OPERATION_FIELDS.forEach(field => {
           if (p[field]) destination.searchParams.set(field, p[field]);
         });
         location.href = destination.toString();
