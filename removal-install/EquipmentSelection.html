@@ -151,6 +151,17 @@
     clearEquipmentSelectionCreatedRecords();
     resetEquipmentSelectionFields();
 
+    candidates=[];
+    const candidateList=$("candidateList");
+    if(candidateList){
+      candidateList.innerHTML='<div class="empty">Reloading fresh equipment records…</div>';
+    }
+
+    window.setTimeout(()=>{
+      reloadCandidatesFromFreshStorage();
+      render();
+    },150);
+
     if(resetAt){
       localStorage.setItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY,resetAt);
     }
@@ -200,16 +211,99 @@
     return !facilityId&&!facilityName;
   }
   function identity(r){return lower(r.source_record_id)||lower(r.asset_id)||lower(r.serial_number)}
-  let raw=[];
-  KEYS.forEach(key=>{try{raw.push(...arrayFrom(JSON.parse(localStorage.getItem(key)||"[]")).map(r=>normalize(r,key)))}catch(_){}});
-  const origin=normalize(Object.fromEntries([...params.entries()]),type==="install"?"sales_project":"install_base");
-  if(identity(origin))raw.unshift(origin);
-  const seen=new Set(), candidates=raw.filter(sameFacility).filter(r=>identity(r)&&!seen.has(`${r.equipment_source}|${identity(r)}`)&&seen.add(`${r.equipment_source}|${identity(r)}`));
+  let candidates=[];
+
+  function candidatePriority(record){
+    const source=lower(record?.equipment_source);
+    if(source==="install_base")return 4;
+    if(source==="sales_project")return 3;
+    if(source==="synced")return 2;
+    if(source==="manual")return 1;
+    return 0;
+  }
+
+  function mergeCandidate(existing,incoming){
+    if(!existing)return incoming;
+
+    const preferred=
+      candidatePriority(incoming)>candidatePriority(existing)
+        ? incoming
+        : existing;
+    const secondary=preferred===incoming?existing:incoming;
+
+    return {
+      ...secondary,
+      ...preferred,
+      facility_id:preferred.facility_id||secondary.facility_id,
+      facility_name:preferred.facility_name||secondary.facility_name,
+      asset_id:preferred.asset_id||secondary.asset_id,
+      serial_number:preferred.serial_number||secondary.serial_number,
+      make:preferred.make||secondary.make,
+      model:preferred.model||secondary.model,
+      modality:preferred.modality||secondary.modality,
+      source_record_id:preferred.source_record_id||secondary.source_record_id,
+      status:preferred.status||secondary.status||"Available",
+      current_operation_status:
+        preferred.current_operation_status||
+        secondary.current_operation_status||
+        "None"
+    };
+  }
+
+  function reloadCandidatesFromFreshStorage(){
+    const records=[];
+
+    KEYS.forEach(key=>{
+      try{
+        records.push(
+          ...arrayFrom(JSON.parse(localStorage.getItem(key)||"[]"))
+            .map(record=>normalize(record,key))
+        );
+      }catch(_){}
+    });
+
+    const origin=normalize(
+      Object.fromEntries([...params.entries()]),
+      type==="install"?"sales_project":"install_base"
+    );
+
+    if(identity(origin))records.unshift(origin);
+
+    const byIdentity=new Map();
+
+    records
+      .filter(sameFacility)
+      .filter(record=>identity(record))
+      .forEach(record=>{
+        const key=identity(record);
+        byIdentity.set(key,mergeCandidate(byIdentity.get(key),record));
+      });
+
+    candidates=Array.from(byIdentity.values());
+    selected=null;
+    duplicate=null;
+  }
+
   function esc(v){const d=document.createElement("div");d.textContent=clean(v)||"—";return d.innerHTML}
+
   function render(){
-    if(!candidates.length){$("candidateList").innerHTML='<div class="empty">No synchronized equipment was found. Use <b>Enter manually</b> to continue.</div>';return}
-    $("candidateList").innerHTML=candidates.map((r,i)=>`<div class="equipment" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>${esc(r.equipment_source.replace("_"," "))}</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`).join("");
-    document.querySelectorAll(".equipment").forEach(card=>card.onclick=()=>{document.querySelectorAll(".equipment").forEach(c=>c.classList.remove("selected"));card.classList.add("selected");card.querySelector("input").checked=true;selected=candidates[+card.dataset.i];$("reviewBtn").disabled=false});
+    const candidateList=$("candidateList");
+    if(!candidateList)return;
+
+    if(!candidates.length){
+      candidateList.innerHTML='<div class="empty">No synchronized equipment was found. Use <b>Enter manually</b> to continue.</div>';
+      return;
+    }
+
+    candidateList.innerHTML=candidates.map((r,i)=>`<div class="equipment" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>${esc(r.equipment_source.replace("_"," "))}</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`).join("");
+
+    document.querySelectorAll(".equipment").forEach(card=>card.onclick=()=>{
+      document.querySelectorAll(".equipment").forEach(c=>c.classList.remove("selected"));
+      card.classList.add("selected");
+      card.querySelector("input").checked=true;
+      selected=candidates[+card.dataset.i];
+      $("reviewBtn").disabled=false;
+    });
   }
   function show(id){["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
   function manualRecord(){
@@ -256,6 +350,7 @@
     }catch(error){alert(`Project could not be created: ${error.message}`);$("confirmBtn").disabled=false;$("confirmBtn").textContent="Confirm and create project"}
   }
   $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
+  reloadCandidatesFromFreshStorage();
   render();
   applyEquipmentSelectionFullReset(false);
 })();
