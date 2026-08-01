@@ -1,1038 +1,840 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-<title>Projects | Espin Medical</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="operation-context.js"></script>
+    <meta charset="UTF-8">
+    <title>Project Details | Espin Medical</title>
+   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
+    <script>
+const params = new URLSearchParams(window.location.search);
 
-<style>
-:root { --blue:#0066B2; --gray:#777; --bg:#f6f6f6; --danger:#d93025; }
+const projectId =
+  params.get("projectId") ||
+  params.get("id") ||
+  localStorage.getItem("activeProjectId");
 
-html, body{
-  margin:0;
-  padding:0;
-  height:100%;
-  overflow:hidden;
-  overscroll-behavior:none;
-  font-family:Arial,sans-serif;
-  background:var(--bg);
-  position:fixed;
-  width:100%;
+let userEmail =
+  localStorage.getItem("espinUserEmail") ||
+  localStorage.getItem("espinEquipment_userEmail") ||
+  "info@espinmedical.com";
+
+if (!projectId) {
+  location.replace("Projects.html");
 }
 
-.header{
-  padding:20px;
-  font-size:26px;
-  font-weight:800;
-  color:var(--blue);
+userEmail = String(userEmail).toLowerCase().trim();
+localStorage.setItem("espinAuth", "true");
+localStorage.setItem("espinUserEmail", userEmail);
+
+/* PER-USER KEYS */
+const BADGE_STORAGE_KEY = `badges_${projectId}`;
+const BADGE_KV_KEY = `project:badges_details:${projectId}:${userEmail}`;
+const UNREAD_KEY = `project:unread:${projectId}:${userEmail}`;
+const UNREAD_IMAGES_KEY = `project:unread_images:${projectId}:${userEmail}`;
+
+/* ---------- HELPERS ---------- */
+
+function normalizeKeys(list) {
+  return (list || [])
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
 }
 
-/* Keep the operation identity strip inside the page layout. */
-#espinOperationIdentity{
-  width:auto!important;
-  max-width:none!important;
-  margin:12px 20px 0!important;
-  padding:10px 14px!important;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-/* operation-context.js inserts the strip before the page content. */
-#espinOperationIdentity ~ .header{
-  padding-top:20px;
-}
-
-#espinOperationIdentity ~ .list{
-  top:165px;
-}
-
-@media (max-width:600px){
-  #espinOperationIdentity{
-    margin:10px 14px 0!important;
-    font-size:12px!important;
-  }
-
-  #espinOperationIdentity ~ .list{
-    top:158px;
-  }
-}
-
-.add-project-btn{
-  position:fixed;
-  top:18px;
-  right:18px;
-  padding:14px 20px;
-  background:var(--blue);
-  color:#fff;
-  border:none;
-  border-radius:14px;
-  font-size:14px;
-  font-weight:800;
-  cursor:pointer;
-  z-index:3000;
-  box-shadow:0 4px 12px rgba(0,0,0,.2);
-}
-
-.list{
-  position:absolute;
-  top:90px; /* header + spacing */
-  bottom:80px; /* nav height */
-  left:0;
-  right:0;
-
-  padding:0 20px;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-}
-.card{
-  background:#fff;
-  border-radius:16px;
-  padding:18px;
-  margin-bottom:14px;
-  box-shadow:0 6px 16px rgba(0,0,0,.12);
-  cursor:pointer;
-  position:relative;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.card.archived { opacity:.75; }
-
-.archived-label{
-  background:#eee;
-  color:#444;
-  font-size:12px;
-  font-weight:800;
-  padding:4px 10px;
-  border-radius:999px;
-  border:1px solid #ccc;
-}
-
-.card h3.title-inline{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  margin:0;
-  font-size:20px;
-  color:#333;
-  padding-right:90px;
-  flex-wrap:wrap;
-}
-
-.card p{
-  margin:6px 0 0;
-  color:var(--gray);
-  font-size:14px;
-}
-
-.add-another-project{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  margin-top:16px;
-  padding:10px 14px;
-  border:1px solid #9bbbd2;
-  border-radius:10px;
-  background:#eef6fc;
-  color:var(--blue);
-  font-size:13px;
-  font-weight:800;
-  cursor:pointer;
-}
-
-.add-another-project:hover{
-  background:#e2f1fb;
-}
-
-
-.badge-wrap{ display:flex; gap:12px; align-items:center; margin-top:4px; }
-.badge{
-  color:#fff;
-  font-size:12px;
-  font-weight:800;
-  padding:4px 8px;
-  border-radius:999px;
-  min-width:22px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  background:var(--blue);
-}
-
-.card-actions{
-  position:absolute;
-  top:15px; right:15px;
-  display:flex; gap:10px;
-}
-.icon-btn{
-  background:#f8f9fa;
-  border:1px solid #eee;
-  border-radius:8px;
-  width:38px; height:38px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  font-size:18px;
-}
-
-/* Modals */
-.modal{
-  position:fixed; inset:0;
-  background:rgba(0,0,0,.5);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  z-index:5000;
-}
-.modal-box{
-  background:#fff;
-  width:90%;
-  max-width:420px;
-  border-radius:20px;
-  padding:24px;
-  max-height:90vh;
-  overflow-y:auto;
-}
-
-.modal-box label{
-  display:block;
-  font-size:13px;
-  font-weight:700;
-  margin-top:12px;
-  color:#555;
-}
-.modal-box input,
-.modal-box select{
-  width:100%;
-  padding:12px;
-  margin-top:5px;
-  border-radius:12px;
-  border:1px solid #ccc;
-  box-sizing:border-box;
-}
-
-.small-note{ font-size:11px; color:var(--blue); font-weight:800; margin-top:6px; }
-
-.primary{
-  background:var(--blue);
-  color:#fff;
-  width:100%;
-  padding:14px;
-  border:none;
-  border-radius:14px;
-  font-weight:800;
-  cursor:pointer;
-  margin-top:20px;
-}
-
-.nav{
-  position:fixed;
-  bottom:0;
-  width:100%;
-
-  height:80px;
-  padding-bottom:env(safe-area-inset-bottom);
-
-  background:#fff;
-  display:flex;
-  align-items:center;
-  justify-content:space-around;
-
-  border-top:1px solid #ddd;
-}
-
-.nav a{
-  flex:1;
-  text-align:center;
-  text-decoration:none;
-  color:var(--gray);
-  font-size:12px;
-}
-
-.nav a.active{
-  color:var(--blue);
-  font-weight:800;
-}
-</style>
-</head>
-
-<body>
-
-<div class="header">Projects</div>
-<button class="add-project-btn" id="addBtn" onclick="openProjectModal()">ADD PROJECT</button>
-
-<div class="list" id="projectList"></div>
-
-<!-- PROJECT MODAL -->
-<div class="modal" id="projectModal">
-  <div class="modal-box">
-    <h3 id="modalTitle">Add Project</h3>
-    <input type="hidden" id="editId">
-
-    <label>Project Name</label>
-    <input id="inpName">
-
-    <label>Site Address</label>
-    <input id="inpAddress">
-
-    <label>Zip Code</label>
-    <input id="inpZip">
-
-    <label>Equipment Type</label>
-    <select id="mModality">
-      <option value="">Select Modality</option>
-      <option value="MRI">MRI</option>
-      <option value="CT">CT</option>
-      <option value="XRAY">X-Ray</option>
-      <option value="NM">Nuclear Medicine</option>
-      <option value="OTHER">Other</option>
-    </select>
-
-    <div id="mriBlock" style="display:none;">
-      <div class="small-note">MRI Specific Task</div>
-      <label>Magnet Event Required?</label>
-      <select id="mMagnet">
-        <option value="">None</option>
-        <option value="ramp_down">Magnet Ramp Down</option>
-        <option value="quench">Magnet Quench</option>
-      </select>
-    </div>
-
-    <label>Disposal Service</label>
-    <select id="mDisposal">
-      <option value="false">No Disposal Needed</option>
-      <option value="true">Disposal Required</option>
-    </select>
-
-    <button class="primary" id="saveBtn" onclick="saveProject()">Save Project</button>
-    <button class="primary" style="background:#eee;color:#333;margin-top:10px;" onclick="closeProjectModal()">Cancel</button>
-  </div>
-</div>
-
-<!-- DELETE MODAL -->
-<div class="modal" id="deleteModal">
-  <div class="modal-box">
-    <h3>Delete Project?</h3>
-    <p style="color:#666;font-size:14px;">This action cannot be undone.</p>
-    <button class="primary" id="deleteConfirmBtn" style="background:var(--danger)">Delete</button>
-    <button class="primary" style="background:#eee;color:#333;margin-top:10px;" id="deleteCancelBtn">Cancel</button>
-  </div>
-</div>
-
-<div class="nav">
-  <a href="../Rep.html">🔗<br>Espin Link</a>
-  <a href="Projects.html" class="active">🛠️<br>Projects</a>
-</div>
-
-<!-- ONLY SCRIPT SECTION CHANGED -->
-
-<script>
-const ESPIN_OPERATION_FIELDS = [
-  "operation_id","operation_type","project_group_id","facility_id",
-  "facility_name","facility","source_record_id","tradein_record_id",
-  "equipment_source","make","model","equipment_model","equipment",
-  "modality","serial_number","asset_id","dom","status","created_at",
-  "created_by","sales_rep_first","sales_rep_last","sales_rep_company",
-  "sales_rep_phone","sales_rep_email"
-];
-
-const ESPIN_PENDING_PROJECTS_KEY =
-  "espin_connect_pending_projects_v1";
-
-function readPendingProjects() {
+function readBadges() {
   try {
-    const value = JSON.parse(
-      localStorage.getItem(ESPIN_PENDING_PROJECTS_KEY) || "[]"
-    );
-    return Array.isArray(value) ? value : [];
-  } catch (_) {
+    const raw =
+      sessionStorage.getItem(BADGE_STORAGE_KEY) ||
+      localStorage.getItem(BADGE_STORAGE_KEY);
+
+    return normalizeKeys(JSON.parse(raw || "[]"));
+  } catch {
     return [];
   }
 }
 
-function writePendingProjects(records) {
-  localStorage.setItem(
-    ESPIN_PENDING_PROJECTS_KEY,
-    JSON.stringify(Array.isArray(records) ? records : [])
-  );
+function writeBadges(list) {
+  const json = JSON.stringify(normalizeKeys(list));
+  try { sessionStorage.setItem(BADGE_STORAGE_KEY, json); } catch (e) {}
+  try { localStorage.setItem(BADGE_STORAGE_KEY, json); } catch (e) {}
 }
 
-function projectIdentity(project) {
-  return String(
-    project?.id ||
-    project?.project_id ||
-    project?.projectId ||
-    project?.operation_id ||
-    project?.source_record_id ||
-    ""
-  ).trim();
-}
-
-function mergeProjectRecord(existing, incoming) {
-  if (!existing) return incoming;
-
-  const merged = { ...existing };
-
-  Object.entries(incoming || {}).forEach(([key, value]) => {
-    if (
-      value !== undefined &&
-      value !== null &&
-      String(value).trim() !== ""
-    ) {
-      merged[key] = value;
-    }
-  });
-
-  return merged;
-}
-
-let email =
-  localStorage.getItem("espinUserEmail") ||
-  localStorage.getItem("espinEquipment_userEmail") ||
-  "info@espinmedical.com";
-email = String(email || "").toLowerCase().trim();
-localStorage.setItem("espinAuth", "true");
-localStorage.setItem("espinUserEmail", email);
-
-const ADMIN_EMAIL = "info@espinmedical.com";
-const isAdmin =
-  (email || "").toLowerCase().trim() ===
-  (ADMIN_EMAIL || "").toLowerCase().trim();
-
-/* ===============================
-   MRI BLOCK LOGIC
-=============================== */
-function toggleMriBlock(modality) {
-  const block = document.getElementById("mriBlock");
-  if (!block) return;
-  block.style.display = modality === "MRI" ? "block" : "none";
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("addBtn").style.display =
-    isAdmin ? "block" : "none";
-
-  document.getElementById("mModality").addEventListener("change", (e) => {
-    toggleMriBlock(e.target.value);
-  });
-
-  loadProjectsSafe();
-});
-/* ===============================
-   MODAL
-=============================== */
-function openProjectModal(project = null) {
-  document.getElementById("editId").value = project ? project.id : "";
-  document.getElementById("inpName").value = project ? project.project_name : "";
-  document.getElementById("inpAddress").value = project ? project.site_address : "";
-  document.getElementById("inpZip").value = project ? (project.zip_code || "") : "";
-  document.getElementById("mModality").value = project ? project.modality : "";
-  document.getElementById("mMagnet").value = project ? (project.magnet_event || "") : "";
-  document.getElementById("mDisposal").value = project ? String(project.disposal_required ?? false) : "false";
-
-  toggleMriBlock(document.getElementById("mModality").value);
-
-  document.getElementById("modalTitle").innerText = project ? "Edit Project" : "Add New Project";
-  document.getElementById("projectModal").style.display = "flex";
-}
-
-function closeProjectModal() {
-  document.getElementById("projectModal").style.display = "none";
-}
-
-/* ===============================
-   SAVE
-=============================== */
-async function saveProject() {
-  const saveBtn = document.getElementById("saveBtn");
-  saveBtn.disabled = true;
-  saveBtn.innerText = "Saving...";
-
-  const id = document.getElementById("editId").value;
-  const modality = document.getElementById("mModality").value;
-
- const payload = {
-  id: id || undefined,
-  projectId: id || undefined,
-
-  source: "app",
-
-  project_name: document.getElementById("inpName").value,
-  site_address: document.getElementById("inpAddress").value,
-  zip_code: document.getElementById("inpZip").value,
-  modality: modality,
-  magnet_event: modality === "MRI"
-    ? document.getElementById("mMagnet").value
-    : null,
-  disposal_required:
-    document.getElementById("mDisposal").value === "true"
-};
+async function clearAllProjectBadges() {
   try {
-    const r = await fetch("/api/removal-install/projects", {
-      method: id ? "PUT" : "POST",
+    sessionStorage.removeItem(BADGE_STORAGE_KEY);
+    localStorage.removeItem(BADGE_STORAGE_KEY);
+
+    const headers = {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail   // 🔥 REQUIRED
+    };
+
+    await Promise.all([
+      fetch("/api/removal-install/kv-set", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: BADGE_KV_KEY, value: "[]" })
+      }),
+      fetch("/api/removal-install/kv-set", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: UNREAD_KEY, value: 0 })
+      }),
+      fetch("/api/removal-install/kv-set", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key: UNREAD_IMAGES_KEY, value: 0 })
+      }),
+
+      // 🔥 iOS badge reset
+      fetch("/api/removal-install/kv-set", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          key: `ios:badge:counter:${userEmail}`,
+          value: 0
+        })
+      })
+    ]);
+  } catch (e) {
+    console.warn("Badge clear failed", e);
+  }
+}
+async function readBadgesFromKV() {
+  try {
+    const r = await fetch(
+      `/api/removal-install/kv-get?key=${encodeURIComponent(BADGE_KV_KEY)}`,
+      { headers: { "x-user-email": userEmail } }
+    );
+    const j = await r.json();
+    if (!j || !j.value) return [];
+    const parsed = Array.isArray(j.value) ? j.value : JSON.parse(j.value);
+    return normalizeKeys(parsed);
+  } catch (e) {
+    return [];
+  }
+}
+
+async function writeBadgesToKV(list) {
+  try {
+    await fetch("/api/removal-install/kv-set", {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-email": email
+        "x-user-email": userEmail
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        key: BADGE_KV_KEY,
+        value: JSON.stringify(normalizeKeys(list || []))
+      })
     });
-
-    if (r.ok) {
-      closeProjectModal();
-      setTimeout(loadProjectsSafe, 500);
-    } else {
-      alert("Save failed.");
-    }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.innerText = "Save Project";
-  }
+  } catch (e) {}
 }
 
 /* ===============================
-   DELETE
+   EXIT CLEAR (NEW pill only)
+   ONLY when leaving via back button to Management
 =============================== */
-let pendingDeleteId = null;
+(function installProjectDetailsExitClear() {
+  let cleared = false;
 
-function showDeleteModal(id) {
-  pendingDeleteId = id;
-  document.getElementById("deleteModal").style.display = "flex";
-}
-
-document.getElementById("deleteCancelBtn").onclick = () => {
-  document.getElementById("deleteModal").style.display = "none";
-  pendingDeleteId = null;
-};
-
-document.getElementById("deleteConfirmBtn").onclick = async () => {
-  const button = document.getElementById("deleteConfirmBtn");
-  const projectId = pendingDeleteId;
-
-  if (!projectId || button.disabled) return;
-
-  button.disabled = true;
-  button.innerText = "Deleting…";
-
-  try {
-    const response = await fetch("/api/removal-install/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-email": email },
-      body: JSON.stringify({ action: "delete", id: projectId })
-    });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(result.error || "Project could not be deleted");
-    }
-
-    pendingDeleteId = null;
-    document.getElementById("deleteModal").style.display = "none";
-    await loadProjectsSafe();
-  } catch (error) {
-    console.error("PROJECT DELETE FAILED:", error);
-    alert(error.message || "Project could not be deleted");
-  } finally {
-    button.disabled = false;
-    button.innerText = "Delete";
-  }
-};
-
-/* ===============================
-   LOAD PROJECTS
-=============================== */
-let loadingProjects = false;
-let reloadProjectsPending = false;
-
-async function loadProjectsSafe() {
-  if (loadingProjects) {
-    reloadProjectsPending = true;
-    return;
-  }
-
-  do {
-    reloadProjectsPending = false;
-    loadingProjects = true;
+  function clearOnce() {
+    if (cleared) return;
+    cleared = true;
 
     try {
-      await loadProjects();
-    } finally {
-      loadingProjects = false;
+      sessionStorage.removeItem(BADGE_STORAGE_KEY);
+      localStorage.removeItem(BADGE_STORAGE_KEY);
+
+      fetch("/api/removal-install/kv-set", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
+        body: JSON.stringify({ key: BADGE_KV_KEY, value: "[]" }),
+        keepalive: true
+      });
+    } catch (e) {}
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const backBtn = document.getElementById("backToManagement");
+    if (backBtn) backBtn.addEventListener("click", clearOnce);
+  });
+})();
+</script>
+
+    <style>
+        :root { --blue:#0066B2; --green:#2e7d32; --light:#f8f9fa; }
+        body{
+  margin:0;
+  font-family:-apple-system,sans-serif;
+  background:var(--light);
+  padding-bottom:140px;
+  padding-top:95px;   /* offset for fixed header */
+  -webkit-tap-highlight-color:transparent;
+}
+.topbar h1{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  margin:0;
+  font-size:20px;
+  font-weight:800;
+}
+      .topbar{
+  background:var(--blue);
+  color:#fff;
+
+  padding:calc(18px + env(safe-area-inset-top)) 18px 18px 18px;
+
+  display:flex;
+  gap:14px;
+  align-items:center;
+
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+
+  z-index:1000;
+}
+        .container{
+  max-width:450px;
+  margin:0 auto;
+  padding:36px 18px 18px 18px;
+}
+        .group{background:#fff;border-radius:14px;margin-bottom:22px;border:1px solid #eee;overflow:hidden}
+        .group-title{background:var(--blue);color:#fff;padding:14px 16px;font-weight:800}
+        .field,.toggle{padding:16px;border-bottom:1px solid #f1f1f1;color:#000}
+        .label{font-weight:700;margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap}
+        input,textarea{width:100%;padding:14px;border-radius:10px;border:1px solid #ccc;font-size:16px;box-sizing:border-box;background:#fff;color:#000}
+        .toggle{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+        .toggle input{width:28px;height:28px;accent-color:var(--green);cursor:pointer}
+        .btn-submit{width:100%;padding:20px;background:var(--blue);color:#fff;border:none;border-radius:14px;font-weight:800;font-size:18px;cursor:pointer}
+        .success{background:var(--green)!important}
+        .new-pill { margin-left:8px; padding:2px 8px; font-size:11px; font-weight:800; border-radius:999px; background:var(--blue); color:#fff; display:inline-flex; align-items:center; }
+        .toggle.locked { opacity: 0.45; pointer-events: none; }
+        .toggle.disabled-checked { opacity:0.5; pointer-events:none; filter:grayscale(1); }
+        .field-updated,.toggle.field-updated{ border-left:6px solid var(--blue); background:rgba(0,102,178,.06); }
+        .field-updated .label{color:var(--blue);font-weight:800}
+        .archived-banner{ background:#f1f1f1;color:#555;padding:12px;border-radius:12px; font-weight:800;text-align:center;margin-bottom:16px;display:none }
+    </style>
+<style>
+/* Project identity is shown only on Projects.html. */
+#espinOperationIdentity {
+  display: none !important;
+}
+</style>
+
+</head>
+
+<body>
+    <div class="topbar">
+      <div id="backToManagement" onclick="location.href=window.EspinOperation.url('management.html')" style="cursor:pointer;font-size:30px;font-weight:700;line-height:1">←</div>
+       <h1>Project Update</h1>
+    </div>
+
+    <div class="container">
+        <div id="archiveBanner" class="archived-banner">🔒 Archived · Read-only</div>
+        <div id="form-container">Loading…</div>
+        <button class="btn-submit" id="submitBtn" onclick="saveData()">Save & Submit Update</button>
+    </div>
+
+    <script>
+        var formData = {};
+        var dirtyFields = new Set();
+
+        function showConfirm(message, onOk, onCancel) {
+            const overlay = document.getElementById("confirmOverlay");
+            document.getElementById("confirmText").textContent = message;
+            overlay.style.display = "flex";
+            document.getElementById("confirmOk").onclick = () => { overlay.style.display = "none"; if (onOk) onOk(); };
+            document.getElementById("confirmCancel").onclick = () => { overlay.style.display = "none"; if (onCancel) onCancel(); };
+        }
+
+        function applyChangedHighlightsOnce(fields){
+            var missing = [];
+            fields.forEach(key => {
+                var el = document.querySelector('[data-key="' + key + '"]');
+                if (!el) { missing.push(key); return; }
+                el.classList.add("field-updated");
+                var label = el.querySelector(".label");
+                if (label && !label.querySelector(".new-pill")) {
+                    var p = document.createElement("span");
+                    p.className = "new-pill"; p.textContent = "NEW";
+                    label.appendChild(p);
+                }
+            });
+            return missing;
+        }
+
+        function applyChangedHighlightsWithRetry(fields, attemptsLeft = 12){
+            fields = normalizeKeys(fields);
+            if (!fields.length) return;
+            setTimeout(() => {
+                var missing = applyChangedHighlightsOnce(fields);
+                if (missing.length && attemptsLeft > 0) applyChangedHighlightsWithRetry(missing, attemptsLeft - 1);
+            }, 50);
+        }
+
+        function input(label, key, val, type = "datetime-local") {
+            var d = document.createElement("div");
+            d.className = "field"; d.dataset.key = key;
+            d.innerHTML = '<div class="label">' + label + "</div>";
+            var i = document.createElement("input");
+            i.type = type;
+            if (val) {
+                if (type === "datetime-local") {
+                    var v = String(val).replace(" ", "T").slice(0, 16);
+                    i.value = v; formData[key] = v.replace("T", " ") + ":00";
+                } else {
+                    i.value = val; formData[key] = val;
+                }
+            }
+            i.oninput = function () {
+                formData[key] = (type === "datetime-local") ? i.value.replace("T", " ") + ":00" : i.value;
+                dirtyFields.add(key);
+            };
+            d.appendChild(i);
+            return d;
+        }
+
+        function toggle(label, key, val, customOnChange) {
+            var d = document.createElement("div");
+            d.className = "toggle"; d.dataset.key = key;
+            var l = document.createElement("div");
+            l.className = "label"; l.textContent = label;
+            var c = document.createElement("input");
+            c.type = "checkbox"; c.checked = !!val;
+            if (!!val) { d.classList.add("locked"); c.disabled = true; }
+            d.onclick = function(e) { if (d.classList.contains("locked")) return; if (e.target !== c) c.click(); };
+            c.onchange = function() {
+                if (typeof customOnChange === "function") { customOnChange(c); }
+                else { formData[key] = c.checked; dirtyFields.add(key); if (c.checked) { d.classList.add("locked"); c.disabled = true; } }
+            };
+            d.appendChild(l); d.appendChild(c);
+            return d;
+        }
+
+        function group(title) {
+            var g = document.createElement("div");
+            g.className = "group"; g.innerHTML = '<div class="group-title">' + title + "</div>";
+            return g;
+        }
+    </script>
+<script>
+async function load() {
+    try {
+        var res = await fetch("/api/removal-install/project-details?projectId=" + encodeURIComponent(projectId));
+        var d = await res.json();
+
+        window.__projectCompletedFromServer = !!d.project_completed;
+        formData = Object.assign({}, d || {});
+
+        var fc = document.getElementById("form-container");
+        fc.innerHTML = "";
+
+        /* ───────── PROJECT TIMELINE ───────── */
+        var g1 = group("Project Timeline");
+        g1.appendChild(input("Project Start Date", "project_start", d.project_start));
+        g1.appendChild(input("Pathways Opening Date", "pathways_opening_start", d.pathways_opening_start));
+        g1.appendChild(toggle("Pathways Opened", "pathways_opened", d.pathways_opened));
+        g1.appendChild(input("Inspection Date", "inspection_date", d.inspection_date));
+        g1.appendChild(toggle("Inspection Completed", "inspection_completed", d.inspection_completed));
+        fc.appendChild(g1);
+
+        /* ───────── POWER ───────── */
+        var g2 = group("Power Utility");
+        g2.appendChild(input("Power Shut Down Date", "power_shutdown", d.power_shutdown));
+        g2.appendChild(toggle("Power Completed", "power_shutdown_completed", d.power_shutdown_completed));
+        fc.appendChild(g2);
+
+        /* ───────── MAGNET ───────── */
+        if (d.magnet_event === "ramp_down") {
+            var g3 = group("MRI Magnet (Ramp Down)");
+            g3.appendChild(input("Ramp Down Date", "magnet_ramp_down", d.magnet_ramp_down));
+            g3.appendChild(toggle("Ramp Down Completed", "magnet_ramp_completed", d.magnet_ramp_completed));
+            fc.appendChild(g3);
+        } else if (d.magnet_event === "quench") {
+            var g3 = group("MRI Magnet (Quench)");
+            g3.appendChild(input("Quench Date", "magnet_quench_date", d.magnet_quench_date));
+            g3.appendChild(toggle("Quench Completed", "magnet_quench_completed", d.magnet_quench_completed));
+            fc.appendChild(g3);
+        }
+
+        /* ───────── DEINSTALL / RIGOUT ───────── */
+        var g5 = group("De-Installation & Rig-Out");
+        g5.appendChild(input("De-Install Start Date", "deinstall_start", d.deinstall_start));
+        g5.appendChild(toggle("De-Install Completed", "deinstall_completed", d.deinstall_completed));
+        g5.appendChild(input("Rig-Out Date", "rigout_date", d.rigout_date));
+        g5.appendChild(toggle("Rig-Out Completed", "rigout_completed", d.rigout_completed));
+
+        /* ───────── DISPOSAL (INLINE UNDER RIGOUT) ───────── */
+        const disposalRequired =
+            d.disposal_required === true ||
+            d.disposal_required === "true" ||
+            d.disposal_required === 1 ||
+            d.disposal_required === "1";
+
+        if (disposalRequired) {
+            g5.appendChild(input("Disposal Date", "disposal_date", d.disposal_date));
+            g5.appendChild(toggle("Disposal Completed", "disposal_completed", d.disposal_completed));
+        }
+
+        fc.appendChild(g5);
+
+        /* ───────── PROJECT COMPLETION ───────── */
+        var g6 = group("Project Completion");
+
+var completionDate = input(
+    "Project Completion Date",
+    "project_completion",
+    d.project_completion
+);
+
+var completedBy = input(
+    "Completed By",
+    "project_completed_by",
+    d.project_completed_by || d.projected_completed_by,
+    "text"
+);
+
+var completedByInput = completedBy.querySelector("input");
+var completionInput = completionDate.querySelector("input");
+
+function applyLockStyle(el) {
+    el.readOnly = true;
+    el.style.backgroundColor = "#f2f2f2";
+    el.style.color = "#666";
+    el.style.cursor = "not-allowed";
+}
+
+function lockIfFilled(el) {
+    if (el && el.value && el.value.trim() !== "") applyLockStyle(el);
+}
+
+lockIfFilled(completedByInput);
+
+completedByInput.addEventListener("blur", function () {
+    lockIfFilled(this);
+});
+
+var completedToggle = toggle(
+    "Project Completed",
+    "project_completed",
+    d.project_completed,
+    function (cb) {
+        if (!cb.checked || formData.project_completed) return;
+
+        cb.checked = false;
+
+        showConfirm(
+            "This action will archive the project. Proceed?",
+            () => {
+
+                formData.project_completed = true;
+                dirtyFields.add("project_completed");
+
+                formData.project_completed_by = completedByInput.value || "";
+                formData.project_completion = completionInput.value || "";
+
+                // 🔥 DO NOT await
+                clearAllProjectBadges();
+
+                // 🔥 DO NOT await
+                fetch("/api/removal-install/send-project-complete-email", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-user-email": userEmail
+                    },
+                    body: JSON.stringify({
+                        projectId,
+                        completedBy: formData.project_completed_by,
+                        completionDate: formData.project_completion
+                    })
+                });
+
+                applyLockStyle(completedByInput);
+
+                cb.checked = true;
+                cb.disabled = true;
+                cb.parentElement.classList.add("locked");
+
+                window.__completionTriggered = true;
+
+                setTimeout(() => {
+                    document.getElementById("submitBtn").click();
+                }, 100);
+            },
+            () => {
+                cb.checked = false;
+            }
+        );
     }
-  } while (reloadProjectsPending);
+);
+
+function reevaluateGate() {
+    var tgl = completedToggle.querySelector("input");
+
+    if (formData.project_completed || d.project_completed) {
+        tgl.checked = true;
+        tgl.disabled = true;
+        completedToggle.classList.add("locked");
+        return;
+    }
+
+    var isReady = completedByInput.value.trim();
+
+    completedToggle.classList.toggle("disabled-checked", !isReady);
+    tgl.disabled = !isReady;
 }
 
-async function kvGet(key) {
-  try {
-    const r = await fetch(`/api/removal-install/kv-get?key=${encodeURIComponent(key)}`, {
-      headers: { "x-user-email": email }
-    });
-    if (!r.ok) return 0;
-    const j = await r.json();
-    return Number(j?.value) || 0;
-  } catch {
-    return 0;
-  }
-}
-function senderName(p) {
-  return `${p.sales_rep_first || ""} ${p.sales_rep_last || ""}`.trim();
-}
+completedByInput.addEventListener("input", reevaluateGate);
+completedByInput.addEventListener("blur", reevaluateGate);
 
-function shouldShowFromBlock(p) {
-  const source = String(p.source || "").toLowerCase().trim();
+reevaluateGate();
 
-  const hasSenderInfo =
-    senderName(p) ||
-    p.sales_rep_company ||
-    p.sales_rep_phone ||
-    p.sales_rep_email;
+g6.appendChild(completionDate);
+g6.appendChild(completedBy);
+g6.appendChild(completedToggle);
 
-  return ["lifecycle", "axis_demo", "equipment_review"].includes(source) && !!hasSenderInfo;
-}
-function getConfirmedProjectFromUrl() {
-  const params = new URLSearchParams(window.location.search);
+fc.appendChild(g6);
+        /* ───────── NOTES ───────── */
+        var gn = group("Notes");
+        var nf = document.createElement("div");
+        nf.className = "field";
+        nf.dataset.key = "notes";
+        nf.innerHTML = '<div class="label">Notes</div>';
 
-  const operationId = params.get("operation_id") || "";
-  const projectId =
-    params.get("projectId") ||
-    params.get("id") ||
-    params.get("project_id") ||
-    "";
+        var tx = document.createElement("textarea");
+        tx.style.height = "100px";
+        tx.value = d.notes || "";
+        tx.oninput = function () {
+            formData.notes = tx.value;
+            dirtyFields.add("notes");
+        };
 
-  const hasConfirmedProject =
-    Boolean(operationId || projectId) &&
-    Boolean(
-      params.get("equipment_model") ||
-      params.get("model") ||
-      params.get("equipment") ||
-      params.get("serial_number") ||
-      params.get("asset_id")
-    );
+        nf.appendChild(tx);
+        gn.appendChild(nf);
+        fc.appendChild(gn);
 
-  if (!hasConfirmedProject) return null;
+        /* ───────── BADGES ───────── */
+        var badges = readBadges();
+        if (!badges.length) {
+            badges = await readBadgesFromKV();
+            if (badges.length) writeBadges(badges);
+        }
 
-  const id =
-    projectId ||
-    operationId ||
-    `LOCAL-${Date.now()}`;
+        applyChangedHighlightsWithRetry(badges);
 
-  const model =
-    params.get("equipment_model") ||
-    params.get("model") ||
-    params.get("equipment") ||
-    "Equipment";
+        /* ───────── ARCHIVE LOCK ───────── */
+        if (d.project_completed) {
+            document.getElementById("archiveBanner").style.display = "block";
+            document.getElementById("submitBtn").style.display = "none";
 
-  const operationType =
-    params.get("operation_type") ||
-    "deinstall";
+            document.querySelectorAll("input, textarea").forEach(el => {
+                el.disabled = true;
+                el.style.backgroundColor = "#f2f2f2";
+            });
 
-  return {
-    id,
-    project_id: projectId || "",
-    projectId: projectId || "",
-    operation_id: operationId,
-    operation_type: operationType,
-    project_group_id: params.get("project_group_id") || "",
-    parent_project_id: params.get("parent_project_id") || "",
-    facility_id: params.get("facility_id") || "",
-    facility_name:
-      params.get("facility_name") ||
-      params.get("facility") ||
-      "",
-    facility:
-      params.get("facility_name") ||
-      params.get("facility") ||
-      "",
-    source_record_id:
-      params.get("source_record_id") ||
-      params.get("axis_record_id") ||
-      "",
-    tradein_record_id:
-      params.get("tradein_record_id") ||
-      "",
-    equipment_source:
-      params.get("equipment_source") ||
-      "rep",
-    make: params.get("make") || "",
-    model,
-    equipment_model: model,
-    equipment:
-      params.get("equipment") ||
-      [params.get("make"), model].filter(Boolean).join(" "),
-    modality: params.get("modality") || "OTHER",
-    serial_number: params.get("serial_number") || "",
-    asset_id: params.get("asset_id") || "",
-    dom: params.get("dom") || "",
-    status: params.get("status") || "active",
-    created_at:
-      params.get("created_at") ||
-      new Date().toISOString(),
-    created_by: params.get("created_by") || "",
-    sales_rep_first: params.get("sales_rep_first") || "",
-    sales_rep_last: params.get("sales_rep_last") || "",
-    sales_rep_company: params.get("sales_rep_company") || "",
-    sales_rep_phone: params.get("sales_rep_phone") || "",
-    sales_rep_email: params.get("sales_rep_email") || email,
-    project_name:
-      params.get("project_name") ||
-      `${model} · ${
-        operationType === "install"
-          ? "Installation"
-          : "Removal"
-      }`,
-    site_address: params.get("site_address") || "",
-    zip_code: params.get("zip_code") || "",
-    disposal_required:
-      params.get("disposal_required") === "true",
-    magnet_event: params.get("magnet_event") || "",
-    source:
-      params.get("source") ||
-      "espin_link_equipment_intake",
-    pending_api_sync: true
-  };
+            document.querySelectorAll(".toggle").forEach(t => t.classList.add("locked"));
+        }
+
+    } catch (e) {
+        document.getElementById("form-container").innerHTML = "Error loading project details.";
+    }
 }
 
-function storeConfirmedProjectFromUrl() {
-  const project = getConfirmedProjectFromUrl();
-  if (!project) return null;
+load();
+</script>
+    <script>
 
-  const identity = projectIdentity(project);
-  const records = readPendingProjects();
-  const index = records.findIndex(
-    record => projectIdentity(record) === identity
-  );
+const ESPIN_ACTIVE_PROJECTS_KEY = "espin_active_project_progress_v1";
 
-  if (index >= 0) {
-    records[index] = mergeProjectRecord(
-      records[index],
-      project
-    );
-  } else {
-    records.unshift(project);
-  }
+function buildRemovalExecutiveMilestones(data) {
+  const hasValue = value =>
+    value !== undefined &&
+    value !== null &&
+    String(value).trim() !== "";
 
-  writePendingProjects(records);
-  return project;
-}
+  const isChecked = value =>
+    value === true ||
+    value === "true" ||
+    value === 1 ||
+    value === "1";
 
-function reconcilePendingProjects(apiProjects) {
-  const apiIdentities = new Set(
-    apiProjects.map(projectIdentity).filter(Boolean)
-  );
-
-  const pending = readPendingProjects().filter(project => {
-    const identity = projectIdentity(project);
-    return identity && !apiIdentities.has(identity);
+  const milestone = (name, completed) => ({
+    name,
+    completed: Boolean(completed),
+    completed_at: completed ? new Date().toISOString() : ""
   });
 
-  writePendingProjects(pending);
-  return pending;
+  // Every visible Project Details field contributes one equal progress step.
+  // 18 saved steps means approximately 5.56% per completed field.
+  return [
+    milestone("Project Start Date Entered", hasValue(data?.project_start)),
+    milestone("Pathways Opening Date Entered", hasValue(data?.pathways_opening_start)),
+    milestone("Pathways Opened", isChecked(data?.pathways_opened)),
+    milestone("Inspection Date Entered", hasValue(data?.inspection_date)),
+    milestone("Inspection Completed", isChecked(data?.inspection_completed)),
+
+    milestone("Power Shut Down Date Entered", hasValue(data?.power_shutdown)),
+    milestone("Power Completed", isChecked(data?.power_shutdown_completed)),
+
+    milestone(
+      data?.magnet_event === "quench"
+        ? "Quench Date Entered"
+        : "Ramp Down Date Entered",
+      data?.magnet_event === "quench"
+        ? hasValue(data?.magnet_quench_date)
+        : hasValue(data?.magnet_ramp_down)
+    ),
+    milestone(
+      data?.magnet_event === "quench"
+        ? "Quench Completed"
+        : "Ramp Down Completed",
+      data?.magnet_event === "quench"
+        ? isChecked(data?.magnet_quench_completed)
+        : isChecked(data?.magnet_ramp_completed)
+    ),
+
+    milestone("De-Install Start Date Entered", hasValue(data?.deinstall_start)),
+    milestone("De-Install Completed", isChecked(data?.deinstall_completed)),
+    milestone("Rig-Out Date Entered", hasValue(data?.rigout_date)),
+    milestone("Rig-Out Completed", isChecked(data?.rigout_completed)),
+
+    milestone(
+      "Disposal Date Entered",
+      data?.disposal_required
+        ? hasValue(data?.disposal_date)
+        : true
+    ),
+    milestone(
+      "Disposal Completed",
+      data?.disposal_required
+        ? isChecked(data?.disposal_completed)
+        : true
+    ),
+
+    milestone("Project Completion Date Entered", hasValue(data?.project_completion)),
+    milestone("Completed By Entered", hasValue(data?.project_completed_by || data?.projected_completed_by)),
+    milestone("Project Completed", isChecked(data?.project_completed))
+  ];
 }
 
-async function loadProjects() {
-  const list = document.getElementById("projectList");
+function syncRemovalProjectToRep(data) {
+  const projectCompleted =
+    data?.project_completed === true ||
+    data?.project_completed === "true" ||
+    data?.project_completed === 1 ||
+    data?.project_completed === "1";
+
+  let milestones = buildRemovalExecutiveMilestones(data || {});
+
+  // Project Completed is the final authoritative milestone. Once checked,
+  // every executive milestone is treated as completed and progress becomes 100%.
+  if (projectCompleted) {
+    const completedAt = new Date().toISOString();
+    milestones = milestones.map(milestone => ({
+      ...milestone,
+      completed: true,
+      completed_at: milestone.completed_at || completedAt
+    }));
+  }
+
+  const completed = milestones.filter(m => m.completed).length;
+  const progress = projectCompleted
+    ? 100
+    : Math.round(completed / milestones.length * 100);
+  const next = milestones.find(m => !m.completed);
+  const latestCompleted = [...milestones].reverse().find(m => m.completed);
+  const project = {
+    project_id:String(projectId || data?.project_id || "REMOVAL-PROJECT"),
+    operation_id:window.EspinOperation.context.operation_id,
+    operation_type:"deinstall",
+    project_group_id:window.EspinOperation.context.project_group_id,
+    source_record_id:window.EspinOperation.context.source_record_id,
+    facility_id:window.EspinOperation.context.facility_id,
+    asset_id:window.EspinOperation.context.asset_id,
+    serial_number:window.EspinOperation.context.serial_number,
+    project_name:data?.project_name || data?.name || data?.equipment || "Removal Project",
+    project_type:"removal",
+    facility:window.EspinOperation.context.facility || data?.facility || data?.site_name || data?.hospital || "ESPIN Connect",
+    equipment_model:window.EspinOperation.context.equipment_model || data?.equipment_model || data?.model || "",
+    current_stage:progress >= 100
+      ? "Project Completed"
+      : (latestCompleted?.name || next?.name || "Project Started"),
+    progress,
+    milestones,
+    updated_at:new Date().toISOString(),
+    project_url:location.href
+  };
+
+  const savedProject = window.EspinOperation.upsertActiveProject(project);
+
+  // Send the updated progress directly to the Rep page even when ESPIN
+  // Connect and ESPIN LINK are hosted on different domains.
+  try {
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        {
+          type: "ESPIN_ACTIVE_PROJECT_UPDATED",
+          project: savedProject
+        },
+        "*"
+      );
+    }
+  } catch (error) {
+    console.warn("Rep progress message could not be delivered.", error);
+  }
+
+  return savedProject;
+}
+
+async function saveData() {
+  console.log("🔥 SAVE CLICKED");
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.innerText = "Saving...";
+
+  let isArchivingNow = false;
+
+  const payload = {};
+  dirtyFields.forEach(k => (payload[k] = formData[k]));
+
+  if (formData.project_completed_by) {
+    payload.project_completed_by = formData.project_completed_by;
+  }
+
+  if (!Object.keys(payload).length) {
+    payload.notes = formData.notes || "No changes";
+  }
+
+  const isCompletionFlow = window.__completionTriggered === true;
+
+  dirtyFields.clear();
 
   try {
-    const confirmedProject =
-      storeConfirmedProjectFromUrl();
-
-    const currentUrl = new URL(window.location.href);
-    const hadProjectHandoff =
-      currentUrl.searchParams.has("operation_id") ||
-      currentUrl.searchParams.has("projectId") ||
-      currentUrl.searchParams.has("id");
-
-    if (
-      hadProjectHandoff &&
-      currentUrl.searchParams.get("source") !== "axis_demo"
-    ) {
-      currentUrl.search = "";
-      history.replaceState(null, "", currentUrl.toString());
-    }
-    console.log("Loading projects for:", email);
-
-    const projectsApiUrl = new URL(
-        "/api/removal-install/projects",
-        window.location.origin
-      );
-      projectsApiUrl.search = "";
-
-      const r = await fetch(projectsApiUrl.toString(), {
-        method: "GET",
+    const res = await fetch("/api/removal-install/project-details", {
+      method: "POST",
       headers: {
-        "x-user-email": email
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
       },
-      cache: "no-store"
+      body: JSON.stringify({ projectId, data: payload })
     });
 
-    const raw = await r.text();
+    const result = await res.json();
 
-    console.log("PROJECTS STATUS:", r.status);
-    console.log("PROJECTS RESPONSE:", raw);
+    const savedProjectSnapshot = syncRemovalProjectToRep({
+      ...formData,
+      ...payload
+    });
 
-    if (!r.ok) {
-      list.innerHTML = `
-        <p style="text-align:center;color:red;">
-          Failed to load projects.<br>
-          Status: ${r.status}
-        </p>
-      `;
-      return;
-    }
-
-    let projects = [];
-
+    // Re-send after the successful API response so Rep reflects the exact
+    // Save & Submit action rather than an unsaved checkbox click.
     try {
-      const parsed = raw ? JSON.parse(raw) : [];
-
-      if (Array.isArray(parsed)) {
-        projects = parsed;
-      } else if (parsed && Array.isArray(parsed.projects)) {
-        projects = parsed.projects;
-      } else if (parsed && Array.isArray(parsed.data)) {
-        projects = parsed.data;
-      } else if (parsed && Array.isArray(parsed.records)) {
-        projects = parsed.records;
-      } else if (parsed && typeof parsed === "object") {
-        projects = Object.values(parsed).flatMap(value =>
-          Array.isArray(value)
-            ? value
-            : (
-                value &&
-                typeof value === "object" &&
-                (
-                  value.id ||
-                  value.project_id ||
-                  value.projectId ||
-                  value.project_name
-                )
-              )
-              ? [value]
-              : []
+      if (window.opener && !window.opener.closed && savedProjectSnapshot) {
+        window.opener.postMessage(
+          {
+            type: "ESPIN_ACTIVE_PROJECT_UPDATED",
+            project: savedProjectSnapshot
+          },
+          "*"
         );
-      } else {
-        projects = [];
       }
-    } catch (e) {
-      console.error("Invalid JSON from /api/removal-install/projects:", raw, e);
-      list.innerHTML = `<p style="text-align:center;color:red;">Invalid project response.</p>`;
-      return;
+    } catch (error) {
+      console.warn("Saved removal progress was not delivered to Rep.", error);
     }
 
-    projects = projects.filter(project =>
-      project && typeof project === "object"
-    );
-
-    list.innerHTML = "";
-
-    const seen = new Set();
-    projects = projects.filter(project => {
-      const projectId = String(
-        project.id ||
-        project.project_id ||
-        project.projectId ||
-        project.operation_id ||
-        ""
-      ).trim();
-
-      if (!projectId) return true;
-      if (seen.has(projectId)) return false;
-
-      seen.add(projectId);
-      return true;
-    });
-    projects.sort((a,b) =>
-      String(a.project_group_id || a.id).localeCompare(String(b.project_group_id || b.id)) ||
-      new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    );
-    const pendingProjects =
-      reconcilePendingProjects(projects);
-
-    const mergedProjects = new Map();
-
-    [...pendingProjects, ...projects].forEach(project => {
-      const identity = projectIdentity(project);
-      if (!identity) return;
-
-      mergedProjects.set(
-        identity,
-        mergeProjectRecord(
-          mergedProjects.get(identity),
-          project
-        )
-      );
-    });
-
-    projects = Array.from(mergedProjects.values());
-
-    for (const p of projects) {
-      if (p.hidden) continue;
-
-      const projectId = String(
-        p.id ||
-        p.project_id ||
-        p.projectId ||
-        p.operation_id ||
-        ""
-      ).trim();
-
-      if (!projectId) continue;
-
-      p.id = projectId;
-
-      const [unreadData, unreadImages] = await Promise.all([
-        kvGet(`project:unread:${projectId}:${email}`),
-        kvGet(`project:unread_images:${projectId}:${email}`)
-      ]);
-
-      const card = document.createElement("div");
-      card.className =
-        "card" +
-        (p.project_completed ? " archived" : "");
-
-      if (p.pending_api_sync) {
-        card.dataset.pendingSync = "true";
-      }
-
-      card.innerHTML = `
-        ${isAdmin ? `
-          <div class="card-actions">
-            <div class="icon-btn" data-edit="${p.id}">✏️</div>
-            <div class="icon-btn" data-delete="${p.id}" style="color:var(--danger)">🗑</div>
-          </div>
-        ` : ``}
-
-        <h3 class="title-inline">
-          ${p.project_name || "Unnamed Project"}
-          ${p.project_completed ? `<span class="archived-label">🔒 Archived</span>` : ""}
-        </h3>
-
-        <div class="badge-wrap">
-          ${!p.project_completed && unreadData > 0 ? `<span class="badge">⚡ NEW</span>` : ""}
-          ${!p.project_completed && unreadImages > 0 ? `<span class="badge">🖼 NEW</span>` : ""}
-          ${p.pending_api_sync ? `<span class="badge">SYNCING</span>` : ""}
-        </div>
-
-        <p>${p.site_address || ""} ${p.zip_code || ""}</p>
-        <p><strong>Operation:</strong> ${p.operation_type === "install" ? "Install" : "De-install"}</p>
-        ${p.project_group_id ? `<p><strong>Related group:</strong> ${p.project_group_id}</p>` : ""}
-        <p><strong>Equipment:</strong> ${p.equipment_model || p.model || p.equipment || "N/A"}</p>
-        <p><strong>Identifier:</strong> ${p.serial_number ? `S/N ${p.serial_number}` : p.asset_id || "N/A"}</p>
-        <p><strong>Facility:</strong> ${p.facility_name || p.facility || "N/A"}</p>
-        <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
-
-        ${!p.project_completed ? `
-          <button
-            type="button"
-            class="add-another-project"
-            data-add-another="${p.id}"
-          >
-            Add another project
-          </button>
-        ` : ""}
-
-     ${shouldShowFromBlock(p) ? `
-  <p style="margin-top:6px;font-size:13px;color:#666;">
-    <strong>From:</strong> ${senderName(p)}<br>
-    ${p.sales_rep_company ? `${p.sales_rep_company}<br>` : ""}
-    ${p.sales_rep_phone ? `📞 ${p.sales_rep_phone}<br>` : ""}
-    ${p.sales_rep_email ? `✉️ ${p.sales_rep_email}` : ""}
-  </p>
-` : ""}
-      `;
-
-      card.onclick = () => {
-        const destination = new URL("management.html", location.href);
-        destination.searchParams.set("id", p.id);
-        destination.searchParams.set("projectId", p.id);
-        ESPIN_OPERATION_FIELDS.forEach(field => {
-          if (p[field]) destination.searchParams.set(field, p[field]);
-        });
-        location.href = destination.toString();
-      };
-
-      const addAnotherProjectButton =
-        card.querySelector("[data-add-another]");
-
-      if (addAnotherProjectButton) {
-        addAnotherProjectButton.onclick = event => {
-          event.stopPropagation();
-
-          const selection = new URL(
-            "EquipmentSelection.html",
-            location.href
-          );
-
-          selection.searchParams.set(
-            "handoff",
-            "additional_equipment"
-          );
-          selection.searchParams.set(
-            "operation_type",
-            p.operation_type || "deinstall"
-          );
-          selection.searchParams.set(
-            "parent_project_id",
-            p.parent_project_id ||
-            p.project_id ||
-            p.projectId ||
-            p.id ||
-            ""
-          );
-          selection.searchParams.set(
-            "project_group_id",
-            p.project_group_id || ""
-          );
-          selection.searchParams.set(
-            "facility_id",
-            p.facility_id || ""
-          );
-          selection.searchParams.set(
-            "facility_name",
-            p.facility_name ||
-            p.facility ||
-            ""
-          );
-          selection.searchParams.set(
-            "sales_rep_email",
-            p.sales_rep_email || email
-          );
-
-          location.href = selection.toString();
-        };
-      }
-
-      if (isAdmin) {
-        card.querySelector('[data-edit]').onclick = (e) => {
-          e.stopPropagation();
-          openProjectModal(p);
-        };
-
-        card.querySelector('[data-delete]').onclick = (e) => {
-          e.stopPropagation();
-          showDeleteModal(p.id);
-        };
-      }
-
-      list.appendChild(card);
+    if (payload.project_completed === true && window.__projectCompletedFromServer === false) {
+      isArchivingNow = true;
+      await clearAllProjectBadges();
+      window.__projectCompletedFromServer = true;
     }
 
-  } catch (err) {
-    console.error("PROJECTS FETCH FAILED:", err);
-    list.innerHTML = `
-      <p style="text-align:center;color:red;">
-        Connection error loading projects.
-      </p>
-    `;
+    if (!isArchivingNow && !isCompletionFlow) {
+      const existing = readBadges();
+      const serverChanged = normalizeKeys((result && result.changedFields) || []);
+
+      const fieldsToNotify = serverChanged.length ? serverChanged : Object.keys(payload);
+
+      serverChanged.forEach(k => {
+        if (!existing.includes(k)) existing.push(k);
+      });
+
+      writeBadges(existing);
+      await writeBadgesToKV(existing);
+      applyChangedHighlightsWithRetry(existing);
+
+      await fetch("/api/removal-install/send-project-emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail
+        },
+        body: JSON.stringify({ projectId, changedFields: fieldsToNotify })
+      });
+    }
+
+    btn.innerText = isArchivingNow ? "✓ Archived" : "✓ Success";
+    btn.classList.add("success");
+
+    if (isArchivingNow) {
+      setTimeout(() => location.reload(), 800);
+    } else {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.classList.remove("success");
+        btn.innerText = "Save & Submit Update";
+      }, 2000);
+    }
+
+  } catch (e) {
+    console.error("❌ SAVE ERROR:", e);
+    btn.disabled = false;
+    btn.innerText = "Error. Try again.";
   }
 }
-window.addEventListener("focus", loadProjectsSafe);
+</script>
+
+    <div id="confirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;padding:20px;border-radius:14px;max-width:320px;width:90%;font-family:-apple-system,sans-serif;">
+    <div id="confirmText" style="font-weight:800;margin-bottom:16px;color:#000">Proceed?</div>
+    <div style="display:flex;gap:12px">
+      <button id="confirmCancel" style="flex:1;padding:12px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer">Cancel</button>
+      <button id="confirmOk" style="flex:1;padding:12px;font-weight:800;background:#0066B2;color:#fff;border:none;border-radius:8px;cursor:pointer">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================
+   AUTO REFRESH WHEN APP RETURNS FROM PUSH
+========================================= */
+
+let espinLastRefresh = Date.now();
+
+function espinAutoRefresh() {
+  const now = Date.now();
+  if (now - espinLastRefresh < 2000) return;
+  espinLastRefresh = now;
+
+  location.reload();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    espinAutoRefresh();
+  }
+});
+
+window.addEventListener("focus", espinAutoRefresh);
+window.addEventListener("pageshow", espinAutoRefresh);
 </script>
 
 </body>
