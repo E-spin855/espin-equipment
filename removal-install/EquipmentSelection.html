@@ -151,6 +151,31 @@
     clearEquipmentSelectionCreatedRecords();
     resetEquipmentSelectionFields();
 
+    const cleanUrl=new URL(location.href);
+    [
+      "source_record_id",
+      "axis_record_id",
+      "record_id",
+      "asset_id",
+      "equipment_id",
+      "asset_tag",
+      "serial_number",
+      "serial",
+      "system_serial",
+      "make",
+      "manufacturer",
+      "oem",
+      "model",
+      "equipment_model",
+      "equipment",
+      "modality",
+      "equipment_type"
+    ].forEach(key=>cleanUrl.searchParams.delete(key));
+
+    if(cleanUrl.toString()!==location.href){
+      history.replaceState(null,"",cleanUrl.toString());
+    }
+
     candidates=[];
     const candidateList=$("candidateList");
     if(candidateList){
@@ -210,7 +235,29 @@
     if(facilityName&&r.facility_name)return lower(r.facility_name)===lower(facilityName);
     return !facilityId&&!facilityName;
   }
-  function identity(r){return lower(r.source_record_id)||lower(r.asset_id)||lower(r.serial_number)}
+  function equipmentIdentity(r){
+    const assetId=lower(r?.asset_id);
+    const serialNumber=lower(r?.serial_number);
+
+    if(assetId)return `asset:${assetId}`;
+    if(serialNumber)return `serial:${serialNumber}`;
+
+    return "";
+  }
+
+  function isRealEquipmentCandidate(record){
+    if(!record)return false;
+
+    const make=lower(record.make);
+    const model=lower(record.model);
+    const hasIdentifier=Boolean(equipmentIdentity(record));
+    const hasActualEquipmentName=Boolean(
+      (make&&make!=="not entered")||
+      (model&&model!=="not entered"&&model!=="equipment")
+    );
+
+    return hasIdentifier||hasActualEquipmentName;
+  }
   let candidates=[];
 
   function candidatePriority(record){
@@ -267,15 +314,32 @@
       type==="install"?"sales_project":"install_base"
     );
 
-    if(identity(origin))records.unshift(origin);
+    // URL parameters may contain only a project/source record ID.
+    // That is not sufficient to create an equipment card because it causes
+    // a blank synthetic record to return after every reset.
+    if(isRealEquipmentCandidate(origin)){
+      records.unshift(origin);
+    }
 
     const byIdentity=new Map();
 
     records
       .filter(sameFacility)
-      .filter(record=>identity(record))
+      .filter(isRealEquipmentCandidate)
       .forEach(record=>{
-        const key=identity(record);
+        const equipmentKey=equipmentIdentity(record);
+
+        // Records without Asset ID or Serial are allowed only when they have
+        // a real equipment name. Give those records a stable content identity
+        // instead of using a project/source ID.
+        const key=equipmentKey||[
+          "named",
+          lower(record.make),
+          lower(record.model),
+          lower(record.modality),
+          lower(record.facility_id||record.facility_name)
+        ].join(":");
+
         byIdentity.set(key,mergeCandidate(byIdentity.get(key),record));
       });
 
