@@ -71,6 +71,98 @@
   const KEYS=["espin_lifecycle_demo_records_v1","espin_rep_workspace_records_v1","espin_rep_queue","axis_install_base_records_v1","espin_synced_equipment_v1","espin_sales_projects_v1"];
   let selected=null, duplicate=null;
   const $=id=>document.getElementById(id);
+
+  const ESPIN_CONNECT_FULL_RESET_KEY="espin_connect_full_reset_v1";
+  const EQUIPMENT_SELECTION_RESET_APPLIED_KEY=
+    `espin_equipment_selection_reset_applied:${type}:${facilityId||facilityName||"all"}`;
+
+  function clearEquipmentSelectionPageState(){
+    selected=null;
+    duplicate=null;
+
+    ["manualMake","manualModel","manualModality","manualSerial","manualAsset"].forEach(id=>{
+      const field=$(id);
+      if(field)field.value="";
+    });
+
+    if($("manualStatus"))$("manualStatus").value="Pending";
+    if($("reviewFacts"))$("reviewFacts").innerHTML="";
+    if($("verificationNotice")){
+      $("verificationNotice").textContent="";
+      $("verificationNotice").classList.add("hidden");
+    }
+    if($("duplicateNotice")){
+      $("duplicateNotice").textContent="";
+      $("duplicateNotice").classList.add("hidden");
+    }
+    if($("openExisting")){
+      $("openExisting").removeAttribute("href");
+      $("openExisting").classList.add("hidden");
+    }
+    if($("confirmBtn")){
+      $("confirmBtn").disabled=false;
+      $("confirmBtn").textContent="Confirm and create project";
+    }
+    if($("reviewBtn"))$("reviewBtn").disabled=true;
+    if($("createdSummary"))$("createdSummary").textContent="";
+    if($("openManagement"))$("openManagement").removeAttribute("href");
+    if($("addAnother"))$("addAnother").removeAttribute("href");
+
+    document.querySelectorAll(".equipment").forEach(card=>{
+      card.classList.remove("selected");
+      const radio=card.querySelector('input[type="radio"]');
+      if(radio)radio.checked=false;
+    });
+
+    document.querySelectorAll(".step").forEach((step,index)=>{
+      step.classList.toggle("active",index===1);
+    });
+
+    ["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(id=>{
+      const panel=$(id);
+      if(panel)panel.classList.toggle("hidden",id!=="selectionPanel");
+    });
+  }
+
+  function clearEquipmentSelectionStorage(){
+    localStorage.removeItem("espin_equipment_operations_v1");
+    localStorage.removeItem("activeProjectId");
+
+    Object.keys(localStorage).forEach(key=>{
+      if(
+        key.startsWith("espin_operation_context:")||
+        key.startsWith("espin_project_operation_context:")
+      ){
+        localStorage.removeItem(key);
+      }
+    });
+  }
+
+  function applyEquipmentSelectionReset(force=false){
+    const resetAt=localStorage.getItem(ESPIN_CONNECT_FULL_RESET_KEY)||"";
+    const appliedAt=localStorage.getItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY)||"";
+
+    if(!force&&(!resetAt||resetAt===appliedAt))return false;
+
+    clearEquipmentSelectionStorage();
+    clearEquipmentSelectionPageState();
+
+    if(resetAt){
+      localStorage.setItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY,resetAt);
+    }
+    return true;
+  }
+
+  window.addEventListener("storage",event=>{
+    if(event.key===ESPIN_CONNECT_FULL_RESET_KEY){
+      applyEquipmentSelectionReset(true);
+    }
+  });
+
+  window.addEventListener("espin-connect-full-reset",()=>{
+    applyEquipmentSelectionReset(true);
+  });
+
   $("title").textContent=`Select equipment for ${type==="install"?"Installation":"Removal"}`;
   $("subtitle").textContent=facilityName?`Facility: ${facilityName}`:"Choose the particular equipment before creating this project.";
   $("typeBadge").textContent=type==="install"?"Installation":"Removal";
@@ -161,6 +253,7 @@
   }
   $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
   render();
+  applyEquipmentSelectionReset(false);
 })();
 </script>
 </body>
