@@ -25493,6 +25493,26 @@ window.addEventListener("load", () => {
     const identity=trade.tradein_record_id || trade.id || trade.axis_record_id || trade.serial_number || trade.asset_id;
     const existing=activeRemoval(identity);
     if(existing){ window.open(existing.project_url || management(existing),"_blank"); return; }
+    // The evaluated record remains visible and reviewable in Equipment
+    // Selection. It is sent as one explicit Rep handoff; it is not copied
+    // into a removal project at this point.
+    const selection=new URL("/removal-install/EquipmentSelection.html",location.origin);
+    selection.searchParams.set("operation_type","deinstall");
+    selection.searchParams.set("handoff","removal_project");
+    selection.searchParams.set("removal_equipment_source","tradein");
+    selection.searchParams.set("equipment_source","tradein");
+    selection.searchParams.set("parent_project_id",rec.oem_project_id || rec.project_id || rec.id || "");
+    selection.searchParams.set("project_group_id",rec.project_group_id || "");
+    selection.searchParams.set("source_record_id",identity || "");
+    selection.searchParams.set("tradein_record_id",identity || "");
+    ["facility_id","facility_name","make","model","modality","serial_number","asset_id","dom"].forEach(key=>{
+      const value=trade[key] || trade[`tradein_equipment_${key}`] || rec[key] || "";
+      if(value) selection.searchParams.set(key,value);
+    });
+    selection.searchParams.set("facility_name",trade.facility || trade.site || trade.facility_name || rec.facility || rec.site || "");
+    selection.searchParams.set("sales_rep_email",rec.sales_rep_email || "");
+    window.open(selection.toString(),"_blank");
+    return;
     button.disabled=true; button.textContent="Creating removal project…";
     const now=new Date().toISOString();
     const operation={
@@ -25526,10 +25546,10 @@ window.addEventListener("load", () => {
     const trade=evaluatedTradeIn(rec), existing=activeRemoval(trade?.tradein_record_id || trade?.id || trade?.axis_record_id || "");
     if(rec.removal_project_id || existing) return window.open((existing && (existing.project_url || management(existing))) || `/removal-install/management.html?projectId=${encodeURIComponent(rec.removal_project_id)}`,"_blank");
     const modal=document.createElement("div"); modal.style.cssText="position:fixed;inset:0;z-index:99999;background:#06101ee6;display:grid;place-items:center;padding:20px";
-    modal.innerHTML=`<div style="max-width:560px;width:100%;background:#0d2037;border:1px solid #27506c;border-radius:18px;padding:26px;color:#edf7ff;font:16px system-ui"><h2 style="margin-top:0">What equipment is being removed?</h2><p style="color:#9db4c7">Choose the evaluated trade-in already linked to this won project, or select different equipment.</p><div style="display:grid;gap:12px"><button id="useTrade" ${trade?"":"disabled"} style="padding:14px;border-radius:10px;border:0;background:#25d9bb;color:#05201d;font-weight:800">${trade?"Use evaluated Trade-In equipment":"Evaluated Trade-In equipment — waiting for Trade Desk evaluation"}</button><button id="different" style="padding:14px;border-radius:10px;border:1px solid #27506c;background:#18334c;color:#edf7ff;font-weight:800">Different equipment</button><button id="cancelChoice" style="padding:10px;border:0;background:transparent;color:#9db4c7">Cancel</button></div></div>`;
+    modal.innerHTML=`<div style="max-width:560px;width:100%;background:#0d2037;border:1px solid #27506c;border-radius:18px;padding:26px;color:#edf7ff;font:16px system-ui"><h2 style="margin-top:0">What equipment is being removed?</h2><p style="color:#9db4c7">Choose the evaluated trade-in already linked to this won project, or select equipment from this facility’s Install Base.</p><div style="display:grid;gap:12px"><button id="useTrade" ${trade?"":"disabled"} style="padding:14px;border-radius:10px;border:0;background:#25d9bb;color:#05201d;font-weight:800">${trade?"Use evaluated Trade-In equipment":"Evaluated Trade-In equipment — waiting for Trade Desk evaluation"}</button><button id="different" style="padding:14px;border-radius:10px;border:1px solid #27506c;background:#18334c;color:#edf7ff;font-weight:800">Select from Install Base</button><button id="cancelChoice" style="padding:10px;border:0;background:transparent;color:#9db4c7">Cancel</button></div></div>`;
     document.body.append(modal); modal.querySelector("#cancelChoice").onclick=()=>modal.remove();
     modal.querySelector("#useTrade").onclick=e=>{ modal.remove(); launchEvaluated(rec,trade,e.currentTarget); };
-    modal.querySelector("#different").onclick=()=>{ const u=new URL("/removal-install/EquipmentSelection.html",location.origin); u.searchParams.set("operation_type","deinstall"); u.searchParams.set("handoff","removal_project"); u.searchParams.set("parent_project_id",rec.oem_project_id || rec.project_id || rec.id || ""); u.searchParams.set("project_group_id",rec.project_group_id || ""); u.searchParams.set("facility_id",rec.facility_id || ""); u.searchParams.set("facility_name",rec.facility || rec.site || rec.hospital || ""); u.searchParams.set("sales_rep_email",rec.sales_rep_email || ""); window.open(u.toString(),"_blank"); modal.remove(); };
+    modal.querySelector("#different").onclick=()=>{ const u=new URL("/removal-install/EquipmentSelection.html",location.origin); u.searchParams.set("operation_type","deinstall"); u.searchParams.set("handoff","removal_project"); u.searchParams.set("open_install_base","1"); u.searchParams.set("parent_project_id",rec.oem_project_id || rec.project_id || rec.id || ""); u.searchParams.set("project_group_id",rec.project_group_id || ""); u.searchParams.set("facility_id",rec.facility_id || ""); u.searchParams.set("facility_name",rec.facility || rec.site || rec.hospital || ""); u.searchParams.set("sales_rep_email",rec.sales_rep_email || ""); window.open(u.toString(),"_blank"); modal.remove(); };
   };
 })();
 </script>
