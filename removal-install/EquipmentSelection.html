@@ -34,6 +34,14 @@
   <div class="sub" id="subtitle"></div>
   <div class="steps"><div class="step">1 · Workflow</div><div class="step active">2 · Equipment</div><div class="step">3 · Confirm</div><div class="step">4 · Manage</div></div>
 
+  <section class="panel hidden" id="waitingForRepPanel">
+    <h2>Waiting for Rep project</h2>
+    <p class="sub">
+      No removal or installation project has been sent from Rep.html.
+      Equipment selection will appear only after the Rep starts the project.
+    </p>
+  </section>
+
   <section class="panel" id="selectionPanel">
     <div class="toolbar"><div><h2>Equipment at this facility</h2><span class="badge" id="typeBadge"></span></div><button class="secondary" id="manualBtn">Enter manually</button></div>
     <div id="candidateList" class="cards"></div>
@@ -130,7 +138,7 @@
       if(el)el.removeAttribute("href");
     });
 
-    ["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(id=>{
+    ["waitingForRepPanel","selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(id=>{
       const panel=$(id);
       if(panel)panel.classList.toggle("hidden",id!=="selectionPanel");
     });
@@ -379,7 +387,7 @@
       $("reviewBtn").disabled=false;
     });
   }
-  function show(id){["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+  function show(id){["waitingForRepPanel","selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
   function manualRecord(){
     let asset=clean($("manualAsset").value),serial=clean($("manualSerial").value),verified=Boolean(asset||serial);
     if(!verified)asset=`TEMP-EQ-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
@@ -434,9 +442,24 @@
     escapeHtml: esc
   };
 
-  reloadCandidatesFromFreshStorage();
-  render();
-  applyEquipmentSelectionFullReset(false);
+  const hasRepProjectHandoff = isExplicitRepHandoff;
+
+  if (!hasRepProjectHandoff) {
+    candidates = [];
+    $("selectionPanel").classList.add("hidden");
+    $("manualPanel").classList.add("hidden");
+    $("reviewPanel").classList.add("hidden");
+    $("createdPanel").classList.add("hidden");
+    $("waitingForRepPanel").classList.remove("hidden");
+    $("title").textContent = "Equipment selection";
+    $("subtitle").textContent =
+      "This page opens only after a project is sent from Rep.html.";
+  } else {
+    $("waitingForRepPanel").classList.add("hidden");
+    reloadCandidatesFromFreshStorage();
+    render();
+    applyEquipmentSelectionFullReset(false);
+  }
 })();
 </script>
 <script>
@@ -458,6 +481,19 @@
 
   const isRemoval = !/^install$/i.test(operationValue);
   if (!isRemoval) return;
+
+  const handoffType = String(query.get("handoff") || "")
+    .trim()
+    .toLowerCase();
+
+  const hasRepProjectHandoff = [
+    "installation_project",
+    "disposal_review",
+    "removal_project",
+    "install_project"
+  ].includes(handoffType);
+
+  if (!hasRepProjectHandoff) return;
 
   const page = window.EspinEquipmentSelectionPage;
   if (!page) {
