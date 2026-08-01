@@ -321,6 +321,56 @@ const ESPIN_OPERATION_FIELDS = [
   "sales_rep_phone","sales_rep_email"
 ];
 
+const ESPIN_PENDING_PROJECTS_KEY =
+  "espin_connect_pending_projects_v1";
+
+function readPendingProjects() {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(ESPIN_PENDING_PROJECTS_KEY) || "[]"
+    );
+    return Array.isArray(value) ? value : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function writePendingProjects(records) {
+  localStorage.setItem(
+    ESPIN_PENDING_PROJECTS_KEY,
+    JSON.stringify(Array.isArray(records) ? records : [])
+  );
+}
+
+function projectIdentity(project) {
+  return String(
+    project?.id ||
+    project?.project_id ||
+    project?.projectId ||
+    project?.operation_id ||
+    project?.source_record_id ||
+    ""
+  ).trim();
+}
+
+function mergeProjectRecord(existing, incoming) {
+  if (!existing) return incoming;
+
+  const merged = { ...existing };
+
+  Object.entries(incoming || {}).forEach(([key, value]) => {
+    if (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim() !== ""
+    ) {
+      merged[key] = value;
+    }
+  });
+
+  return merged;
+}
+
 let email =
   localStorage.getItem("espinUserEmail") ||
   localStorage.getItem("espinEquipment_userEmail") ||
@@ -525,49 +575,153 @@ function shouldShowFromBlock(p) {
 
   return ["lifecycle", "axis_demo", "equipment_review"].includes(source) && !!hasSenderInfo;
 }
-function getAxisDemoProjectFromUrl() {
+function getConfirmedProjectFromUrl() {
   const params = new URLSearchParams(window.location.search);
 
-  if (params.get("source") !== "axis_demo") return null;
+  const operationId = params.get("operation_id") || "";
+  const projectId =
+    params.get("projectId") ||
+    params.get("id") ||
+    params.get("project_id") ||
+    "";
 
-  const projectName =
-    params.get("project_name") ||
-    params.get("facility") ||
-    "AXIS Demo Project";
+  const hasConfirmedProject =
+    Boolean(operationId || projectId) &&
+    Boolean(
+      params.get("equipment_model") ||
+      params.get("model") ||
+      params.get("equipment") ||
+      params.get("serial_number") ||
+      params.get("asset_id")
+    );
+
+  if (!hasConfirmedProject) return null;
+
+  const id =
+    projectId ||
+    operationId ||
+    `LOCAL-${Date.now()}`;
+
+  const model =
+    params.get("equipment_model") ||
+    params.get("model") ||
+    params.get("equipment") ||
+    "Equipment";
+
+  const operationType =
+    params.get("operation_type") ||
+    "deinstall";
 
   return {
-    id: "AXIS-DEMO-" + Date.now(),
-    source: "axis_demo",
-    project_name: projectName,
-    site_address: params.get("site_address") || "",
-    zip_code: params.get("zip_code") || "",
-    modality: params.get("modality") || "OTHER",
-    make: params.get("make") || "",
-    model: params.get("model") || "",
-    serial_number: params.get("serial_number") || "",
-    operation_id: params.get("operation_id") || "",
-    operation_type: params.get("operation_type") || "deinstall",
+    id,
+    project_id: projectId || "",
+    projectId: projectId || "",
+    operation_id: operationId,
+    operation_type: operationType,
     project_group_id: params.get("project_group_id") || "",
+    parent_project_id: params.get("parent_project_id") || "",
     facility_id: params.get("facility_id") || "",
+    facility_name:
+      params.get("facility_name") ||
+      params.get("facility") ||
+      "",
+    facility:
+      params.get("facility_name") ||
+      params.get("facility") ||
+      "",
+    source_record_id:
+      params.get("source_record_id") ||
+      params.get("axis_record_id") ||
+      "",
+    tradein_record_id:
+      params.get("tradein_record_id") ||
+      "",
+    equipment_source:
+      params.get("equipment_source") ||
+      "rep",
+    make: params.get("make") || "",
+    model,
+    equipment_model: model,
+    equipment:
+      params.get("equipment") ||
+      [params.get("make"), model].filter(Boolean).join(" "),
+    modality: params.get("modality") || "OTHER",
+    serial_number: params.get("serial_number") || "",
     asset_id: params.get("asset_id") || "",
-    source_record_id: params.get("source_record_id") || params.get("axis_record_id") || "",
-    equipment_model: params.get("equipment_model") || params.get("model") || "",
-    facility: params.get("facility") || "",
     dom: params.get("dom") || "",
-    disposal_required: params.get("disposal_required") === "true",
-    magnet_event: params.get("magnet_event") || "",
+    status: params.get("status") || "active",
+    created_at:
+      params.get("created_at") ||
+      new Date().toISOString(),
+    created_by: params.get("created_by") || "",
     sales_rep_first: params.get("sales_rep_first") || "",
     sales_rep_last: params.get("sales_rep_last") || "",
     sales_rep_company: params.get("sales_rep_company") || "",
     sales_rep_phone: params.get("sales_rep_phone") || "",
-    sales_rep_email: params.get("sales_rep_email") || "",
-    axis_demo: true
+    sales_rep_email: params.get("sales_rep_email") || email,
+    project_name:
+      params.get("project_name") ||
+      `${model} · ${
+        operationType === "install"
+          ? "Installation"
+          : "Removal"
+      }`,
+    site_address: params.get("site_address") || "",
+    zip_code: params.get("zip_code") || "",
+    disposal_required:
+      params.get("disposal_required") === "true",
+    magnet_event: params.get("magnet_event") || "",
+    source:
+      params.get("source") ||
+      "espin_link_equipment_intake",
+    pending_api_sync: true
   };
 }
+
+function storeConfirmedProjectFromUrl() {
+  const project = getConfirmedProjectFromUrl();
+  if (!project) return null;
+
+  const identity = projectIdentity(project);
+  const records = readPendingProjects();
+  const index = records.findIndex(
+    record => projectIdentity(record) === identity
+  );
+
+  if (index >= 0) {
+    records[index] = mergeProjectRecord(
+      records[index],
+      project
+    );
+  } else {
+    records.unshift(project);
+  }
+
+  writePendingProjects(records);
+  return project;
+}
+
+function reconcilePendingProjects(apiProjects) {
+  const apiIdentities = new Set(
+    apiProjects.map(projectIdentity).filter(Boolean)
+  );
+
+  const pending = readPendingProjects().filter(project => {
+    const identity = projectIdentity(project);
+    return identity && !apiIdentities.has(identity);
+  });
+
+  writePendingProjects(pending);
+  return pending;
+}
+
 async function loadProjects() {
   const list = document.getElementById("projectList");
 
   try {
+    const confirmedProject =
+      storeConfirmedProjectFromUrl();
+
     const currentUrl = new URL(window.location.href);
     const hadProjectHandoff =
       currentUrl.searchParams.has("operation_id") ||
@@ -677,11 +831,25 @@ async function loadProjects() {
       String(a.project_group_id || a.id).localeCompare(String(b.project_group_id || b.id)) ||
       new Date(b.created_at || 0) - new Date(a.created_at || 0)
     );
-const axisDemoProject = getAxisDemoProjectFromUrl();
+    const pendingProjects =
+      reconcilePendingProjects(projects);
 
-if (axisDemoProject) {
-  projects.unshift(axisDemoProject);
-}
+    const mergedProjects = new Map();
+
+    [...pendingProjects, ...projects].forEach(project => {
+      const identity = projectIdentity(project);
+      if (!identity) return;
+
+      mergedProjects.set(
+        identity,
+        mergeProjectRecord(
+          mergedProjects.get(identity),
+          project
+        )
+      );
+    });
+
+    projects = Array.from(mergedProjects.values());
 
     for (const p of projects) {
       if (p.hidden) continue;
@@ -704,7 +872,13 @@ if (axisDemoProject) {
       ]);
 
       const card = document.createElement("div");
-      card.className = "card" + (p.project_completed ? " archived" : "");
+      card.className =
+        "card" +
+        (p.project_completed ? " archived" : "");
+
+      if (p.pending_api_sync) {
+        card.dataset.pendingSync = "true";
+      }
 
       card.innerHTML = `
         ${isAdmin ? `
@@ -722,6 +896,7 @@ if (axisDemoProject) {
         <div class="badge-wrap">
           ${!p.project_completed && unreadData > 0 ? `<span class="badge">⚡ NEW</span>` : ""}
           ${!p.project_completed && unreadImages > 0 ? `<span class="badge">🖼 NEW</span>` : ""}
+          ${p.pending_api_sync ? `<span class="badge">SYNCING</span>` : ""}
         </div>
 
         <p>${p.site_address || ""} ${p.zip_code || ""}</p>
