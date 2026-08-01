@@ -16,34 +16,8 @@
     .badge{display:inline-flex;padding:6px 10px;border-radius:99px;background:#123a52;color:#aef5e9;font-weight:900;text-transform:uppercase;font-size:12px}
     .cards{display:grid;gap:14px;margin-top:16px;min-width:0;width:100%}.equipment{display:grid;grid-template-columns:36px minmax(0,1.55fr) minmax(0,.72fr) minmax(0,.78fr) minmax(0,1fr) minmax(0,1.08fr);gap:20px;align-items:center;width:100%;max-width:100%;min-width:0;padding:20px 22px;border:1px solid var(--line);border-radius:14px;cursor:pointer;background:#091a2e}
     .equipment>div{min-width:0;display:grid;gap:5px;align-content:center}.equipment:hover,.equipment.selected{border-color:var(--cyan);box-shadow:0 0 0 2px #25d9bb33}.equipment strong{display:block;font-size:18px;line-height:1.2;overflow-wrap:anywhere}.equipment small{display:block;color:#c8d7e4;font-size:13px}.label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.11em;line-height:1.2}.equipment>div:not(:nth-child(2)){font-size:16px;line-height:1.35;overflow-wrap:anywhere}
-    .equipment.rep-sync-flash{
-      position:relative;
-      border:2px solid rgba(65,255,156,.98);
-      box-shadow:
-        inset 5px 0 0 rgba(65,255,156,.95),
-        inset -2px 0 0 rgba(65,255,156,.65),
-        0 0 0 1px rgba(65,255,156,.45),
-        0 0 24px rgba(65,255,156,.52);
-      animation:equipmentRepSyncPulse 1.05s ease-in-out infinite;
-    }
-    @keyframes equipmentRepSyncPulse{
-      0%,100%{
-        border-color:rgba(65,255,156,.72);
-        box-shadow:
-          inset 5px 0 0 rgba(65,255,156,.82),
-          inset -2px 0 0 rgba(65,255,156,.52),
-          0 0 0 1px rgba(65,255,156,.30),
-          0 0 15px rgba(65,255,156,.28);
-      }
-      50%{
-        border-color:rgba(142,255,195,1);
-        box-shadow:
-          inset 5px 0 0 rgba(142,255,195,1),
-          inset -2px 0 0 rgba(142,255,195,.88),
-          0 0 0 2px rgba(142,255,195,.55),
-          0 0 34px rgba(65,255,156,.82);
-      }
-    }
+    .equipment.rep-sync-flash{position:relative;border:2px solid rgba(65,255,156,.98);box-shadow:inset 5px 0 0 rgba(65,255,156,.95),inset -2px 0 0 rgba(65,255,156,.65),0 0 0 1px rgba(65,255,156,.45),0 0 24px rgba(65,255,156,.52);animation:equipmentRepSyncPulse 1.05s ease-in-out infinite}
+    @keyframes equipmentRepSyncPulse{0%,100%{border-color:rgba(65,255,156,.72);box-shadow:inset 5px 0 0 rgba(65,255,156,.82),inset -2px 0 0 rgba(65,255,156,.52),0 0 0 1px rgba(65,255,156,.30),0 0 15px rgba(65,255,156,.28)}50%{border-color:rgba(142,255,195,1);box-shadow:inset 5px 0 0 rgba(142,255,195,1),inset -2px 0 0 rgba(142,255,195,.88),0 0 0 2px rgba(142,255,195,.55),0 0 34px rgba(65,255,156,.82)}}
     button,.button{border:0;border-radius:11px;padding:12px 17px;background:var(--blue);color:white;font-weight:850;cursor:pointer;text-decoration:none;display:inline-block}
     button.secondary{background:#18334c;border:1px solid var(--line)}button.confirm{background:var(--cyan);color:#05201d}button:disabled{opacity:.45;cursor:not-allowed}
     .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}label{display:grid;gap:6px;color:var(--muted);font-weight:700}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);background:#071426;color:var(--text);font:inherit}
@@ -96,7 +70,10 @@
   const facilityId=clean(params.get("facility_id")||base.facility_id);
   const facilityName=clean(params.get("facility_name")||params.get("facility")||base.facility_name||base.facility);
   const groupId=clean(params.get("project_group_id")||base.project_group_id);
-  const KEYS=["espin_lifecycle_demo_records_v1","espin_rep_workspace_records_v1","espin_rep_queue","axis_install_base_records_v1","espin_synced_equipment_v1","espin_sales_projects_v1"];
+  const handoffType=lower(params.get("handoff"));
+  const isExplicitRepHandoff=["installation_project","disposal_review","removal_project","install_project"].includes(handoffType);
+  // Only the project explicitly sent from Rep may appear here.
+  const KEYS=[];
   let selected=null, duplicate=null;
   const $=id=>document.getElementById(id);
 
@@ -105,64 +82,11 @@
     `espin_equipment_selection_reset_applied:${type}:${facilityId||facilityName||"all"}`;
 
   const REP_SYNC_ACK_KEY="espin_equipment_selection_rep_sync_ack_v1";
+  function readRepSyncAcknowledgments(){try{const value=JSON.parse(localStorage.getItem(REP_SYNC_ACK_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}catch(_){return{}}}
+  function repSyncRecordSignature(record){return [equipmentIdentity(record),lower(record?.source_record_id),clean(record?.created_at||params.get("created_at")||"initial")].join("::")}
+  function shouldFlashRepSyncRecord(record){if(record?.synced_from_rep!==true)return false;const signature=repSyncRecordSignature(record);return readRepSyncAcknowledgments()[signature]!==true}
+  function acknowledgeRepSyncRecord(record){if(!record||record.synced_from_rep!==true)return;const signature=repSyncRecordSignature(record);const a=readRepSyncAcknowledgments();a[signature]=true;localStorage.setItem(REP_SYNC_ACK_KEY,JSON.stringify(a))}
 
-  function readRepSyncAcknowledgments(){
-    try{
-      const value=JSON.parse(localStorage.getItem(REP_SYNC_ACK_KEY)||"{}");
-      return value&&typeof value==="object"&&!Array.isArray(value)?value:{};
-    }catch(_){
-      return {};
-    }
-  }
-
-  function writeRepSyncAcknowledgments(value){
-    localStorage.setItem(REP_SYNC_ACK_KEY,JSON.stringify(value||{}));
-  }
-
-  function repSyncRecordSignature(record){
-    const identityValue=
-      equipmentIdentity(record)||
-      [
-        lower(record?.source_record_id),
-        lower(record?.make),
-        lower(record?.model),
-        lower(record?.modality),
-        lower(record?.facility_id||record?.facility_name)
-      ].join("|");
-
-    const updateValue=clean(
-      record?.rep_sync_updated_at||
-      record?.rep_last_action_at||
-      record?.new_project_created_at||
-      record?.created_at||
-      record?.updated_at||
-      record?.manager_flash_at||
-      ""
-    );
-
-    return `${identityValue}::${updateValue||"initial"}`;
-  }
-
-  function shouldFlashRepSyncRecord(record){
-    if(record?.synced_from_rep!==true)return false;
-
-    const signature=repSyncRecordSignature(record);
-    if(!signature)return false;
-
-    const acknowledgments=readRepSyncAcknowledgments();
-    return acknowledgments[signature]!==true;
-  }
-
-  function acknowledgeRepSyncRecord(record){
-    if(!record||record.synced_from_rep!==true)return;
-
-    const signature=repSyncRecordSignature(record);
-    if(!signature)return;
-
-    const acknowledgments=readRepSyncAcknowledgments();
-    acknowledgments[signature]=true;
-    writeRepSyncAcknowledgments(acknowledgments);
-  }
 
   function resetEquipmentSelectionFields(){
     selected=null;
@@ -301,7 +225,7 @@
     return Object.values(value).flatMap(item=>Array.isArray(item)?item:(item&&typeof item==="object"?[item]:[]));
   }
   function get(r,...names){for(const n of names){if(clean(r?.[n]))return clean(r[n]);}return""}
-  function normalize(r,source){
+  function normalize(r,source,forceRepSync=false){
     const recordType=lower(get(r,"equipment_source","source","project_type"));
     return {
       facility_id:get(r,"facility_id","site_id","account_id")||facilityId,
@@ -313,22 +237,8 @@
       modality:get(r,"modality","equipment_type"),
       source_record_id:get(r,"source_record_id","axis_record_id","record_id","id","project_id"),
       equipment_source:recordType.includes("sale")||source.includes("sales")?"sales_project":recordType.includes("install_base")||source.includes("install_base")?"install_base":"synced",
-      synced_from_rep:Boolean(
-        source.includes("espin_rep_workspace_records_v1")||
-        source.includes("espin_rep_queue")||
-        lower(get(r,"source","hub_source","record_origin")).includes("rep")||
-        r.rep_created_new_project===true||
-        r.rep_loaded_from_upload===true||
-        r.rep_added_install_base===true
-      ),
-      rep_sync_updated_at:get(
-        r,
-        "rep_last_action_at",
-        "new_project_created_at",
-        "created_at",
-        "updated_at",
-        "manager_flash_at"
-      ),
+      synced_from_rep:forceRepSync===true,
+      created_at:get(r,"created_at","rep_last_action_at","new_project_created_at"),
       equipment_verified:true,
       status:get(r,"status","equipment_status","project_status")||"Available",
       current_operation_status:get(r,"current_operation_status","operation_status","progress_status")||"None"
@@ -393,13 +303,6 @@
       model:preferred.model||secondary.model,
       modality:preferred.modality||secondary.modality,
       source_record_id:preferred.source_record_id||secondary.source_record_id,
-      synced_from_rep:
-        preferred.synced_from_rep===true||
-        secondary.synced_from_rep===true,
-      rep_sync_updated_at:
-        preferred.rep_sync_updated_at||
-        secondary.rep_sync_updated_at||
-        "",
       status:preferred.status||secondary.status||"Available",
       current_operation_status:
         preferred.current_operation_status||
@@ -411,25 +314,15 @@
   function reloadCandidatesFromFreshStorage(){
     const records=[];
 
-    KEYS.forEach(key=>{
-      try{
-        records.push(
-          ...arrayFrom(JSON.parse(localStorage.getItem(key)||"[]"))
-            .map(record=>normalize(record,key))
-        );
-      }catch(_){}
-    });
-
-    const origin=normalize(
-      Object.fromEntries([...params.entries()]),
-      type==="install"?"sales_project":"install_base"
-    );
-
-    // URL parameters may contain only a project/source record ID.
-    // That is not sufficient to create an equipment card because it causes
-    // a blank synthetic record to return after every reset.
-    if(isRealEquipmentCandidate(origin)){
-      records.unshift(origin);
+    // Do not scan Rep workspace, Rep queue, Install Base, or synced equipment.
+    // This page receives only the project explicitly handed off by Rep.
+    if(isExplicitRepHandoff){
+      const origin=normalize(
+        Object.fromEntries([...params.entries()]),
+        type==="install"?"sales_project":"install_base",
+        true
+      );
+      if(isRealEquipmentCandidate(origin))records.push(origin);
     }
 
     const byIdentity=new Map();
@@ -466,22 +359,20 @@
     if(!candidateList)return;
 
     if(!candidates.length){
-      candidateList.innerHTML='<div class="empty">No synchronized equipment was found. Use <b>Enter manually</b> to continue.</div>';
+      candidateList.innerHTML='<div class="empty">No project has been sent from the Rep page. Return to Rep and open an Installation or Removal/Disposal project.</div>';
       return;
     }
 
     candidateList.innerHTML=candidates.map((r,i)=>{
       const flashClass=shouldFlashRepSyncRecord(r)?" rep-sync-flash":"";
-      return `<div class="equipment${flashClass}" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>${esc(r.equipment_source.replace("_"," "))}</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`;
+      return `<div class="equipment${flashClass}" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>rep project</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`;
     }).join("");
 
     document.querySelectorAll(".equipment").forEach(card=>card.onclick=()=>{
       document.querySelectorAll(".equipment").forEach(c=>c.classList.remove("selected"));
-
       const record=candidates[+card.dataset.i];
       acknowledgeRepSyncRecord(record);
       card.classList.remove("rep-sync-flash");
-
       card.classList.add("selected");
       card.querySelector("input").checked=true;
       selected=record;
