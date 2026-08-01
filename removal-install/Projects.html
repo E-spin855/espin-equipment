@@ -129,6 +129,26 @@ html, body{
   font-size:14px;
 }
 
+.add-another-project{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:16px;
+  padding:10px 14px;
+  border:1px solid #9bbbd2;
+  border-radius:10px;
+  background:#eef6fc;
+  color:var(--blue);
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.add-another-project:hover{
+  background:#e2f1fb;
+}
+
+
 .badge-wrap{ display:flex; gap:12px; align-items:center; margin-top:4px; }
 .badge{
   color:#fff;
@@ -907,6 +927,16 @@ async function loadProjects() {
         <p><strong>Facility:</strong> ${p.facility_name || p.facility || "N/A"}</p>
         <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
 
+        ${!p.project_completed ? `
+          <button
+            type="button"
+            class="add-another-project"
+            data-add-another="${p.id}"
+          >
+            Add another project
+          </button>
+        ` : ""}
+
      ${shouldShowFromBlock(p) ? `
   <p style="margin-top:6px;font-size:13px;color:#666;">
     <strong>From:</strong> ${senderName(p)}<br>
@@ -926,6 +956,57 @@ async function loadProjects() {
         });
         location.href = destination.toString();
       };
+
+      const addAnotherProjectButton =
+        card.querySelector("[data-add-another]");
+
+      if (addAnotherProjectButton) {
+        addAnotherProjectButton.onclick = event => {
+          event.stopPropagation();
+
+          const selection = new URL(
+            "EquipmentSelection.html",
+            location.href
+          );
+
+          selection.searchParams.set(
+            "handoff",
+            "additional_equipment"
+          );
+          selection.searchParams.set(
+            "operation_type",
+            p.operation_type || "deinstall"
+          );
+          selection.searchParams.set(
+            "parent_project_id",
+            p.parent_project_id ||
+            p.project_id ||
+            p.projectId ||
+            p.id ||
+            ""
+          );
+          selection.searchParams.set(
+            "project_group_id",
+            p.project_group_id || ""
+          );
+          selection.searchParams.set(
+            "facility_id",
+            p.facility_id || ""
+          );
+          selection.searchParams.set(
+            "facility_name",
+            p.facility_name ||
+            p.facility ||
+            ""
+          );
+          selection.searchParams.set(
+            "sales_rep_email",
+            p.sales_rep_email || email
+          );
+
+          location.href = selection.toString();
+        };
+      }
 
       if (isAdmin) {
         card.querySelector('[data-edit]').onclick = (e) => {
