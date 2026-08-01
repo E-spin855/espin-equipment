@@ -89,6 +89,7 @@
   // Only the project explicitly sent from Rep may appear here.
   const KEYS=[];
   let selected=null, duplicate=null;
+  let creatingProject=false;
   const $=id=>document.getElementById(id);
 
   const ESPIN_CONNECT_FULL_RESET_KEY="espin_connect_full_reset_v1";
@@ -416,26 +417,340 @@
     if(operation.project_id){u.searchParams.set("projectId",operation.project_id);u.searchParams.set("id",operation.project_id)}
     return u.toString();
   }
-  async function confirm(){
-    $("confirmBtn").disabled=true;$("confirmBtn").textContent="Creating…";
-    const operation={...selected,operation_id:window.EspinOperation.newOperationId(type),operation_type:type,project_group_id:groupId||`group-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,facility_id:facilityId||selected.facility_id,facility_name:facilityName||selected.facility_name,facility:facilityName||selected.facility_name,created_at:new Date().toISOString(),created_by:clean(params.get("created_by")||localStorage.getItem("espinUserEmail")||"anonymous-rep"),status:"active"};
-    operation.equipment_model=operation.model;
-    const payload={...operation,project_name:`${operation.model||"Equipment"} · ${type==="install"?"Installation":"Removal"}`,equipment:[operation.make,operation.model].filter(Boolean).join(" "),site_address:clean(params.get("site_address")),zip_code:clean(params.get("zip_code")),modality:operation.modality||"OTHER",project_type:type==="install"?"install":"disposal",sales_rep_email:clean(localStorage.getItem("espinUserEmail")||params.get("sales_rep_email")||"rep1@espinlink.demo"),source:"espin_link_equipment_intake"};
+  function projectMatchesEquipment(project, equipment){
+    if(!project||!equipment)return false;
+
+    const sameOperation=
+      lower(project.operation_type||project.project_type)===type;
+
+    if(!sameOperation)return false;
+
+    const equipmentIds=[
+      ["source_record_id", equipment.source_record_id],
+      ["asset_id", equipment.asset_id],
+      ["serial_number", equipment.serial_number]
+    ];
+
+    return equipmentIds.some(([field,value])=>
+      lower(value)&&lower(project[field])===lower(value)
+    );
+  }
+
+  async function findExistingProject(equipment){
     try{
-      const response=await fetch("/api/removal-install/projects",{method:"POST",headers:{"Content-Type":"application/json","x-user-email":payload.sales_rep_email},body:JSON.stringify(payload)});
-      const result=await response.json().catch(()=>({}));
-      if(response.status===409&&result.existing){duplicate=result.existing;review(selected);return}
-      if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);
-      operation.project_id=clean(result.id||result.projectId);operation.project_url=managementUrl(operation);
-      const records=activeOperations();records.unshift(operation);localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records));
-      localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation));localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation));localStorage.setItem("activeProjectId",operation.project_id);
-      window.EspinOperation.upsertActiveProject(operation);
-      try{window.opener?.postMessage({type:"ESPIN_OPERATION_PROJECT_CREATED",project:operation},"*")}catch(_){}
-      $("createdSummary").textContent=`${type==="install"?"Installation":"Removal"} for ${[operation.make,operation.model].filter(Boolean).join(" ")} is ready. Operation ${operation.operation_id}.`;
-      $("openManagement").href=operation.project_url;
-      const another=new URL(location.href);["operation_id","asset_id","serial_number","source_record_id","make","model","equipment_model","equipment_source","equipment_verified","created_at"].forEach(k=>another.searchParams.delete(k));another.searchParams.set("project_group_id",operation.project_group_id);$("addAnother").href=another.toString();
-      show("createdPanel");document.querySelectorAll(".step")[3].classList.add("active");
-    }catch(error){alert(`Project could not be created: ${error.message}`);$("confirmBtn").disabled=false;$("confirmBtn").textContent="Confirm and create project"}
+      const projectsUrl=new URL(
+        "/api/removal-install/projects",
+        location.origin
+      );
+      projectsUrl.search="";
+
+      const response=await fetch(projectsUrl.toString(),{
+        method:"GET",
+        headers:{
+          "x-user-email":clean(
+            localStorage.getItem("espinUserEmail")||
+            params.get("sales_rep_email")||
+            "rep1@espinlink.demo"
+          )
+        },
+        cache:"no-store"
+      });
+
+      if(!response.ok)return null;
+
+      const body=await response.json().catch(()=>[]);
+      const records=
+        Array.isArray(body)
+          ? body
+          : Array.isArray(body?.projects)
+            ? body.projects
+            : Array.isArray(body?.data)
+              ? body.data
+              : Array.isArray(body?.records)
+                ? body.records
+                : [];
+
+      return records.find(project=>
+        projectMatchesEquipment(project,equipment)
+      )||null;
+    }catch(error){
+      console.warn(
+        "Existing project lookup failed.",
+        error
+      );
+      return null;
+    }
+  }
+
+  function openProjectsWithExistingContext(operation,existing){
+    const project={
+      ...operation,
+      ...(existing||{})
+    };
+
+    project.project_id=clean(
+      existing?.id||
+      existing?.project_id||
+      existing?.projectId||
+      operation.project_id||
+      operation.operation_id
+    );
+
+    const projectsUrl=new URL(
+      "Projects.html",
+      location.href
+    );
+
+    Object.entries(project).forEach(([key,value])=>{
+      if(
+        ["string","number","boolean"].includes(typeof value)&&
+        clean(value)!==""
+      ){
+        projectsUrl.searchParams.set(
+          key,
+          String(value)
+        );
+      }
+    });
+
+    if(project.project_id){
+      projectsUrl.searchParams.set(
+        "projectId",
+        project.project_id
+      );
+      projectsUrl.searchParams.set(
+        "id",
+        project.project_id
+      );
+    }
+
+    projectsUrl.searchParams.set(
+      "existing_project",
+      "1"
+    );
+
+    location.href=projectsUrl.toString();
+  }
+
+  async function confirm(){
+    if(creatingProject||!selected)return;
+
+    creatingProject=true;
+    $("confirmBtn").disabled=true;
+    $("confirmBtn").textContent="Creating…";
+
+    const operation={
+      ...selected,
+      operation_id:window.EspinOperation.newOperationId(type),
+      operation_type:type,
+      project_group_id:
+        groupId||
+        `group-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      facility_id:
+        facilityId||
+        selected.facility_id,
+      facility_name:
+        facilityName||
+        selected.facility_name,
+      facility:
+        facilityName||
+        selected.facility_name,
+      created_at:new Date().toISOString(),
+      created_by:clean(
+        params.get("created_by")||
+        localStorage.getItem("espinUserEmail")||
+        "anonymous-rep"
+      ),
+      status:"active"
+    };
+
+    operation.equipment_model=operation.model;
+
+    const payload={
+      ...operation,
+      project_name:
+        `${operation.model||"Equipment"} · ${
+          type==="install"
+            ? "Installation"
+            : "Removal"
+        }`,
+      equipment:
+        [operation.make,operation.model]
+          .filter(Boolean)
+          .join(" "),
+      site_address:clean(
+        params.get("site_address")
+      ),
+      zip_code:clean(
+        params.get("zip_code")
+      ),
+      modality:
+        operation.modality||
+        "OTHER",
+      project_type:
+        type==="install"
+          ? "install"
+          : "disposal",
+      sales_rep_email:clean(
+        localStorage.getItem("espinUserEmail")||
+        params.get("sales_rep_email")||
+        "rep1@espinlink.demo"
+      ),
+      source:"espin_link_equipment_intake"
+    };
+
+    try{
+      const response=await fetch(
+        "/api/removal-install/projects",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-user-email":payload.sales_rep_email
+          },
+          body:JSON.stringify(payload)
+        }
+      );
+
+      const result=await response
+        .json()
+        .catch(()=>({}));
+
+      if(response.status===409){
+        const existing=
+          result.existing||
+          result.project||
+          result.data||
+          await findExistingProject(operation);
+
+        duplicate=existing||{
+          ...operation,
+          project_id:clean(
+            result.id||
+            result.projectId||
+            result.project_id||
+            operation.operation_id
+          )
+        };
+
+        // A conflict means the project already exists.
+        // Continue to Projects instead of treating it as an error.
+        openProjectsWithExistingContext(
+          operation,
+          duplicate
+        );
+        return;
+      }
+
+      if(!response.ok){
+        throw new Error(
+          result.error||
+          result.message||
+          `HTTP ${response.status}`
+        );
+      }
+
+      operation.project_id=clean(
+        result.id||
+        result.projectId||
+        result.project_id
+      );
+
+      operation.project_url=
+        managementUrl(operation);
+
+      const records=activeOperations();
+
+      if(!records.some(record=>
+        projectMatchesEquipment(record,operation)
+      )){
+        records.unshift(operation);
+      }
+
+      localStorage.setItem(
+        "espin_equipment_operations_v1",
+        JSON.stringify(records)
+      );
+
+      localStorage.setItem(
+        `espin_operation_context:${operation.operation_id}`,
+        JSON.stringify(operation)
+      );
+
+      localStorage.setItem(
+        `espin_project_operation_context:${operation.project_id}`,
+        JSON.stringify(operation)
+      );
+
+      localStorage.setItem(
+        "activeProjectId",
+        operation.project_id
+      );
+
+      window.EspinOperation
+        .upsertActiveProject(operation);
+
+      try{
+        window.opener?.postMessage(
+          {
+            type:"ESPIN_OPERATION_PROJECT_CREATED",
+            project:operation
+          },
+          "*"
+        );
+      }catch(_){}
+
+      $("createdSummary").textContent=
+        `${type==="install"?"Installation":"Removal"} for ${
+          [operation.make,operation.model]
+            .filter(Boolean)
+            .join(" ")
+        } is ready. Operation ${operation.operation_id}.`;
+
+      $("openManagement").href=
+        operation.project_url;
+
+      const another=new URL(location.href);
+
+      [
+        "operation_id",
+        "asset_id",
+        "serial_number",
+        "source_record_id",
+        "make",
+        "model",
+        "equipment_model",
+        "equipment_source",
+        "equipment_verified",
+        "created_at"
+      ].forEach(key=>
+        another.searchParams.delete(key)
+      );
+
+      another.searchParams.set(
+        "project_group_id",
+        operation.project_group_id
+      );
+
+      $("addAnother").href=
+        another.toString();
+
+      show("createdPanel");
+
+      document
+        .querySelectorAll(".step")[3]
+        .classList.add("active");
+    }catch(error){
+      alert(
+        `Project could not be created: ${error.message}`
+      );
+
+      $("confirmBtn").disabled=false;
+      $("confirmBtn").textContent=
+        "Confirm and create project";
+    }finally{
+      creatingProject=false;
+    }
   }
   $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
 
