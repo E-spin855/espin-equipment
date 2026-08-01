@@ -25489,6 +25489,87 @@ window.addEventListener("load", () => {
   const activeRemoval = identity => { try { return JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]").find(o => lower(o.operation_type)==="deinstall" && !/complete|cancel|archiv/.test(lower(o.status)) && [o.tradein_record_id,o.source_record_id,o.asset_id,o.serial_number].map(lower).includes(lower(identity))); } catch (_) { return null; } };
   const management = operation => { const u=new URL("/removal-install/management.html",location.origin); Object.entries(operation).forEach(([k,v]) => { if (["string","number","boolean"].includes(typeof v) && clean(v)) u.searchParams.set(k,String(v)); }); if (operation.project_id) u.searchParams.set("projectId",operation.project_id); return u.toString(); };
   const saveOperation = operation => { let records=[]; try { records=JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]"); if(!Array.isArray(records)) records=[]; } catch (_) {} records.unshift(operation); localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records)); localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation)); if(operation.project_id) localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation)); };
+  function launchSelectedEquipment(rec) {
+    const identity =
+      rec.source_record_id ||
+      rec.axis_record_id ||
+      rec.id ||
+      rec.asset_id ||
+      rec.serial_number ||
+      "";
+
+    const selection = new URL(
+      "/removal-install/EquipmentSelection.html",
+      location.origin
+    );
+
+    selection.searchParams.set("operation_type", "deinstall");
+    selection.searchParams.set("handoff", "removal_project");
+    selection.searchParams.set("removal_equipment_source", "rep_selected");
+    selection.searchParams.set("equipment_source", "rep");
+
+    selection.searchParams.set(
+      "parent_project_id",
+      rec.oem_project_id || rec.project_id || rec.id || ""
+    );
+    selection.searchParams.set(
+      "project_group_id",
+      rec.project_group_id || ""
+    );
+    selection.searchParams.set("source_record_id", identity);
+
+    const equipmentFields = {
+      facility_id: rec.facility_id || rec.site_id || rec.account_id || "",
+      facility_name:
+        rec.facility ||
+        rec.facility_name ||
+        rec.site ||
+        rec.hospital ||
+        "",
+      make: rec.make || rec.manufacturer || rec.oem || "",
+      model:
+        rec.model ||
+        rec.equipment_model ||
+        rec.system_model ||
+        rec.equipment ||
+        "",
+      modality: rec.modality || rec.equipment_type || "",
+      serial_number:
+        rec.serial_number ||
+        rec.serial ||
+        rec.system_serial ||
+        "",
+      asset_id:
+        rec.asset_id ||
+        rec.equipment_id ||
+        rec.asset_tag ||
+        "",
+      dom:
+        rec.dom ||
+        rec.year ||
+        rec.manufacture_year ||
+        rec.manufacturing_year ||
+        ""
+    };
+
+    Object.entries(equipmentFields).forEach(([key, value]) => {
+      if (clean(value)) selection.searchParams.set(key, clean(value));
+    });
+
+    selection.searchParams.set(
+      "sales_rep_email",
+      rec.sales_rep_email ||
+      localStorage.getItem("espinUserEmail") ||
+      ""
+    );
+    selection.searchParams.set(
+      "created_at",
+      new Date().toISOString()
+    );
+
+    window.open(selection.toString(), "_blank");
+  }
+
   async function launchEvaluated(rec, trade, button) {
     const identity=trade.tradein_record_id || trade.id || trade.axis_record_id || trade.serial_number || trade.asset_id;
     const existing=activeRemoval(identity);
@@ -25540,16 +25621,99 @@ window.addEventListener("load", () => {
     finally { button.disabled=false; button.textContent="Use evaluated Trade-In equipment"; }
   }
   window.openDecisionModal = function(recordId = state.selectedId, followUpDate = "", actionLabel = "Open Removal/Disposal Project") {
-    const rec=state.records.find(r => String(r.id)===String(recordId)); if(!rec) return alert("Open a record first");
-    const won=[rec.project_outcome,rec.quote_status,rec.rep_status,rec.final_outcome,rec.outcome].some(v => lower(v)==="won");
-    const installBaseRecord=/install[ _-]?base/.test(lower([rec.source,rec.install_base_source,rec.record_type,rec.project_type,rec.hub_source].filter(Boolean).join(" "))) || rec.install_base_record === true;
-    if (!won && !installBaseRecord) return alert("A removal project can be started after the project is marked Won, or directly from an existing Install Base record.");
-    const trade=evaluatedTradeIn(rec);
-    const modal=document.createElement("div"); modal.style.cssText="position:fixed;inset:0;z-index:99999;background:#06101ee6;display:grid;place-items:center;padding:20px";
-    modal.innerHTML=`<div style="max-width:560px;width:100%;background:#0d2037;border:1px solid #27506c;border-radius:18px;padding:26px;color:#edf7ff;font:16px system-ui"><h2 style="margin-top:0">What equipment is being removed?</h2><p style="color:#9db4c7">Choose the evaluated trade-in linked to this project, or select equipment from this facility’s Install Base.</p><div style="display:grid;gap:12px"><button id="useTrade" ${trade?"":"disabled"} style="padding:14px;border-radius:10px;border:0;background:#25d9bb;color:#05201d;font-weight:800">${trade?"Use evaluated Trade-In equipment":"Evaluated Trade-In equipment — waiting for Trade Desk evaluation"}</button><button id="different" style="padding:14px;border-radius:10px;border:1px solid #27506c;background:#18334c;color:#edf7ff;font-weight:800">Select from Install Base</button><button id="cancelChoice" style="padding:10px;border:0;background:transparent;color:#9db4c7">Cancel</button></div></div>`;
-    document.body.append(modal); modal.querySelector("#cancelChoice").onclick=()=>modal.remove();
-    modal.querySelector("#useTrade").onclick=e=>{ modal.remove(); launchEvaluated(rec,trade,e.currentTarget); };
-    modal.querySelector("#different").onclick=()=>{ const u=new URL("/removal-install/EquipmentSelection.html",location.origin); u.searchParams.set("operation_type","deinstall"); u.searchParams.set("handoff","removal_project"); u.searchParams.set("open_install_base","1"); u.searchParams.set("parent_project_id",rec.oem_project_id || rec.project_id || rec.id || ""); u.searchParams.set("project_group_id",rec.project_group_id || ""); u.searchParams.set("facility_id",rec.facility_id || ""); u.searchParams.set("facility_name",rec.facility || rec.site || rec.hospital || ""); u.searchParams.set("sales_rep_email",rec.sales_rep_email || ""); window.open(u.toString(),"_blank"); modal.remove(); };
+    const rec = state.records.find(
+      record => String(record.id) === String(recordId)
+    );
+
+    if (!rec) return alert("Open a record first");
+
+    const trade = evaluatedTradeIn(rec);
+    const modal = document.createElement("div");
+
+    modal.style.cssText =
+      "position:fixed;inset:0;z-index:99999;background:#06101ee6;" +
+      "display:grid;place-items:center;padding:20px";
+
+    modal.innerHTML = `
+      <div style="
+        max-width:560px;
+        width:100%;
+        background:#0d2037;
+        border:1px solid #27506c;
+        border-radius:18px;
+        padding:26px;
+        color:#edf7ff;
+        font:16px system-ui
+      ">
+        <h2 style="margin-top:0">What equipment is being removed?</h2>
+        <p style="color:#9db4c7">
+          Start removal for the selected equipment record.
+          ${trade
+            ? "An evaluated trade-in linked to this project is also available."
+            : ""}
+        </p>
+
+        <div style="display:grid;gap:12px">
+          <button
+            id="useSelectedEquipment"
+            style="
+              padding:14px;
+              border-radius:10px;
+              border:0;
+              background:#1686e8;
+              color:#fff;
+              font-weight:800
+            "
+          >
+            Use selected equipment
+          </button>
+
+          ${trade ? `
+            <button
+              id="useTrade"
+              style="
+                padding:14px;
+                border-radius:10px;
+                border:0;
+                background:#25d9bb;
+                color:#05201d;
+                font-weight:800
+              "
+            >
+              Use evaluated Trade-In equipment
+            </button>
+          ` : ""}
+
+          <button
+            id="cancelChoice"
+            style="
+              padding:10px;
+              border:0;
+              background:transparent;
+              color:#9db4c7
+            "
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.append(modal);
+
+    modal.querySelector("#cancelChoice").onclick = () => modal.remove();
+
+    modal.querySelector("#useSelectedEquipment").onclick = () => {
+      modal.remove();
+      launchSelectedEquipment(rec);
+    };
+
+    if (trade) {
+      modal.querySelector("#useTrade").onclick = event => {
+        modal.remove();
+        launchEvaluated(rec, trade, event.currentTarget);
+      };
+    }
   };
 })();
 </script>
