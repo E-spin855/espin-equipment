@@ -588,17 +588,64 @@ async function loadProjects() {
     let projects = [];
 
     try {
-      projects = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      if (Array.isArray(parsed)) {
+        projects = parsed;
+      } else if (parsed && Array.isArray(parsed.projects)) {
+        projects = parsed.projects;
+      } else if (parsed && Array.isArray(parsed.data)) {
+        projects = parsed.data;
+      } else if (parsed && Array.isArray(parsed.records)) {
+        projects = parsed.records;
+      } else if (parsed && typeof parsed === "object") {
+        projects = Object.values(parsed).flatMap(value =>
+          Array.isArray(value)
+            ? value
+            : (
+                value &&
+                typeof value === "object" &&
+                (
+                  value.id ||
+                  value.project_id ||
+                  value.projectId ||
+                  value.project_name
+                )
+              )
+              ? [value]
+              : []
+        );
+      } else {
+        projects = [];
+      }
     } catch (e) {
-      console.error("Invalid JSON from /api/projects:", raw);
+      console.error("Invalid JSON from /api/removal-install/projects:", raw, e);
       list.innerHTML = `<p style="text-align:center;color:red;">Invalid project response.</p>`;
       return;
     }
 
+    projects = projects.filter(project =>
+      project && typeof project === "object"
+    );
+
     list.innerHTML = "";
 
     const seen = new Set();
-    projects = projects.filter(p => !seen.has(p.id) && seen.add(p.id));
+    projects = projects.filter(project => {
+      const projectId = String(
+        project.id ||
+        project.project_id ||
+        project.projectId ||
+        project.operation_id ||
+        ""
+      ).trim();
+
+      if (!projectId) return true;
+      if (seen.has(projectId)) return false;
+
+      seen.add(projectId);
+      return true;
+    });
     projects.sort((a,b) =>
       String(a.project_group_id || a.id).localeCompare(String(b.project_group_id || b.id)) ||
       new Date(b.created_at || 0) - new Date(a.created_at || 0)
@@ -612,9 +659,21 @@ if (axisDemoProject) {
     for (const p of projects) {
       if (p.hidden) continue;
 
+      const projectId = String(
+        p.id ||
+        p.project_id ||
+        p.projectId ||
+        p.operation_id ||
+        ""
+      ).trim();
+
+      if (!projectId) continue;
+
+      p.id = projectId;
+
       const [unreadData, unreadImages] = await Promise.all([
-        kvGet(`project:unread:${p.id}:${email}`),
-        kvGet(`project:unread_images:${p.id}:${email}`)
+        kvGet(`project:unread:${projectId}:${email}`),
+        kvGet(`project:unread_images:${projectId}:${email}`)
       ]);
 
       const card = document.createElement("div");
