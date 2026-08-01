@@ -429,5 +429,44 @@
   applyEquipmentSelectionFullReset(false);
 })();
 </script>
+<script>
+/* Removal-only source gate. Installation continues through the original flow. */
+(() => {
+  const q = new URLSearchParams(location.search);
+  const removal = !/^install$/i.test(q.get("operation_type") || q.get("selected_type") || q.get("project_type") || "");
+  if (!removal) return;
+  if (q.get("removal_equipment_source") === "manual") {
+    document.getElementById("manualBtn").click();
+    return;
+  }
+  if (q.get("removal_equipment_source")) return;
+  const panel = document.getElementById("selectionPanel");
+  const facilityId = String(q.get("facility_id") || "").trim();
+  const facilityName = String(q.get("facility_name") || q.get("facility") || "").trim();
+  const same = r => facilityId ? String(r.facility_id || r.site_id || "").toLowerCase() === facilityId.toLowerCase() : !facilityName || String(r.facility_name || r.facility || r.site || "").toLowerCase() === facilityName.toLowerCase();
+  const esc = value => { const d=document.createElement("div"); d.textContent=String(value || "—"); return d.innerHTML; };
+  const source = document.createElement("section");
+  source.className = "panel";
+  source.id = "removalSourcePanel";
+  source.innerHTML = `<h2>Select equipment source</h2><p class="sub">Choose how to identify the equipment being removed.</p><div class="actions"><button id="chooseInstallBase">Select from Install Base</button><button class="secondary" id="chooseManual">Enter manually</button></div><div id="installBaseChoices" class="cards hidden"></div>`;
+  panel.before(source); panel.classList.add("hidden");
+  document.getElementById("chooseManual").onclick = () => {
+    const next = new URL(location.href); next.searchParams.set("removal_equipment_source", "manual"); location.href = next;
+  };
+  document.getElementById("chooseInstallBase").onclick = () => {
+    let records=[]; try { records=JSON.parse(localStorage.getItem("axis_install_base_records_v1") || "[]"); } catch (_) {}
+    if (!Array.isArray(records)) records=[];
+    records = records.filter(same).filter(r => r && (r.asset_id || r.serial_number || r.make || r.model));
+    const list=document.getElementById("installBaseChoices"); list.classList.remove("hidden");
+    list.innerHTML = records.length ? records.map((r,i) => `<button class="secondary" data-install-base-index="${i}"><strong>${esc([r.make,r.model].filter(Boolean).join(" ") || "Equipment")}</strong><br><small>${esc(r.modality)} · S/N ${esc(r.serial_number || r.serial)} · Asset ${esc(r.asset_id)}</small></button>`).join("") : '<div class="empty">No Install Base equipment was found for this facility.</div>';
+    list.querySelectorAll("[data-install-base-index]").forEach(button => button.onclick = () => {
+      const r=records[Number(button.dataset.installBaseIndex)], next=new URL(location.href);
+      next.searchParams.set("removal_equipment_source", "install_base"); next.searchParams.set("handoff", "removal_project"); next.searchParams.set("equipment_source", "install_base"); next.searchParams.set("source_record_id", r.id || r.record_id || r.asset_id || r.serial_number || "");
+      ["asset_id","serial_number","make","model","modality","status","facility_id","facility_name"].forEach(k => { const v=r[k] || (k === "serial_number" ? r.serial : ""); if (v) next.searchParams.set(k, v); });
+      location.href=next;
+    });
+  };
+})();
+</script>
 </body>
 </html>
