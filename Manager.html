@@ -8086,6 +8086,10 @@ function normalizeOemReviewLabelForManager(rec) {
   return "Record Note";
 }
 function getManagerActiveFixLabel(rec) {
+  if (clean(rec.new_project_fix_description)) {
+    return `FIX (${clean(rec.new_project_fix_description)})`;
+  }
+
   if (!isManagerOpenInstallBaseFixRequest(rec) && !hasManagerMissingCoreFields(rec)) return "";
 
   if (!hasUnresolvedManagerInstallBaseIssues(rec)) return "";
@@ -10709,6 +10713,9 @@ function renderManagerInstallBaseCorrectionPanel(rec) {
 
   const requestedItem =
     rec.install_base_action_label ||
+    (clean(rec.new_project_fix_description)
+      ? `FIX (${clean(rec.new_project_fix_description)})`
+      : "") ||
     rec.manager_fix_required ||
     rec.install_base_issue_type ||
     "Install Base FIX";
@@ -14345,11 +14352,10 @@ if (clearBtn) {
 
     fullResetKeys.forEach(key => localStorage.removeItem(key));
 
-    // Reset ESPIN Connect Equipment Selection records and temporary context.
-    [
-      "espin_equipment_operations_v1",
-      "activeProjectId"
-    ].forEach(key => localStorage.removeItem(key));
+    // Clear ESPIN Connect Equipment Selection state and all temporary
+    // operation context created by that page.
+    localStorage.removeItem("espin_equipment_operations_v1");
+    localStorage.removeItem("activeProjectId");
 
     Object.keys(localStorage).forEach(key => {
       if (

@@ -11471,6 +11471,27 @@ function syncToManagerQueue(rec) {
 
     rep_notes: rec.rep_notes || "",
 
+    // Carry new-project missing-field FIX request to Manager.
+    install_base_manager_request: rec.install_base_manager_request === true,
+    install_base_manual_route: rec.install_base_manual_route === true,
+    install_base_fix_request: rec.install_base_fix_request === true,
+    install_base_fix_request_fields: rec.install_base_fix_request_fields || "",
+    install_base_fix_request_field: rec.install_base_fix_request_field || "",
+    install_base_issue_field: rec.install_base_issue_field || "",
+    install_base_issue_type: rec.install_base_issue_type || "",
+    install_base_issue_reason: rec.install_base_issue_reason || "",
+    install_base_action_label: rec.install_base_action_label || "",
+    install_base_action_reason: rec.install_base_action_reason || "",
+    install_base_released_to: rec.install_base_released_to || "",
+    release_destination: rec.release_destination || "",
+    install_base_release_status: rec.install_base_release_status || "",
+    manager_fix_required: rec.manager_fix_required || "",
+    new_project_missing_fields: Array.isArray(rec.new_project_missing_fields)
+      ? [...rec.new_project_missing_fields]
+      : [],
+    new_project_fix_description: rec.new_project_fix_description || "",
+    new_project_fix_requested_at: rec.new_project_fix_requested_at || "",
+
     // Carry linked Active Projects with every Manager sync.
     active_project_snapshots: getActiveProjectSnapshotsForRecord(rec),
     active_projects_updated_at: new Date().toISOString(),
@@ -13247,6 +13268,84 @@ function bindIncomingCommunicationFrameDismissal() {
   }, true);
 }
 
+
+function getNewProjectMissingFixFields(rec) {
+  if (!rec || rec.project_type !== "new_project_record") return [];
+
+  const fields = [
+    ["make", "Make", rec.make],
+    ["model", "Model", rec.model],
+    ["serial_number", "Serial Number", rec.serial_number || rec.serial],
+    ["dom", "DOM", rec.dom || rec.year || rec.manufacture_year || rec.manufacturing_year]
+  ];
+
+  return fields
+    .filter(([, , value]) => {
+      const normalized = clean(value);
+      return !normalized || lower(normalized) === "not entered";
+    })
+    .map(([key, label]) => ({ key, label }));
+}
+
+function getNewProjectFixDescription(rec) {
+  return getNewProjectMissingFixFields(rec)
+    .map(field => field.label)
+    .join(", ");
+}
+
+function applyNewProjectMissingFixRequest(rec, now = new Date().toISOString()) {
+  const missing = getNewProjectMissingFixFields(rec);
+  if (!missing.length) return rec;
+
+  const fieldKeys = missing.map(field => field.key);
+  const description = missing.map(field => field.label).join(", ");
+  const firstField = fieldKeys[0] || "";
+
+  return {
+    ...rec,
+    manager_visible: true,
+    manager_unseen_update: true,
+    manager_flash_at: now,
+    manager_flash_type: "install_base_release",
+    manager_flash_text: `New project requires FIX: ${description}`,
+
+    install_base_manager_request: true,
+    install_base_manual_route: true,
+    install_base_fix_request: true,
+    install_base_fix_request_fields: fieldKeys.join(","),
+    install_base_fix_request_field: firstField,
+    install_base_issue_field: firstField,
+    install_base_issue_type: "missing_data",
+    install_base_issue_reason: `Missing new project fields: ${description}.`,
+    install_base_action_label: `FIX (${description})`,
+    install_base_action_reason: `Complete missing new project fields: ${description}.`,
+    install_base_released_to: "manager",
+    release_destination: "manager",
+    install_base_release_status: "released_to_manager",
+    manager_fix_required: description,
+    rep_fix_required: description,
+    new_project_missing_fields: fieldKeys,
+    new_project_fix_description: description,
+    new_project_fix_requested_at: now
+  };
+}
+
+function renderNewProjectFixButton(rec) {
+  const description = getNewProjectFixDescription(rec);
+  if (!description) return renderReviewSignalCell(rec);
+
+  return `
+    <span
+      class="fix-data-badge"
+      title="Missing new project fields: ${escapeHtml(description)}"
+      aria-label="FIX missing new project fields: ${escapeHtml(description)}"
+    >
+      <span class="fix-main">FIX</span>
+      <span class="fix-sub">${escapeHtml(description)}</span>
+    </span>
+  `;
+}
+
     function renderNewProjectsTable() {
   const panel = $("newProjectsPanel");
   const tbody = $("newProjectsTableBody");
@@ -13339,7 +13438,7 @@ function bindIncomingCommunicationFrameDismissal() {
             aria-label="Open Install Base review reason"
             title="Show why this Install Base review was created"
           >
-            ${isRedHotServiceAlert(rec) ? renderRedHotInlineBadge(rec) : renderReviewSignalCell(rec)}
+            ${isRedHotServiceAlert(rec) ? renderRedHotInlineBadge(rec) : renderNewProjectFixButton(rec)}
           </button>
         </td>
 
@@ -21812,7 +21911,10 @@ manufacture_year: projectDOM,
         manager_response_seen_at: ""
       };
 
-      const assignedRecord = assignToSelectedRepIfNeeded(rec);
+      const assignedRecord = applyNewProjectMissingFixRequest(
+        assignToSelectedRepIfNeeded(rec),
+        now
+      );
       state.records.unshift(assignedRecord);
       state.selectedId = assignedRecord.id;
 
@@ -25259,11 +25361,10 @@ if (showCompletedProjectsBtn) {
 
     fullResetKeys.forEach(key => localStorage.removeItem(key));
 
-    // Reset ESPIN Connect Equipment Selection records and temporary context.
-    [
-      "espin_equipment_operations_v1",
-      "activeProjectId"
-    ].forEach(key => localStorage.removeItem(key));
+    // Clear ESPIN Connect Equipment Selection state and all temporary
+    // operation context created by that page.
+    localStorage.removeItem("espin_equipment_operations_v1");
+    localStorage.removeItem("activeProjectId");
 
     Object.keys(localStorage).forEach(key => {
       if (

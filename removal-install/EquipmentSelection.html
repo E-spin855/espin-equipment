@@ -76,7 +76,7 @@
   const EQUIPMENT_SELECTION_RESET_APPLIED_KEY=
     `espin_equipment_selection_reset_applied:${type}:${facilityId||facilityName||"all"}`;
 
-  function clearEquipmentSelectionPageState(){
+  function resetEquipmentSelectionFields(){
     selected=null;
     duplicate=null;
 
@@ -85,28 +85,8 @@
       if(field)field.value="";
     });
 
-    if($("manualStatus"))$("manualStatus").value="Pending";
-    if($("reviewFacts"))$("reviewFacts").innerHTML="";
-    if($("verificationNotice")){
-      $("verificationNotice").textContent="";
-      $("verificationNotice").classList.add("hidden");
-    }
-    if($("duplicateNotice")){
-      $("duplicateNotice").textContent="";
-      $("duplicateNotice").classList.add("hidden");
-    }
-    if($("openExisting")){
-      $("openExisting").removeAttribute("href");
-      $("openExisting").classList.add("hidden");
-    }
-    if($("confirmBtn")){
-      $("confirmBtn").disabled=false;
-      $("confirmBtn").textContent="Confirm and create project";
-    }
-    if($("reviewBtn"))$("reviewBtn").disabled=true;
-    if($("createdSummary"))$("createdSummary").textContent="";
-    if($("openManagement"))$("openManagement").removeAttribute("href");
-    if($("addAnother"))$("addAnother").removeAttribute("href");
+    const status=$("manualStatus");
+    if(status)status.value="Pending";
 
     document.querySelectorAll(".equipment").forEach(card=>{
       card.classList.remove("selected");
@@ -114,17 +94,41 @@
       if(radio)radio.checked=false;
     });
 
-    document.querySelectorAll(".step").forEach((step,index)=>{
-      step.classList.toggle("active",index===1);
+    const reviewBtn=$("reviewBtn");
+    if(reviewBtn)reviewBtn.disabled=true;
+
+    const confirmBtn=$("confirmBtn");
+    if(confirmBtn){
+      confirmBtn.disabled=false;
+      confirmBtn.textContent="Confirm and create project";
+    }
+
+    ["reviewFacts","createdSummary"].forEach(id=>{
+      const el=$(id);
+      if(el)el.textContent="";
+    });
+
+    ["verificationNotice","duplicateNotice","openExisting"].forEach(id=>{
+      const el=$(id);
+      if(el)el.classList.add("hidden");
+    });
+
+    ["openExisting","openManagement","addAnother"].forEach(id=>{
+      const el=$(id);
+      if(el)el.removeAttribute("href");
     });
 
     ["selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(id=>{
       const panel=$(id);
       if(panel)panel.classList.toggle("hidden",id!=="selectionPanel");
     });
+
+    document.querySelectorAll(".step").forEach((step,index)=>{
+      step.classList.toggle("active",index===1);
+    });
   }
 
-  function clearEquipmentSelectionStorage(){
+  function clearEquipmentSelectionCreatedRecords(){
     localStorage.removeItem("espin_equipment_operations_v1");
     localStorage.removeItem("activeProjectId");
 
@@ -138,14 +142,14 @@
     });
   }
 
-  function applyEquipmentSelectionReset(force=false){
+  function applyEquipmentSelectionFullReset(force=false){
     const resetAt=localStorage.getItem(ESPIN_CONNECT_FULL_RESET_KEY)||"";
     const appliedAt=localStorage.getItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY)||"";
 
     if(!force&&(!resetAt||resetAt===appliedAt))return false;
 
-    clearEquipmentSelectionStorage();
-    clearEquipmentSelectionPageState();
+    clearEquipmentSelectionCreatedRecords();
+    resetEquipmentSelectionFields();
 
     if(resetAt){
       localStorage.setItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY,resetAt);
@@ -155,12 +159,12 @@
 
   window.addEventListener("storage",event=>{
     if(event.key===ESPIN_CONNECT_FULL_RESET_KEY){
-      applyEquipmentSelectionReset(true);
+      applyEquipmentSelectionFullReset(true);
     }
   });
 
   window.addEventListener("espin-connect-full-reset",()=>{
-    applyEquipmentSelectionReset(true);
+    applyEquipmentSelectionFullReset(true);
   });
 
   $("title").textContent=`Select equipment for ${type==="install"?"Installation":"Removal"}`;
@@ -253,7 +257,7 @@
   }
   $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
   render();
-  applyEquipmentSelectionReset(false);
+  applyEquipmentSelectionFullReset(false);
 })();
 </script>
 </body>
