@@ -531,8 +531,18 @@ document.getElementById("deleteConfirmBtn").onclick = async () => {
 =============================== */
 let loadingProjects = false;
 let reloadProjectsPending = false;
+let lastProjectsLoadStartedAt = 0;
+let projectsRetryTimer = null;
 
-async function loadProjectsSafe() {
+async function loadProjectsSafe(options = {}) {
+  const force = options.force === true;
+  const now = Date.now();
+
+  // Ignore duplicate startup/focus requests fired within one second.
+  if (!force && now - lastProjectsLoadStartedAt < 1000) {
+    return;
+  }
+
   if (loadingProjects) {
     reloadProjectsPending = true;
     return;
@@ -541,6 +551,7 @@ async function loadProjectsSafe() {
   do {
     reloadProjectsPending = false;
     loadingProjects = true;
+    lastProjectsLoadStartedAt = Date.now();
 
     try {
       await loadProjects();
@@ -717,12 +728,212 @@ function reconcilePendingProjects(apiProjects) {
   return pending;
 }
 
+function normalizedProjectId(project) {
+  return String(
+    project?.id ||
+    project?.project_id ||
+    project?.projectId ||
+    project?.operation_id ||
+    ""
+  ).trim();
+}
+
+function deduplicateProjects(records) {
+  const merged = new Map();
+
+  (Array.isArray(records) ? records : []).forEach(project => {
+    if (!project || typeof project !== "object") return;
+
+    const identity =
+      normalizedProjectId(project) ||
+      projectIdentity(project);
+
+    if (!identity) return;
+
+    merged.set(
+      identity,
+      mergeProjectRecord(
+        merged.get(identity),
+        project
+      )
+    );
+  });
+
+  return Array.from(merged.values());
+}
+
+async function renderProjectCards(projects) {
+  const list = document.getElementById("projectList");
+  list.innerHTML = "";
+
+  const sorted = deduplicateProjects(projects).sort((a, b) =>
+    String(a.project_group_id || a.id).localeCompare(
+      String(b.project_group_id || b.id)
+    ) ||
+    new Date(b.created_at || 0) -
+      new Date(a.created_at || 0)
+  );
+
+  for (const p of sorted) {
+    if (p.hidden) continue;
+
+    const projectId = normalizedProjectId(p);
+    if (!projectId) continue;
+
+    p.id = projectId;
+
+    const [unreadData, unreadImages] = await Promise.all([
+      kvGet(`project:unread:${projectId}:${email}`),
+      kvGet(`project:unread_images:${projectId}:${email}`)
+    ]);
+
+    const card = document.createElement("div");
+    card.className =
+      "card" +
+      (p.project_completed ? " archived" : "");
+
+    if (p.pending_api_sync) {
+      card.dataset.pendingSync = "true";
+    }
+
+    card.innerHTML = `
+      ${isAdmin ? `
+        <div class="card-actions">
+          <div class="icon-btn" data-edit="${p.id}">✏️</div>
+          <div
+            class="icon-btn"
+            data-delete="${p.id}"
+            style="color:var(--danger)"
+          >
+            🗑
+          </div>
+        </div>
+      ` : ``}
+
+      <h3 class="title-inline">
+        ${p.project_name || "Unnamed Project"}
+        ${p.project_completed
+          ? `<span class="archived-label">🔒 Archived</span>`
+          : ""}
+      </h3>
+
+      <div class="badge-wrap">
+        ${!p.project_completed && unreadData > 0
+          ? `<span class="badge">⚡ NEW</span>`
+          : ""}
+        ${!p.project_completed && unreadImages > 0
+          ? `<span class="badge">🖼 NEW</span>`
+          : ""}
+        ${p.pending_api_sync
+          ? `<span class="badge">SYNCING</span>`
+          : ""}
+      </div>
+
+      <p>${p.site_address || ""} ${p.zip_code || ""}</p>
+      <p>
+        <strong>Operation:</strong>
+        ${p.operation_type === "install" ? "Install" : "De-install"}
+      </p>
+      ${p.project_group_id
+        ? `<p><strong>Related group:</strong> ${p.project_group_id}</p>`
+        : ""}
+      <p>
+        <strong>Equipment:</strong>
+        ${p.equipment_model || p.model || p.equipment || "N/A"}
+      </p>
+      <p>
+        <strong>Identifier:</strong>
+        ${p.serial_number
+          ? `S/N ${p.serial_number}`
+          : p.asset_id || "N/A"}
+      </p>
+      <p>
+        <strong>Facility:</strong>
+        ${p.facility_name || p.facility || "N/A"}
+      </p>
+      <p>
+        <strong>Modality:</strong>
+        ${p.modality || "N/A"}
+      </p>
+
+      ${shouldShowFromBlock(p) ? `
+        <p style="margin-top:6px;font-size:13px;color:#666;">
+          <strong>From:</strong> ${senderName(p)}<br>
+          ${p.sales_rep_company
+            ? `${p.sales_rep_company}<br>`
+            : ""}
+          ${p.sales_rep_phone
+            ? `📞 ${p.sales_rep_phone}<br>`
+            : ""}
+          ${p.sales_rep_email
+            ? `✉️ ${p.sales_rep_email}`
+            : ""}
+        </p>
+      ` : ""}
+    `;
+
+    card.onclick = () => {
+      const destination = new URL(
+        "management.html",
+        location.href
+      );
+
+      destination.searchParams.set("id", p.id);
+      destination.searchParams.set("projectId", p.id);
+
+      ESPIN_OPERATION_FIELDS.forEach(field => {
+        if (p[field]) {
+          destination.searchParams.set(
+            field,
+            p[field]
+          );
+        }
+      });
+
+      location.href = destination.toString();
+    };
+
+    if (isAdmin) {
+      card.querySelector("[data-edit]").onclick = event => {
+        event.stopPropagation();
+        openProjectModal(p);
+      };
+
+      card.querySelector("[data-delete]").onclick = event => {
+        event.stopPropagation();
+        showDeleteModal(p.id);
+      };
+    }
+
+    list.appendChild(card);
+  }
+
+  if (!list.children.length) {
+    list.innerHTML = `
+      <p style="text-align:center;color:#777;">
+        No projects found.
+      </p>
+    `;
+  }
+}
+
+function scheduleProjectsRetry(delay = 1200) {
+  if (projectsRetryTimer) {
+    clearTimeout(projectsRetryTimer);
+  }
+
+  projectsRetryTimer = setTimeout(() => {
+    projectsRetryTimer = null;
+    loadProjectsSafe({ force: true });
+  }, delay);
+}
+
 async function loadProjects() {
   const list = document.getElementById("projectList");
 
   try {
     const confirmedProject =
-      storeConfirmedProjectFromUrl();
+      getConfirmedProjectFromUrl();
 
     const currentUrl = new URL(window.location.href);
     const hadProjectHandoff =
@@ -759,6 +970,39 @@ async function loadProjects() {
     console.log("PROJECTS RESPONSE:", raw);
 
     if (!r.ok) {
+      let errorPayload = {};
+
+      try {
+        errorPayload = raw ? JSON.parse(raw) : {};
+      } catch (_) {
+        errorPayload = {};
+      }
+
+      if (r.status === 409) {
+        const fallbackProjects = deduplicateProjects([
+          ...(confirmedProject ? [confirmedProject] : []),
+          ...readPendingProjects()
+        ]);
+
+        if (fallbackProjects.length) {
+          await renderProjectCards(fallbackProjects);
+        } else {
+          list.innerHTML = `
+            <p style="text-align:center;color:#777;">
+              Project synchronization is completing…
+            </p>
+          `;
+        }
+
+        console.warn(
+          "Projects API returned 409; retrying cleanly.",
+          errorPayload
+        );
+
+        scheduleProjectsRetry();
+        return;
+      }
+
       list.innerHTML = `
         <p style="text-align:center;color:red;">
           Failed to load projects.<br>
@@ -811,138 +1055,40 @@ async function loadProjects() {
       project && typeof project === "object"
     );
 
-    list.innerHTML = "";
-
-    const seen = new Set();
-    projects = projects.filter(project => {
-      const projectId = String(
-        project.id ||
-        project.project_id ||
-        project.projectId ||
-        project.operation_id ||
-        ""
-      ).trim();
-
-      if (!projectId) return true;
-      if (seen.has(projectId)) return false;
-
-      seen.add(projectId);
-      return true;
-    });
-    projects.sort((a,b) =>
-      String(a.project_group_id || a.id).localeCompare(String(b.project_group_id || b.id)) ||
-      new Date(b.created_at || 0) - new Date(a.created_at || 0)
-    );
     const pendingProjects =
       reconcilePendingProjects(projects);
 
-    const mergedProjects = new Map();
+    projects = deduplicateProjects([
+      ...(confirmedProject ? [confirmedProject] : []),
+      ...pendingProjects,
+      ...projects
+    ]);
 
-    [...pendingProjects, ...projects].forEach(project => {
+    // Once the API contains the confirmed project, remove its local
+    // pending/syncing marker and let the server record take precedence.
+    const apiIdentities = new Set(
+      projects
+        .filter(project => !project.pending_api_sync)
+        .map(projectIdentity)
+        .filter(Boolean)
+    );
+
+    projects = projects.map(project => {
       const identity = projectIdentity(project);
-      if (!identity) return;
 
-      mergedProjects.set(
-        identity,
-        mergeProjectRecord(
-          mergedProjects.get(identity),
-          project
-        )
-      );
+      if (
+        project.pending_api_sync &&
+        apiIdentities.has(identity)
+      ) {
+        const cleaned = { ...project };
+        delete cleaned.pending_api_sync;
+        return cleaned;
+      }
+
+      return project;
     });
 
-    projects = Array.from(mergedProjects.values());
-
-    for (const p of projects) {
-      if (p.hidden) continue;
-
-      const projectId = String(
-        p.id ||
-        p.project_id ||
-        p.projectId ||
-        p.operation_id ||
-        ""
-      ).trim();
-
-      if (!projectId) continue;
-
-      p.id = projectId;
-
-      const [unreadData, unreadImages] = await Promise.all([
-        kvGet(`project:unread:${projectId}:${email}`),
-        kvGet(`project:unread_images:${projectId}:${email}`)
-      ]);
-
-      const card = document.createElement("div");
-      card.className =
-        "card" +
-        (p.project_completed ? " archived" : "");
-
-      if (p.pending_api_sync) {
-        card.dataset.pendingSync = "true";
-      }
-
-      card.innerHTML = `
-        ${isAdmin ? `
-          <div class="card-actions">
-            <div class="icon-btn" data-edit="${p.id}">✏️</div>
-            <div class="icon-btn" data-delete="${p.id}" style="color:var(--danger)">🗑</div>
-          </div>
-        ` : ``}
-
-        <h3 class="title-inline">
-          ${p.project_name || "Unnamed Project"}
-          ${p.project_completed ? `<span class="archived-label">🔒 Archived</span>` : ""}
-        </h3>
-
-        <div class="badge-wrap">
-          ${!p.project_completed && unreadData > 0 ? `<span class="badge">⚡ NEW</span>` : ""}
-          ${!p.project_completed && unreadImages > 0 ? `<span class="badge">🖼 NEW</span>` : ""}
-          ${p.pending_api_sync ? `<span class="badge">SYNCING</span>` : ""}
-        </div>
-
-        <p>${p.site_address || ""} ${p.zip_code || ""}</p>
-        <p><strong>Operation:</strong> ${p.operation_type === "install" ? "Install" : "De-install"}</p>
-        ${p.project_group_id ? `<p><strong>Related group:</strong> ${p.project_group_id}</p>` : ""}
-        <p><strong>Equipment:</strong> ${p.equipment_model || p.model || p.equipment || "N/A"}</p>
-        <p><strong>Identifier:</strong> ${p.serial_number ? `S/N ${p.serial_number}` : p.asset_id || "N/A"}</p>
-        <p><strong>Facility:</strong> ${p.facility_name || p.facility || "N/A"}</p>
-        <p><strong>Modality:</strong> ${p.modality || "N/A"}</p>
-
-     ${shouldShowFromBlock(p) ? `
-  <p style="margin-top:6px;font-size:13px;color:#666;">
-    <strong>From:</strong> ${senderName(p)}<br>
-    ${p.sales_rep_company ? `${p.sales_rep_company}<br>` : ""}
-    ${p.sales_rep_phone ? `📞 ${p.sales_rep_phone}<br>` : ""}
-    ${p.sales_rep_email ? `✉️ ${p.sales_rep_email}` : ""}
-  </p>
-` : ""}
-      `;
-
-      card.onclick = () => {
-        const destination = new URL("management.html", location.href);
-        destination.searchParams.set("id", p.id);
-        destination.searchParams.set("projectId", p.id);
-        ESPIN_OPERATION_FIELDS.forEach(field => {
-          if (p[field]) destination.searchParams.set(field, p[field]);
-        });
-        location.href = destination.toString();
-      };
-
-      if (isAdmin) {
-        card.querySelector('[data-edit]').onclick = (e) => {
-          e.stopPropagation();
-          openProjectModal(p);
-        };
-
-        card.querySelector('[data-delete]').onclick = (e) => {
-          e.stopPropagation();
-          showDeleteModal(p.id);
-        };
-      }
-
-      list.appendChild(card);
-    }
+    await renderProjectCards(projects);
 
   } catch (err) {
     console.error("PROJECTS FETCH FAILED:", err);
@@ -953,7 +1099,14 @@ async function loadProjects() {
     `;
   }
 }
-window.addEventListener("focus", loadProjectsSafe);
+window.addEventListener("focus", () => {
+  if (
+    document.visibilityState === "visible" &&
+    Date.now() - lastProjectsLoadStartedAt >= 1000
+  ) {
+    loadProjectsSafe();
+  }
+});
 </script>
 
 </body>
