@@ -424,56 +424,297 @@
     }catch(error){alert(`Project could not be created: ${error.message}`);$("confirmBtn").disabled=false;$("confirmBtn").textContent="Confirm and create project"}
   }
   $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
+
+  // Allow the removal-only source gate below to use the existing selection
+  // and review workflow without navigating or reloading this page.
+  window.EspinEquipmentSelectionPage = {
+    normalize,
+    review,
+    show,
+    escapeHtml: esc
+  };
+
   reloadCandidatesFromFreshStorage();
   render();
   applyEquipmentSelectionFullReset(false);
 })();
 </script>
 <script>
-/* Removal-only source gate. Installation continues through the original flow. */
+/*
+  Removal-only equipment-source gate.
+  - Exactly one source panel is rendered.
+  - Install Base records load only after the user chooses that source.
+  - Selection continues in place; EquipmentSelection.html does not reload.
+  - Same-facility records are deduplicated before display.
+  - Installation workflow remains unchanged.
+*/
 (() => {
-  const q = new URLSearchParams(location.search);
-  const removal = !/^install$/i.test(q.get("operation_type") || q.get("selected_type") || q.get("project_type") || "");
-  if (!removal) return;
-  if (q.get("removal_equipment_source") === "manual") {
-    document.getElementById("manualBtn").click();
+  const query = new URLSearchParams(location.search);
+  const operationValue =
+    query.get("operation_type") ||
+    query.get("selected_type") ||
+    query.get("project_type") ||
+    "";
+
+  const isRemoval = !/^install$/i.test(operationValue);
+  if (!isRemoval) return;
+
+  const page = window.EspinEquipmentSelectionPage;
+  if (!page) {
+    console.error("Equipment Selection page API is unavailable.");
     return;
   }
-  if (q.get("removal_equipment_source")) return;
-  const panel = document.getElementById("selectionPanel");
-  const facilityId = String(q.get("facility_id") || "").trim();
-  const facilityName = String(q.get("facility_name") || q.get("facility") || "").trim();
-  const same = r => facilityId ? String(r.facility_id || r.site_id || "").toLowerCase() === facilityId.toLowerCase() : !facilityName || String(r.facility_name || r.facility || r.site || "").toLowerCase() === facilityName.toLowerCase();
-  const esc = value => { const d=document.createElement("div"); d.textContent=String(value || "—"); return d.innerHTML; };
-  const source = document.createElement("section");
-  source.className = "panel";
-  source.id = "removalSourcePanel";
-  source.innerHTML = `<h2>Select equipment source</h2><p class="sub">Choose how to identify the equipment being removed.</p><div class="actions"><button id="chooseInstallBase">Select from Install Base</button><button class="secondary" id="chooseManual">Enter manually</button></div><div id="installBaseChoices" class="cards hidden"></div>`;
-  panel.before(source); panel.classList.add("hidden");
-  document.getElementById("chooseManual").onclick = () => {
-    const next = new URL(location.href); next.searchParams.set("removal_equipment_source", "manual"); location.href = next;
+
+  const requestedSource = String(
+    query.get("removal_equipment_source") || ""
+  ).trim().toLowerCase();
+
+  if (requestedSource === "manual") {
+    document.getElementById("manualBtn")?.click();
+    return;
+  }
+
+  // A trade-in or already selected Install Base record is an explicit
+  // equipment handoff and should continue through the normal review flow.
+  if (requestedSource) return;
+
+  // Prevent accidental duplicate source panels.
+  document.getElementById("removalSourcePanel")?.remove();
+
+  const selectionPanel = document.getElementById("selectionPanel");
+  if (!selectionPanel) return;
+
+  const facilityId = String(query.get("facility_id") || "").trim().toLowerCase();
+  const facilityName = String(
+    query.get("facility_name") ||
+    query.get("facility") ||
+    ""
+  ).trim().toLowerCase();
+
+  const sameFacility = record => {
+    const recordFacilityId = String(
+      record?.facility_id ||
+      record?.site_id ||
+      record?.account_id ||
+      ""
+    ).trim().toLowerCase();
+
+    const recordFacilityName = String(
+      record?.facility_name ||
+      record?.facility ||
+      record?.site ||
+      record?.hospital ||
+      ""
+    ).trim().toLowerCase();
+
+    if (facilityId) return recordFacilityId === facilityId;
+    if (facilityName) return recordFacilityName === facilityName;
+    return false;
   };
-  document.getElementById("chooseInstallBase").onclick = () => {
-    let records=[]; try { records=JSON.parse(localStorage.getItem("axis_install_base_records_v1") || "[]"); } catch (_) {}
-    if (!Array.isArray(records)) records=[];
-    records = records.filter(same).filter(r => r && (r.asset_id || r.serial_number || r.make || r.model));
-    const list=document.getElementById("installBaseChoices"); list.classList.remove("hidden");
-    list.innerHTML = records.length ? records.map((r,i) => `<button class="secondary" data-install-base-index="${i}"><strong>${esc([r.make,r.model].filter(Boolean).join(" ") || "Equipment")}</strong><br><small>${esc(r.modality)} · S/N ${esc(r.serial_number || r.serial)} · Asset ${esc(r.asset_id)}</small></button>`).join("") : '<div class="empty">No Install Base equipment was found for this facility.</div>';
-    list.querySelectorAll("[data-install-base-index]").forEach(button => button.onclick = () => {
-      const r=records[Number(button.dataset.installBaseIndex)], next=new URL(location.href);
-      next.searchParams.set("removal_equipment_source", "install_base"); next.searchParams.set("handoff", "removal_project"); next.searchParams.set("equipment_source", "install_base"); next.searchParams.set("source_record_id", r.id || r.record_id || r.asset_id || r.serial_number || "");
-      ["asset_id","serial_number","make","model","modality","status","facility_id","facility_name"].forEach(k => { const v=r[k] || (k === "serial_number" ? r.serial : ""); if (v) next.searchParams.set(k, v); });
-      location.href=next;
+
+  const equipmentIdentity = record => {
+    const asset = String(
+      record?.asset_id ||
+      record?.equipment_id ||
+      record?.asset_tag ||
+      ""
+    ).trim().toLowerCase();
+
+    const serial = String(
+      record?.serial_number ||
+      record?.serial ||
+      record?.system_serial ||
+      ""
+    ).trim().toLowerCase();
+
+    if (asset) return `asset:${asset}`;
+    if (serial) return `serial:${serial}`;
+
+    return [
+      "named",
+      record?.make || record?.manufacturer || "",
+      record?.model || record?.equipment_model || "",
+      record?.modality || record?.equipment_type || "",
+      record?.facility_id || record?.facility_name || record?.facility || ""
+    ].map(value => String(value).trim().toLowerCase()).join(":");
+  };
+
+  const mergeRecord = (existing, incoming) => {
+    if (!existing) return incoming;
+
+    const result = { ...existing };
+    Object.entries(incoming || {}).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        result[key] = value;
+      }
     });
+    return result;
   };
-  // Rep's explicit Install Base action arrives with this flag. The page reads
-  // the matching facility records only now, after that action.
-  if (q.get("open_install_base") === "1") document.getElementById("chooseInstallBase").click();
+
+  const loadSameFacilityInstallBase = () => {
+    let raw = [];
+
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem("axis_install_base_records_v1") || "[]"
+      );
+
+      if (Array.isArray(parsed)) {
+        raw = parsed;
+      } else if (parsed && typeof parsed === "object") {
+        raw = Object.values(parsed).flatMap(value =>
+          Array.isArray(value)
+            ? value
+            : value && typeof value === "object"
+              ? [value]
+              : []
+        );
+      }
+    } catch (error) {
+      console.warn("Install Base records could not be read.", error);
+    }
+
+    const deduplicated = new Map();
+
+    raw
+      .filter(record => record && sameFacility(record))
+      .filter(record =>
+        record.asset_id ||
+        record.equipment_id ||
+        record.asset_tag ||
+        record.serial_number ||
+        record.serial ||
+        record.system_serial ||
+        record.make ||
+        record.manufacturer ||
+        record.model ||
+        record.equipment_model
+      )
+      .forEach(record => {
+        const key = equipmentIdentity(record);
+        deduplicated.set(
+          key,
+          mergeRecord(deduplicated.get(key), record)
+        );
+      });
+
+    return Array.from(deduplicated.values());
+  };
+
+  const sourcePanel = document.createElement("section");
+  sourcePanel.className = "panel";
+  sourcePanel.id = "removalSourcePanel";
+  sourcePanel.innerHTML = `
+    <h2>Select equipment source</h2>
+    <p class="sub">Choose how to identify the equipment being removed.</p>
+    <div class="actions">
+      <button type="button" id="chooseInstallBase">
+        Select from Install Base
+      </button>
+      <button type="button" class="secondary" id="chooseManual">
+        Enter manually
+      </button>
+    </div>
+    <div id="installBaseChoices" class="cards hidden"></div>
+  `;
+
+  selectionPanel.before(sourcePanel);
+  selectionPanel.classList.add("hidden");
+
+  const installBaseChoices =
+    document.getElementById("installBaseChoices");
+
+  document.getElementById("chooseManual").onclick = () => {
+    sourcePanel.classList.add("hidden");
+    page.show("manualPanel");
+  };
+
+  document.getElementById("chooseInstallBase").onclick = () => {
+    const records = loadSameFacilityInstallBase();
+    installBaseChoices.classList.remove("hidden");
+
+    if (!records.length) {
+      installBaseChoices.innerHTML =
+        '<div class="empty">No Install Base equipment was found for this facility.</div>';
+      return;
+    }
+
+    installBaseChoices.innerHTML = records.map((record, index) => {
+      const make = record.make || record.manufacturer || "";
+      const model = record.model || record.equipment_model || "";
+      const modality = record.modality || record.equipment_type || "";
+      const serial =
+        record.serial_number ||
+        record.serial ||
+        record.system_serial ||
+        "—";
+      const asset =
+        record.asset_id ||
+        record.equipment_id ||
+        record.asset_tag ||
+        "—";
+
+      return `
+        <button
+          type="button"
+          class="secondary"
+          data-install-base-index="${index}"
+          style="width:100%;text-align:center"
+        >
+          <strong>${page.escapeHtml(
+            [make, model].filter(Boolean).join(" ") || "Equipment"
+          )}</strong>
+          <br>
+          <small>
+            ${page.escapeHtml(modality)} ·
+            S/N ${page.escapeHtml(serial)} ·
+            Asset ${page.escapeHtml(asset)}
+          </small>
+        </button>
+      `;
+    }).join("");
+
+    installBaseChoices
+      .querySelectorAll("[data-install-base-index]")
+      .forEach(button => {
+        button.onclick = () => {
+          const sourceRecord =
+            records[Number(button.dataset.installBaseIndex)];
+
+          const normalized = page.normalize(
+            {
+              ...sourceRecord,
+              equipment_source: "install_base",
+              source_record_id:
+                sourceRecord.id ||
+                sourceRecord.record_id ||
+                sourceRecord.asset_id ||
+                sourceRecord.equipment_id ||
+                sourceRecord.serial_number ||
+                sourceRecord.serial ||
+                ""
+            },
+            "axis_install_base_records_v1",
+            true
+          );
+
+          sourcePanel.classList.add("hidden");
+          page.review(normalized);
+        };
+      });
+  };
+
+  // Rep's explicit action opens the source screen and may request that the
+  // same-facility Install Base list be expanded immediately.
+  if (query.get("open_install_base") === "1") {
+    document.getElementById("chooseInstallBase").click();
+  }
 })();
 </script>
-<script>
-/* Removal source gate; the existing installation flow remains unchanged. */
-(()=>{const q=new URLSearchParams(location.search),removal=!/^install$/i.test(q.get("operation_type")||q.get("selected_type")||q.get("project_type")||"");if(!removal)return;if(q.get("removal_equipment_source")==="manual"){document.getElementById("manualBtn").click();return}if(q.get("removal_equipment_source"))return;const panel=document.getElementById("selectionPanel"),fid=String(q.get("facility_id")||"").toLowerCase(),fname=String(q.get("facility_name")||q.get("facility")||"").toLowerCase(),same=r=>fid?String(r.facility_id||r.site_id||"").toLowerCase()===fid:!fname||String(r.facility_name||r.facility||r.site||"").toLowerCase()===fname,esc=v=>{const d=document.createElement("div");d.textContent=String(v||"—");return d.innerHTML},gate=document.createElement("section");gate.className="panel";gate.innerHTML='<h2>Select equipment source</h2><div class="actions"><button id="pickBase">Select from Install Base</button><button class="secondary" id="pickManual">Enter manually</button></div><div id="baseList" class="cards hidden"></div>';panel.before(gate);panel.classList.add("hidden");document.getElementById("pickManual").onclick=()=>{const u=new URL(location.href);u.searchParams.set("removal_equipment_source","manual");location.href=u};document.getElementById("pickBase").onclick=()=>{let a=[];try{a=JSON.parse(localStorage.getItem("axis_install_base_records_v1")||"[]")}catch(_){}a=Array.isArray(a)?a.filter(same).filter(r=>r&&(r.asset_id||r.serial_number||r.make||r.model)):[];const list=document.getElementById("baseList");list.classList.remove("hidden");list.innerHTML=a.length?a.map((r,i)=>`<button class="secondary" data-i="${i}"><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><br><small>${esc(r.modality)} · S/N ${esc(r.serial_number||r.serial)}</small></button>`).join(""):'<div class="empty">No Install Base equipment was found for this facility.</div>';list.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{const r=a[+b.dataset.i],u=new URL(location.href);u.searchParams.set("removal_equipment_source","install_base");u.searchParams.set("handoff","removal_project");u.searchParams.set("equipment_source","install_base");["asset_id","serial_number","make","model","modality","status","facility_id","facility_name"].forEach(k=>{const v=r[k]||(k==="serial_number"?r.serial:"");if(v)u.searchParams.set(k,v)});u.searchParams.set("source_record_id",r.id||r.record_id||r.asset_id||r.serial_number||"");location.href=u})};if(q.get("open_install_base")==="1")document.getElementById("pickBase").click()})();
-</script>
+
 </body>
 </html>
