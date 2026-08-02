@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Creating Espin Connect Project</title>
@@ -56,8 +57,8 @@
 </head>
 <body>
   <main class="card" id="card">
-    <h1>Creating Espin Connect project</h1>
-    <p id="status">Please wait while the project is added to Espin Connect.</p>
+    <h1>Opening ESPIN Connect</h1>
+    <p id="status">Preparing the equipment workflow.</p>
     <div class="spinner" id="spinner"></div>
     <pre id="details" style="display:none"></pre>
     <button id="retryBtn" style="display:none">Try Again</button>
@@ -73,31 +74,7 @@
   const retryBtn = document.getElementById("retryBtn");
 
   const clean = value => String(value || "").trim();
-  const boolParam = value => ["true","1","yes","on"].includes(clean(value).toLowerCase());
-
-  function showError(message, extra) {
-    card.classList.add("error");
-    spinner.style.display = "none";
-    retryBtn.style.display = "block";
-    card.querySelector("h1").textContent = "Espin Connect sync failed";
-    status.textContent = message || "The project could not be created.";
-    if (extra) {
-      details.style.display = "block";
-      details.textContent = extra;
-    }
-  }
-
-  async function createProject() {
-    card.classList.remove("error","success");
-    spinner.style.display = "block";
-    retryBtn.style.display = "none";
-    details.style.display = "none";
-    card.querySelector("h1").textContent = "Creating Espin Connect project";
-    status.textContent =
-      clean(params.get("project_type")).toLowerCase() === "install"
-        ? "Please wait while the installation project is added to Espin Connect."
-        : "Please wait while the project is added to Espin Connect.";
-
+  function continueToWorkflow() {
     const storedEmail = clean(
       localStorage.getItem("espinUserEmail") ||
       localStorage.getItem("espinEquipment_userEmail")
@@ -111,105 +88,16 @@
     localStorage.setItem("espinAuth", "true");
     localStorage.setItem("espinUserEmail", repEmail);
 
-    const projectType =
-      clean(params.get("project_type")).toLowerCase() === "install"
-        ? "install"
-        : "disposal";
-
-    const payload = {
-      project_name:
-        clean(params.get("project_name")) ||
-        (projectType === "install"
-          ? "ESPIN LINK Installation Project"
-          : "ESPIN LINK Disposal Project"),
-      site_address: clean(params.get("site_address")),
-      zip_code: clean(params.get("zip_code")),
-      equipment: clean(params.get("equipment")),
-      modality: clean(params.get("modality")).toUpperCase() || "OTHER",
-      magnet_event: clean(params.get("magnet_event")),
-      disposal_required: boolParam(params.get("disposal_required")),
-      sales_rep_first: clean(params.get("sales_rep_first")),
-      sales_rep_last: clean(params.get("sales_rep_last")),
-      sales_rep_company: clean(params.get("sales_rep_company")) || "ESPIN LINK",
-      sales_rep_phone: clean(params.get("sales_rep_phone")),
-      sales_rep_email: repEmail,
-      contact_name: clean(params.get("contact_name")),
-      contact_title: clean(params.get("contact_title")),
-      contact_phone: clean(params.get("contact_phone")),
-      contact_email: clean(params.get("contact_email")),
-      project_type: projectType,
-      source:
-        projectType === "install"
-          ? "espin_link_installation_project"
-          : "espin_link_disposal_review"
-    };
-
-    try {
-      const response = await fetch("/api/removal-install/projects", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(repEmail ? {"x-user-email": repEmail} : {})
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const raw = await response.text();
-      let result = null;
-      try { result = raw ? JSON.parse(raw) : null; } catch {}
-
-      if (!response.ok) {
-        throw new Error(result?.error || result?.message || raw || `HTTP ${response.status}`);
-      }
-
-      const projectId = clean(result?.id || result?.projectId);
-      if (!projectId) throw new Error("Project was created without a project ID.");
-
-      localStorage.setItem("activeProjectId", projectId);
-
-      card.classList.add("success");
-      card.querySelector("h1").textContent = "Project created";
-      status.textContent =
-        projectType === "install"
-          ? "Opening Installation Management…"
-          : "Opening Removal Management…";
-
-      const destination = new URL(
-        projectType === "install"
-          ? "/removal-install/install_management.html"
-          : "/removal-install/management.html",
-        location.origin
-      );
-
-      destination.searchParams.set("projectId", projectId);
-      destination.searchParams.set("id", projectId);
-      destination.searchParams.set("created_type", projectType);
-      destination.searchParams.set("source", "espin_link");
-      destination.searchParams.set(
-        "handoff",
-        projectType === "install"
-          ? "installation_project"
-          : "disposal_review"
-      );
-
-      destination.searchParams.set(
-        "axis_record_id",
-        clean(params.get("axis_record_id"))
-      );
-      destination.searchParams.set(
-        "axis_project_id",
-        clean(params.get("axis_project_id"))
-      );
-
-      setTimeout(() => location.replace(destination.toString()), 500);
-    } catch (error) {
-      console.error("Espin Connect handoff failed:", error);
-      showError(error?.message || "Load failed");
-    }
+    const destination = new URL("/removal-install/project_type.html", location.origin);
+    params.forEach((value,key) => {
+      if (key !== "operation_id" && clean(value)) destination.searchParams.set(key,value);
+    });
+    status.textContent = "Choose the workflow, then select the particular equipment.";
+    setTimeout(() => location.replace(destination.toString()), 300);
   }
 
-  retryBtn.addEventListener("click", createProject);
-  createProject();
+  retryBtn.addEventListener("click", continueToWorkflow);
+  continueToWorkflow();
 })();
 </script>
 </body>

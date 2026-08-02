@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="operation-context.js"></script>
 <meta charset="UTF-8">
 <title>Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -242,6 +243,21 @@ html, body{
       <option value="OTHER">Other</option>
     </select>
 
+
+    <div class="small-note" id="equipmentSourceNote">Enter equipment information manually.</div>
+
+    <label>Manufacturer</label>
+    <input id="mManufacturer" placeholder="Enter manufacturer">
+
+    <label>Model</label>
+    <input id="mModel" placeholder="Enter model">
+
+    <label>Serial Number <span style="font-weight:400;">(optional)</span></label>
+    <input id="mSerial" placeholder="Enter serial number">
+
+    <label>Equipment Description</label>
+    <input id="mEquipmentDescription" placeholder="Enter equipment description">
+
     <div id="mriBlock" style="display:none;">
       <div class="small-note">MRI Specific Task</div>
       <label>Magnet Event Required?</label>
@@ -274,20 +290,16 @@ html, body{
 </div>
 
 <div class="nav">
-  <a href="../Rep.html">🔗<br>Espin Link</a>
-  <a href="install-projects.html" class="active">🛠️<br>Projects</a>
+  <a href="Home.html">🏠<br>Home</a>
+  <a href="Projects.html" class="active">🛠️<br>Projects</a>
 </div>
 
 <!-- ONLY SCRIPT SECTION CHANGED -->
 
 <script>
-let email =
-  localStorage.getItem("espinUserEmail") ||
-  localStorage.getItem("espinEquipment_userEmail") ||
-  "info@espinmedical.com";
+let email = localStorage.getItem("espinUserEmail");
 email = String(email || "").toLowerCase().trim();
-localStorage.setItem("espinAuth", "true");
-localStorage.setItem("espinUserEmail", email);
+if (!email) location.replace("index.html");
 
 const ADMIN_EMAIL = "info@espinmedical.com";
 const isAdmin =
@@ -312,6 +324,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   loadProjectsSafe();
+
+  const syncedInstallationProject = getInstallationProjectFromUrl();
+  if (syncedInstallationProject && isAdmin) {
+    openProjectModal(syncedInstallationProject);
+  }
 });
 /* ===============================
    MODAL
@@ -322,6 +339,15 @@ function openProjectModal(project = null) {
   document.getElementById("inpAddress").value = project ? project.site_address : "";
   document.getElementById("inpZip").value = project ? (project.zip_code || "") : "";
   document.getElementById("mModality").value = project ? project.modality : "";
+  document.getElementById("mManufacturer").value = project ? (project.manufacturer || project.make || "") : "";
+  document.getElementById("mModel").value = project ? (project.model || "") : "";
+  document.getElementById("mSerial").value = project ? (project.serial_number || project.serial || "") : "";
+  document.getElementById("mEquipmentDescription").value = project
+    ? (project.equipment_description || project.equipment || "")
+    : "";
+  document.getElementById("equipmentSourceNote").textContent = project && project.equipment_source === "sales_project"
+    ? "Equipment information synced from ESPIN LINK New Project. You may edit it if needed."
+    : "Enter equipment information manually.";
   document.getElementById("mMagnet").value = project ? (project.magnet_event || "") : "";
   document.getElementById("mDisposal").value = project ? String(project.disposal_required ?? false) : "false";
 
@@ -333,6 +359,31 @@ function openProjectModal(project = null) {
 
 function closeProjectModal() {
   document.getElementById("projectModal").style.display = "none";
+}
+
+
+function getInstallationProjectFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const isInstallHandoff =
+    String(params.get("project_type") || params.get("created_type") || "").toLowerCase() === "install" ||
+    String(params.get("handoff") || "").toLowerCase() === "installation_project";
+
+  if (!isInstallHandoff) return null;
+
+  return {
+    id: "",
+    project_name: params.get("project_name") || "Installation Project",
+    site_address: params.get("site_address") || "",
+    zip_code: params.get("zip_code") || "",
+    modality: (params.get("modality") || "OTHER").toUpperCase(),
+    manufacturer: params.get("make") || params.get("manufacturer") || "",
+    model: params.get("model") || "",
+    serial_number: params.get("serial_number") || params.get("serial") || "",
+    equipment_description: params.get("equipment_description") || params.get("equipment") || "",
+    equipment_source: params.get("equipment_source") || "sales_project",
+    magnet_event: params.get("magnet_event") || "",
+    disposal_required: false
+  };
 }
 
 /* ===============================
@@ -356,6 +407,17 @@ async function saveProject() {
   site_address: document.getElementById("inpAddress").value,
   zip_code: document.getElementById("inpZip").value,
   modality: modality,
+  manufacturer: document.getElementById("mManufacturer").value.trim(),
+  make: document.getElementById("mManufacturer").value.trim(),
+  model: document.getElementById("mModel").value.trim(),
+  serial_number: document.getElementById("mSerial").value.trim(),
+  equipment_description: document.getElementById("mEquipmentDescription").value.trim(),
+  equipment: document.getElementById("mEquipmentDescription").value.trim() ||
+    [
+      document.getElementById("mManufacturer").value.trim(),
+      document.getElementById("mModel").value.trim()
+    ].filter(Boolean).join(" "),
+  equipment_source: "manual_entry",
   magnet_event: modality === "MRI"
     ? document.getElementById("mMagnet").value
     : null,
@@ -373,6 +435,35 @@ async function saveProject() {
     });
 
     if (r.ok) {
+      let saved = null;
+      try {
+        const rawSaved = await r.clone().text();
+        saved = rawSaved ? JSON.parse(rawSaved) : null;
+      } catch {}
+
+      const savedId = String(
+        saved?.id ||
+        saved?.projectId ||
+        id ||
+        ""
+      ).trim();
+
+      if (savedId) {
+        const cachedProject = {
+          ...payload,
+          ...(saved && typeof saved === "object" ? saved : {}),
+          id: savedId,
+          projectId: savedId
+        };
+        const existing = getCachedInstallProjects();
+        saveCachedInstallProjects([
+          cachedProject,
+          ...existing.filter(item =>
+            String(item?.id || item?.projectId || "") !== savedId
+          )
+        ]);
+      }
+
       closeProjectModal();
       setTimeout(loadProjectsSafe, 500);
     } else {
@@ -406,6 +497,11 @@ document.getElementById("deleteConfirmBtn").onclick = async () => {
     headers: { "Content-Type": "application/json", "x-user-email": email },
     body: JSON.stringify({ action: "delete", id: pendingDeleteId })
   });
+  const remaining = getCachedInstallProjects().filter(item =>
+    String(item?.id || item?.projectId || "") !== String(pendingDeleteId || "")
+  );
+  saveCachedInstallProjects(remaining);
+
   document.getElementById("deleteModal").style.display = "none";
   setTimeout(loadProjectsSafe, 500);
 };
@@ -433,6 +529,43 @@ async function kvGet(key) {
     return 0;
   }
 }
+const INSTALL_PROJECT_CACHE_KEY = "espin_install_projects_cache_v1";
+
+function getCachedInstallProjects() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INSTALL_PROJECT_CACHE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedInstallProjects(projects) {
+  try {
+    localStorage.setItem(
+      INSTALL_PROJECT_CACHE_KEY,
+      JSON.stringify(Array.isArray(projects) ? projects : [])
+    );
+  } catch (error) {
+    console.warn("Could not update installation project cache:", error);
+  }
+}
+
+function mergeProjectsById(serverProjects, cachedProjects) {
+  const merged = new Map();
+
+  for (const project of [...cachedProjects, ...serverProjects]) {
+    if (!project || typeof project !== "object") continue;
+    const id = String(project.id || project.projectId || "").trim();
+    if (!id) continue;
+
+    const current = merged.get(id) || {};
+    merged.set(id, { ...current, ...project, id });
+  }
+
+  return Array.from(merged.values());
+}
+
 function senderName(p) {
   return `${p.sales_rep_first || ""} ${p.sales_rep_last || ""}`.trim();
 }
@@ -511,17 +644,36 @@ async function loadProjects() {
     let projects = [];
 
     try {
-      projects = raw ? JSON.parse(raw) : [];
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      if (Array.isArray(parsed)) {
+        projects = parsed;
+      } else if (Array.isArray(parsed?.projects)) {
+        projects = parsed.projects;
+      } else if (Array.isArray(parsed?.data)) {
+        projects = parsed.data;
+      } else if (Array.isArray(parsed?.items)) {
+        projects = parsed.items;
+      } else if (parsed && typeof parsed === "object") {
+        const values = Object.values(parsed);
+        projects = values.every(item => item && typeof item === "object")
+          ? values
+          : [];
+      }
     } catch (e) {
-      console.error("Invalid JSON from /api/projects:", raw);
+      console.error("Invalid JSON from /api/removal-install/projects:", raw);
       list.innerHTML = `<p style="text-align:center;color:red;">Invalid project response.</p>`;
       return;
     }
 
     list.innerHTML = "";
 
-    const seen = new Set();
-    projects = projects.filter(p => !seen.has(p.id) && seen.add(p.id));
+    const cachedProjects = getCachedInstallProjects();
+    projects = mergeProjectsById(projects, cachedProjects);
+
+    // Keep the local cache aligned with the latest server data while preserving
+    // handoff-created projects that the API has not returned yet.
+    saveCachedInstallProjects(projects);
 const axisDemoProject = getAxisDemoProjectFromUrl();
 
 if (axisDemoProject) {
@@ -571,7 +723,37 @@ if (axisDemoProject) {
       `;
 
       card.onclick = () => {
-        location.href = `install_management.html?id=${p.id}`;
+        const destination = new URL("install_management.html", location.href);
+        destination.searchParams.set("id", p.id);
+        destination.searchParams.set("projectId", p.id);
+
+        if (window.EspinOperation?.context) {
+          Object.assign(window.EspinOperation.context, {
+            operation_id: p.operation_id || window.EspinOperation.context.operation_id || "",
+            operation_type: p.operation_type || window.EspinOperation.context.operation_type || "install",
+            project_group_id: p.project_group_id || "",
+            facility_id: p.facility_id || "",
+            facility_name: p.facility_name || p.facility || p.project_name || "",
+            facility: p.facility || p.facility_name || p.project_name || "",
+            source_record_id: p.source_record_id || p.axis_record_id || "",
+            asset_id: p.asset_id || "",
+            serial_number: p.serial_number || p.serial || "",
+            make: p.make || p.manufacturer || "",
+            model: p.model || "",
+            modality: p.modality || "",
+            equipment_model: p.equipment_model || p.model || p.equipment || "",
+            equipment_source: p.equipment_source || "",
+            equipment_verified: p.equipment_verified || ""
+          });
+
+          window.EspinOperation.saveContext?.(p.id);
+        }
+
+        const destinationUrl = window.EspinOperation?.url
+          ? window.EspinOperation.url(destination)
+          : destination.toString();
+
+        location.href = destinationUrl;
       };
 
       if (isAdmin) {

@@ -30,6 +30,37 @@ const ALLOWED_FIELDS = [
   "project_completed",
   "notes"
 ];
+const OPERATION_FIELDS = [
+  "operation_id",
+  "operation_type",
+  "project_group_id",
+  "facility_id",
+  "facility_name",
+  "facility",
+  "asset_id",
+  "serial_number",
+  "source_record_id",
+  "make",
+  "model",
+  "modality",
+  "equipment_model",
+  "equipment_source",
+  "equipment_verified",
+  "created_at",
+  "created_by"
+];
+
+function operationMetadata(body = {}) {
+  const source = {
+    ...(body.data && typeof body.data === "object" ? body.data : {}),
+    ...body
+  };
+  return Object.fromEntries(
+    OPERATION_FIELDS
+      .map(field => [field, String(source[field] ?? "").trim()])
+      .filter(([, value]) => value)
+  );
+}
 
 /* ✅ FORMATTER (FIXED + CLEAN) */
 function formatFieldList(fields = []) {
@@ -93,8 +124,11 @@ export default async function handler(req, res) {
         }
       } catch {}
 
+      const operation =
+        await kv.get(`espin:operation:${projectId}`) || {};
       return res.json({
         ...(rows[0] || {}),
+        ...operation,
         changedFields
       });
     }
@@ -105,6 +139,15 @@ export default async function handler(req, res) {
     }
 
     const payload = req.body?.data || {};
+    const incomingOperation = operationMetadata(req.body || {});
+    if (Object.keys(incomingOperation).length) {
+      const existingOperation =
+        await kv.get(`espin:operation:${projectId}`) || {};
+      await kv.set(`espin:operation:${projectId}`, {
+        ...existingOperation,
+        ...incomingOperation
+      });
+    }
 
     const projState = await client.query(
       `SELECT project_completed FROM projects WHERE id = $1`,

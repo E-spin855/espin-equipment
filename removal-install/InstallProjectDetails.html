@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
   <meta charset="UTF-8">
   <title>Installation Project Details | Espin Medical</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -355,6 +356,21 @@ function getInstallationMilestoneSnapshot() {
 }
 
 function syncInstallationProjectToRep() {
+  const operationContext = window.EspinOperation.context;
+
+  // An installation must have its own operation identity. If this page was
+  // opened from a de-install workflow, do not reuse that operation ID.
+  if (
+    !operationContext.operation_id ||
+    operationContext.operation_type !== "install"
+  ) {
+    operationContext.operation_id =
+      window.EspinOperation.newOperationId("install");
+    operationContext.operation_type = "install";
+    window.EspinOperation.saveContext();
+  }
+
+  const urlParams = new URLSearchParams(location.search);
   const projectCompletedRow = [...document.querySelectorAll(".toggle")]
     .find(row =>
       row.querySelector(".label")?.textContent.trim().startsWith("Project Completed")
@@ -385,11 +401,24 @@ function syncInstallationProjectToRep() {
   const latestCompleted = [...milestones].reverse().find(m => m.completed);
 
   const project = {
-    project_id:"INST-204",
-    project_name:"CT Installation",
+    project_id:String(
+      urlParams.get("projectId") ||
+      urlParams.get("id") ||
+      localStorage.getItem("activeProjectId") ||
+      operationContext.operation_id
+    ),
+    operation_id:operationContext.operation_id,
+    operation_type:"install",
+    project_group_id:operationContext.project_group_id,
+    source_record_id:operationContext.source_record_id,
+    facility_id:operationContext.facility_id,
+    asset_id:operationContext.asset_id,
+    serial_number:operationContext.serial_number,
+    project_name:"Installation Project",
     project_type:"installation",
-    facility:"Evergreen Medical Center",
-    equipment:"GE Revolution CT",
+    facility:operationContext.facility || "ESPIN Connect",
+    equipment_model:operationContext.equipment_model,
+    equipment:operationContext.equipment_model || "Equipment",
     current_stage: progress >= 100
       ? "Project Completed"
       : (latestCompleted?.name || next?.name || "Project Started"),
@@ -398,12 +427,7 @@ function syncInstallationProjectToRep() {
     updated_at:new Date().toISOString(),
     project_url:location.href
   };
-  let records=[];
-  try { records=JSON.parse(localStorage.getItem(ESPIN_ACTIVE_PROJECTS_KEY)||"[]"); } catch(_) {}
-  if (!Array.isArray(records)) records=[];
-  const index=records.findIndex(r=>r.project_id===project.project_id);
-  if (index>=0) records[index]={...records[index],...project}; else records.unshift(project);
-  localStorage.setItem(ESPIN_ACTIVE_PROJECTS_KEY,JSON.stringify(records));
+  const savedProject = window.EspinOperation.upsertActiveProject(project);
 
   // Send the updated progress directly to the Rep page even when ESPIN
   // Connect and ESPIN LINK are hosted on different domains.
@@ -412,7 +436,7 @@ function syncInstallationProjectToRep() {
       window.opener.postMessage(
         {
           type: "ESPIN_ACTIVE_PROJECT_UPDATED",
-          project
+          project: savedProject
         },
         "*"
       );
@@ -421,7 +445,7 @@ function syncInstallationProjectToRep() {
     console.warn("Rep progress message could not be delivered.", error);
   }
 
-  return project;
+  return savedProject;
 }
 
     function demoSave(button){

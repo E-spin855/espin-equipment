@@ -2,6 +2,7 @@
 // PATH: /api/projects.js
 
 import { Pool } from "pg";
+import { kv } from "@vercel/kv";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -36,6 +37,56 @@ function getTzFromZip() {
   return "UTC";
 }
 
+const OPERATION_FIELDS = [
+  "operation_id",
+  "operation_type",
+  "project_group_id",
+  "facility_id",
+  "facility_name",
+  "facility",
+  "asset_id",
+  "serial_number",
+  "source_record_id",
+  "make",
+  "model",
+  "modality",
+  "equipment_model",
+  "equipment_source",
+  "equipment_verified",
+  "created_at",
+  "created_by"
+];
+
+function operationMetadata(body = {}) {
+  return Object.fromEntries(
+    OPERATION_FIELDS
+      .map(field => [field, String(body[field] ?? "").trim()])
+      .filter(([, value]) => value)
+  );
+}
+
+function operationIdentityKey(body = {}) {
+  const type = String(body.operation_type || "").trim().toLowerCase();
+  const value =
+    String(body.source_record_id || "").trim().toLowerCase() ||
+    String(body.asset_id || "").trim().toLowerCase() ||
+    String(body.serial_number || "").trim().toLowerCase();
+  return type && value
+    ? `espin:active-equipment-operation:${type}:${encodeURIComponent(value)}`
+    : "";
+}
+
+async function addOperationMetadata(project) {
+  if (!project?.id) return project;
+  try {
+    const metadata =
+      await kv.get(`espin:operation:${project.id}`) || {};
+    return { ...project, ...metadata };
+  } catch {
+    return project;
+  }
+}
+
 /* ===============================
    HANDLER
 =============================== */
@@ -50,7 +101,7 @@ export default async function handler(req, res) {
     /* ===============================
        GET — SINGLE PROJECT
     =============================== */
-    if (req.method === "GET" && req.query.id) {
+    if (req.method === "GET" && (req.query.id || req.query.operation_id)) {
       const email = clean(
         req.headers["x-user-email"] ||
         req.headers["x-useremail"]
@@ -58,6 +109,16 @@ export default async function handler(req, res) {
 
       if (!email) {
         return res.status(401).json({ error: "Missing email" });
+      }
+
+      let requestedProjectId = req.query.id;
+      if (!requestedProjectId && req.query.operation_id) {
+        requestedProjectId = await kv.get(
+          `espin:operation-project:${String(req.query.operation_id).trim()}`
+        );
+      }
+      if (!requestedProjectId) {
+        return res.status(404).json({ error: "Equipment operation not found" });
       }
 
       const { rows } = await client.query(
@@ -79,14 +140,14 @@ export default async function handler(req, res) {
             )
           )
         `,
-        [req.query.id, email]
+        [requestedProjectId, email]
       );
 
       if (!rows.length) {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      return res.status(200).json(rows[0]);
+      return res.status(200).json(await addOperationMetadata(rows[0]));
     }
 
     /* ===============================
@@ -135,7 +196,9 @@ export default async function handler(req, res) {
         [email]
       );
 
-      return res.status(200).json(rows);
+      return res.status(200).json(
+        await Promise.all(rows.map(addOperationMetadata))
+      );
     }
 
     /* ===============================
@@ -157,6 +220,15 @@ export default async function handler(req, res) {
         await client.query(`DELETE FROM project_contacts WHERE project_id=$1`, [projectId]);
         await client.query(`DELETE FROM project_events WHERE project_id=$1`, [projectId]);
         await client.query(`DELETE FROM projects WHERE id=$1`, [projectId]);
+        try {
+          const metadata = await kv.get(`espin:operation:${projectId}`) || {};
+          if (metadata.operation_id) {
+            await kv.del(`espin:operation-project:${metadata.operation_id}`);
+          }
+          const identityKey = operationIdentityKey(metadata);
+          if (identityKey) await kv.del(identityKey);
+          await kv.del(`espin:operation:${projectId}`);
+        } catch {}
 
         return res.status(200).json({ ok: true });
       }
@@ -200,6 +272,22 @@ const {
 
 if (!project_name || !modality) {
   return res.status(400).json({ error: "Missing required fields" });
+}
+if (!body.operation_id) {
+  return res.status(400).json({ error: "Equipment confirmation and operation_id are required" });
+}
+if (!body.source_record_id && !body.asset_id && !body.serial_number) {
+  return res.status(400).json({ error: "A source record, asset ID, serial number, or temporary equipment ID is required" });
+}
+const activeIdentityKey = operationIdentityKey(body);
+if (activeIdentityKey) {
+  const existing = await kv.get(activeIdentityKey);
+  if (existing?.project_id) {
+    return res.status(409).json({
+      error: "An active operation already exists for this equipment and operation type",
+      existing
+    });
+  }
 }
 
  const tz = getTzFromZip();
@@ -272,7 +360,22 @@ const { rows } = await client.query(
     source || "lifecycle"
   ]
 );
-return res.status(201).json(rows[0]);
+const createdProject = rows[0];
+const createdMetadata = operationMetadata(body);
+if (createdProject?.id && Object.keys(createdMetadata).length) {
+  await kv.set(`espin:operation:${createdProject.id}`, createdMetadata);
+  await kv.set(
+    `espin:operation-project:${createdMetadata.operation_id}`,
+    createdProject.id
+  );
+  if (activeIdentityKey) {
+    await kv.set(activeIdentityKey, {
+      ...createdMetadata,
+      project_id: createdProject.id
+    });
+  }
+}
+return res.status(201).json({ ...createdProject, ...createdMetadata });
     }
 
     /* ===============================
@@ -325,7 +428,20 @@ return res.status(201).json(rows[0]);
         return res.status(404).json({ error: "Project not found" });
       }
 
-      return res.status(200).json(rows[0]);
+      const existingMetadata =
+        await kv.get(`espin:operation:${projectId}`) || {};
+      const updatedMetadata = {
+        ...existingMetadata,
+        ...operationMetadata(req.body || {})
+      };
+      if (Object.keys(updatedMetadata).length) {
+        await kv.set(`espin:operation:${projectId}`, updatedMetadata);
+      }
+
+      return res.status(200).json({
+        ...rows[0],
+        ...updatedMetadata
+      });
     }
 
     return res.status(405).json({ error: "Method not allowed" });

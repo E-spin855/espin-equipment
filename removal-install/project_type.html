@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Select Project Type | Espin Medical</title>
@@ -225,14 +226,6 @@
   </header>
 
   <main class="container">
-    <section class="welcome-card">
-      <div class="welcome-icon">✓</div>
-      <h2>Welcome to Espin Connect</h2>
-      <p>Select the type of imaging equipment project you want to open.</p>
-    </section>
-
-    <div class="section-title">Project Type</div>
-
     <a id="removalProjectLink" class="project-card removal" href="/removal-install/Projects.html" aria-label="Open removal projects">
       <div class="project-card-header">
         <div class="project-icon">↗</div>
@@ -273,8 +266,6 @@
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
-  const projectId = String(params.get("projectId") || params.get("id") || "").trim();
-  const createdType = String(params.get("created_type") || "").trim().toLowerCase();
   const source = String(params.get("source") || "espin_link").trim();
   const handoff = String(params.get("handoff") || "").trim();
   const axisRecordId = String(params.get("axis_record_id") || "").trim();
@@ -285,28 +276,21 @@
 
   function buildDetailsUrl(path, selectedType) {
     const url = new URL(path, location.origin);
-    if (projectId) {
-      url.searchParams.set("projectId", projectId);
-      url.searchParams.set("id", projectId);
-    }
     url.searchParams.set("source", source);
     url.searchParams.set("selected_type", selectedType);
+    url.searchParams.set("operation_type", selectedType === "install" ? "install" : "deinstall");
     if (handoff) url.searchParams.set("handoff", handoff);
     if (axisRecordId) url.searchParams.set("axis_record_id", axisRecordId);
     if (axisProjectId) url.searchParams.set("axis_project_id", axisProjectId);
-    return url.toString();
+    return window.EspinOperation.url(url);
   }
 
   if (removalLink) {
-    removalLink.href = projectId && createdType === "disposal"
-      ? buildDetailsUrl("/removal-install/ProjectDetails.html", "disposal")
-      : buildDetailsUrl("/removal-install/Projects.html", "disposal");
+    removalLink.href = buildDetailsUrl("/removal-install/EquipmentSelection.html", "disposal");
   }
 
   if (installationLink) {
-    installationLink.href = projectId && createdType === "install"
-      ? buildDetailsUrl("/removal-install/InstallProjectDetails.html", "install")
-      : buildDetailsUrl("/removal-install/install-projects.html", "install");
+    installationLink.href = buildDetailsUrl("/removal-install/install_management.html", "install");
   }
 })();
 </script>

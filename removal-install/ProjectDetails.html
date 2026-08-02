@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="operation-context.js"></script>
     <meta charset="UTF-8">
     <title>Project Details | Espin Medical</title>
    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -224,7 +225,7 @@ async function writeBadgesToKV(list) {
 
 <body>
     <div class="topbar">
-      <div id="backToManagement" onclick="location.href='management.html'" style="cursor:pointer;font-size:30px;font-weight:700;line-height:1">←</div>
+      <div id="backToManagement" onclick="location.href=window.EspinOperation.url('management.html')" style="cursor:pointer;font-size:30px;font-weight:700;line-height:1">←</div>
        <h1>Project Update</h1>
     </div>
 
@@ -645,9 +646,17 @@ function syncRemovalProjectToRep(data) {
   const latestCompleted = [...milestones].reverse().find(m => m.completed);
   const project = {
     project_id:String(projectId || data?.project_id || "REMOVAL-PROJECT"),
+    operation_id:window.EspinOperation.context.operation_id,
+    operation_type:"deinstall",
+    project_group_id:window.EspinOperation.context.project_group_id,
+    source_record_id:window.EspinOperation.context.source_record_id,
+    facility_id:window.EspinOperation.context.facility_id,
+    asset_id:window.EspinOperation.context.asset_id,
+    serial_number:window.EspinOperation.context.serial_number,
     project_name:data?.project_name || data?.name || data?.equipment || "Removal Project",
     project_type:"removal",
-    facility:data?.facility || data?.site_name || data?.hospital || "ESPIN Connect",
+    facility:window.EspinOperation.context.facility || data?.facility || data?.site_name || data?.hospital || "ESPIN Connect",
+    equipment_model:window.EspinOperation.context.equipment_model || data?.equipment_model || data?.model || "",
     current_stage:progress >= 100
       ? "Project Completed"
       : (latestCompleted?.name || next?.name || "Project Started"),
@@ -657,12 +666,7 @@ function syncRemovalProjectToRep(data) {
     project_url:location.href
   };
 
-  let records=[];
-  try { records=JSON.parse(localStorage.getItem(ESPIN_ACTIVE_PROJECTS_KEY)||"[]"); } catch(_) {}
-  if (!Array.isArray(records)) records=[];
-  const index=records.findIndex(r=>String(r.project_id)===String(project.project_id));
-  if (index>=0) records[index]={...records[index],...project}; else records.unshift(project);
-  localStorage.setItem(ESPIN_ACTIVE_PROJECTS_KEY,JSON.stringify(records));
+  const savedProject = window.EspinOperation.upsertActiveProject(project);
 
   // Send the updated progress directly to the Rep page even when ESPIN
   // Connect and ESPIN LINK are hosted on different domains.
@@ -671,7 +675,7 @@ function syncRemovalProjectToRep(data) {
       window.opener.postMessage(
         {
           type: "ESPIN_ACTIVE_PROJECT_UPDATED",
-          project
+          project: savedProject
         },
         "*"
       );
@@ -680,7 +684,7 @@ function syncRemovalProjectToRep(data) {
     console.warn("Rep progress message could not be delivered.", error);
   }
 
-  return project;
+  return savedProject;
 }
 
 async function saveData() {
