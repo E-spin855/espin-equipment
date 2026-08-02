@@ -4769,7 +4769,6 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
             <div class="footer-note">
               Restores the original Hub records and clears rep-entered actions without deleting equipment or manager data.
             </div>
-            <div class="rep-admin-panel" id="repAdminPanel"></div>
           </div>
         </div>
       </div>
@@ -8858,12 +8857,7 @@ function managerAccountLabel(rec) {
   return getFacility(rec) + (rec.city ? ` · ${rec.city}, ${rec.state || ""}` : "");
 }
 function managerRepForAccount(rec) {
-  const roster = readManagerRepRoster();
-  return roster.find(rep => rep.id === clean(rec?.assigned_rep_id)) ||
-    roster.find(rep =>
-      lower(rep.name) === lower(`${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() || rec?.assigned_rep_name || rec?.sales_rep_name) &&
-      (!clean(rep.email) || !clean(rec?.sales_rep_email || rec?.assigned_rep_email) || lower(rep.email) === lower(rec?.sales_rep_email || rec?.assigned_rep_email))
-    ) || null;
+  return readManagerRepRoster().find(rep => rep.id === clean(rec?.assigned_rep_id)) || null;
 }
 function addManagerRep() {
   const name = clean($("newRepName")?.value);
@@ -8875,7 +8869,6 @@ function addManagerRep() {
   if (roster.some(rep => clean(rep.email) === email)) return alert("That representative email is already on the roster.");
   roster.push({ id: `rep-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name, email, phone, company:clean($("newRepCompany")?.value), territory:clean($("newRepTerritory")?.value), status:"active" });
   saveManagerRepRoster(roster);
-  renderRepAdministration();
 }
 function assignManagerRepToAccount() {
   const accountValue = $("managerRepAccount")?.value || "";
@@ -8895,7 +8888,6 @@ function deleteManagerRep(repId) {
   const rep = readManagerRepRoster().find(item => item.id === repId);
   if (!rep || !confirm(`Delete ${rep.name} from the manager roster?`)) return;
   saveManagerRepRoster(readManagerRepRoster().filter(item => item.id !== repId));
-  renderRepAdministration();
 }
 function renderRepAdministration() {
   const panel = $("repAdminPanel"); if (!panel) return;
@@ -11264,7 +11256,6 @@ manager_alert_seen: false,
 	  showBanner("Correction sent back to Install Base.");
   renderStats();
   renderRepMenu();
-  renderRepAdministration();
   renderTable();
   renderDetail();
   managerStorageSignature = getManagerStorageSignature();
@@ -12939,15 +12930,42 @@ function renderDetail() {
      <div class="summary-card">
   <div class="summary-title">Assigned Rep</div>
 
-  <select id="managerProjectRep" aria-label="Assigned rep">
-    <option value="">Unassigned</option>
-    ${readManagerRepRoster().filter(rep => lower(rep.status || "active") !== "inactive").map(rep => `<option value="${escapeHtml(rep.id)}" ${managerRepForAccount(rec)?.id === rep.id ? "selected" : ""}>${escapeHtml(rep.name)}</option>`).join("")}
-  </select>
-  <div class="btns" style="margin-top:10px;display:grid;gap:8px">
-    <button type="button" class="green" onclick="assignSelectedManagerProject()">Save Assignment</button>
-    <button type="button" class="secondary" onclick="removeSelectedManagerProjectRep()">Remove Assignment</button>
-    <button type="button" class="red" onclick="deleteAssignedRepFromProject()">Delete Rep</button>
+  <div class="summary-main">
+    ${escapeHtml(getRepName(rec))}
   </div>
+
+  <div class="summary-contact-links">
+    ${
+      getRepEmail(rec)
+        ? `
+          <a
+            class="summary-contact-link email-link"
+            href="mailto:${escapeHtml(getRepEmail(rec))}"
+            title="Email ${escapeHtml(getRepName(rec))}"
+          >
+            ${escapeHtml(getRepEmail(rec))}
+          </a>
+        `
+        : `<span class="summary-sub">No email entered</span>`
+    }
+
+    ${
+      getRepPhone(rec)
+        ? `
+          <a
+            class="summary-contact-link phone-link"
+            href="tel:${escapeHtml(
+              String(getRepPhone(rec)).replace(/[^\d+]/g, "")
+            )}"
+            title="Call ${escapeHtml(getRepName(rec))}"
+          >
+            ${escapeHtml(getRepPhone(rec))}
+          </a>
+        `
+        : `<span class="summary-sub">No phone entered</span>`
+    }
+   </div>
+   <div style="margin-top:10px"><label for="managerProjectRep">Project Assignment</label><select id="managerProjectRep"><option value="">Select active rep</option>${readManagerRepRoster().filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>`<option value="${escapeHtml(rep.id)}" ${managerRepForAccount(rec)?.id===rep.id?"selected":""}>${escapeHtml(rep.name)}</option>`).join("")}</select><div class="btns" style="margin-top:8px"><button type="button" class="green" onclick="assignSelectedManagerProject()">Save Assignment</button><button type="button" class="secondary" onclick="removeSelectedManagerProjectRep()">Remove Assignment</button><button type="button" class="red" onclick="deleteAssignedRepFromProject()">Delete Rep</button></div></div>
 </div>
 </div>
 
@@ -13255,27 +13273,13 @@ function deleteAssignedRepFromProject() {
   if (!rec) return;
   const repName = getRepName(rec);
   if (repName === "Unassigned") return alert("This project does not have an assigned rep.");
-  if (!confirm(`Delete ${repName} from this project? The project will remain in Manager as Unassigned.`)) return;
-
+  if (!confirm(`Delete ${repName} from this project? The project will remain visible as Unassigned.`)) return;
   const updated = {
     ...rec,
-    assigned_rep_id: "",
-    assigned_rep_name: "",
-    assigned_rep_email: "",
-    assigned_rep_phone: "",
-    sales_rep_first: "",
-    sales_rep_last: "",
-    sales_rep_name: "",
-    sales_rep_email: "",
-    sales_rep_phone: "",
-    sales_rep_company: "",
-    rep_assignment_updated_at: new Date().toISOString(),
-    assignment_history: [
-      ...(Array.isArray(rec.assignment_history) ? rec.assignment_history : []),
-      { at: new Date().toISOString(), by: MANAGER_NAME, from: repName, to: "Unassigned", action: "rep_deleted_from_project" }
-    ]
+    assigned_rep_id: "", assigned_rep_name: "", assigned_rep_email: "", assigned_rep_phone: "",
+    sales_rep_first: "", sales_rep_last: "", sales_rep_name: "", sales_rep_email: "", sales_rep_phone: "", sales_rep_company: "",
+    rep_assignment_updated_at: new Date().toISOString()
   };
-
   syncRecordEverywhere(updated);
   writeArrayKey(REP_QUEUE_KEY, readArrayKey(REP_QUEUE_KEY).filter(item => !sameRecord(item, rec)));
   localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
