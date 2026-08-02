@@ -256,39 +256,6 @@
     } catch (_) {}
   }, true);
 
-  document.addEventListener("DOMContentLoaded", () => {
-    const existing = document.getElementById("espinOperationIdentity");
-    if (existing || !context.operation_id) return;
-    const strip = document.createElement("div");
-    strip.id = "espinOperationIdentity";
-    strip.style.cssText =
-      "position:relative;z-index:20;margin:10px auto;padding:10px 14px;max-width:1100px;border:1px solid #9fb7cc;border-radius:10px;background:#eef6fc;color:#17324a;font:700 13px/1.4 system-ui,sans-serif";
-    const label = document.createElement("span");
-    label.textContent = [
-      context.operation_type === "install" ? "INSTALL" : "DE-INSTALL",
-      context.model || context.equipment_model || "Equipment",
-      context.serial_number
-        ? `S/N ${context.serial_number}`
-        : context.asset_id
-          ? `Asset ${context.asset_id}`
-          : "",
-      context.facility_name || context.facility || context.facility_id
-    ].filter(Boolean).join(" · ");
-    strip.appendChild(label);
-    if (/management/i.test(location.pathname)) {
-      const add = document.createElement("a");
-      const next = new URL("/removal-install/EquipmentSelection.html", location.origin);
-      ["operation_type", "project_group_id", "facility_id", "facility_name", "facility"].forEach(field => {
-        if (clean(context[field])) next.searchParams.set(field, context[field]);
-      });
-      add.href = next.toString();
-      add.textContent = "Add another equipment";
-      add.style.cssText = "float:right;color:#0066b2;text-decoration:none";
-      strip.appendChild(add);
-    }
-    document.body.insertBefore(strip, document.body.firstChild);
-  });
-
   window.EspinOperation = {
     fields: CONTEXT_FIELDS,
     context,
