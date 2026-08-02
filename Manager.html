@@ -12969,7 +12969,7 @@ function renderDetail() {
         : `<span class="summary-sub">No phone entered</span>`
     }
    </div>
-   <div style="margin-top:10px"><label for="managerProjectRep">Project Assignment</label><select id="managerProjectRep"><option value="">Select active rep</option>${readManagerRepRoster().filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>`<option value="${escapeHtml(rep.id)}" ${managerRepForAccount(rec)?.id===rep.id?"selected":""}>${escapeHtml(rep.name)}</option>`).join("")}</select><div class="btns" style="margin-top:8px"><button type="button" class="green" onclick="assignSelectedManagerProject()">Save Assignment</button><button type="button" class="secondary" onclick="removeSelectedManagerProjectRep()">Remove Assignment</button></div></div>
+   <div class="btns" style="margin-top:10px"><button type="button" class="red" onclick="deleteAssignedRepFromProject()">Delete Rep</button></div>
 </div>
 </div>
 
@@ -13270,6 +13270,39 @@ function syncRecordEverywhere(updatedRec) {
 
   state.records = mergeRecordsByKey(main, readManagerQueueRecords());
   pingLifecycleSync();
+}
+
+function deleteAssignedRepFromProject() {
+  const rec = findSelectedRecord();
+  if (!rec) return;
+  const repName = getRepName(rec);
+  if (repName === "Unassigned") return alert("This project does not have an assigned rep.");
+  if (!confirm(`Delete ${repName} from this project? The project will remain in Manager as Unassigned.`)) return;
+
+  const updated = {
+    ...rec,
+    assigned_rep_id: "",
+    assigned_rep_name: "",
+    assigned_rep_email: "",
+    assigned_rep_phone: "",
+    sales_rep_first: "",
+    sales_rep_last: "",
+    sales_rep_name: "",
+    sales_rep_email: "",
+    sales_rep_phone: "",
+    sales_rep_company: "",
+    rep_assignment_updated_at: new Date().toISOString(),
+    assignment_history: [
+      ...(Array.isArray(rec.assignment_history) ? rec.assignment_history : []),
+      { at: new Date().toISOString(), by: MANAGER_NAME, from: repName, to: "Unassigned", action: "rep_deleted_from_project" }
+    ]
+  };
+
+  syncRecordEverywhere(updated);
+  writeArrayKey(REP_QUEUE_KEY, readArrayKey(REP_QUEUE_KEY).filter(item => !sameRecord(item, rec)));
+  localStorage.setItem(REP_SYNC_KEY, String(Date.now()));
+  render();
+  showBanner(`${repName} removed from this project.`);
 }
 
 function syncManagerResponseToRep(updatedRec) {
@@ -14236,7 +14269,6 @@ function render() {
 
   renderStats();
   renderRepMenu();
-  renderRepAdministration();
   renderTable();
   renderDetail();
 
