@@ -8858,7 +8858,12 @@ function managerAccountLabel(rec) {
   return getFacility(rec) + (rec.city ? ` · ${rec.city}, ${rec.state || ""}` : "");
 }
 function managerRepForAccount(rec) {
-  return readManagerRepRoster().find(rep => rep.id === clean(rec?.assigned_rep_id)) || null;
+  const roster = readManagerRepRoster();
+  return roster.find(rep => rep.id === clean(rec?.assigned_rep_id)) ||
+    roster.find(rep =>
+      lower(rep.name) === lower(`${rec?.sales_rep_first || ""} ${rec?.sales_rep_last || ""}`.trim() || rec?.assigned_rep_name || rec?.sales_rep_name) &&
+      (!clean(rep.email) || !clean(rec?.sales_rep_email || rec?.assigned_rep_email) || lower(rep.email) === lower(rec?.sales_rep_email || rec?.assigned_rep_email))
+    ) || null;
 }
 function addManagerRep() {
   const name = clean($("newRepName")?.value);
@@ -12934,42 +12939,15 @@ function renderDetail() {
      <div class="summary-card">
   <div class="summary-title">Assigned Rep</div>
 
-  <div class="summary-main">
-    ${escapeHtml(getRepName(rec))}
+  <select id="managerProjectRep" aria-label="Assigned rep">
+    <option value="">Unassigned</option>
+    ${readManagerRepRoster().filter(rep => lower(rep.status || "active") !== "inactive").map(rep => `<option value="${escapeHtml(rep.id)}" ${managerRepForAccount(rec)?.id === rep.id ? "selected" : ""}>${escapeHtml(rep.name)}</option>`).join("")}
+  </select>
+  <div class="btns" style="margin-top:10px;display:grid;gap:8px">
+    <button type="button" class="green" onclick="assignSelectedManagerProject()">Save Assignment</button>
+    <button type="button" class="secondary" onclick="removeSelectedManagerProjectRep()">Remove Assignment</button>
+    <button type="button" class="red" onclick="deleteAssignedRepFromProject()">Delete Rep</button>
   </div>
-
-  <div class="summary-contact-links">
-    ${
-      getRepEmail(rec)
-        ? `
-          <a
-            class="summary-contact-link email-link"
-            href="mailto:${escapeHtml(getRepEmail(rec))}"
-            title="Email ${escapeHtml(getRepName(rec))}"
-          >
-            ${escapeHtml(getRepEmail(rec))}
-          </a>
-        `
-        : `<span class="summary-sub">No email entered</span>`
-    }
-
-    ${
-      getRepPhone(rec)
-        ? `
-          <a
-            class="summary-contact-link phone-link"
-            href="tel:${escapeHtml(
-              String(getRepPhone(rec)).replace(/[^\d+]/g, "")
-            )}"
-            title="Call ${escapeHtml(getRepName(rec))}"
-          >
-            ${escapeHtml(getRepPhone(rec))}
-          </a>
-        `
-        : `<span class="summary-sub">No phone entered</span>`
-    }
-   </div>
-   <div class="btns" style="margin-top:10px"><button type="button" class="red" onclick="deleteAssignedRepFromProject()">Delete Rep</button></div>
 </div>
 </div>
 
