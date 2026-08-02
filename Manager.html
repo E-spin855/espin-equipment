@@ -4769,6 +4769,7 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
             <div class="footer-note">
               Restores the original Hub records and clears rep-entered actions without deleting equipment or manager data.
             </div>
+            <div class="rep-admin-panel" id="repAdminPanel"></div>
           </div>
         </div>
       </div>
@@ -4921,6 +4922,8 @@ const MANAGER_CORRECTED_FIELD_SEEN_KEY = "axis_manager_corrected_field_seen_v1";
 const INSTALL_BASE_KEY = "axis_install_base_records_v1";
 const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
+const MANAGER_REP_ROSTER_KEY = "espin_manager_rep_roster_v1";
+const MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY = "espin_manager_rep_account_assignments_v1";
 
 // Original manager dataset embedded from Hub.xlsx → "AXIS Upload".
 const HUB_PRELOADED_ROWS = [
@@ -6907,6 +6910,8 @@ manager_flash_text: isFreshRepUpdate
   return Array.from(map.values());
 }
 function getRepName(rec) {
+  const managedRep = managerRepForAccount(rec);
+  if (managedRep) return managedRep.name;
   const canonical = getPreloadedCanonicalRow(rec);
   if (canonical) return getPreloadedManagerRepAlias(canonical);
 
@@ -8818,6 +8823,82 @@ function updateManagerQueueRep(value) {
   state.selectedRep = clean(value) || null;
   state.selectedId = null;
   renderTable();
+}
+
+function readManagerRepRoster() {
+  try {
+    const raw = localStorage.getItem(MANAGER_REP_ROSTER_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      return Array.isArray(saved) ? saved.filter(rep => rep && rep.id && rep.name) : [];
+    }
+  } catch { return []; }
+  const derived = [...new Map((state?.records || []).map(rec => {
+    const name = `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() || rec.assigned_rep_name || rec.sales_rep_name || "";
+    const email = rec.sales_rep_email || rec.assigned_rep_email || "";
+    return [clean(email || name), { id: `existing-${normalizeKey(email || name)}`, name, email, phone: rec.sales_rep_phone || rec.assigned_rep_phone || "" }];
+  }).filter(([key, rep]) => key && rep.name)).values()];
+  localStorage.setItem(MANAGER_REP_ROSTER_KEY, JSON.stringify(derived));
+  return derived;
+}
+function saveManagerRepRoster(roster) {
+  localStorage.setItem(MANAGER_REP_ROSTER_KEY, JSON.stringify(roster));
+  localStorage.setItem(MANAGER_SYNC_KEY, String(Date.now()));
+}
+function readManagerRepAssignments() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY) || "{}");
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  } catch { return {}; }
+}
+function accountKey(rec) {
+  return clean([rec.site || rec.facility || rec.account_name || rec.customer_name, rec.site_address, rec.city, rec.state, rec.zip_code].filter(Boolean).join("|"));
+}
+function managerAccountLabel(rec) {
+  return getFacility(rec) + (rec.city ? ` · ${rec.city}, ${rec.state || ""}` : "");
+}
+function managerRepForAccount(rec) {
+  const assignment = readManagerRepAssignments()[accountKey(rec)];
+  if (!assignment) return null;
+  return readManagerRepRoster().find(rep => rep.id === assignment) || null;
+}
+function addManagerRep() {
+  const name = clean($("newRepName")?.value);
+  const email = clean($("newRepEmail")?.value).toLowerCase();
+  const phone = clean($("newRepPhone")?.value);
+  if (!name || !email) return alert("Enter the representative's name and email.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) return alert("Enter a valid email address.");
+  const roster = readManagerRepRoster();
+  if (roster.some(rep => clean(rep.email) === email)) return alert("That representative email is already on the roster.");
+  roster.push({ id: `rep-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name, email, phone });
+  saveManagerRepRoster(roster);
+  renderRepAdministration();
+}
+function assignManagerRepToAccount() {
+  const accountValue = $("managerRepAccount")?.value || "";
+  const repId = $("managerRepSelect")?.value || "";
+  if (!accountValue || !repId) return alert("Choose both an account and representative.");
+  const assignments = readManagerRepAssignments(); assignments[accountValue] = repId;
+  localStorage.setItem(MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY, JSON.stringify(assignments));
+  state.records.filter(rec => accountKey(rec) === accountValue).forEach(rec => {
+    const rep = readManagerRepRoster().find(item => item.id === repId);
+    if (rep) syncRecordEverywhere({ ...rec, assigned_rep_name: rep.name, assigned_rep_email: rep.email, assigned_rep_phone: rep.phone, sales_rep_name: rep.name, sales_rep_email: rep.email, sales_rep_phone: rep.phone });
+  });
+  render(); showBanner("Representative assignment saved.");
+}
+function deleteManagerRep(repId) {
+  const assignments = readManagerRepAssignments();
+  if (Object.values(assignments).includes(repId)) return alert("Reassign or clear this representative's accounts before deleting them.");
+  const rep = readManagerRepRoster().find(item => item.id === repId);
+  if (!rep || !confirm(`Delete ${rep.name} from the manager roster?`)) return;
+  saveManagerRepRoster(readManagerRepRoster().filter(item => item.id !== repId));
+  renderRepAdministration();
+}
+function renderRepAdministration() {
+  const panel = $("repAdminPanel"); if (!panel) return;
+  const roster = readManagerRepRoster();
+  const accounts = [...new Map(state.records.map(rec => [accountKey(rec), rec])).values()].filter(rec => accountKey(rec));
+  panel.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px"><div class="panel-head"><h2>Representative Accounts</h2><span class="mini">Manager only</span></div><div class="manager-queue-toolbar"><input id="newRepName" placeholder="Representative name"><input id="newRepEmail" type="email" placeholder="Representative email"><input id="newRepPhone" placeholder="Phone (optional)"><button type="button" class="secondary" onclick="addManagerRep()">Add Representative</button></div><div class="manager-queue-toolbar" style="margin-top:10px"><select id="managerRepAccount"><option value="">Select account</option>${accounts.map(rec => `<option value="${escapeHtml(accountKey(rec))}">${escapeHtml(managerAccountLabel(rec))}</option>`).join("")}</select><select id="managerRepSelect"><option value="">Select representative</option>${roster.map(rep => `<option value="${escapeHtml(rep.id)}">${escapeHtml(rep.name)} · ${escapeHtml(rep.email)}</option>`).join("")}</select><button type="button" onclick="assignManagerRepToAccount()">Assign / Reassign</button></div><div class="mini" style="margin-top:12px">${roster.length ? roster.map(rep => `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0"><span>${escapeHtml(rep.name)} · ${escapeHtml(rep.email)}</span><button type="button" class="red" onclick="deleteManagerRep('${escapeJs(rep.id)}')">Delete</button></div>`).join("") : "No manager-added representatives yet."}</div></div>`;
 }
 
 function selectRep(name) {
@@ -11170,6 +11251,7 @@ manager_alert_seen: false,
 	  showBanner("Correction sent back to Install Base.");
   renderStats();
   renderRepMenu();
+  renderRepAdministration();
   renderTable();
   renderDetail();
   managerStorageSignature = getManagerStorageSignature();
