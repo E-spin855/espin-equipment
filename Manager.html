@@ -8858,9 +8858,7 @@ function managerAccountLabel(rec) {
   return getFacility(rec) + (rec.city ? ` · ${rec.city}, ${rec.state || ""}` : "");
 }
 function managerRepForAccount(rec) {
-  const assignment = readManagerRepAssignments()[accountKey(rec)];
-  if (!assignment) return null;
-  return readManagerRepRoster().find(rep => rep.id === assignment) || null;
+  return readManagerRepRoster().find(rep => rep.id === clean(rec?.assigned_rep_id)) || null;
 }
 function addManagerRep() {
   const name = clean($("newRepName")?.value);
@@ -8870,7 +8868,7 @@ function addManagerRep() {
   if (!/^\S+@\S+\.\S+$/.test(email)) return alert("Enter a valid email address.");
   const roster = readManagerRepRoster();
   if (roster.some(rep => clean(rep.email) === email)) return alert("That representative email is already on the roster.");
-  roster.push({ id: `rep-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name, email, phone });
+  roster.push({ id: `rep-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, name, email, phone, company:clean($("newRepCompany")?.value), territory:clean($("newRepTerritory")?.value), status:"active" });
   saveManagerRepRoster(roster);
   renderRepAdministration();
 }
@@ -8897,9 +8895,19 @@ function deleteManagerRep(repId) {
 function renderRepAdministration() {
   const panel = $("repAdminPanel"); if (!panel) return;
   const roster = readManagerRepRoster();
-  const accounts = [...new Map(state.records.map(rec => [accountKey(rec), rec])).values()].filter(rec => accountKey(rec));
-  panel.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px"><div class="panel-head"><h2>Representative Accounts</h2><span class="mini">Manager only</span></div><div class="manager-queue-toolbar"><input id="newRepName" placeholder="Representative name"><input id="newRepEmail" type="email" placeholder="Representative email"><input id="newRepPhone" placeholder="Phone (optional)"><button type="button" class="secondary" onclick="addManagerRep()">Add Representative</button></div><div class="manager-queue-toolbar" style="margin-top:10px"><select id="managerRepAccount"><option value="">Select account</option>${accounts.map(rec => `<option value="${escapeHtml(accountKey(rec))}">${escapeHtml(managerAccountLabel(rec))}</option>`).join("")}</select><select id="managerRepSelect"><option value="">Select representative</option>${roster.map(rep => `<option value="${escapeHtml(rep.id)}">${escapeHtml(rep.name)} · ${escapeHtml(rep.email)}</option>`).join("")}</select><button type="button" onclick="assignManagerRepToAccount()">Assign / Reassign</button></div><div class="mini" style="margin-top:12px">${roster.length ? roster.map(rep => `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0"><span>${escapeHtml(rep.name)} · ${escapeHtml(rep.email)}</span><button type="button" class="red" onclick="deleteManagerRep('${escapeJs(rep.id)}')">Delete</button></div>`).join("") : "No manager-added representatives yet."}</div></div>`;
+  const unassigned = state.records.filter(rec => getRepName(rec) === "Unassigned").length;
+  panel.innerHTML = `<div style="border-top:1px solid var(--line);margin-top:18px;padding-top:18px"><div class="panel-head"><h2>Team Management</h2><span class="mini">Manager only</span></div><div class="mini">Add/edit reps, reassign projects, or remove an assignment. <button type="button" class="secondary" onclick="showUnassignedProjects()">Unassigned Projects (${unassigned})</button></div><div class="manager-queue-toolbar" style="margin-top:10px"><input id="newRepName" placeholder="Representative name"><input id="newRepEmail" type="email" placeholder="Email"><input id="newRepPhone" placeholder="Phone"><input id="newRepCompany" placeholder="Company"><input id="newRepTerritory" placeholder="Territory"><button type="button" class="green" onclick="addManagerRep()">+ Add Rep</button></div><div class="mini" style="margin-top:12px">${roster.length ? roster.map(rep => { const count=state.records.filter(rec=>managerRepForAccount(rec)?.id===rep.id).length; return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line)"><span><strong>${escapeHtml(rep.name)}</strong> · ${count} projects · ${escapeHtml(rep.territory||"No territory")} · ${escapeHtml(rep.status||"active")}</span><span><button type="button" class="secondary" onclick="editManagerRep('${escapeJs(rep.id)}')">Edit</button> <button type="button" class="secondary" onclick="reassignManagerRep('${escapeJs(rep.id)}')">Reassign</button> <button type="button" class="red" onclick="deleteManagerRep('${escapeJs(rep.id)}')">Delete</button></span></div>`; }).join("") : "No representatives yet."}</div></div>`;
 }
+
+function managerRepRecord(rec, rep) {
+  const pieces=clean(rep?.name).split(/\s+/);
+  return {...rec,assigned_rep_id:rep?.id||"",assigned_rep_name:rep?.name||"",assigned_rep_email:rep?.email||"",assigned_rep_phone:rep?.phone||"",sales_rep_first:pieces[0]||"",sales_rep_last:pieces.slice(1).join(" "),sales_rep_email:rep?.email||"",sales_rep_phone:rep?.phone||"",sales_rep_company:rep?.company||"",territory:rep?.territory||rec.territory||"",rep_assignment_updated_at:new Date().toISOString()};
+}
+function assignSelectedManagerProject() { const rec=findSelectedRecord(), rep=readManagerRepRoster().find(item=>item.id===$("managerProjectRep")?.value && lower(item.status||"active")!=="inactive"); if(!rec||!rep)return alert("Choose an active rep."); const updated=managerRepRecord(rec,rep); syncRecordEverywhere(updated); writeArrayKey(REP_QUEUE_KEY,[updated,...readArrayKey(REP_QUEUE_KEY).filter(item=>!sameRecord(item,rec))]); localStorage.setItem(REP_SYNC_KEY,String(Date.now())); render(); showBanner(`Project assigned to ${rep.name}.`); }
+function removeSelectedManagerProjectRep() { const rec=findSelectedRecord(); if(!rec)return; const updated=managerRepRecord(rec,null); syncRecordEverywhere(updated); writeArrayKey(REP_QUEUE_KEY,readArrayKey(REP_QUEUE_KEY).filter(item=>!sameRecord(item,rec))); localStorage.setItem(REP_SYNC_KEY,String(Date.now())); render(); showBanner("Project is now unassigned."); }
+function showUnassignedProjects() { state.selectedRep="__unassigned__"; renderTable(); }
+function editManagerRep(id) { const roster=readManagerRepRoster(), rep=roster.find(item=>item.id===id); if(!rep)return; const name=prompt("Name",rep.name); if(name===null||!clean(name))return; rep.name=clean(name); rep.email=clean(prompt("Email",rep.email)||""); rep.phone=clean(prompt("Phone",rep.phone)||""); rep.company=clean(prompt("Company",rep.company||"")||""); rep.territory=clean(prompt("Territory",rep.territory||"")||""); rep.status=clean(prompt("Status: active or inactive",rep.status||"active")||"active").toLowerCase()==="inactive"?"inactive":"active"; saveManagerRepRoster(roster); state.records.filter(rec=>managerRepForAccount(rec)?.id===id).forEach(rec=>syncRecordEverywhere(managerRepRecord(rec,rep))); render(); }
+function reassignManagerRep(id) { const from=readManagerRepRoster().find(item=>item.id===id), choices=readManagerRepRoster().filter(item=>item.id!==id&&lower(item.status||"active")!=="inactive"); if(!from)return; const target=choices.find(item=>item.id===clean(prompt(`Enter replacement rep ID for ${from.name}:\n${choices.map(item=>`${item.id} = ${item.name}`).join("\n")}`))); if(!target)return alert("Choose a valid active rep ID."); state.records.filter(rec=>managerRepForAccount(rec)?.id===id).forEach(rec=>syncRecordEverywhere(managerRepRecord(rec,target))); render(); showBanner(`Projects reassigned to ${target.name}.`); }
 
 function selectRep(name) {
   updateManagerQueueRep(name);
@@ -10239,7 +10247,7 @@ function renderTable() {
   }
 
   if (state.selectedRep) {
-    records = records.filter(rec => getRepName(rec) === state.selectedRep);
+    records = records.filter(rec => state.selectedRep === "__unassigned__" ? getRepName(rec) === "Unassigned" : getRepName(rec) === state.selectedRep);
   }
 
   if (state.managerQueueState) {
@@ -12961,6 +12969,7 @@ function renderDetail() {
         : `<span class="summary-sub">No phone entered</span>`
     }
    </div>
+   <div style="margin-top:10px"><label for="managerProjectRep">Project Assignment</label><select id="managerProjectRep"><option value="">Select active rep</option>${readManagerRepRoster().filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>`<option value="${escapeHtml(rep.id)}" ${managerRepForAccount(rec)?.id===rep.id?"selected":""}>${escapeHtml(rep.name)}</option>`).join("")}</select><div class="btns" style="margin-top:8px"><button type="button" class="green" onclick="assignSelectedManagerProject()">Save Assignment</button><button type="button" class="secondary" onclick="removeSelectedManagerProjectRep()">Remove Assignment</button></div></div>
 </div>
 </div>
 
