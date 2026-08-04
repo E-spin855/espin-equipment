@@ -20226,29 +20226,30 @@ function renderActiveProjects() {
     return;
   }
 
-  let projects = readEspinActiveProjects()
+  const savedProjects = Array.isArray(selectedRecord.active_project_snapshots)
+    ? selectedRecord.active_project_snapshots
+    : [];
+  const projectsById = new Map(
+    savedProjects
+      .filter(project => project && project.project_id)
+      .map(project => [String(project.project_id), project])
+  );
+
+  readEspinActiveProjects()
     .filter(project => project && project.project_id)
     .filter(project => activeProjectMatchesSelectedRecord(project, selectedRecord))
+    .forEach(project => {
+      projectsById.set(String(project.project_id), project);
+    });
+
+  // Keep the record's saved progress visible while shared storage refreshes.
+  const projects = [...projectsById.values()]
     .filter(project => {
       if (!state.selectedRep) return true;
       const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
       return !rep || rep === clean(state.selectedRep).toLowerCase();
     })
     .sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
-
-  // Keep the last synced progress visible after returning to Rep or reloading.
-  if (!projects.length) {
-    projects = (Array.isArray(selectedRecord.active_project_snapshots)
-      ? selectedRecord.active_project_snapshots
-      : [])
-      .filter(project => project && project.project_id)
-      .filter(project => {
-        if (!state.selectedRep) return true;
-        const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
-        return !rep || rep === clean(state.selectedRep).toLowerCase();
-      })
-      .sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
-  }
 
   if (summary) summary.textContent = `${projects.length} synchronized project${projects.length === 1 ? "" : "s"}`;
 
