@@ -51,7 +51,14 @@ export default async function handler(req, res) {
           FROM equipment_project_access epa
           WHERE epa.project_id = ep.id
             AND LOWER(TRIM(epa.email)) = $3
-        ) AS has_database_access
+        ) AS has_database_access,
+        EXISTS (
+          SELECT 1
+          FROM equipment_project_contacts epc
+          WHERE epc.project_id = ep.id
+            AND LOWER(TRIM(epc.email)) = $3
+            AND epc.can_login = true
+        ) AS has_contact_access
       FROM equipment_projects ep
       JOIN equipment_modalities em
         ON em.project_id = ep.id
@@ -71,6 +78,7 @@ export default async function handler(req, res) {
       project.sales_rep_email === userEmail ||
       userEmail === "info@espinmedical.com" ||
       project.has_database_access === true ||
+      project.has_contact_access === true ||
       await kv.get(`equipment_project_access:${projectId}:${userEmail}`);
 
     if (!hasProjectAccess) {
