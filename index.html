@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>Espin Medical Login</title>
+<title>ESPIN LINK Sandbox Access</title>
 
 <style>
 :root{
@@ -71,14 +71,9 @@ input{
   font-size:18px;
   color:#333;
 }
-.checkbox-container{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  margin:5px 0 25px;
-  text-align:left;
-}
-#keepMeIn{width:22px;height:22px;}
+.notice{margin:14px 0 20px;padding:13px 14px;border:1px solid rgba(255,255,255,.35);border-radius:12px;background:rgba(0,0,0,.13);font-size:12px;line-height:1.45;text-align:left;}
+.acknowledgment{display:flex;align-items:flex-start;gap:10px;margin:5px 0 22px;text-align:left;font-size:12px;line-height:1.35;}
+.acknowledgment input{width:18px;height:18px;margin:0;flex:0 0 auto;}
 .btn{
   width:100%;
   padding:18px;
@@ -128,13 +123,11 @@ input{
     <div class="logo-area">
       <img src="/index logo.png" alt="Espin Medical">
     </div>
-    <h1>Welcome</h1>
-    <p class="subtitle">Enter your work email to receive a secure login code.</p>
-    <input id="emailInput" type="email" placeholder="Email Address" autocomplete="email">
-    <div class="checkbox-container">
-      <input type="checkbox" id="keepMeIn">
-      <label for="keepMeIn">Keep me signed in</label>
-    </div>
+    <h1>ESPIN LINK SANDBOX</h1>
+    <p class="subtitle">Approved evaluator access. Enter your work email to receive a one-time access code.</p>
+    <input id="emailInput" type="email" placeholder="Work email" autocomplete="email" inputmode="email">
+    <div class="notice"><strong>Fictional information only.</strong><br>Do not enter customer, patient, employee, or confidential business data. This temporary evaluation workspace contains fictional sandbox records.</div>
+    <label class="acknowledgment"><input id="sandboxAck" type="checkbox"><span>I understand that I may use only fictional information in this sandbox.</span></label>
     <button id="btn1" class="btn">Continue</button>
   </div>
 
@@ -142,8 +135,8 @@ input{
     <div class="logo-area">
       <img src="/index logo.png" alt="Espin Medical">
     </div>
-    <h1>Verify PIN</h1>
-    <p class="subtitle">Enter the 6-digit code sent to your email.</p>
+    <h1>Verify Access</h1>
+    <p class="subtitle">Enter the 6-digit one-time code sent to your email.</p>
     <input id="pinInput" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
     <button id="btn2" class="btn">Sign In</button>
     <p id="backBtn" style="margin-top:15px;font-size:14px;opacity:.8;cursor:pointer">← Back</p>
@@ -153,18 +146,15 @@ input{
 </div>
 
 <div class="footer">
-  <strong>© 2026 Espin Medical.</strong> All rights reserved.<br>
-  Developed and owned by Espin Medical. Unauthorized use, reproduction, or distribution is prohibited.
+  <strong>ESPIN LINK SANDBOX · Evaluation environment</strong><br>
+  Temporary access only. Tester email is used only to verify access and is not stored in ESPIN LINK sandbox data.
 </div>
 
 <script>
 const API_URL = "";
 
-const APP_PREFIX = "espinEquipment_";
-const AUTH_KEY = `${APP_PREFIX}auth`;
-const EMAIL_KEY = `${APP_PREFIX}userEmail`;
-const KEEP_KEY = `${APP_PREFIX}keepSignedIn`;
-const TEMP_EMAIL_KEY = `${APP_PREFIX}tempEmail`;
+const SANDBOX_SESSION_KEY = "espinSandboxSession";
+let pendingEmail = ""; // Exists in memory only until PIN verification completes.
 
 /* DOM */
 const emailInput = document.getElementById("emailInput");
@@ -173,24 +163,11 @@ const btn1       = document.getElementById("btn1");
 const btn2       = document.getElementById("btn2");
 const emailStep  = document.getElementById("emailStep");
 const pinStep    = document.getElementById("pinStep");
-const keepMeIn   = document.getElementById("keepMeIn");
+const sandboxAck = document.getElementById("sandboxAck");
 const backBtn    = document.getElementById("backBtn");
 
-/* AUTO LOGIN */
-(function(){
-  const auth = localStorage.getItem(AUTH_KEY);
-  const keep = localStorage.getItem(KEEP_KEY);
-  if (auth === "true" && keep === "true") {
-    location.replace("Home.html");
-  }
-})();
-
-/* RESET */
 function resetLogin(){
-  localStorage.removeItem(TEMP_EMAIL_KEY);
-  localStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem(EMAIL_KEY);
-  localStorage.removeItem(KEEP_KEY);
+  pendingEmail = "";
   pinInput.value = "";
   btn2.disabled = false;
   btn2.textContent = "Sign In";
@@ -201,7 +178,8 @@ function resetLogin(){
 /* SEND PIN */
 btn1.addEventListener("click", async ()=>{
   const email = emailInput.value.trim().toLowerCase();
-  if(!email.includes("@")) return alert("Enter a valid email.");
+  if(!email.includes("@")) return alert("Enter a valid work email.");
+  if(!sandboxAck.checked) return alert("Please acknowledge the fictional-information-only sandbox notice.");
 
   btn1.disabled = true;
   btn1.textContent = "Sending…";
@@ -223,7 +201,7 @@ btn1.addEventListener("click", async ()=>{
       throw new Error(data.error || "User not authorized for login");
     }
 
-    localStorage.setItem(TEMP_EMAIL_KEY, email);
+    pendingEmail = email;
     emailStep.classList.add("hidden");
     pinStep.classList.remove("hidden");
 
@@ -239,7 +217,7 @@ btn2.addEventListener("click", async ()=>{
   const pin = pinInput.value.trim();
   if(pin.length !== 6) return alert("Enter full PIN");
 
-  const email = localStorage.getItem(TEMP_EMAIL_KEY);
+  const email = pendingEmail;
   if(!email) return resetLogin();
 
   btn2.disabled = true;
@@ -252,26 +230,27 @@ btn2.addEventListener("click", async ()=>{
       body:JSON.stringify({ email, pin })
     });
 
-    if(!res.ok) throw new Error("Invalid or expired PIN");
-
-   localStorage.setItem(AUTH_KEY, "true");
-localStorage.setItem(EMAIL_KEY, email);
-localStorage.setItem(KEEP_KEY, keepMeIn.checked ? "true" : "false");
-localStorage.removeItem(TEMP_EMAIL_KEY);
-
-console.log("🔥 CALLING ANDROID BRIDGE", email);
-
-// 🔥 ANDROID BRIDGE
-if (window.Android && window.Android.setUserEmail) {
-  Android.setUserEmail(email);
-}
-
-
-// 🍎 iOS bridge (keep)
-if (window.webkit?.messageHandlers?.loginSuccess) {
-  window.webkit.messageHandlers.loginSuccess.postMessage({ email });
-}
-    location.replace("Home.html");
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || "Invalid or expired PIN");
+    // The server must determine this assignment from its approved-evaluator configuration.
+    const identity = data.sandbox_identity || data.identity || data;
+    const allowedViews = Array.isArray(identity.allowed_views) ? identity.allowed_views : [];
+    const role = String(identity.role || "").toLowerCase();
+    const assignedRepId = String(identity.assigned_rep_id || "").toUpperCase();
+    const isManager = role === "manager" && ["manager","vp","rep_a","rep_b","rep_c"].every(view => allowedViews.includes(view));
+    const isRep = role === "rep" && /^REP_[ABC]$/.test(assignedRepId) && allowedViews.length === 1 && allowedViews[0] === assignedRepId.toLowerCase();
+    if (!isManager && !isRep) throw new Error("Your sandbox access assignment is invalid.");
+    const session = {
+      role: isManager ? "manager" : "rep",
+      display_name: isManager ? "Manager" : `Rep ${assignedRepId.slice(-1)}`,
+      assigned_rep_id: isManager ? "" : assignedRepId,
+      allowed_views: allowedViews,
+      active_view: isManager ? "manager" : assignedRepId.toLowerCase(),
+      expires_at: identity.expires_at || null
+    };
+    sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify(session));
+    pendingEmail = "";
+    location.replace(isManager ? "Manager.html" : "Rep.html");
   }catch{
     resetLogin();
     alert("Invalid or expired PIN");
