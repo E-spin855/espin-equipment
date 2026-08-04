@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { kv } from "@vercel/kv";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -42,19 +43,28 @@ export default async function handler(req, res) {
   try {
     const access = await client.query(
       `
-      SELECT ep.id
+      SELECT ep.id, LOWER(TRIM(ep.sales_rep_email)) AS sales_rep_email
       FROM equipment_projects ep
       JOIN equipment_modalities em
         ON em.project_id = ep.id
       WHERE ep.id = $1
         AND em.id = $2
-        AND LOWER(TRIM(ep.sales_rep_email)) = $3
       LIMIT 1
       `,
-      [projectId, modalityId, userEmail]
+      [projectId, modalityId]
     );
 
     if (!access.rowCount) {
+      return res.status(403).json({ error: "Not authorized to save photo for this project" });
+    }
+
+    const isOwner = access.rows[0].sales_rep_email === userEmail;
+    const isAdmin = userEmail === "info@espinmedical.com";
+    const hasProjectAccess = isOwner || isAdmin || await kv.get(
+      `equipment_project_access:${projectId}:${userEmail}`
+    );
+
+    if (!hasProjectAccess) {
       return res.status(403).json({ error: "Not authorized to save photo for this project" });
     }
 
