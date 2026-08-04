@@ -1,165 +1,62 @@
+import crypto from "crypto";
 import { kv } from "@vercel/kv";
 import { Resend } from "resend";
 
+const PIN_TTL_SECONDS = 600;
+const COOLDOWN_SECONDS = 60;
+const MAX_SENDS = 5;
+const WINDOW_SECONDS = 900;
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const TEST_MODE = false; // 🔥 TOGGLE
+const cleanEmail = value => String(value || "").trim().toLowerCase();
+const validEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const secret = () => {
+  if (!process.env.SANDBOX_AUTH_HASH_SECRET) throw new Error("Sandbox authentication is not configured.");
+  return process.env.SANDBOX_AUTH_HASH_SECRET;
+};
+const hash = value => crypto.createHmac("sha256", secret()).update(value).digest("hex");
+const assignments = () => {
+  try { return JSON.parse(process.env.SANDBOX_EVALUATOR_ASSIGNMENTS || "{}"); }
+  catch { throw new Error("Sandbox evaluator assignments are not configured."); }
+};
+const assigned = email => Object.prototype.hasOwnProperty.call(assignments(), email);
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  const origin = process.env.SANDBOX_ALLOWED_ORIGIN || "https://espin-medical-app.vercel.app";
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(200).end();
+  res.setHeader("Vary", "Origin");
+  if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  let pin;
-
   try {
-    const { email, deviceToken, platform } = req.body;
-    if (!email) return res.status(400).json({ error: "Missing email" });
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const email = cleanEmail(body.email);
+    if (!validEmail(email) || !assigned(email)) return res.status(403).json({ error: "This email is not approved for the sandbox." });
+    const id = hash(email);
+    const cooldownKey = `sandbox:pin:cooldown:${id}`;
+    const sendCountKey = `sandbox:pin:sends:${id}`;
+    if (await kv.get(cooldownKey)) return res.status(429).json({ error: "Please wait one minute before requesting another PIN." });
+    const sends = Number(await kv.get(sendCountKey)) || 0;
+    if (sends >= MAX_SENDS) return res.status(429).json({ error: "Too many PIN requests. Try again later." });
 
-    const normalizedEmail = email.trim().toLowerCase();
-const ip =
-  req.headers["x-real-ip"] ||
-  req.headers["x-vercel-forwarded-for"] ||
-  req.headers["x-forwarded-for"]?.split(",")[0].trim() ||
-  "unknown";
-
-console.log("🔥 PIN REQUEST:", {
-  email: normalizedEmail,
-  ip,
-  userAgent: req.headers["user-agent"] || "unknown",
-  time: new Date().toISOString()
-});
-// ===============================
-// 🔐 PIN PROTECTION (FIXED)
-// ===============================
-
-// ⛔ 60s cooldown per email
-const cooldownKey = `pin:cooldown:${normalizedEmail}`;
-const cooldown = await kv.get(cooldownKey);
-
-if (cooldown) {
-  return res.status(200).json({ success: true }); // silent block
-}
-
-// ⛔ max 5 attempts per 15 min
-const attemptsKey = `pin:attempts:${normalizedEmail}`;
-const attempts = (await kv.get(attemptsKey)) || 0;
-
-if (attempts >= 5) {
-  return res.status(200).json({ success: true }); // silent block
-}
-
-// ✅ set cooldown immediately
-// cooldown moved below successful send
-    // ===============================
-    // REGISTER DEVICE
-    // ===============================
-    if (deviceToken && (platform === "ios" || platform === "android")) {
-      const prefix = platform === "android"
-        ? "device:android:equipment:"
-        : "device:ios:equipment:";
-
-      const existingKeys = await kv.keys(prefix + "*");
-
-      if (existingKeys.length) {
-        const records = await kv.mget(...existingKeys);
-        const keysToDelete = [];
-
-        for (let i = 0; i < existingKeys.length; i++) {
-          const rec = records[i];
-          if (
-            rec &&
-            typeof rec === "object" &&
-            String(rec.email || "").trim().toLowerCase() === normalizedEmail
-          ) {
-            keysToDelete.push(existingKeys[i]);
-          }
-        }
-
-        if (keysToDelete.length) {
-          await kv.del(...keysToDelete);
-        }
-      }
-
-      await kv.set(prefix + deviceToken, {
-        deviceToken,
-        platform,
-        email: normalizedEmail,
-        updatedAt: Date.now()
-      });
-    }
-
-    // ===============================
-    // TEST MODE PIN (BYPASS)
-    // ===============================
-    if (TEST_MODE) {
-      pin = "123456";
-
-      await kv.set(`pin:${normalizedEmail}`, pin, { ex: 600 });
-
-      return res.status(200).json({
-        success: true,
-        test: true,
-        pin // optional, remove if you don’t want it exposed
-      });
-    }
-
-    // ===============================
-    // NORMAL PIN LOGIC
-    // ===============================
-    const pinKey = `pin:${normalizedEmail}`;
-    pin = await kv.get(pinKey);
-
-    if (!pin) {
-      pin = Math.floor(100000 + Math.random() * 900000).toString();
-      await kv.set(pinKey, pin, { ex: 600 });
-    }
-    // ===============================
-// SEND EMAIL
-// ===============================
-
-// ✅ increment attempts ONLY when actually sending PIN
-await kv.set(attemptsKey, attempts + 1, { ex: 900 });
-
-const { error } = await resend.emails.send({
-  from: "Espin Medical <info@espinmedical.com>",
-  to: normalizedEmail,
-  subject: "Your Espin Medical Login PIN",
-  html: `
-    <div style="font-family: sans-serif; text-align: center; padding: 20px;">
-      <h2>Login Verification</h2>
-      <div style="font-size: 32px; font-weight: bold; color: #0066B2;">${pin}</div>
-      <p>This code expires in 10 minutes.</p>
-    </div>
-  `
-});
-
-   if (error) throw error;
-
-// ✅ ONLY cooldown after successful send
-await kv.set(cooldownKey, Date.now(), { ex: 300 });
-
-// ✅ increment attempts ONLY after success
-await kv.set(attemptsKey, attempts + 1, { ex: 900 });
-
-return res.status(200).json({ success: true });
-
-  } catch (err) {
-    console.error("PIN Error:", err);
-
-    if (err?.name === "daily_quota_exceeded") {
-      return res.status(200).json({
-        success: true,
-        debug_pin: pin
-      });
-    }
-
-    return res.status(500).json({
-      error: err.message || "Internal server error"
+    const pin = crypto.randomInt(100000, 1000000).toString();
+    await kv.set(`sandbox:pin:value:${id}`, hash(`${id}:${pin}`), { ex: PIN_TTL_SECONDS });
+    const { error } = await resend.emails.send({
+      from: process.env.SANDBOX_FROM_EMAIL || "ESPIN LINK Sandbox <info@espinmedical.com>",
+      to: email,
+      subject: "Your ESPIN LINK Sandbox access code",
+      html: `<p>Your one-time ESPIN LINK Sandbox access code is:</p><p style="font-size:32px;font-weight:700;letter-spacing:4px">${pin}</p><p>This code expires in 10 minutes. Do not share it.</p>`
     });
+    if (error) throw new Error("Unable to send the PIN.");
+    await Promise.all([
+      kv.set(cooldownKey, "1", { ex: COOLDOWN_SECONDS }),
+      kv.set(sendCountKey, sends + 1, { ex: WINDOW_SECONDS })
+    ]);
+    return res.status(200).json({ success: true, expires_in_seconds: PIN_TTL_SECONDS });
+  } catch (error) {
+    console.error("Sandbox PIN delivery failed:", error.message); // No email, PIN, or token is logged.
+    return res.status(500).json({ error: "Unable to send the PIN. Please try again." });
   }
 }
