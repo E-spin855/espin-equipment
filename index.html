@@ -237,20 +237,21 @@ btn2.addEventListener("click", async ()=>{
     const allowedViews = Array.isArray(identity.allowed_views) ? identity.allowed_views : [];
     const role = String(identity.role || "").toLowerCase();
     const assignedRepId = String(identity.assigned_rep_id || "").toUpperCase();
+    const isAdmin = role === "sandbox_admin" && ["manager","vp","rep_a","rep_b","rep_c"].every(view => allowedViews.includes(view));
     const isManager = role === "manager" && ["manager","vp","rep_a","rep_b","rep_c"].every(view => allowedViews.includes(view));
     const isRep = role === "rep" && /^REP_[ABC]$/.test(assignedRepId) && allowedViews.length === 1 && allowedViews[0] === assignedRepId.toLowerCase();
-    if (!isManager && !isRep) throw new Error("Your sandbox access assignment is invalid.");
+    if (!isAdmin && !isManager && !isRep) throw new Error("Your sandbox access assignment is invalid.");
     const session = {
-      role: isManager ? "manager" : "rep",
-      display_name: isManager ? "Manager" : `Rep ${assignedRepId.slice(-1)}`,
-      assigned_rep_id: isManager ? "" : assignedRepId,
+      role: isAdmin ? "sandbox_admin" : (isManager ? "manager" : "rep"),
+      display_name: isAdmin ? "Sandbox Admin" : (isManager ? "Manager" : `Rep ${assignedRepId.slice(-1)}`),
+      assigned_rep_id: (isAdmin || isManager) ? "" : assignedRepId,
       allowed_views: allowedViews,
-      active_view: isManager ? "manager" : assignedRepId.toLowerCase(),
+      active_view: (isAdmin || isManager) ? "manager" : assignedRepId.toLowerCase(),
       expires_at: identity.expires_at || null
     };
     sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify(session));
     pendingEmail = "";
-    location.replace(isManager ? "Manager.html" : "Rep.html");
+    location.replace((isAdmin || isManager) ? "Manager.html" : "Rep.html");
   }catch(err){
     resetLogin();
     alert(err.message || "Unable to verify the PIN.");
