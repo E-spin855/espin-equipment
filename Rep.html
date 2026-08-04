@@ -20236,6 +20236,20 @@ function renderActiveProjects() {
     })
     .sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
 
+  // Keep the last synced progress visible after returning to Rep or reloading.
+  if (!projects.length) {
+    projects = (Array.isArray(selectedRecord.active_project_snapshots)
+      ? selectedRecord.active_project_snapshots
+      : [])
+      .filter(project => project && project.project_id)
+      .filter(project => {
+        if (!state.selectedRep) return true;
+        const rep = clean(project.rep_name || project.sales_rep_name || "").toLowerCase();
+        return !rep || rep === clean(state.selectedRep).toLowerCase();
+      })
+      .sort((a,b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+  }
+
   if (summary) summary.textContent = `${projects.length} synchronized project${projects.length === 1 ? "" : "s"}`;
 
   if (!projects.length) {
@@ -20393,6 +20407,7 @@ function upsertEspinActiveProject(project) {
     selectedRecord.manager_flash_type = "active_project_update";
     selectedRecord.manager_flash_text = "Active Project milestone updated";
     selectedRecord.manager_flash_at = selectedRecord.active_projects_updated_at;
+    saveRecords();
     syncToManagerQueue(selectedRecord);
   }
 
