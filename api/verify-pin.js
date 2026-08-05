@@ -11,7 +11,9 @@ const identity = async email => {
   if (saved?.role === "revoked") throw new Error("Sandbox access has been revoked.");
   if (saved?.role === "rep" && /^REP_[ABC]$/.test(saved.assigned_rep_id || "")) return { role:"rep", display_name:`Rep ${saved.assigned_rep_id.slice(-1)}`, assigned_rep_id:saved.assigned_rep_id, allowed_views:[saved.assigned_rep_id.toLowerCase()] };
   if (saved?.role === "manager") return { role:"manager", display_name:"Manager", allowed_views:views };
-  return { role:"manager", display_name:"Manager", allowed_views:views }; // Open sandbox until an OEM domain policy is enabled.
+  // Emails have no sandbox privileges until an administrator or manager
+  // explicitly assigns them a sandbox role through the invitation flow.
+  return null;
 };
 const cookie = payload => { const data=Buffer.from(JSON.stringify(payload)).toString("base64url"); return `${data}.${hmac(data)}`; };
 export default async function handler(req,res) {
@@ -22,7 +24,11 @@ export default async function handler(req,res) {
     const id=hmac(email), key=`sandbox:pin:value:${id}`, stored=await kv.get(key);
     if(!stored || !equal(stored,hmac(`${id}:${pin}`))) return res.status(401).json({error:"Invalid or expired PIN."});
     await kv.del(key);
-    const sandbox_identity={...(await identity(email)),expires_at:new Date(Date.now()+4*60*60*1000).toISOString()};
+    const approvedIdentity = await identity(email);
+    if (!approvedIdentity) {
+      return res.status(403).json({ error:"This email has not been invited to the sandbox yet." });
+    }
+    const sandbox_identity={...approvedIdentity,expires_at:new Date(Date.now()+4*60*60*1000).toISOString()};
     res.setHeader("Set-Cookie",`espin_sandbox_auth=${cookie({...sandbox_identity,exp:Date.now()+4*60*60*1000})}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=14400`);
     return res.status(200).json({success:true,sandbox_identity});
   } catch(e) { console.error("Sandbox verification failed:",e.message); return res.status(500).json({error:"Unable to verify PIN."}); }
