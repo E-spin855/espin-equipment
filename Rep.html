@@ -7928,18 +7928,9 @@ function getRecordRepName(rec) {
 
 function recordMatchesSelectedRep(rec) {
   if (!rec) return false;
-
-  // This is a single-Rep workspace. Every record synchronized from Manager
-  // belongs in this workspace even if its source data contains different
-  // historical Rep names.
-  if (rec.manager_preloaded_sync === true) return true;
-
-  if (!state.selectedRep) return true;
-
-  const selected = clean(state.selectedRep).toLowerCase();
-  const recordRep = clean(getRecordRepName(rec)).toLowerCase();
-
-  return Boolean(recordRep) && recordRep === selected;
+  const sessionWorkspace = clean(window.ESPIN_SANDBOX?.assigned_rep_id).toUpperCase();
+  if (!/^REP_[ABC]$/.test(sessionWorkspace)) return false;
+  return clean(rec.assigned_rep_workspace_id).toUpperCase() === sessionWorkspace;
 }
 
 function getSelectedRepParts() {
@@ -7992,6 +7983,7 @@ function resolveCurrentRepIdentity() {
 
 function assignToSelectedRepIfNeeded(rec) {
   const selected = resolveCurrentRepIdentity();
+  const sessionWorkspace = clean(window.ESPIN_SANDBOX?.assigned_rep_id).toUpperCase();
 
   if (!selected.full) return rec;
 
@@ -8005,7 +7997,12 @@ function assignToSelectedRepIfNeeded(rec) {
     rec.sales_rep_name
   );
 
-  if (hasRep) return rec;
+  if (hasRep) return {
+    ...rec,
+    assigned_rep_workspace_id: /^REP_[ABC]$/.test(sessionWorkspace)
+      ? sessionWorkspace
+      : clean(rec.assigned_rep_workspace_id).toUpperCase()
+  };
 
   return {
     ...rec,
@@ -8015,7 +8012,9 @@ function assignToSelectedRepIfNeeded(rec) {
     rep: selected.full,
     rep_name: selected.full,
     sales_rep_name: selected.full,
-    rep_owner: selected.full
+    rep_owner: selected.full,
+    assigned_rep_workspace_id: /^REP_[ABC]$/.test(sessionWorkspace) ? sessionWorkspace : "",
+    rep_access_policy: "manager_project_assignment_only"
   };
 }
 
@@ -10133,7 +10132,6 @@ install_base_review_reason: originalInstallBaseReviewReason,
 }
 function isAllowedRepWorkspaceRecord(rec) {
   if (!rec) return false;
-
   return Boolean(
     rec.manager_preloaded_sync === true ||
     isRepNewProjectIntakeRecord(rec) ||
@@ -12512,13 +12510,14 @@ function renderRepAdvancedFilters(){
 }
 
 function renderStats() {
-      const total = state.records.length;
+      const accessibleRecords = state.records.filter(recordMatchesSelectedRep);
+      const total = accessibleRecords.length;
       const today = todayISO();
       let ready = 0;
       let postponed = 0;
       let submitted = 0;
 
-      state.records.forEach(rec => {
+      accessibleRecords.forEach(rec => {
         if (!rec.lifecycle_completed && !rec.submitted_to && getAlerts(rec, today).length) ready++;
         if (
           (
@@ -12544,50 +12543,9 @@ function renderStats() {
     function renderRepMenu() {
       const el = $("repFeed");
       if (!el) return;
-
-      const repCounts = new Map();
-      state.records.forEach(rec => {
-        const rep = getRecordRepName(rec) || "Unassigned";
-        repCounts.set(rep, (repCounts.get(rep) || 0) + 1);
-      });
-      const reps = [...repCounts.keys()];
-
-      if (!reps.length) {
-        el.innerHTML = `<div class="mini">No reps available</div>`;
-        return;
-      }
-
-      el.innerHTML = `
-        <div class="btns" style="margin-bottom:12px;">
-          <button type="button" class="secondary" onclick="state.selectedRep=null; render();">
-            Show All
-          </button>
-        </div>
-
-        ${reps.map(rep => {
-          const safeRep = escapeHtml(rep);
-          const jsRep = String(rep).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-          const count = repCounts.get(rep);
-          const active = state.selectedRep === rep;
-
-          return `
-            <div
-              style="
-                padding:10px 12px;
-                margin-bottom:8px;
-                border-radius:12px;
-                border:1px solid ${active ? "rgba(65,255,156,.55)" : "rgba(88,184,255,.18)"};
-                background:${active ? "rgba(65,255,156,.10)" : "rgba(8,18,35,.55)"};
-                cursor:pointer;
-              "
-              onclick="state.selectedRep='${jsRep}'; render();"
-            >
-              <strong>${safeRep}</strong>
-              <div class="mini">${count} assigned record(s)</div>
-            </div>
-          `;
-        }).join("")}
-      `;
+      const accessible = state.records.filter(recordMatchesSelectedRep);
+      const repName = accessible[0] ? getRecordRepName(accessible[0]) : clean(window.ESPIN_SANDBOX?.display_name || "Representative");
+      el.innerHTML = `<div style="padding:10px 12px;border-radius:12px;border:1px solid rgba(65,255,156,.4);background:rgba(65,255,156,.08)"><strong>${escapeHtml(repName)}</strong><div class="mini">${accessible.length} manager-assigned project(s)</div></div>`;
     }
 
     function renderFollowUpAlertCenter() {
@@ -17801,7 +17759,8 @@ function renderDetail() {
   const detail = $("detailArea");
   const lifecycleDetailPanel = $("lifecycleDetailPanel");
 
-  if (!rec) {
+  if (!rec || !recordMatchesSelectedRep(rec)) {
+  state.selectedId = null;
   lifecycleDetailPanel?.classList.add("hidden");
   $("newProjectDetailArea")?.classList.add("hidden");
   $("hideCompletedProjectBtn")?.classList.add("hidden");
@@ -24851,6 +24810,11 @@ function handleRepRowClick(id) {
   const clickedRedHotRecord = state.records.find(
     record => String(record.id || record.key || "") === selectedId
   );
+  if (!clickedRedHotRecord || !recordMatchesSelectedRep(clickedRedHotRecord)) {
+    state.selectedId = null;
+    renderDetail();
+    return;
+  }
   const rowHadIncomingManagerCommunication =
     hasUnseenManagerCommunication(clickedRedHotRecord);
   const rowHadIncomingInstallBaseCommunication =
