@@ -9,7 +9,7 @@ async function hasSandboxInvitation(address) {
   if (address === email(process.env.SANDBOX_ADMIN_EMAIL)) return true;
   const invitation = await kv.get(`sandbox:role:${h(address)}`);
   return invitation?.role === "manager" ||
-    (invitation?.role === "rep" && /^REP_[ABC]$/.test(invitation.assigned_rep_id || ""));
+    (invitation?.role === "rep" && /^REP_[123]$/.test(invitation.assigned_rep_id || ""));
 }
 
 export default async function handler(req, res) {

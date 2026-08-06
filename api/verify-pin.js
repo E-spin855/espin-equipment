@@ -9,7 +9,7 @@ const identity = async email => {
   if (email === EMAIL(process.env.SANDBOX_ADMIN_EMAIL)) return { role:"sandbox_admin", display_name:"Sandbox Admin", allowed_views:views };
   const saved = await kv.get(`sandbox:role:${hmac(email)}`);
   if (saved?.role === "revoked") throw new Error("Sandbox access has been revoked.");
-  if (saved?.role === "rep" && /^REP_[ABC]$/.test(saved.assigned_rep_id || "")) return { role:"rep", display_name:`Rep ${saved.assigned_rep_id.slice(-1)}`, assigned_rep_id:saved.assigned_rep_id, allowed_views:[saved.assigned_rep_id.toLowerCase()] };
+  if (saved?.role === "rep" && /^REP_[123]$/.test(saved.assigned_rep_id || "")) return { role:"rep", display_name:`Rep ${saved.assigned_rep_id.slice(-1)}`, assigned_rep_id:saved.assigned_rep_id, allowed_views:[saved.assigned_rep_id.toLowerCase()] };
   if (saved?.role === "manager") return { role:"manager", display_name:"Manager", allowed_views:views };
   // Emails have no sandbox privileges until an administrator or manager
   // explicitly assigns them a sandbox role through the invitation flow.
