@@ -4,7 +4,7 @@ import { kv } from "@vercel/kv";
 const EMAIL = v => String(v || "").trim().toLowerCase();
 const hmac = v => crypto.createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET).update(v).digest("hex");
 const equal = (a,b) => { const x=Buffer.from(String(a)), y=Buffer.from(String(b)); return x.length===y.length && crypto.timingSafeEqual(x,y); };
-const views = ["manager","vp","rep_a","rep_b","rep_c"];
+const views = ["manager","vp","rep_1","rep_2","rep_3"];
 const identity = async email => {
   if (email === EMAIL(process.env.SANDBOX_ADMIN_EMAIL)) return { role:"sandbox_admin", display_name:"Sandbox Admin", allowed_views:views };
   const saved = await kv.get(`sandbox:role:${hmac(email)}`);
