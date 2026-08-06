@@ -131,7 +131,6 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 
 <section class="panel regions">
   <div class="panel-title">Regional Activity</div>
-  <div class="region-bars" id="regionBars"><div class="region-line"><span>Waiting for Rep snapshot</span><div class="region-track"><i style="width:0%"></i></div><b>$0</b></div></div>
   <section class="today-summary" id="vpTodaySummary" aria-label="Today's regional activity">
     <button class="today-summary-toggle" type="button" aria-expanded="false" aria-controls="vpTodaySummaryBody">
       <span><strong>Today's Activity — Regional Rollup</strong><small id="vpTodaySummaryDate">Local calendar day</small></span><span class="today-summary-chevron" aria-hidden="true">⌄</span>
@@ -143,6 +142,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
       <div class="today-summary-drilldown" id="vpTodaySummaryDrilldown" aria-live="polite"></div>
     </div>
   </section>
+  <div class="region-bars" id="regionBars"><div class="region-line"><span>Waiting for Rep snapshot</span><div class="region-track"><i style="width:0%"></i></div><b>$0</b></div></div>
 </section>
 
 <section class="panel outcomes">
@@ -361,7 +361,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   const read=()=>{try{const value=JSON.parse(localStorage.getItem(KEY)||"null");return value&&Array.isArray(value.events)?value:{events:[],local_day:""};}catch{return {events:[],local_day:""};}};
   function render(){
     const data=read(), events=data.events, date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
-    if(date) date.textContent=data.local_day ? new Date(`${data.local_day}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) : "Waiting for Manager workflow data";
+    if(date){const parts=String(data.local_day||"").split("-").map(Number), localDate=parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1]-1,parts[2],12):null;date.textContent=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";}
     if(!rows)return;
     const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
     rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([region,items])=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}"><span>${esc(region)}</span>${metrics.map((metric,index)=>`<b class="${index>2?"optional-metric":""}" title="${labels[metric]}">${items.filter(item=>item.metric===metric).length}</b>`).join("")}</button>`).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
