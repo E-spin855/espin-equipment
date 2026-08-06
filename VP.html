@@ -53,6 +53,9 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 @media(max-width:1200px){.dashboard{grid-template-columns:1fr 1fr;grid-template-areas:"overview financial" "outcomes outcomes" "regions trend"}}
 @media(max-width:800px){.page{width:100%;padding:8px}.frame{padding:24px 18px}.header{grid-template-columns:1fr}.status{min-width:0;width:100%}.dashboard{grid-template-columns:1fr;grid-template-areas:"overview" "financial" "outcomes" "regions" "trend"}.overview-grid,.donut-wrap,.compliance-body,.finance-grid,.outcome-layout{grid-template-columns:1fr}.alert-cards{grid-template-columns:repeat(2,1fr)}.region-line{grid-template-columns:110px 1fr 70px}.trend-chart-wrap{grid-template-columns:42px 1fr}.footer{flex-direction:column;gap:6px}}
 </style>
+<style id="today-summary-styles">
+.today-summary{margin:0 0 14px;border:1px solid rgba(53,217,255,.38);background:linear-gradient(180deg,rgba(5,24,43,.96),rgba(2,12,24,.97))}.today-summary-toggle{width:100%;padding:14px 17px;border:0;background:transparent;color:var(--text);display:flex;justify-content:space-between;align-items:center;text-align:left;cursor:pointer}.today-summary-toggle strong{display:block;color:var(--cyan);font-family:"SFMono-Regular",Consolas,monospace;font-size:14px;letter-spacing:.08em;text-transform:uppercase}.today-summary-toggle small{display:block;margin-top:4px;color:var(--muted);font-size:10px}.today-summary-chevron{color:var(--cyan);font-size:23px;transition:transform .18s}.today-summary.is-open .today-summary-chevron{transform:rotate(180deg)}.today-summary-body{padding:0 17px 16px}.today-summary-note{margin:0 0 10px;color:#9fc6da;font-size:11px}.today-summary-regions{display:grid;gap:8px}.today-summary-region{width:100%;padding:10px;border:1px solid rgba(53,217,255,.2);background:#051525;color:var(--text);display:grid;grid-template-columns:1fr repeat(5,auto);gap:9px;align-items:center;text-align:left;cursor:pointer}.today-summary-region:hover{border-color:var(--cyan)}.today-summary-region span{font-size:11px;color:#b9d8e7}.today-summary-region b{font-family:"SFMono-Regular",Consolas,monospace;color:var(--green);font-size:13px}.today-summary-key{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 9px;color:#85aabd;font-size:9px;text-transform:uppercase}.today-summary-drilldown{margin-top:11px;padding:10px;border-left:2px solid var(--green);background:rgba(57,239,162,.05)}.today-summary-drilldown h3{margin:0 0 6px;font-size:12px;color:#dff6ff}.today-summary-drilldown p{margin:0 0 7px;color:#9fc6da;font-size:11px}.today-summary-rep{margin:5px 0;padding:5px 0 0 8px;border-left:1px solid rgba(53,217,255,.3);font-size:11px}.today-summary-project{padding:3px 0 0 8px;color:#b9d8e7}@media(max-width:800px){.today-summary-region{grid-template-columns:1fr repeat(3,auto)}.today-summary-region .optional-metric{display:none}}
+</style>
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
 </head>
 <body>
@@ -68,6 +71,18 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 <button id="vpClearBtn" style="padding:10px;border:1px solid rgba(255,77,120,.6);background:#4a1020;color:#fff;cursor:pointer;font-family:inherit;">Clear Local Data</button>
 </div>
 </header>
+
+<section class="today-summary" id="vpTodaySummary" aria-label="Today's Summary">
+  <button class="today-summary-toggle" type="button" aria-expanded="false" aria-controls="vpTodaySummaryBody">
+    <span><strong>Today's Summary — Regional Rollup</strong><small id="vpTodaySummaryDate">Local calendar day</small></span><span class="today-summary-chevron" aria-hidden="true">⌄</span>
+  </button>
+  <div class="today-summary-body" id="vpTodaySummaryBody" hidden>
+    <p class="today-summary-note">Timestamped meaningful workflow milestones only. Select a region to inspect the same rep and project detail available to its Manager.</p>
+    <div class="today-summary-key"><span>New</span><span>Won</span><span>Advanced</span><span>Install started</span><span>Install completed</span></div>
+    <div class="today-summary-regions" id="vpTodaySummaryRegions"></div>
+    <div class="today-summary-drilldown" id="vpTodaySummaryDrilldown" aria-live="polite"></div>
+  </div>
+</section>
 
 <main class="dashboard">
 <section class="panel overview">
@@ -336,6 +351,30 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   window.addEventListener("storage", event => {
     if (!event.key || [SNAPSHOT_KEY, MANAGER_SNAPSHOT_KEY, SERVICE_SNAPSHOT_KEY].includes(event.key)) render();
   });
+})();
+</script>
+<script id="vp-todays-summary">
+(() => {
+  const KEY="espin_link_todays_summary_v1", PING="espin_link_todays_summary_ping_v1";
+  const metrics=["new_projects","projects_won","projects_advanced","installations_started","installations_completed"];
+  const labels={new_projects:"New Projects Created",projects_won:"Projects Won",projects_advanced:"Projects Advanced",installations_started:"Installations Started",installations_completed:"Installations Completed"};
+  const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#039;");
+  const read=()=>{try{const value=JSON.parse(localStorage.getItem(KEY)||"null");return value&&Array.isArray(value.events)?value:{events:[],local_day:""};}catch{return {events:[],local_day:""};}};
+  function render(){
+    const data=read(), events=data.events, date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
+    if(date) date.textContent=data.local_day ? new Date(`${data.local_day}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) : "Waiting for Manager workflow data";
+    if(!rows)return;
+    const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
+    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([region,items])=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}"><span>${esc(region)}</span>${metrics.map((metric,index)=>`<b class="${index>2?"optional-metric":""}" title="${labels[metric]}">${items.filter(item=>item.metric===metric).length}</b>`).join("")}</button>`).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
+  }
+  function drill(region){
+    const items=read().events.filter(event=>(event.region||"Unassigned")===region), target=document.getElementById("vpTodaySummaryDrilldown"); if(!target)return;
+    const byMetric=new Map(); items.forEach(item=>{if(!byMetric.has(item.metric))byMetric.set(item.metric,[]);byMetric.get(item.metric).push(item);});
+    const content=metrics.map(metric=>{const metricEvents=byMetric.get(metric)||[];if(!metricEvents.length)return "";const byRep=new Map();metricEvents.forEach(item=>{if(!byRep.has(item.rep))byRep.set(item.rep,[]);byRep.get(item.rep).push(item);});const reps=[...byRep.entries()].map(([name,projects])=>{const projectList=projects.map(item=>`<div class="today-summary-project">${esc(item.project)} · ${esc(new Date(item.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))}</div>`).join("");return `<div class="today-summary-rep"><strong>${esc(name)}</strong>${projectList}</div>`;}).join("");return `<p><strong>${labels[metric]} (${metricEvents.length})</strong></p>${reps}`;}).join("");
+    target.innerHTML=`<h3>${esc(region)} — supporting projects</h3>${content||"<p>No supporting projects.</p>"}`;
+  }
+  document.addEventListener("DOMContentLoaded",()=>{const root=document.getElementById("vpTodaySummary"),toggle=root?.querySelector(".today-summary-toggle"),body=document.getElementById("vpTodaySummaryBody");toggle?.addEventListener("click",()=>{const open=toggle.getAttribute("aria-expanded")!=="true";toggle.setAttribute("aria-expanded",String(open));root.classList.toggle("is-open",open);body.hidden=!open;if(open)render();});root?.addEventListener("click",event=>{const button=event.target.closest("[data-today-region]");if(button)drill(button.dataset.todayRegion);});render();});
+  window.addEventListener("storage",event=>{if(!event.key||event.key===KEY||event.key===PING)render();}); setInterval(render,1500);
 })();
 </script>
 </body>
