@@ -233,7 +233,13 @@
     let requestUrl =
       typeof input === "string" ? input : clean(input?.url);
     const isRemovalInstallApi = requestUrl.includes("/api/removal-install/");
-    if (isRemovalInstallApi && (!init.method || /GET/i.test(init.method))) {
+    const requestPath = new URL(requestUrl, location.href);
+    const isUnfilteredProjectList =
+      requestPath.pathname === "/api/removal-install/projects" &&
+      !requestPath.searchParams.has("id") &&
+      !requestPath.searchParams.has("projectId") &&
+      !requestPath.searchParams.has("operation_id");
+    if (isRemovalInstallApi && !isUnfilteredProjectList && (!init.method || /GET/i.test(init.method))) {
       requestUrl = url(requestUrl);
       input = requestUrl;
     }
