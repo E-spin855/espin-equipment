@@ -145,6 +145,7 @@
       margin-top:12px;
     }
   </style>
+<link rel="stylesheet" href="field-command-theme.css">
 </head>
 <body>
   <div class="topbar">
@@ -154,24 +155,24 @@
 
   <div class="container">
     <div class="project-summary">
-      <strong>CT Installation · Demo Project</strong>
-      <span>Evergreen Medical Center</span>
-      <span>GE Revolution CT · Project ID: INST-204</span>
+      <strong id="projectSummaryTitle">Installation Project</strong>
+      <span id="projectSummaryFacility">Loading project details…</span>
+      <span id="projectSummaryEquipment"></span>
     </div>
 
     <div class="group">
       <div class="group-title">Project Timeline</div>
       <div class="field">
         <div class="label">Project Start Date</div>
-        <input type="datetime-local" value="2026-07-06T08:00">
+        <input type="datetime-local">
       </div>
       <div class="field field-updated">
         <div class="label">Target Installation Date <span class="new-pill">NEW</span></div>
-        <input type="datetime-local" value="2026-07-15T07:00">
+        <input type="datetime-local">
       </div>
       <div class="field">
         <div class="label">Customer Go-Live Date</div>
-        <input type="datetime-local" value="2026-07-22T08:00">
+        <input type="datetime-local">
       </div>
     </div>
 
@@ -179,11 +180,11 @@
       <div class="group-title">Planning & Site Readiness</div>
       <div class="field">
         <div class="label">Site Readiness Review Date</div>
-        <input type="datetime-local" value="2026-07-08T10:00">
+        <input type="datetime-local">
       </div>
       <div class="toggle">
         <div class="label">Site Readiness Confirmed</div>
-        <input type="checkbox" checked>
+        <input type="checkbox">
       </div>
       <div class="toggle field-updated">
         <div class="label">Room Construction Completed <span class="new-pill">NEW</span></div>
@@ -191,7 +192,7 @@
       </div>
       <div class="toggle">
         <div class="label">Power Requirements Confirmed</div>
-        <input type="checkbox" checked>
+        <input type="checkbox">
       </div>
       <div class="toggle">
         <div class="label">Network Requirements Confirmed</div>
@@ -203,7 +204,7 @@
       <div class="group-title">Delivery & Rigging</div>
       <div class="field">
         <div class="label">Equipment Delivery Date</div>
-        <input type="datetime-local" value="2026-07-13T07:00">
+        <input type="datetime-local">
       </div>
       <div class="toggle">
         <div class="label">Delivery Completed</div>
@@ -211,7 +212,7 @@
       </div>
       <div class="field">
         <div class="label">Rigging Date</div>
-        <input type="datetime-local" value="2026-07-14T06:30">
+        <input type="datetime-local">
       </div>
       <div class="toggle">
         <div class="label">Rigging Completed</div>
@@ -223,7 +224,7 @@
       <div class="group-title">Equipment Installation</div>
       <div class="field">
         <div class="label">Installation Start Date</div>
-        <input type="datetime-local" value="2026-07-15T07:00">
+        <input type="datetime-local">
       </div>
       <div class="toggle">
         <div class="label">Mechanical Installation Completed</div>
@@ -243,7 +244,7 @@
       <div class="group-title">Testing & Customer Acceptance</div>
       <div class="field">
         <div class="label">Testing Date</div>
-        <input type="datetime-local" value="2026-07-20T08:00">
+        <input type="datetime-local">
       </div>
       <div class="toggle">
         <div class="label">System Testing Completed</div>
@@ -279,17 +280,71 @@
       <div class="group-title">Notes</div>
       <div class="field">
         <div class="label">Project Notes</div>
-        <textarea>Site readiness review completed. Final network confirmation is still pending from hospital IT.</textarea>
+        <textarea placeholder="Enter project notes"></textarea>
       </div>
     </div>
 
     <button class="btn-submit" type="button" onclick="demoSave(this)">Save & Submit Update</button>
-    <div class="demo-note">Demo page only · No information is stored or transmitted</div>
+    <div class="demo-note">Updates are saved to this installation project and shared with the Rep project record.</div>
   </div>
 
   <script>
 
 const ESPIN_ACTIVE_PROJECTS_KEY = "espin_active_project_progress_v1";
+const INSTALLATION_DETAILS_KEY = "espin_installation_project_details_v1";
+
+function getInstallationProjectId() {
+  const params = new URLSearchParams(location.search);
+  const context = window.EspinOperation?.context || {};
+  return String(
+    params.get("projectId") ||
+    params.get("id") ||
+    localStorage.getItem("activeProjectId") ||
+    context.operation_id ||
+    "new-installation"
+  );
+}
+
+function getInstallationFieldKey(control) {
+  const row = control.closest(".field, .toggle");
+  return row?.querySelector(".label")?.textContent.replace(/NEW/g, "").trim() || "";
+}
+
+function loadInstallationDetails() {
+  const allDetails = JSON.parse(localStorage.getItem(INSTALLATION_DETAILS_KEY) || "{}");
+  const details = allDetails[getInstallationProjectId()] || {};
+
+  document.querySelectorAll(".field input, .field textarea, .field select, .toggle input").forEach(control => {
+    const key = getInstallationFieldKey(control);
+    if (!key || !Object.prototype.hasOwnProperty.call(details, key)) return;
+    if (control.type === "checkbox") control.checked = Boolean(details[key]);
+    else control.value = details[key];
+  });
+}
+
+function saveInstallationDetails() {
+  const allDetails = JSON.parse(localStorage.getItem(INSTALLATION_DETAILS_KEY) || "{}");
+  const details = {};
+
+  document.querySelectorAll(".field input, .field textarea, .field select, .toggle input").forEach(control => {
+    const key = getInstallationFieldKey(control);
+    if (key) details[key] = control.type === "checkbox" ? control.checked : control.value;
+  });
+
+  allDetails[getInstallationProjectId()] = details;
+  localStorage.setItem(INSTALLATION_DETAILS_KEY, JSON.stringify(allDetails));
+}
+
+function populateInstallationSummary() {
+  const context = window.EspinOperation?.context || {};
+  const projectId = getInstallationProjectId();
+  const facility = context.facility || context.facility_name || "Facility not yet assigned";
+  const equipment = context.equipment_model || context.equipment || "Equipment not yet assigned";
+
+  document.getElementById("projectSummaryTitle").textContent = "Installation Project";
+  document.getElementById("projectSummaryFacility").textContent = facility;
+  document.getElementById("projectSummaryEquipment").textContent = `${equipment} · Project ID: ${projectId}`;
+}
 
 function getInstallationMilestoneSnapshot() {
   const fieldRows = [...document.querySelectorAll(".field")];
@@ -449,6 +504,7 @@ function syncInstallationProjectToRep() {
 }
 
     function demoSave(button){
+      saveInstallationDetails();
       const savedProjectSnapshot = syncInstallationProjectToRep();
 
       try {
@@ -466,13 +522,16 @@ function syncInstallationProjectToRep() {
       }
 
       const original = button.textContent;
-      button.textContent = "✓ Demo Update Saved";
+      button.textContent = "✓ Update Saved";
       button.style.background = "#2e7d32";
       setTimeout(() => {
         button.textContent = original;
         button.style.background = "#0066B2";
       }, 1600);
     }
+
+    populateInstallationSummary();
+    loadInstallationDetails();
   </script>
 </body>
 </html>
