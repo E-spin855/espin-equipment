@@ -21064,6 +21064,22 @@ function upsertEspinActiveProject(project) {
 
   lastActiveProjectsStorageValue = serializedProjects;
 
+  // Shared server record: keeps the same project available to Manager, VP,
+  // and the main app when they are on different devices or browsers.
+  const repEmail = clean(
+    localStorage.getItem("espinEquipment_userEmail") ||
+    localStorage.getItem("espinUserEmail") ||
+    project.rep_email || project.sales_rep_email
+  ).toLowerCase();
+  if (repEmail) {
+    fetch("/api/link-projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": repEmail },
+      credentials: "same-origin",
+      body: JSON.stringify({ project: { ...project, rep_email: repEmail } })
+    }).catch(error => console.warn("ESPIN LINK project sync queued locally:", error));
+  }
+
   // Push the latest milestone snapshot to the Manager record immediately.
   if (selectedRecord) {
     selectedRecord.active_project_snapshots = getActiveProjectSnapshotsForRecord(selectedRecord);

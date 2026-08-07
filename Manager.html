@@ -14921,5 +14921,24 @@ window.addEventListener("pageshow", () => {
 })();
 </script>
 
+<script id="manager-server-today-sync">
+(() => {
+  const KEY = "espin_link_todays_summary_v1";
+  let lastSignature = "";
+  const email = () => String(localStorage.getItem("espinEquipment_userEmail") || localStorage.getItem("espinUserEmail") || "").trim().toLowerCase();
+  async function publish() {
+    const actor = email();
+    if (!actor) return;
+    let snapshot;
+    try { snapshot = JSON.parse(localStorage.getItem(KEY) || "null"); } catch { return; }
+    if (!snapshot || !Array.isArray(snapshot.events)) return;
+    const signature = JSON.stringify({ local_day: snapshot.local_day, events: snapshot.events });
+    if (signature === lastSignature) return;
+    const response = await fetch("/api/link-projects", { method: "POST", headers: { "Content-Type": "application/json", "x-user-email": actor }, credentials: "same-origin", body: JSON.stringify({ action: "save_today_summary", snapshot }) });
+    if (response.ok) lastSignature = signature;
+  }
+  window.addEventListener("load", () => { publish().catch(() => {}); setInterval(() => publish().catch(() => {}), 4000); });
+})();
+</script>
 </body>
 </html>
