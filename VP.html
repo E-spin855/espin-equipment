@@ -60,7 +60,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 #vpTodaySummary .today-summary-region{grid-template-columns:120px 1fr auto;padding:9px 10px}
 #vpTodaySummary .today-region-name{font-size:11px;color:#b9d8e7}
 #vpTodaySummary .today-metric-label{font-size:11px;color:#d8edf8}
-#vpTodaySummary .today-summary-key{display:block;margin:0 0 8px;font-size:9px}
+#vpTodaySummary .today-summary-key{display:block;margin:0 0 8px;font-size:9px}#vpTodaySummary .today-summary-history-control{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:0 0 9px}#vpTodaySummary .today-summary-history-control label{color:#85aabd;font-size:8px;letter-spacing:.08em;text-transform:uppercase}#vpTodaySummary .today-summary-history-control select{width:auto;min-width:160px;padding:7px 8px;border:1px solid rgba(53,217,255,.24);background:#051525;color:#d8edf8;font:inherit;font-size:10px}
 #vpTodaySummary .today-summary-key span{display:block;padding:7px 9px;border-left:2px solid rgba(53,217,255,.5);background:rgba(53,217,255,.05)}#vpTodaySummary b.today-summary-live-pulse{animation:vpTodaySummaryLivePulse 1.05s ease-out}#vpTodaySummaryDate.today-summary-live-stamp{color:var(--green)!important}@keyframes vpTodaySummaryLivePulse{0%{transform:scale(1);text-shadow:none}28%{transform:scale(1.25);color:#baffd5;text-shadow:0 0 18px rgba(57,239,162,.95),0 0 34px rgba(57,239,162,.55)}100%{transform:scale(1);text-shadow:none}}
 @media(max-width:800px){#vpTodaySummary .today-summary-region{grid-template-columns:90px 1fr auto}#vpTodaySummary .today-summary-region .optional-metric{display:initial}}
 </style>
@@ -147,6 +147,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
     <div class="today-summary-body" id="vpTodaySummaryBody" hidden>
       <p class="today-summary-note">Timestamped meaningful workflow milestones only. Select a region to inspect the same rep and project detail available to its Manager.</p>
       <div class="today-summary-key"><span>Each workflow metric is shown on its own line. Select a line to view its region’s supporting projects.</span></div>
+      <div class="today-summary-history-control"><label for="vpTodaySummaryDay">History</label><select id="vpTodaySummaryDay" aria-label="Daily activity history"></select></div>
       <div class="today-summary-regions" id="vpTodaySummaryRegions"></div>
       <div class="today-summary-drilldown" id="vpTodaySummaryDrilldown" aria-live="polite"></div>
     </div>
@@ -372,14 +373,36 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 </script>
 <script id="vp-todays-summary">
 (() => {
-  const KEY="espin_link_todays_summary_v1", PING="espin_link_todays_summary_ping_v1";
+  const KEY="espin_link_todays_summary_v1", PING="espin_link_todays_summary_ping_v1", HISTORY_DAYS=7;
   const metrics=["new_projects","projects_advanced","projects_won","installations_started","installations_completed"];
   const labels={new_projects:"New Projects Created",projects_won:"Projects Won",projects_advanced:"Projects Advanced",installations_started:"Installations Started",installations_completed:"Installations Completed"};
   const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#039;");
-  const read=()=>{try{const value=JSON.parse(localStorage.getItem(KEY)||"null");return value&&Array.isArray(value.events)?value:{events:[],local_day:""};}catch{return {events:[],local_day:""};}};
-  const anonymousRegion=(region, events)=>{const names=[...new Set(events.map(item=>item.region||"Unassigned"))].sort((a,b)=>a.localeCompare(b));return `Region ${String(names.indexOf(region)+1).padStart(2,"0")}`;};
-  let previousCounts = null;
-  let lastGeneratedAt = "";
+  const read=()=>{try{const value=JSON.parse(localStorage.getItem(KEY)||"null");return value&&Array.isArray(value.events)?value:{events:[],local_day:"",daily_history:[]};}catch{return {events:[],local_day:"",daily_history:[]};}};
+  const dayDate=day=>{const parts=String(day||"").split("-").map(Number);return parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1],parts[2],12):null;};
+  const localDay=value=>{const d=new Date(value);return Number.isFinite(d.getTime())?[d.getFullYear(),d.getMonth(),d.getDate()].join("-"):"";};
+  const today=()=>localDay(new Date());
+  const anonymousRegion=(region,events)=>{const names=[...new Set(events.map(item=>item.region||"Unassigned"))].sort((a,b)=>a.localeCompare(b));return `Region ${String(names.indexOf(region)+1).padStart(2,"0")}`;};
+  let previousCounts=null, previousDay="", lastGeneratedAt="";
+
+  function historyRows(data){
+    if(Array.isArray(data.daily_history)&&data.daily_history.length)return data.daily_history;
+    return [{local_day:data.local_day||today(),events:Array.isArray(data.events)?data.events:[]}];
+  }
+
+  function availableDays(data){
+    const rows=historyRows(data), map=new Map(rows.map(row=>[String(row.local_day||""),Array.isArray(row.events)?row.events:[]]));
+    for(let i=0;i<HISTORY_DAYS;i++){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-i);const day=localDay(d);if(!map.has(day))map.set(day,[]);}
+    return [...map.entries()].sort((a,b)=>b[0].localeCompare(a[0])).slice(0,HISTORY_DAYS).map(([local_day,events])=>({local_day,events}));
+  }
+
+  function eventsForDay(data,day){return availableDays(data).find(row=>row.local_day===day)?.events||[];}
+
+  function populateHistory(select,data){
+    if(!select)return data.local_day||today();
+    const days=availableDays(data), current=select.value, fallback=days[0]?.local_day||today(), selected=days.some(row=>row.local_day===current)?current:fallback;
+    select.innerHTML=days.map((row,index)=>{const d=dayDate(row.local_day);const label=row.local_day===today()?"Today":index===1&&row.local_day!==today()?"Yesterday":d?.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})||row.local_day;return `<option value="${row.local_day}"${row.local_day===selected?" selected":""}>${esc(label)}</option>`;}).join("");
+    return select.value||selected;
+  }
 
   function countMap(events){
     const result={};
@@ -389,32 +412,29 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   }
 
   function render(options={}){
-    const data=read(), events=data.events, date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
-    const counts=countMap(events);
-    const changedKeys=previousCounts?Object.keys({...previousCounts,...counts}).filter(key=>(previousCounts[key]||0)!==(counts[key]||0)):[];
-    const parts=String(data.local_day||"").split("-").map(Number), localDate=parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1]-1,parts[2],12):null;
-    const dateText=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";
-    const isFresh = Boolean(data.generated_at && data.generated_at !== lastGeneratedAt);
-    if(date){
-      date.textContent=(changedKeys.length||options.live||isFresh)?`${dateText} · Last update: Just now`:dateText;
-      if(changedKeys.length||options.live||isFresh){date.classList.add("today-summary-live-stamp");window.setTimeout(()=>date.classList.remove("today-summary-live-stamp"),1200);}
-    }
+    const data=read(), select=document.getElementById("vpTodaySummaryDay"), selectedDay=populateHistory(select,data), events=eventsForDay(data,selectedDay), date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
+    if(previousDay!==selectedDay){previousCounts=null;previousDay=selectedDay;}
+    const counts=countMap(events), liveDay=selectedDay===today();
+    const changedKeys=liveDay&&previousCounts?Object.keys({...previousCounts,...counts}).filter(key=>(previousCounts[key]||0)!==(counts[key]||0)):[];
+    const localDate=dayDate(selectedDay), dateText=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";
+    const isFresh=liveDay&&Boolean(data.generated_at&&data.generated_at!==lastGeneratedAt);
+    if(date){date.textContent=liveDay&&(changedKeys.length||options.live||isFresh)?`${dateText} · Last update: Just now`:dateText;if(liveDay&&(changedKeys.length||options.live||isFresh)){date.classList.add("today-summary-live-stamp");window.setTimeout(()=>date.classList.remove("today-summary-live-stamp"),1200);}}
     if(!rows){previousCounts=counts;lastGeneratedAt=data.generated_at||lastGeneratedAt;return;}
-    const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
-    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).flatMap(([region,items])=>metrics.map(metric=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}" data-today-metric="${metric}"><span class="today-region-name">${anonymousRegion(region,events)}</span><span class="today-metric-label">${labels[metric]}</span><b data-today-count-key="${esc(region)}|${metric}">${items.filter(item=>item.metric===metric).length}</b></button>`)).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
+    const regions=new Map();events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
+    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).flatMap(([region,items])=>metrics.map(metric=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}" data-today-metric="${metric}"><span class="today-region-name">${anonymousRegion(region,events)}</span><span class="today-metric-label">${labels[metric]}</span><b data-today-count-key="${esc(region)}|${metric}">${items.filter(item=>item.metric===metric).length}</b></button>`)).join(""):`<p style="margin:0;color:var(--muted);font-size:11px">No timestamped workflow milestones for ${esc(dateText)}.</p>`;
     changedKeys.forEach(key=>{const node=[...rows.querySelectorAll("[data-today-count-key]")].find(el=>el.dataset.todayCountKey===key);if(node)node.classList.add("today-summary-live-pulse");});
-    previousCounts=counts;
-    lastGeneratedAt=data.generated_at||lastGeneratedAt;
+    previousCounts=counts;lastGeneratedAt=data.generated_at||lastGeneratedAt;
   }
 
   function drill(region){
-    const items=read().events.filter(event=>(event.region||"Unassigned")===region), target=document.getElementById("vpTodaySummaryDrilldown"); if(!target)return;
-    const byMetric=new Map(); items.forEach(item=>{if(!byMetric.has(item.metric))byMetric.set(item.metric,[]);byMetric.get(item.metric).push(item);});
+    const data=read(), selectedDay=document.getElementById("vpTodaySummaryDay")?.value||data.local_day||today(), dayEvents=eventsForDay(data,selectedDay), items=dayEvents.filter(event=>(event.region||"Unassigned")===region), target=document.getElementById("vpTodaySummaryDrilldown");if(!target)return;
+    const byMetric=new Map();items.forEach(item=>{if(!byMetric.has(item.metric))byMetric.set(item.metric,[]);byMetric.get(item.metric).push(item);});
     const content=metrics.map(metric=>{const metricEvents=byMetric.get(metric)||[];if(!metricEvents.length)return "";const byRep=new Map();metricEvents.forEach(item=>{if(!byRep.has(item.rep))byRep.set(item.rep,[]);byRep.get(item.rep).push(item);});const reps=[...byRep.entries()].map(([name,projects])=>{const projectList=projects.map(item=>`<div class="today-summary-project">${esc(item.project)} · ${esc(new Date(item.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))}</div>`).join("");return `<div class="today-summary-rep"><strong>${esc(name)}</strong>${projectList}</div>`;}).join("");return `<p><strong>${labels[metric]} (${metricEvents.length})</strong></p>${reps}`;}).join("");
-    target.innerHTML=`<h3>${anonymousRegion(region,read().events)} — supporting projects</h3>${content||"<p>No supporting projects.</p>"}`;
+    const selectedDate=dayDate(selectedDay)?.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})||selectedDay;
+    target.innerHTML=`<h3>${anonymousRegion(region,dayEvents)} — supporting projects</h3><p>${esc(selectedDate)}</p>${content||"<p>No supporting projects.</p>"}`;
   }
 
-  document.addEventListener("DOMContentLoaded",()=>{const root=document.getElementById("vpTodaySummary"),toggle=root?.querySelector(".today-summary-toggle"),body=document.getElementById("vpTodaySummaryBody"),pipeline=document.getElementById("vpRegionalPipeline"),pipelineToggle=pipeline?.querySelector(".regional-pipeline-toggle"),pipelineBody=document.getElementById("vpRegionalPipelineBody");toggle?.addEventListener("click",()=>{const open=toggle.getAttribute("aria-expanded")!=="true";toggle.setAttribute("aria-expanded",String(open));root.classList.toggle("is-open",open);body.hidden=!open;if(open)render();});pipelineToggle?.addEventListener("click",()=>{const open=pipelineToggle.getAttribute("aria-expanded")!=="true";pipelineToggle.setAttribute("aria-expanded",String(open));pipeline.classList.toggle("is-open",open);pipelineBody.hidden=!open;});root?.addEventListener("click",event=>{const button=event.target.closest("[data-today-region]");if(button)drill(button.dataset.todayRegion);});render();});
+  document.addEventListener("DOMContentLoaded",()=>{const root=document.getElementById("vpTodaySummary"),toggle=root?.querySelector(".today-summary-toggle"),body=document.getElementById("vpTodaySummaryBody"),history=document.getElementById("vpTodaySummaryDay"),pipeline=document.getElementById("vpRegionalPipeline"),pipelineToggle=pipeline?.querySelector(".regional-pipeline-toggle"),pipelineBody=document.getElementById("vpRegionalPipelineBody");toggle?.addEventListener("click",()=>{const open=toggle.getAttribute("aria-expanded")!=="true";toggle.setAttribute("aria-expanded",String(open));root.classList.toggle("is-open",open);body.hidden=!open;if(open)render();});history?.addEventListener("change",()=>{previousCounts=null;previousDay=history.value;const target=document.getElementById("vpTodaySummaryDrilldown");if(target)target.innerHTML="";render();});pipelineToggle?.addEventListener("click",()=>{const open=pipelineToggle.getAttribute("aria-expanded")!=="true";pipelineToggle.setAttribute("aria-expanded",String(open));pipeline.classList.toggle("is-open",open);pipelineBody.hidden=!open;});root?.addEventListener("click",event=>{const button=event.target.closest("[data-today-region]");if(button)drill(button.dataset.todayRegion);});render();});
   window.addEventListener("storage",event=>{if(!event.key||event.key===KEY||event.key===PING)render({live:true});});
   setInterval(render,1500);
 })();
