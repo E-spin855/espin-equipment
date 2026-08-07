@@ -9905,6 +9905,65 @@ function dismissRepRedHotFlash(rec) {
   );
 }
 
+function isIncomingManagerFixRecord(rec) {
+  if (!rec) return false;
+  return Boolean(
+    rec.install_base_correction_status === "corrected_by_manager" ||
+    rec.install_base_response_status === "manager_correction_sent" ||
+    rec.install_base_fix_status === "manager_reviewed" ||
+    rec.install_base_response_from === "manager"
+  );
+}
+
+function shouldRestartManagerFixAlert(incoming, existing) {
+  if (!isIncomingManagerFixRecord(incoming)) return false;
+  if (!existing) return true;
+
+  // Preserve an alert that is already genuinely unread.
+  if (
+    existing.manager_response_seen_by_rep !== true ||
+    existing.rep_unseen_update === true ||
+    existing.rep_flash_type === "manager_fix"
+  ) {
+    return true;
+  }
+
+  // Once the Rep has acknowledged a Manager FIX, the same stored correction
+  // must not become unread again merely because the queue is merged/refreshed.
+  const incomingAt = clean(
+    incoming.install_base_correction_at ||
+    incoming.install_base_response_at ||
+    incoming.manager_response_at ||
+    incoming.manager_response_sent_at ||
+    ""
+  );
+
+  if (!incomingAt) return false;
+
+  const incomingTime = new Date(incomingAt).getTime();
+  const seenAt = clean(
+    existing.manager_response_seen_at ||
+    existing.install_base_fixed_seen_at ||
+    existing.manager_message_seen_at ||
+    ""
+  );
+  const seenTime = new Date(seenAt || 0).getTime();
+
+  if (Number.isFinite(incomingTime) && Number.isFinite(seenTime) && seenTime > 0) {
+    return incomingTime > seenTime;
+  }
+
+  const existingFixAt = clean(
+    existing.install_base_correction_at ||
+    existing.install_base_response_at ||
+    existing.manager_response_at ||
+    existing.manager_response_sent_at ||
+    ""
+  );
+
+  return Boolean(existingFixAt && incomingAt !== existingFixAt);
+}
+
 function mergeInstallBaseQueueIntoRepRecords() {
   const queue = readArrayKey("espin_rep_queue");
   if (!queue.length) return;
@@ -10020,18 +10079,18 @@ if (
     incoming.install_base_response_from === "manager" ||
     assignmentNowResolved;
 
-const isIncomingManagerFix = Boolean(
-  incoming.install_base_correction_status === "corrected_by_manager" ||
-  incoming.install_base_response_status === "manager_correction_sent" ||
-  incoming.install_base_fix_status === "manager_reviewed" ||
-  incoming.install_base_response_from === "manager"
+const restartManagerFixAlert = shouldRestartManagerFixAlert(
+  incoming,
+  existingRepRecord
 );
 
 const managerFixTime =
   incoming.install_base_correction_at ||
   incoming.install_base_response_at ||
   incoming.manager_response_at ||
-  new Date().toISOString();
+  incoming.manager_response_sent_at ||
+  existingRepRecord?.rep_flash_at ||
+  "";
 
 const repRecord = {
       ...incoming,
@@ -10057,26 +10116,26 @@ const repRecord = {
 
       rep_visible: true,
       manager_visible: false,
-// Manager FIX received by Rep: pulse the row until clicked.
-manager_response_seen_by_rep: isIncomingManagerFix
+// Manager FIX received by Rep: pulse only for a genuinely new/unread correction.
+manager_response_seen_by_rep: restartManagerFixAlert
   ? false
-  : incoming.manager_response_seen_by_rep,
+  : (existingRepRecord?.manager_response_seen_by_rep ?? incoming.manager_response_seen_by_rep ?? true),
 
-install_base_fixed_seen_by_rep: isIncomingManagerFix
+install_base_fixed_seen_by_rep: restartManagerFixAlert
   ? false
-  : incoming.install_base_fixed_seen_by_rep,
+  : (existingRepRecord?.install_base_fixed_seen_by_rep ?? incoming.install_base_fixed_seen_by_rep),
 
-rep_unseen_update: isIncomingManagerFix
+rep_unseen_update: restartManagerFixAlert
   ? true
-  : incoming.rep_unseen_update === true,
+  : (existingRepRecord?.rep_unseen_update === true),
 
-rep_flash_at: isIncomingManagerFix
+rep_flash_at: restartManagerFixAlert
   ? managerFixTime
-  : (incoming.rep_flash_at || ""),
+  : (existingRepRecord?.rep_flash_at || ""),
 
-rep_flash_type: isIncomingManagerFix
+rep_flash_type: restartManagerFixAlert
   ? "manager_fix"
-  : (incoming.rep_flash_type || ""),
+  : (existingRepRecord?.rep_flash_type || ""),
       oem_review_label: reviewLabel,
 oem_review_reason: reviewReason,
 
@@ -10398,11 +10457,7 @@ function importRepQueueRecords() {
 const isNewHubRow =
   !existing &&
   !isIncomingInstallBaseFix;
-const isIncomingManagerFix = Boolean(
-  item.install_base_correction_status === "corrected_by_manager" ||
-  item.install_base_response_status === "manager_correction_sent" ||
-  item.install_base_fix_status === "manager_reviewed"
-);
+const restartManagerFixAlert = shouldRestartManagerFixAlert(item, existing);
 const hubArrivalTime =
   item.install_base_released_at ||
   item.install_base_auto_synced_at ||
@@ -10468,33 +10523,36 @@ const restartRedHotFlash = isNewerRedHotPushFromHub(item, existing);
         : (item.rep_selected_manual_action_label || item.rep_action_label || ""),
 
       manager_response_seen_by_rep:
-  isIncomingManagerFix
+  restartManagerFixAlert
     ? false
-    : (item.manager_response_seen_by_rep ?? true),
+    : (existing?.manager_response_seen_by_rep ?? item.manager_response_seen_by_rep ?? true),
 
 rep_unseen_update:
-  isIncomingManagerFix
+  restartManagerFixAlert
     ? true
-    : item.rep_unseen_update === true,
+    : (existing?.rep_unseen_update === true),
 
 rep_flash_at:
-  isIncomingManagerFix
+  restartManagerFixAlert
     ? (
         item.install_base_correction_at ||
         item.install_base_response_at ||
-        new Date().toISOString()
+        item.manager_response_at ||
+        item.manager_response_sent_at ||
+        existing?.rep_flash_at ||
+        ""
       )
-    : (item.rep_flash_at || ""),
+    : (existing?.rep_flash_at || ""),
 
 rep_flash_type:
-  isIncomingManagerFix
+  restartManagerFixAlert
     ? "manager_fix"
-    : (item.rep_flash_type || ""),
+    : (existing?.rep_flash_type || ""),
 
 install_base_fixed_seen_by_rep:
-  isIncomingManagerFix
+  restartManagerFixAlert
     ? false
-    : item.install_base_fixed_seen_by_rep
+    : (existing?.install_base_fixed_seen_by_rep ?? item.install_base_fixed_seen_by_rep)
     };
 
     const upsertResult = upsertRepWorkspaceRecord(releasedRecord);
