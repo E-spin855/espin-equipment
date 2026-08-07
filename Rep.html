@@ -16715,9 +16715,10 @@ function renderRegularRepAction(rec) {
           <input
             id="repFollowUpDate"
             type="date"
+            min="${todayISO()}"
             value="${escapeHtml(actionDraft.followUpDate || "")}"
-            oninput="updateContinueRepActionState();"
-            onchange="updateContinueRepActionState();"
+            oninput="validateRepFollowUpDateSelection(this); updateContinueRepActionState();"
+            onchange="validateRepFollowUpDateSelection(this); updateContinueRepActionState();"
           />
         </div>
 
@@ -16741,6 +16742,24 @@ function renderRegularRepAction(rec) {
 function toggleRepActionPanel() {
   state.repActionOpen = state.repActionOpen !== true;
   renderDetail();
+}
+
+function validateRepFollowUpDateSelection(dateField) {
+  if (!dateField || !dateField.value) return true;
+
+  const today = todayISO();
+  if (dateField.value >= today) return true;
+
+  alert("Follow-Up Date cannot be before today. Please select today or a future date.");
+  dateField.value = "";
+
+  const draftKey = String(state.selectedId || "");
+  if (draftKey && state.repActionDrafts[draftKey]) {
+    state.repActionDrafts[draftKey].followUpDate = "";
+  }
+
+  window.setTimeout(() => dateField.focus(), 0);
+  return false;
 }
 
 function updateContinueRepActionState() {
@@ -22569,6 +22588,13 @@ if (!action) {
 	    dateField.style.borderColor = "#ffd84d";
 	    dateField.style.boxShadow = "0 0 0 3px rgba(255,216,77,.18)";
 	  }
+	  return;
+	}
+
+	if (action !== "complete" && followUpDate < todayISO()) {
+	  const dateField = $("repFollowUpDate");
+	  validateRepFollowUpDateSelection(dateField);
+	  updateContinueRepActionState();
 	  return;
 	}
 	
