@@ -56,6 +56,14 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 <style id="today-summary-styles">
 .today-summary,.regional-pipeline{margin:0 0 16px;border:1px solid rgba(53,217,255,.28);background:#041321}.regional-subtitle{display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 8px;color:#8eb8cc;font-size:9px;letter-spacing:.11em;text-transform:uppercase}.regional-subtitle span{color:#638ba2;font-size:8px;letter-spacing:.06em}.today-summary-toggle,.regional-pipeline-toggle{width:100%;min-height:54px;padding:10px 13px;border:0;background:rgba(5,24,43,.72);color:var(--text);display:flex;justify-content:space-between;align-items:center;text-align:left;cursor:pointer}.today-summary-toggle strong,#vpTodaySummary .today-summary-toggle strong,.regional-pipeline-toggle strong{display:block;color:var(--cyan);font-family:"SFMono-Regular",Consolas,monospace;font-size:12px!important;line-height:1.2;letter-spacing:.09em;text-transform:uppercase}.today-summary-toggle small,#vpTodaySummary .today-summary-toggle small,.regional-pipeline-toggle small{display:block;margin-top:4px;color:var(--muted);font-size:10px!important;letter-spacing:.03em;text-transform:none}.today-summary-chevron,.regional-pipeline-chevron{color:var(--cyan);font-size:19px;transition:transform .18s}.today-summary.is-open .today-summary-chevron,.regional-pipeline.is-open .regional-pipeline-chevron{transform:rotate(180deg)}.today-summary-body,.regional-pipeline-body{padding:0 13px 13px}.today-summary-note{margin:10px 0 8px;color:#9fc6da;font-size:10px}.today-summary-regions{display:grid;gap:6px}.today-summary-region{width:100%;padding:8px 10px;border:1px solid rgba(53,217,255,.18);background:#051525;color:var(--text);display:grid;grid-template-columns:1fr repeat(5,auto);gap:9px;align-items:center;text-align:left;cursor:pointer}.today-summary-region:hover{border-color:var(--cyan)}.today-summary-region span{font-size:11px;color:#b9d8e7}.today-summary-region b{font-family:"SFMono-Regular",Consolas,monospace;color:var(--green);font-size:12px}.today-summary-key{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 8px;color:#85aabd;font-size:8px;text-transform:uppercase}.today-summary-drilldown{margin-top:9px;padding:9px;border-left:2px solid var(--green);background:rgba(57,239,162,.05)}.today-summary-drilldown h3{margin:0 0 6px;font-size:12px;color:#dff6ff}.today-summary-drilldown p{margin:0 0 7px;color:#9fc6da;font-size:11px}.today-summary-rep{margin:5px 0;padding:5px 0 0 8px;border-left:1px solid rgba(53,217,255,.3);font-size:11px}.today-summary-project{padding:3px 0 0 8px;color:#b9d8e7}@media(max-width:800px){.today-summary-region{grid-template-columns:1fr repeat(3,auto)}.today-summary-region .optional-metric{display:none}}
 </style>
+<style id="today-summary-row-layout">
+#vpTodaySummary .today-summary-region{grid-template-columns:120px 1fr auto;padding:9px 10px}
+#vpTodaySummary .today-region-name{font-size:11px;color:#b9d8e7}
+#vpTodaySummary .today-metric-label{font-size:11px;color:#d8edf8}
+#vpTodaySummary .today-summary-key{display:block;margin:0 0 8px;font-size:9px}
+#vpTodaySummary .today-summary-key span{display:block;padding:7px 9px;border-left:2px solid rgba(53,217,255,.5);background:rgba(53,217,255,.05)}
+@media(max-width:800px){#vpTodaySummary .today-summary-region{grid-template-columns:90px 1fr auto}#vpTodaySummary .today-summary-region .optional-metric{display:initial}}
+</style>
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
 </head>
 <body>
@@ -138,7 +146,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
     </button>
     <div class="today-summary-body" id="vpTodaySummaryBody" hidden>
       <p class="today-summary-note">Timestamped meaningful workflow milestones only. Select a region to inspect the same rep and project detail available to its Manager.</p>
-      <div class="today-summary-key"><span>New</span><span>Won</span><span>Advanced</span><span>Install started</span><span>Install completed</span></div>
+      <div class="today-summary-key"><span>Each workflow metric is shown on its own line. Select a line to view its region’s supporting projects.</span></div>
       <div class="today-summary-regions" id="vpTodaySummaryRegions"></div>
       <div class="today-summary-drilldown" id="vpTodaySummaryDrilldown" aria-live="polite"></div>
     </div>
@@ -375,7 +383,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
     if(date){const parts=String(data.local_day||"").split("-").map(Number), localDate=parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1]-1,parts[2],12):null;date.textContent=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";}
     if(!rows)return;
     const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
-    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([region,items])=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}"><span>${anonymousRegion(region,events)}</span>${metrics.map((metric,index)=>`<b class="${index>2?"optional-metric":""}" title="${labels[metric]}">${items.filter(item=>item.metric===metric).length}</b>`).join("")}</button>`).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
+    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).flatMap(([region,items])=>metrics.map(metric=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}"><span class="today-region-name">${anonymousRegion(region,events)}</span><span class="today-metric-label">${labels[metric]}</span><b>${items.filter(item=>item.metric===metric).length}</b></button>`)).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
   }
   function drill(region){
     const items=read().events.filter(event=>(event.region||"Unassigned")===region), target=document.getElementById("vpTodaySummaryDrilldown"); if(!target)return;
