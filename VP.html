@@ -61,7 +61,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
 #vpTodaySummary .today-region-name{font-size:11px;color:#b9d8e7}
 #vpTodaySummary .today-metric-label{font-size:11px;color:#d8edf8}
 #vpTodaySummary .today-summary-key{display:block;margin:0 0 8px;font-size:9px}
-#vpTodaySummary .today-summary-key span{display:block;padding:7px 9px;border-left:2px solid rgba(53,217,255,.5);background:rgba(53,217,255,.05)}
+#vpTodaySummary .today-summary-key span{display:block;padding:7px 9px;border-left:2px solid rgba(53,217,255,.5);background:rgba(53,217,255,.05)}#vpTodaySummary b.today-summary-live-pulse{animation:vpTodaySummaryLivePulse 1.05s ease-out}#vpTodaySummaryDate.today-summary-live-stamp{color:var(--green)!important}@keyframes vpTodaySummaryLivePulse{0%{transform:scale(1);text-shadow:none}28%{transform:scale(1.25);color:#baffd5;text-shadow:0 0 18px rgba(57,239,162,.95),0 0 34px rgba(57,239,162,.55)}100%{transform:scale(1);text-shadow:none}}
 @media(max-width:800px){#vpTodaySummary .today-summary-region{grid-template-columns:90px 1fr auto}#vpTodaySummary .today-summary-region .optional-metric{display:initial}}
 </style>
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
@@ -378,21 +378,45 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.7;ba
   const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#039;");
   const read=()=>{try{const value=JSON.parse(localStorage.getItem(KEY)||"null");return value&&Array.isArray(value.events)?value:{events:[],local_day:""};}catch{return {events:[],local_day:""};}};
   const anonymousRegion=(region, events)=>{const names=[...new Set(events.map(item=>item.region||"Unassigned"))].sort((a,b)=>a.localeCompare(b));return `Region ${String(names.indexOf(region)+1).padStart(2,"0")}`;};
-  function render(){
-    const data=read(), events=data.events, date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
-    if(date){const parts=String(data.local_day||"").split("-").map(Number), localDate=parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1]-1,parts[2],12):null;date.textContent=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";}
-    if(!rows)return;
-    const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
-    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).flatMap(([region,items])=>metrics.map(metric=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}"><span class="today-region-name">${anonymousRegion(region,events)}</span><span class="today-metric-label">${labels[metric]}</span><b>${items.filter(item=>item.metric===metric).length}</b></button>`)).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
+  let previousCounts = null;
+  let lastGeneratedAt = "";
+
+  function countMap(events){
+    const result={};
+    const regions=[...new Set(events.map(item=>item.region||"Unassigned"))];
+    regions.forEach(region=>metrics.forEach(metric=>{result[`${region}|${metric}`]=events.filter(item=>(item.region||"Unassigned")===region&&item.metric===metric).length;}));
+    return result;
   }
+
+  function render(options={}){
+    const data=read(), events=data.events, date=document.getElementById("vpTodaySummaryDate"), rows=document.getElementById("vpTodaySummaryRegions");
+    const counts=countMap(events);
+    const changedKeys=previousCounts?Object.keys({...previousCounts,...counts}).filter(key=>(previousCounts[key]||0)!==(counts[key]||0)):[];
+    const parts=String(data.local_day||"").split("-").map(Number), localDate=parts.length===3&&parts.every(Number.isFinite)?new Date(parts[0],parts[1]-1,parts[2],12):null;
+    const dateText=localDate&&Number.isFinite(localDate.getTime())?localDate.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):"Waiting for Manager workflow data";
+    const isFresh = Boolean(data.generated_at && data.generated_at !== lastGeneratedAt);
+    if(date){
+      date.textContent=(changedKeys.length||options.live||isFresh)?`${dateText} · Last update: Just now`:dateText;
+      if(changedKeys.length||options.live||isFresh){date.classList.add("today-summary-live-stamp");window.setTimeout(()=>date.classList.remove("today-summary-live-stamp"),1200);}
+    }
+    if(!rows){previousCounts=counts;lastGeneratedAt=data.generated_at||lastGeneratedAt;return;}
+    const regions=new Map(); events.forEach(event=>{const name=event.region||"Unassigned";if(!regions.has(name))regions.set(name,[]);regions.get(name).push(event);});
+    rows.innerHTML=regions.size?[...regions.entries()].sort((a,b)=>a[0].localeCompare(b[0])).flatMap(([region,items])=>metrics.map(metric=>`<button type="button" class="today-summary-region" data-today-region="${esc(region)}" data-today-metric="${metric}"><span class="today-region-name">${anonymousRegion(region,events)}</span><span class="today-metric-label">${labels[metric]}</span><b data-today-count-key="${esc(region)}|${metric}">${items.filter(item=>item.metric===metric).length}</b></button>`)).join(""):"<p style=\"margin:0;color:var(--muted);font-size:11px\">No timestamped workflow milestones have been synchronized for today.</p>";
+    changedKeys.forEach(key=>{const node=[...rows.querySelectorAll("[data-today-count-key]")].find(el=>el.dataset.todayCountKey===key);if(node)node.classList.add("today-summary-live-pulse");});
+    previousCounts=counts;
+    lastGeneratedAt=data.generated_at||lastGeneratedAt;
+  }
+
   function drill(region){
     const items=read().events.filter(event=>(event.region||"Unassigned")===region), target=document.getElementById("vpTodaySummaryDrilldown"); if(!target)return;
     const byMetric=new Map(); items.forEach(item=>{if(!byMetric.has(item.metric))byMetric.set(item.metric,[]);byMetric.get(item.metric).push(item);});
     const content=metrics.map(metric=>{const metricEvents=byMetric.get(metric)||[];if(!metricEvents.length)return "";const byRep=new Map();metricEvents.forEach(item=>{if(!byRep.has(item.rep))byRep.set(item.rep,[]);byRep.get(item.rep).push(item);});const reps=[...byRep.entries()].map(([name,projects])=>{const projectList=projects.map(item=>`<div class="today-summary-project">${esc(item.project)} · ${esc(new Date(item.at).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))}</div>`).join("");return `<div class="today-summary-rep"><strong>${esc(name)}</strong>${projectList}</div>`;}).join("");return `<p><strong>${labels[metric]} (${metricEvents.length})</strong></p>${reps}`;}).join("");
     target.innerHTML=`<h3>${anonymousRegion(region,read().events)} — supporting projects</h3>${content||"<p>No supporting projects.</p>"}`;
   }
+
   document.addEventListener("DOMContentLoaded",()=>{const root=document.getElementById("vpTodaySummary"),toggle=root?.querySelector(".today-summary-toggle"),body=document.getElementById("vpTodaySummaryBody"),pipeline=document.getElementById("vpRegionalPipeline"),pipelineToggle=pipeline?.querySelector(".regional-pipeline-toggle"),pipelineBody=document.getElementById("vpRegionalPipelineBody");toggle?.addEventListener("click",()=>{const open=toggle.getAttribute("aria-expanded")!=="true";toggle.setAttribute("aria-expanded",String(open));root.classList.toggle("is-open",open);body.hidden=!open;if(open)render();});pipelineToggle?.addEventListener("click",()=>{const open=pipelineToggle.getAttribute("aria-expanded")!=="true";pipelineToggle.setAttribute("aria-expanded",String(open));pipeline.classList.toggle("is-open",open);pipelineBody.hidden=!open;});root?.addEventListener("click",event=>{const button=event.target.closest("[data-today-region]");if(button)drill(button.dataset.todayRegion);});render();});
-  window.addEventListener("storage",event=>{if(!event.key||event.key===KEY||event.key===PING)render();}); setInterval(render,1500);
+  window.addEventListener("storage",event=>{if(!event.key||event.key===KEY||event.key===PING)render({live:true});});
+  setInterval(render,1500);
 })();
 </script>
 <script id="vp-server-today-sync">
