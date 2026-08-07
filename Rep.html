@@ -9973,6 +9973,79 @@ function isManagerFixAlreadyAcknowledged(rec) {
   return readManagerFixAcknowledgements()[identity] === signature;
 }
 
+// Persist the complete incoming-row update signature separately from volatile
+// queue booleans. This prevents a stale Manager/Hub copy from re-lighting an
+// update that the Rep has already acknowledged, while a genuinely changed
+// timestamp/message/value still creates a new signature and alerts normally.
+const REP_ROW_UPDATE_ACK_KEY = "espin_rep_row_update_ack_v1";
+
+function getRepRowUpdateIdentity(rec) {
+  return String(
+    rec?.key ||
+    getRecordKey(rec) ||
+    rec?.id ||
+    rec?.oem_project_id ||
+    rec?.asset_id ||
+    ""
+  ).trim();
+}
+
+function getRepRowUpdateSignature(rec) {
+  if (!rec) return "";
+
+  const latestIncomingMessage =
+    typeof getLatestIncomingMessageSignature === "function"
+      ? getLatestIncomingMessageSignature(rec, "rep")
+      : "";
+
+  return [
+    clean(rec.install_base_released_at || ""),
+    clean(rec.install_base_auto_synced_at || ""),
+    clean(rec.install_base_reply_to_rep_at || ""),
+    clean(rec.install_base_reply_to_rep || ""),
+    clean(rec.install_base_correction_at || ""),
+    clean(rec.install_base_response_at || ""),
+    clean(rec.manager_response_at || ""),
+    clean(rec.manager_response_sent_at || ""),
+    clean(rec.manager_response_notes || rec.manager_response_action || ""),
+    clean(rec.install_base_corrected_fields || rec.corrected_fields || ""),
+    clean(rec.install_base_correction_status || ""),
+    clean(rec.install_base_response_status || ""),
+    clean(rec.install_base_fix_status || ""),
+    clean(rec.rep_flash_at || ""),
+    clean(rec.rep_flash_type || ""),
+    clean(rec.tradein_sync_received_at || rec.trade_received_at || rec.trade_value_received_at || ""),
+    clean(rec.trade_in_value || rec.tradein_value || rec.trade_in_credit || rec.tradein_credit || ""),
+    clean(latestIncomingMessage || "")
+  ].join("|");
+}
+
+function readRepRowUpdateAcknowledgements() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REP_ROW_UPDATE_ACK_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function acknowledgeRepRowUpdate(rec) {
+  const identity = getRepRowUpdateIdentity(rec);
+  const signature = getRepRowUpdateSignature(rec);
+  if (!identity || !signature) return;
+
+  const acknowledgements = readRepRowUpdateAcknowledgements();
+  acknowledgements[identity] = signature;
+  localStorage.setItem(REP_ROW_UPDATE_ACK_KEY, JSON.stringify(acknowledgements));
+}
+
+function isRepRowUpdateAlreadyAcknowledged(rec) {
+  const identity = getRepRowUpdateIdentity(rec);
+  const signature = getRepRowUpdateSignature(rec);
+  if (!identity || !signature) return false;
+  return readRepRowUpdateAcknowledgements()[identity] === signature;
+}
+
 function shouldRestartManagerFixAlert(incoming, existing) {
   if (!isIncomingManagerFixRecord(incoming)) return false;
 
@@ -14478,11 +14551,16 @@ function renderTable() {
     .map(item => item.rec);
 
   tbody.innerHTML = sorted.map(rec => {
+    const rowUpdateAlreadyAcknowledged =
+      isRepRowUpdateAlreadyAcknowledged(rec);
+
     const hasUnseenManagerResponse =
+      !rowUpdateAlreadyAcknowledged &&
       hasUnseenManagerCommunication(rec) &&
       hasDirectIncomingManagerTarget(rec);
 
     const hasUnseenHubCommunication =
+      !rowUpdateAlreadyAcknowledged &&
       hasUnseenInstallBaseCommunication(rec) &&
       hasDirectIncomingInstallBaseTarget(rec);
 
@@ -14492,18 +14570,22 @@ function renderTable() {
       rec.install_base_fix_status === "rep_reviewed";
 
     const hasUnseenFixedData =
+      !rowUpdateAlreadyAcknowledged &&
       sentBackToInstallBase &&
       rec.install_base_fixed_seen_by_rep !== true &&
       hasDirectIncomingInstallBaseTarget(rec);
 
     const hasUnseenInstallBaseUpdate =
+      !rowUpdateAlreadyAcknowledged &&
       rec.install_base_release_new === true &&
       rec.install_base_release_seen !== true;
 
     const hasUnseenHubFix =
+      !rowUpdateAlreadyAcknowledged &&
       hasUnseenHubFixRequest(rec);
 
 const hasUnseenManagerFix =
+  !rowUpdateAlreadyAcknowledged &&
   (
     rec.install_base_correction_status === "corrected_by_manager" ||
     rec.install_base_response_status === "manager_correction_sent" ||
@@ -14544,7 +14626,7 @@ const hasUnseenManagerFix =
 hasUnseenFixedData ||
 hasUnseenManagerFix ||
 hasUnseenHubFix ||
-(rec.tradein_sync_received && rec.tradein_seen_by_rep !== true)
+(!rowUpdateAlreadyAcknowledged && rec.tradein_sync_received && rec.tradein_seen_by_rep !== true)
   ? "rep-new-row-flash"
   : "",
 
@@ -14552,7 +14634,7 @@ hasUnseenHubFix ||
         ? "rep-attention-alert-row"
         : "",
 
-      hasUnreadMessageRow(rec, "rep")
+      !rowUpdateAlreadyAcknowledged && hasUnreadMessageRow(rec, "rep")
         ? "unread-message-row"
         : ""
     ]
@@ -24776,9 +24858,10 @@ function markRepRowUpdateSeen(id) {
   const rec = state.records.find(r => String(r.id || "") === String(id || ""));
   if (!rec) return false;
 
-  // Save the exact Manager FIX acknowledgement before changing any volatile
-  // row flags. This survives refreshes and stale queue/shared-record merges.
+  // Save exact acknowledgement signatures before changing any volatile row
+  // flags. These survive refreshes and stale queue/shared-record merges.
   acknowledgeManagerFix(rec);
+  acknowledgeRepRowUpdate(rec);
 
   const needsSeenUpdate =
     isRepAttentionAlertActive(rec) ||
@@ -25475,7 +25558,8 @@ if (showCompletedProjectsBtn) {
       MESSAGE_FIELD_ACK_KEY,
       MESSAGE_ROW_ACK_KEY,
       REP_RED_HOT_DISMISSED_SIGNATURES_KEY,
-      REP_MANAGER_FIX_ACK_KEY
+      REP_MANAGER_FIX_ACK_KEY,
+      REP_ROW_UPDATE_ACK_KEY
     ];
 
     fullResetKeys.forEach(key => localStorage.removeItem(key));
