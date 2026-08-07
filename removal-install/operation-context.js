@@ -177,9 +177,15 @@
         target.searchParams.set(field, context[field]);
       }
     });
+    // A destination may already identify the project the user selected.
+    // Never replace that explicit ID with an earlier browser-wide active ID.
     if (activeProjectId) {
-      target.searchParams.set("projectId", activeProjectId);
-      target.searchParams.set("id", activeProjectId);
+      if (!target.searchParams.has("projectId")) {
+        target.searchParams.set("projectId", activeProjectId);
+      }
+      if (!target.searchParams.has("id")) {
+        target.searchParams.set("id", activeProjectId);
+      }
     }
     return target.toString();
   }
