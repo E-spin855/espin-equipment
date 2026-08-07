@@ -9915,8 +9915,72 @@ function isIncomingManagerFixRecord(rec) {
   );
 }
 
+// Persist the exact Manager FIX the Rep acknowledged independently from the
+// shared record/queue flags. Stale Manager/Hub copies may reintroduce old
+// unread booleans, but they must never recreate an alert for the same FIX.
+const REP_MANAGER_FIX_ACK_KEY = "espin_rep_manager_fix_ack_v1";
+
+function getManagerFixRecordIdentity(rec) {
+  return String(
+    rec?.key ||
+    getRecordKey(rec) ||
+    rec?.id ||
+    rec?.oem_project_id ||
+    rec?.asset_id ||
+    ""
+  ).trim();
+}
+
+function getManagerFixSignature(rec) {
+  if (!isIncomingManagerFixRecord(rec)) return "";
+
+  return [
+    clean(rec.install_base_correction_at || ""),
+    clean(rec.install_base_response_at || ""),
+    clean(rec.manager_response_at || ""),
+    clean(rec.manager_response_sent_at || ""),
+    clean(rec.install_base_corrected_fields || rec.corrected_fields || ""),
+    clean(rec.install_base_response_note || rec.manager_response_notes || ""),
+    clean(rec.install_base_correction_status || ""),
+    clean(rec.install_base_response_status || ""),
+    clean(rec.install_base_fix_status || "")
+  ].join("|");
+}
+
+function readManagerFixAcknowledgements() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REP_MANAGER_FIX_ACK_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function acknowledgeManagerFix(rec) {
+  const identity = getManagerFixRecordIdentity(rec);
+  const signature = getManagerFixSignature(rec);
+  if (!identity || !signature) return;
+
+  const acknowledgements = readManagerFixAcknowledgements();
+  acknowledgements[identity] = signature;
+  localStorage.setItem(REP_MANAGER_FIX_ACK_KEY, JSON.stringify(acknowledgements));
+}
+
+function isManagerFixAlreadyAcknowledged(rec) {
+  const identity = getManagerFixRecordIdentity(rec);
+  const signature = getManagerFixSignature(rec);
+  if (!identity || !signature) return false;
+  return readManagerFixAcknowledgements()[identity] === signature;
+}
+
 function shouldRestartManagerFixAlert(incoming, existing) {
   if (!isIncomingManagerFixRecord(incoming)) return false;
+
+  // The acknowledgement signature is authoritative. Even if a stale shared
+  // copy restores manager_response_seen_by_rep:false or rep_unseen_update:true,
+  // the exact same Manager FIX stays read until its content/timestamp changes.
+  if (isManagerFixAlreadyAcknowledged(incoming)) return false;
+
   if (!existing) return true;
 
   // Preserve an alert that is already genuinely unread.
@@ -24712,6 +24776,10 @@ function markRepRowUpdateSeen(id) {
   const rec = state.records.find(r => String(r.id || "") === String(id || ""));
   if (!rec) return false;
 
+  // Save the exact Manager FIX acknowledgement before changing any volatile
+  // row flags. This survives refreshes and stale queue/shared-record merges.
+  acknowledgeManagerFix(rec);
+
   const needsSeenUpdate =
     isRepAttentionAlertActive(rec) ||
     rec.install_base_release_seen !== true ||
@@ -25406,7 +25474,8 @@ if (showCompletedProjectsBtn) {
       REP_FACILITY_DETAILS_KEY,
       MESSAGE_FIELD_ACK_KEY,
       MESSAGE_ROW_ACK_KEY,
-      REP_RED_HOT_DISMISSED_SIGNATURES_KEY
+      REP_RED_HOT_DISMISSED_SIGNATURES_KEY,
+      REP_MANAGER_FIX_ACK_KEY
     ];
 
     fullResetKeys.forEach(key => localStorage.removeItem(key));
