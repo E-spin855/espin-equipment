@@ -7463,7 +7463,7 @@ body tr:is(
         <div class="panel" id="unmatchedTradeInPanel" style="display:none;">
           <div class="panel-head">
             <h2>Unmatched Trade-In Records</h2>
-            <span class="mini">Attach to new ESPIN LINK project</span>
+            <span class="mini">WON Trade Desk equipment available for Removal projects</span>
           </div>
           <div class="panel-body table-wrap">
             <table>
@@ -20659,20 +20659,18 @@ ${renderQuoteApprovalActionPanel(rec)}
         unmatched = [];
       }
 
-      unmatched = unmatched.filter(item => !item.linked_new_project_id && !item.linked_axis_project_id);
+      // Trade Desk equipment belongs exclusively to the Removal workflow.
+      // Do not surface pending/evaluated records or records already attached
+      // to a Removal project.
+      unmatched = unmatched.filter(item =>
+        isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)
+      );
 
       if (!unmatched.length) {
         panel.style.display = "none";
         tbody.innerHTML = "";
         return;
       }
-
-      const attachableProjects = state.records.filter(r =>
-        r.project_type === "new_project_record" &&
-        !r.lifecycle_completed &&
-        r.quote_status !== "lost" &&
-        r.quote_status !== "won"
-      );
 
       panel.style.display = "block";
 
@@ -20682,27 +20680,15 @@ ${renderQuoteApprovalActionPanel(rec)}
 
         return `
           <tr>
-            <td>${escapeHtml(item.project_id || item.axis_project_id || "-")}</td>
-            <td class="wrap">${escapeHtml(item.site || item.project_name || "Unknown Facility")}</td>
-            <td>${escapeHtml(item.make || "-")}</td>
-            <td class="wrap">${escapeHtml(item.model || "-")}</td>
-            <td>${escapeHtml(item.modality || "-")}</td>
-            <td>${escapeHtml(item.serial_number || "-")}</td>
+            <td>${escapeHtml(item.project_id || item.axis_project_id || item.trade_desk_id || "-")}</td>
+            <td class="wrap">${escapeHtml(item.facility_name || item.facility || item.site || item.hospital || "-")}</td>
+            <td>${escapeHtml(item.make || item.tradein_equipment_make || "-")}</td>
+            <td class="wrap">${escapeHtml(item.model || item.tradein_equipment_model || "-")}</td>
+            <td>${escapeHtml(item.modality || item.tradein_equipment_modality || "-")}</td>
+            <td>${escapeHtml(item.serial_number || item.axis_serial_number || item.tradein_equipment_serial_number || "-")}</td>
             <td>${money(value)}</td>
-            <td>Available for Project Review</td>
-            <td>
-              ${
-                attachableProjects.length
-                  ? `
-                    <select id="attachTradeInSelect_${escapeHtml(leadId)}" onclick="event.stopPropagation();" style="min-width:220px;margin-bottom:8px;">
-                      <option value="">Select new AXIS project</option>
-                      ${attachableProjects.map(p => `<option value="${escapeHtml(p.id)}">NEW PROJECT — ${escapeHtml(p.site || "Unknown")} — ${escapeHtml(p.model || "")}</option>`).join("")}
-                    </select>
-                    <button type="button" class="green" onclick="event.stopPropagation(); attachUnmatchedTradeInToProject('${escapeHtml(leadId)}')">Attach</button>
-                  `
-                  : `<span class="mini">No open new projects available</span>`
-              }
-            </td>
+            <td>Available for Removal Project</td>
+            <td><span class="mini">Use from Removal workflow</span></td>
           </tr>
         `;
       }).join("");
@@ -24717,6 +24703,60 @@ return true;
       return `${identity}_${version}`.trim();
     }
 
+    function isWonTradeInRecord(item) {
+      const statuses = [
+        item?.trade_desk_status,
+        item?.tradein_status,
+        item?.trade_desk_outcome,
+        item?.tradein_outcome,
+        item?.quote_status
+      ];
+      return statuses.some(status => /(^|\\s)won(\\s|$)/i.test(String(status || "").trim()));
+    }
+
+    function isTradeInAttachedToRemovalProject(item) {
+      if (!item) return false;
+      if (item.linked_removal_project_id || item.removal_project_id || item.removal_operation_id) return true;
+      if (/attached.*removal|removal.*attached/i.test(String(item.status || item.removal_handoff_status || ""))) return true;
+
+      const ids = [
+        item.axis_record_id,
+        item.axis_parent_record_id,
+        item.tradein_record_id,
+        item.id,
+        item.serial_number,
+        item.axis_serial_number
+      ].map(value => clean(value).toLowerCase()).filter(Boolean);
+
+      if (!ids.length) return false;
+
+      const storedRemovalProjects = ["espin_equipment_operations_v1", ESPIN_ACTIVE_PROJECTS_KEY]
+        .flatMap(key => {
+          try {
+            const value = JSON.parse(localStorage.getItem(key) || "[]");
+            return Array.isArray(value) ? value : [];
+          } catch (_) {
+            return [];
+          }
+        });
+
+      return storedRemovalProjects.some(project => {
+        const isRemoval = /deinstall|removal|disposal/i.test(
+          String(project.operation_type || project.project_type || project.operation || "")
+        );
+        if (!isRemoval) return false;
+        const projectIds = [
+          project.tradein_record_id,
+          project.source_record_id,
+          project.axis_record_id,
+          project.axis_parent_record_id,
+          project.asset_id,
+          project.serial_number
+        ].map(value => clean(value).toLowerCase()).filter(Boolean);
+        return projectIds.some(id => ids.includes(id));
+      });
+    }
+
     function readProcessedTradeInSyncKeys() {
       try {
         const arr = JSON.parse(localStorage.getItem("axis_processed_tradein_sync_keys_v1") || "[]");
@@ -24744,15 +24784,18 @@ return true;
 
       const unmatchedRecord = {
         ...item,
-        id: item.id || item.trade_desk_id || `unmatched_tradein_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        // Preserve the Trade Desk equipment id end-to-end; never mint a second
+        // id merely because Rep is rendering the Unmatched table.
+        id: item.axis_record_id || item.axis_parent_record_id || item.tradein_record_id || item.id || item.trade_desk_id || `unmatched_tradein_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         lead_type: "unmatched_tradein_record",
         source: "Unmatched Trade-In Record",
         created_at: item.last_tradein_update_at || new Date().toISOString(),
-        status: "needs_axis_review"
+        status: "available_for_removal_project"
       };
 
       const existsInUnmatched = unmatched.some(r =>
         String(r.id || "") === String(unmatchedRecord.id || "") ||
+        String(r.axis_record_id || r.axis_parent_record_id || r.tradein_record_id || "") === String(unmatchedRecord.axis_record_id || unmatchedRecord.axis_parent_record_id || unmatchedRecord.tradein_record_id || "") ||
         (serial && String(r.serial_number || r.axis_serial_number || "") === serial)
       );
 
@@ -24937,7 +24980,7 @@ return true;
 
         if (isNewProjectSync) {
           if (!existingNewProject) {
-            if (!alreadyProcessed) saveAsUnmatchedTradeInLead(item);
+            if (!alreadyProcessed && isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)) saveAsUnmatchedTradeInLead(item);
             if (syncSeenKey) processedSet.add(syncSeenKey);
             changed = true;
             return;
@@ -24951,7 +24994,7 @@ return true;
         }
 
         if (isUnmatchedTradeInLead || !existingLifecycle) {
-          if (!alreadyProcessed) {
+          if (!alreadyProcessed && isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)) {
             saveAsUnmatchedTradeInLead(item);
             if (syncSeenKey) processedSet.add(syncSeenKey);
             changed = true;
