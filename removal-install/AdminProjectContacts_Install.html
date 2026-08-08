@@ -157,6 +157,28 @@ const refreshBtn = document.getElementById("refreshBtn");
 const addContactBtn = document.getElementById("addContactBtn");
 
 let currentContacts = [];
+const MANAGER_REP_ROSTER_KEY = "espin_manager_rep_roster_v1";
+
+function readManagerRepRoster() {
+  try {
+    const roster = JSON.parse(localStorage.getItem(MANAGER_REP_ROSTER_KEY) || "[]");
+    return Array.isArray(roster) ? roster : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function managerAssignedRepName(project) {
+  const assignedId = String(project?.assigned_rep_id || "").trim();
+  const assignedEmail = String(
+    project?.assigned_rep_email || project?.sales_rep_email || ""
+  ).trim().toLowerCase();
+  const rep = readManagerRepRoster().find(candidate =>
+    String(candidate?.id || "").trim() === assignedId ||
+    (assignedEmail && String(candidate?.email || "").trim().toLowerCase() === assignedEmail)
+  );
+  return String(rep?.name || "Unassigned").trim();
+}
 
 const headers = () => ({
   "Content-Type": "application/json",
@@ -179,7 +201,7 @@ async function initProjects() {
     const r = await fetch(`${API_BASE}/api/removal-install/projects`, { headers: headers() });
     const d = await r.json();
     projectSelect.innerHTML = d.map(p =>
-      `<option value="${p.id}">${p.project_completed ? `📦 ${p.project_name} (Archived)` : `🚀 ${p.project_name}`}</option>`
+      `<option value="${p.id}">${p.project_completed ? `📦 ${p.project_name} (Archived)` : `🚀 ${p.project_name}`} — Rep: ${managerAssignedRepName(p)}</option>`
     ).join("");
     archiveStatusSelect.disabled = true;
     updateStatusBtn.disabled = true;
