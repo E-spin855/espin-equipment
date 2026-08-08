@@ -99,7 +99,11 @@ export default async function handler(req, res) {
 
   try {
     /* SECURITY */
-    const ok = (await isAdmin(client, userEmail)) || hasManagerSandboxRole(req);
+    const owner = await client.query(
+      "SELECT 1 FROM projects WHERE id = $1 AND LOWER(admin_email) = $2 LIMIT 1",
+      [req.query?.projectId || req.body?.projectId || req.body?.project_id || "", userEmail]
+    );
+    const ok = (await isAdmin(client, userEmail)) || hasManagerSandboxRole(req) || owner.rowCount > 0;
     if (!ok) return res.status(403).json({ error: "Admin only" });
 
     /* ===============================

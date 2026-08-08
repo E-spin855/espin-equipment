@@ -363,7 +363,7 @@ const { rows } = await client.query(
     modality || null,
     magnet_event || null,
     !!disposal_required,
-    "system",
+    actor || "system",
     tz,
     tz,
     false,
