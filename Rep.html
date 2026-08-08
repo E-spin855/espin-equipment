@@ -23387,6 +23387,50 @@ function promoteWonProjectToEquipmentReview(rec, now = new Date().toISOString())
   return rec;
 }
 
+async function syncWonRepProjectToEquipmentProjects(rec) {
+  if (!rec || rec.equipment_projects_sync_id) return rec?.equipment_projects_sync_id || null;
+
+  const currentUserEmail = String(
+    localStorage.getItem("espinEquipment_userEmail") ||
+    localStorage.getItem("espinUserEmail") ||
+    rec.sales_rep_email ||
+    rec.assigned_rep_email ||
+    ""
+  ).trim().toLowerCase();
+
+  const payload = {
+    project_name: rec.site || rec.facility || rec.facility_name || rec.project_name || "Won ESPIN LINK Project",
+    site_address: rec.site_address || rec.facility_address || rec.address || "",
+    city: rec.city || "",
+    state: rec.state || "",
+    zip_code: rec.zip_code || rec.postal_code || "",
+    sales_rep_first: rec.sales_rep_first || rec.assigned_rep_first || "",
+    sales_rep_last: rec.sales_rep_last || rec.assigned_rep_last || "",
+    sales_rep_company: rec.sales_rep_company || "",
+    sales_rep_phone: rec.sales_rep_phone || rec.assigned_rep_phone || "",
+    sales_rep_email: currentUserEmail
+  };
+
+  if (!payload.project_name || !currentUserEmail) return null;
+
+  try {
+    const response = await fetch("/api/admin/equipment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": currentUserEmail },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error("Equipment project sync failed");
+    const result = await response.json();
+    rec.equipment_projects_sync_id = result?.id || "";
+    rec.equipment_projects_synced_at = new Date().toISOString();
+    saveRecords();
+    return rec.equipment_projects_sync_id || null;
+  } catch (error) {
+    console.error("WON -> equipment projects sync failed:", error);
+    return null;
+  }
+}
+
 function markNewProjectWon(id) {
   const rec = state.records.find(r => String(r.id) === String(id));
   if (!rec) return;
@@ -23407,6 +23451,10 @@ function markNewProjectWon(id) {
     "won",
     "New project marked won and moved into equipment review."
   );
+
+  // Publish the facility entered on the Rep New Project directly to the
+  // Equipment Projects list. This is separate from any trade-in/removal flow.
+  void syncWonRepProjectToEquipmentProjects(rec);
 
   // Rep's WON action is the only point at which Trade Desk equipment appears
   // in Unmatched Trade-In Records. It remains a Removal-only handoff.
