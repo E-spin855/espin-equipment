@@ -612,9 +612,15 @@ localStorage.setItem("espinAuth", "true");
 localStorage.setItem("espinUserEmail", email);
 
 const ADMIN_EMAIL = "info@espinmedical.com";
+const sandboxSession = (() => {
+  try { return JSON.parse(sessionStorage.getItem("espinSandboxSession") || "null"); }
+  catch (_) { return null; }
+})();
+const sandboxRole = String(sandboxSession?.role || "").toLowerCase();
+const sandboxActive = !sandboxSession?.expires_at || Date.parse(sandboxSession.expires_at) > Date.now();
 const isAdmin =
-  (email || "").toLowerCase().trim() ===
-  (ADMIN_EMAIL || "").toLowerCase().trim();
+  (email || "").toLowerCase().trim() === (ADMIN_EMAIL || "").toLowerCase().trim() ||
+  (sandboxActive && ["manager", "sandbox_admin"].includes(sandboxRole));
 
 /* ===============================
    MRI BLOCK LOGIC
@@ -1010,13 +1016,7 @@ async function renderProjectCards(projects) {
 
   const sorted = deduplicateProjects(projects)
     .filter(project => !isInstallationProject(project))
-    .sort((a, b) =>
-    String(a.project_group_id || a.id).localeCompare(
-      String(b.project_group_id || b.id)
-    ) ||
-    new Date(b.created_at || 0) -
-      new Date(a.created_at || 0)
-  );
+  .sort((a, b) => new Date(b.created_at || b.updated_at || 0) - new Date(a.created_at || a.updated_at || 0));
 
   for (const p of sorted) {
     if (p.hidden) continue;

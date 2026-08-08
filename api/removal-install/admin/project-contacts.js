@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import crypto from "crypto";
 
 /* ===============================
    SEND WELCOME
@@ -58,6 +59,20 @@ async function isAdmin(client, email) {
   return rows.length > 0;
 }
 
+function hasManagerSandboxRole(req) {
+  const token = String(req.headers.cookie || "").match(/(?:^|;\s*)espin_sandbox_auth=([^;]+)/)?.[1];
+  if (!token || !process.env.SANDBOX_AUTH_HASH_SECRET) return false;
+  try {
+    const [encoded, signature] = decodeURIComponent(token).split(".");
+    const expected = crypto.createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET).update(encoded).digest("hex");
+    const expectedBuffer = Buffer.from(expected);
+    const actualBuffer = Buffer.from(signature || "");
+    if (expectedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(expectedBuffer, actualBuffer)) return false;
+    const session = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return Number(session?.exp || 0) > Date.now() && ["manager", "sandbox_admin"].includes(String(session?.role || "").toLowerCase());
+  } catch (_) { return false; }
+}
+
 function normalizeRole(role) {
   const r = String(role || "").trim();
   if (r === "project_manager" || r === "team_leader" || r === "authorized") return r;
@@ -83,7 +98,7 @@ export default async function handler(req, res) {
 
   try {
     /* SECURITY */
-    const ok = await isAdmin(client, userEmail);
+    const ok = (await isAdmin(client, userEmail)) || hasManagerSandboxRole(req);
     if (!ok) return res.status(403).json({ error: "Admin only" });
 
     /* ===============================

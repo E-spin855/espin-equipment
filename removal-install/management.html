@@ -167,7 +167,7 @@ body{
     <button class="btn" id="detailsBtn">⚡ Project Details <span id="detailsBadge" class="badge-dot">NEW</span></button>
     <button class="btn secondary" id="imagesBtn">🖼 Project Images <span id="imagesBadge" class="badge-dot">NEW</span></button>
   </div>
-  <button class="btn" id="manageUsersBtn" style="display:none;">👥 Add / Manage Users</button>
+  <button class="btn" id="manageUsersBtn" style="display:none;">👥 Add / Remove Users</button>
   <button class="btn" id="clearProjectBtn" style="display:none;background:linear-gradient(180deg,#a42b35,#66151d);border-color:#ff6974;">🗑 Clear Project</button>
 </div>
 
@@ -214,8 +214,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  const sandboxRole = String(window.ESPIN_SANDBOX?.role || "").toLowerCase();
-  const isAdmin = userEmail === ADMIN_EMAIL || ["manager", "sandbox_admin"].includes(sandboxRole);
+  const sandboxSession = (() => {
+    try { return JSON.parse(sessionStorage.getItem("espinSandboxSession") || "null"); }
+    catch (_) { return null; }
+  })();
+  const sandboxRole = String(window.ESPIN_SANDBOX?.role || sandboxSession?.role || "").toLowerCase();
+  const sandboxActive = !sandboxSession?.expires_at || Date.parse(sandboxSession.expires_at) > Date.now();
+  const isAdmin = userEmail === ADMIN_EMAIL || (sandboxActive && ["manager", "sandbox_admin"].includes(sandboxRole));
 
   const projectId =
     urlProjectId ||

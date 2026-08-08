@@ -3,6 +3,7 @@
 
 import { Pool } from "pg";
 import { kv } from "@vercel/kv";
+import crypto from "crypto";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -31,6 +32,26 @@ function getProjectId(req) {
 
 function clean(email) {
   return String(email || "").toLowerCase().trim();
+}
+
+function hasManagerSandboxRole(req) {
+  const token = String(req.headers.cookie || "").match(/(?:^|;\s*)espin_sandbox_auth=([^;]+)/)?.[1];
+  if (!token || !process.env.SANDBOX_AUTH_HASH_SECRET) return false;
+  try {
+    const [encoded, signature] = decodeURIComponent(token).split(".");
+    const expected = crypto.createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET).update(encoded).digest("hex");
+    const expectedBuffer = Buffer.from(expected);
+    const actualBuffer = Buffer.from(signature || "");
+    if (expectedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(expectedBuffer, actualBuffer)) return false;
+    const session = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return Number(session?.exp || 0) > Date.now() && ["manager", "sandbox_admin"].includes(String(session?.role || "").toLowerCase());
+  } catch (_) { return false; }
+}
+
+async function canManageProjects(client, req, email) {
+  if (hasManagerSandboxRole(req)) return true;
+  const { rowCount } = await client.query("SELECT 1 FROM admins WHERE LOWER(email) = $1 LIMIT 1", [email]);
+  return rowCount > 0;
 }
 
 function getTzFromZip() {
@@ -163,6 +184,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "Missing email" });
       }
 
+      const manager = await canManageProjects(client, req, email);
       const { rows } = await client.query(
         `
         SELECT *
@@ -170,10 +192,7 @@ export default async function handler(req, res) {
         WHERE
           (
             /* ADMIN → sees EVERYTHING (including archived + hidden) */
-            EXISTS (
-              SELECT 1 FROM admins a
-              WHERE LOWER(a.email) = LOWER($1)
-            )
+            $2::boolean
 
             /* NON-ADMIN → restricted */
             OR (
@@ -193,7 +212,7 @@ export default async function handler(req, res) {
           )
         ORDER BY p.created_at DESC
         `,
-        [email]
+        [email, manager]
       );
 
       return res.status(200).json(
@@ -206,6 +225,10 @@ export default async function handler(req, res) {
     =============================== */
     if (req.method === "POST") {
       const body = req.body || {};
+      const actor = clean(req.headers["x-user-email"] || req.headers["x-useremail"]);
+      if (!actor || !(await canManageProjects(client, req, actor))) {
+        return res.status(403).json({ error: "Manager access required." });
+      }
 
       /* ---------- DELETE ---------- */
       if (body.action === "delete") {
