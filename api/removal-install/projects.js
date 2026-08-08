@@ -227,7 +227,8 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const body = req.body || {};
       const actor = clean(req.headers["x-user-email"] || req.headers["x-useremail"]);
-      if (!actor || !(await canManageProjects(client, req, actor))) {
+      const managerAction = body.action === "delete" || body.action === "setHidden";
+      if (managerAction && (!actor || !(await canManageProjects(client, req, actor)))) {
         return res.status(403).json({ error: "Manager access required." });
       }
 
