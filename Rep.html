@@ -25175,58 +25175,21 @@ return true;
         return;
       }
 
-      const select = document.getElementById(`attachTradeInSelect_${leadId}`);
-      const projectId = select?.value || "";
-
-      if (!projectId) {
-        alert("Select a new AXIS project first.");
-        return;
-      }
-
-      const project = state.records.find(r => String(r.id || "") === String(projectId || ""));
-
-      if (!project) {
-        alert("Selected project not found.");
-        return;
-      }
-
-      if (project.project_type !== "new_project_record") {
-        alert("Unmatched trade-ins can only be attached to new sales projects.");
-        return;
-      }
-
-      const tradeInValue = Number(lead.trade_in_value || lead.trade_in_credit || lead.tradein_credit || lead.estimated_trade_in_value || lead.tradein_estimated_value || 0);
-
-      applyTradeInSyncToRecord(
-        project,
-        lead,
-        tradeInValue,
-        lead.project_id || "",
-        lead.modality_id || "",
-        lead.serial_number || "",
-        false,
-        "unmatched_tradein_attached_to_new_project"
-      );
-
-      unmatched = unmatched.map(item => {
-        if (String(item.id || "") !== String(leadId || "")) return item;
-
-        return {
-          ...item,
-          linked_new_project_id: project.id,
-          linked_axis_project_id: "",
-          linked_at: new Date().toISOString(),
-          status: "attached_to_new_project"
-        };
-      });
-
-      localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
-
-      state.selectedId = project.id;
-      syncFeedStatus(project);
-      render();
-
-      alert("Unmatched trade-in attached to new AXIS project.");
+      // Trade-in equipment must never be merged into or overwrite a New
+      // Project. Send its existing identity directly to the Removal flow.
+      const removalUrl = new URL("/removal-install/EquipmentSelection_Removal.html", location.origin);
+      removalUrl.searchParams.set("operation_type", "deinstall");
+      removalUrl.searchParams.set("handoff", "removal_project");
+      removalUrl.searchParams.set("equipment_source", "trade_desk_won");
+      removalUrl.searchParams.set("source_record_id", lead.axis_record_id || lead.axis_parent_record_id || lead.tradein_record_id || lead.id || "");
+      removalUrl.searchParams.set("tradein_record_id", lead.axis_record_id || lead.axis_parent_record_id || lead.tradein_record_id || lead.id || "");
+      removalUrl.searchParams.set("facility_name", lead.facility_name || lead.facility || lead.site || "");
+      removalUrl.searchParams.set("make", lead.make || lead.tradein_equipment_make || "");
+      removalUrl.searchParams.set("model", lead.model || lead.tradein_equipment_model || "");
+      removalUrl.searchParams.set("modality", lead.modality || lead.tradein_equipment_modality || "");
+      removalUrl.searchParams.set("serial_number", lead.serial_number || lead.axis_serial_number || lead.tradein_equipment_serial_number || "");
+      removalUrl.searchParams.set("trade_in_value", lead.trade_in_value || lead.winning_bid_amount || "");
+      window.open(removalUrl.toString(), "_blank");
     }
 
     function buildEquipmentPayload(rec) {
