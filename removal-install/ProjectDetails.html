@@ -590,8 +590,25 @@ async function load() {
         var res = await fetch("/api/removal-install/project-details?projectId=" + encodeURIComponent(projectId));
         var d = await res.json();
 
-        window.__projectCompletedFromServer = !!d.project_completed;
+        const projectArchived =
+            (
+                d.project_completed === true ||
+                d.project_completed === "true" ||
+                d.project_completed === 1 ||
+                d.project_completed === "1"
+            ) &&
+            !!String(d.project_completion || "").trim() &&
+            !!String(d.project_completed_by || d.projected_completed_by || "").trim();
+
+        window.__projectCompletedFromServer = projectArchived;
         formData = Object.assign({}, d || {});
+
+        // A WON/project-status flag must never make this page read-only by itself.
+        // Until the explicit Project Completed workflow has been finished,
+        // keep the completion control editable.
+        if (!projectArchived) {
+            formData.project_completed = false;
+        }
 
         var fc = document.getElementById("form-container");
         fc.innerHTML = "";
@@ -675,16 +692,13 @@ function lockIfFilled(el) {
     if (el && el.value && el.value.trim() !== "") applyLockStyle(el);
 }
 
-lockIfFilled(completedByInput);
-
-completedByInput.addEventListener("blur", function () {
-    lockIfFilled(this);
-});
+// Completed By remains editable until the entire project is archived.
+// The whole project becomes read-only only after Project Completed is confirmed and saved.
 
 var completedToggle = toggle(
     "Project Completed",
     "project_completed",
-    d.project_completed,
+    window.__projectCompletedFromServer,
     function (cb) {
         if (!cb.checked || formData.project_completed) return;
 
@@ -739,14 +753,16 @@ var completedToggle = toggle(
 function reevaluateGate() {
     var tgl = completedToggle.querySelector("input");
 
-    if (formData.project_completed || d.project_completed) {
+    if (window.__projectCompletedFromServer) {
         tgl.checked = true;
         tgl.disabled = true;
         completedToggle.classList.add("locked");
         return;
     }
 
-    var isReady = completedByInput.value.trim();
+    var isReady =
+        completedByInput.value.trim() !== "" &&
+        completionInput.value.trim() !== "";
 
     completedToggle.classList.toggle("disabled-checked", !isReady);
     tgl.disabled = !isReady;
@@ -754,6 +770,8 @@ function reevaluateGate() {
 
 completedByInput.addEventListener("input", reevaluateGate);
 completedByInput.addEventListener("blur", reevaluateGate);
+completionInput.addEventListener("input", reevaluateGate);
+completionInput.addEventListener("change", reevaluateGate);
 
 reevaluateGate();
 
@@ -791,7 +809,7 @@ fc.appendChild(g6);
         applyChangedHighlightsWithRetry(badges);
 
         /* ───────── ARCHIVE LOCK ───────── */
-        if (d.project_completed) {
+        if (window.__projectCompletedFromServer) {
             document.getElementById("archiveBanner").style.display = "block";
             document.getElementById("submitBtn").style.display = "none";
 
