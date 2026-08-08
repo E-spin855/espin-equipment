@@ -178,9 +178,14 @@ body{
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(location.search);
+  const urlProjectId = params.get("id") || params.get("projectId") || "";
   if (
-    !window.EspinOperation.hasValidOperationId() ||
-    !window.EspinOperation.hasReliableEquipmentId()
+    !urlProjectId &&
+    (
+      !window.EspinOperation.hasValidOperationId() ||
+      !window.EspinOperation.hasReliableEquipmentId()
+    )
   ) {
     const intake = new URL("EquipmentSelection_Install.html", location.href);
     intake.searchParams.set("operation_type", "install");
@@ -206,10 +211,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const sandboxActive = !sandboxSession?.expires_at || Date.parse(sandboxSession.expires_at) > Date.now();
   const isAdmin = userEmail === ADMIN_EMAIL || (sandboxActive && ["manager", "sandbox_admin"].includes(sandboxRole));
 
-  const params = new URLSearchParams(location.search);
   const projectId =
-    params.get("id") ||
-    params.get("projectId") ||
+    urlProjectId ||
     localStorage.getItem("activeProjectId");
 
   if (!projectId) {
