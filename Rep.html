@@ -23408,8 +23408,9 @@ function markNewProjectWon(id) {
     "New project marked won and moved into equipment review."
   );
 
-  // Automatically create/upsert the matching De-Installation project.
-  void syncWonTradeInToRemovalProject(rec, now);
+  // Rep's WON action is the only point at which Trade Desk equipment appears
+  // in Unmatched Trade-In Records. It remains a Removal-only handoff.
+  publishWonTradeInToUnmatched(rec, now);
 
   syncFeedStatus(rec);
 
@@ -24801,8 +24802,38 @@ return true;
 
       if (!existsInUnmatched) {
         unmatched.unshift(unmatchedRecord);
-        localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
+      } else {
+        unmatched = unmatched.map(existing => {
+          const sameId = String(existing.id || "") === String(unmatchedRecord.id || "");
+          const sameAxisId = String(existing.axis_record_id || existing.axis_parent_record_id || existing.tradein_record_id || "") === String(unmatchedRecord.axis_record_id || unmatchedRecord.axis_parent_record_id || unmatchedRecord.tradein_record_id || "");
+          return sameId || sameAxisId
+            ? { ...existing, ...unmatchedRecord, linked_removal_project_id: existing.linked_removal_project_id || "", removal_project_id: existing.removal_project_id || "" }
+            : existing;
+        });
       }
+      localStorage.setItem(UNMATCHED_TRADEIN_KEY, JSON.stringify(unmatched));
+    }
+
+    function publishWonTradeInToUnmatched(rec, now = new Date().toISOString()) {
+      const tradeDeskRecord = readTradeInReturnRecords().find(item =>
+        tradeInReturnMatchesRecord(rec, item)
+      );
+      if (!tradeDeskRecord || isTradeInAttachedToRemovalProject(tradeDeskRecord)) return false;
+
+      saveAsUnmatchedTradeInLead({
+        ...tradeDeskRecord,
+        axis_record_id: tradeDeskRecord.axis_record_id || tradeDeskRecord.axis_parent_record_id || tradeDeskRecord.tradein_record_id || rec.axis_record_id || rec.id || "",
+        axis_parent_record_id: tradeDeskRecord.axis_parent_record_id || tradeDeskRecord.axis_record_id || rec.id || "",
+        tradein_record_id: tradeDeskRecord.tradein_record_id || tradeDeskRecord.axis_record_id || rec.id || "",
+        trade_desk_status: "WON",
+        tradein_status: "won",
+        trade_desk_outcome: "won",
+        trade_in_value: tradeDeskRecord.trade_in_value || tradeDeskRecord.winning_bid_amount || tradeDeskRecord.manual_credit_reference_amount || tradeDeskRecord.trade_in_credit || 0,
+        removal_handoff_status: "available",
+        rep_project_won_at: now,
+        last_tradein_update_at: now
+      });
+      return true;
     }
 /*
   Reads only trade-in sync records already pushed into AXIS-controlled browser storage.

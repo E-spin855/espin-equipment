@@ -2218,50 +2218,6 @@ saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
   render();
 }
 
-function markTradeDeskProjectWon(id){
-  const data = loadData();
-  const rec = findById(data, id);
-
-  if (!rec) {
-    alert("Trade Desk project not found.");
-    return;
-  }
-
-  const tradeValue = Number(
-    rec.winning_bid_amount ||
-    rec.manual_credit_reference_amount ||
-    rec.trade_in_value ||
-    0
-  );
-
-  if (!tradeValue) {
-    alert("Select a buyer response before marking this Trade Desk project WON.");
-    return;
-  }
-
-  if (!confirm("Mark this Trade Desk project WON and make its equipment available for a Removal project?")) return;
-
-  const now = new Date().toISOString();
-  rec.trade_desk_status = "WON";
-  rec.tradein_status = "won";
-  rec.trade_desk_outcome = "won";
-  rec.tradein_record_id = rec.tradein_record_id || rec.axis_record_id || rec.axis_parent_record_id || rec.id || "";
-  rec.trade_in_value = tradeValue;
-  rec.trade_desk_won_at = now;
-  rec.removal_handoff_status = "available";
-  rec.last_tradein_update_at = now;
-
-  saveData(data, true);
-  publishTradeDeskProgress(rec, {
-    trade_desk_status: "WON",
-    tradein_status: "won",
-    trade_desk_outcome: "won",
-    removal_handoff_status: "available",
-    trade_desk_won_at: now
-  });
-  render();
-}
-
 function clearDemo(){
   localStorage.removeItem(KEY);
   localStorage.removeItem(BUYER_PACKET_KEY);
@@ -2555,11 +2511,6 @@ function renderBuyerResponses(rec, safeId){
         <button class="green" onclick="selectBuyerResponseForManualCredit('${safeId}',${b.originalIndex})">
           Create Pending Credit Reference
         </button>
-        ${isSelected ? `
-          <button class="green" onclick="markTradeDeskProjectWon('${safeId}')">
-            Mark Trade Desk Project WON
-          </button>
-        ` : ""}
       </div>
     `;
   }).join("");
