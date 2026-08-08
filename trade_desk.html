@@ -1868,6 +1868,22 @@ function getManagerAssignedRep(rec){
   if (!Array.isArray(roster)) return null;
   const id = String(rec?.assigned_rep_id || "").trim();
   const email = String(rec?.assigned_rep_email || rec?.sales_rep_email || rec?.rep_email || "").trim().toLowerCase();
+  const legacyWorkspace = {
+    "lisa.tran@oem-demo.com": "REP_1",
+    "marcus.lee@oem-demo.com": "REP_2",
+    "priya.shah@oem-demo.com": "REP_3"
+  }[email] || "";
+
+  // A legacy demo identity is only a workspace placeholder. Resolve it to
+  // the current Manager-assigned representative and their login email.
+  if (legacyWorkspace) {
+    const currentWorkspaceRep = roster.find(rep =>
+      String(rep?.workspace_id || "").trim().toUpperCase() === legacyWorkspace &&
+      String(rep?.status || "active").toLowerCase() !== "inactive"
+    );
+    if (currentWorkspaceRep) return currentWorkspaceRep;
+  }
+
   return roster.find(rep =>
     String(rep?.id || "").trim() === id ||
     (email && String(rep?.email || "").trim().toLowerCase() === email)
