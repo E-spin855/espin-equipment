@@ -60,13 +60,14 @@ async function isAdmin(client, email) {
 }
 
 function hasManagerSandboxRole(req) {
-  const token = String(req.headers.cookie || "").match(/(?:^|;\s*)espin_sandbox_auth=([^;]+)/)?.[1];
-  if (!token || !process.env.SANDBOX_AUTH_HASH_SECRET) return false;
+  const raw = String(req.headers.cookie || "").match(/(?:^|; )espin_sandbox_auth=([^;]+)/)?.[1];
+  if (!raw || !process.env.SANDBOX_AUTH_HASH_SECRET) return false;
   try {
-    const [encoded, signature] = decodeURIComponent(token).split(".");
+    const [encoded, signature] = raw.split(".");
+    if (!encoded || !signature) return false;
     const expected = crypto.createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET).update(encoded).digest("hex");
     const expectedBuffer = Buffer.from(expected);
-    const actualBuffer = Buffer.from(signature || "");
+    const actualBuffer = Buffer.from(signature);
     if (expectedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(expectedBuffer, actualBuffer)) return false;
     const session = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
     return Number(session?.exp || 0) > Date.now() && ["manager", "sandbox_admin"].includes(String(session?.role || "").toLowerCase());
