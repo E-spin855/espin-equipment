@@ -177,15 +177,31 @@ body{
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const params = new URLSearchParams(location.search);
+  const urlProjectId =
+    params.get("id") ||
+    params.get("projectId") ||
+    "";
+
+  /*
+    Existing projects must be allowed to load from the API first.
+    Only a brand-new/unspecified removal flow should be redirected
+    back to EquipmentSelection_Removal.html when operation/equipment
+    context is incomplete.
+  */
   if (
-    !window.EspinOperation.hasValidOperationId() ||
-    !window.EspinOperation.hasReliableEquipmentId()
+    !urlProjectId &&
+    (
+      !window.EspinOperation.hasValidOperationId() ||
+      !window.EspinOperation.hasReliableEquipmentId()
+    )
   ) {
     const intake = new URL("EquipmentSelection_Removal.html", location.href);
     intake.searchParams.set("operation_type", "deinstall");
     location.replace(intake.toString());
     return;
   }
+
   const API_BASE = "";
   const ADMIN_EMAIL = "info@espinmedical.com";
 
@@ -199,10 +215,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const isAdmin = userEmail === ADMIN_EMAIL;
 
-  const params = new URLSearchParams(location.search);
   const projectId =
-    params.get("id") ||
-    params.get("projectId") ||
+    urlProjectId ||
     localStorage.getItem("activeProjectId");
 
   if (!projectId) {
