@@ -1118,6 +1118,21 @@ async function renderProjectCards(projects) {
     `;
 
     card.onclick = () => {
+      // Open this existing removal project directly in Management.
+      // Clear stale equipment-selection handoff state so Management cannot
+      // immediately bounce the user back to EquipmentSelection_Removal.html.
+      try {
+        [
+          "espin_connect_pending_handoff_v1",
+          "espin_connect_equipment_selection_handoff_v1",
+          "espin_connect_project_type_handoff_v1",
+          "espin_connect_open_equipment_selection_v1"
+        ].forEach(key => {
+          sessionStorage.removeItem(key);
+          localStorage.removeItem(key);
+        });
+      } catch (_) {}
+
       const destination = new URL(
         "management.html",
         location.href
@@ -1125,6 +1140,9 @@ async function renderProjectCards(projects) {
 
       destination.searchParams.set("id", p.id);
       destination.searchParams.set("projectId", p.id);
+      destination.searchParams.set("operation_type", "deinstall");
+      destination.searchParams.set("existing_project", "1");
+      destination.searchParams.set("source", "Projects");
 
       ESPIN_OPERATION_FIELDS.forEach(field => {
         if (p[field]) {
