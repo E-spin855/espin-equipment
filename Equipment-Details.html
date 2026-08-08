@@ -2408,6 +2408,56 @@ function syncTradeInToAxisTradeDesk(result) {
   return tradeDeskRecord;
 }
 
+
+function openTradeDeskAfterEquipmentSend(result = {}) {
+  const target = new URL("trade_desk.html", window.location.href);
+
+  target.searchParams.set("projectId", projectId);
+
+  if (modalityId) {
+    target.searchParams.set("modalityId", modalityId);
+  }
+
+  const effectiveModality = String(
+    result.effectiveModality ||
+    formData.modality ||
+    currentModality ||
+    ""
+  ).trim();
+
+  if (effectiveModality) {
+    target.searchParams.set("modality", effectiveModality);
+  }
+
+  const context = {
+    axis_record_id: AXIS_CONTEXT.axis_record_id || "",
+    axis_parent_record_id: AXIS_CONTEXT.axis_parent_record_id || "",
+    axis_project_id: AXIS_CONTEXT.axis_project_id || "",
+    axis_serial_number: AXIS_CONTEXT.axis_serial_number || "",
+    axis_parent_project_type: AXIS_CONTEXT.axis_parent_project_type || "",
+    axis_parent_project_name: AXIS_CONTEXT.axis_parent_project_name || "",
+    axis_source: AXIS_CONTEXT.axis_source || "",
+    sync_mode: AXIS_CONTEXT.sync_mode || "",
+    sales_rep_first: AXIS_CONTEXT.sales_rep_first || "",
+    sales_rep_last: AXIS_CONTEXT.sales_rep_last || "",
+    sales_rep_company: AXIS_CONTEXT.sales_rep_company || "",
+    sales_rep_phone: AXIS_CONTEXT.sales_rep_phone || "",
+    sales_rep_email: AXIS_CONTEXT.sales_rep_email || "",
+    project_type:
+      params.get("project_type") ||
+      AXIS_CONTEXT.axis_parent_project_type ||
+      "trade_in"
+  };
+
+  Object.entries(context).forEach(([key, value]) => {
+    if (String(value || "").trim()) {
+      target.searchParams.set(key, String(value));
+    }
+  });
+
+  location.href = target.toString();
+}
+
 async function saveData() {
   setButtonState("save");
 
@@ -2490,11 +2540,10 @@ async function sendEquipmentOnly() {
     sendEquipmentBtn.classList.add("success");
     sendEquipmentBtn.innerHTML = "Update Sent";
 
+    // Continue directly to Trade Desk after a successful equipment-only send.
     setTimeout(() => {
-      sendEquipmentBtn.classList.remove("success");
-      sendEquipmentBtn.innerHTML = "Send Equipment Update Only";
-      saveBtn.disabled = false;
-    }, 3000);
+      openTradeDeskAfterEquipmentSend(result);
+    }, 450);
 
   } catch (err) {
     console.error("SEND EQUIPMENT ONLY ERROR:", err);

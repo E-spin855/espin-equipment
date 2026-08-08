@@ -22363,6 +22363,9 @@ if (isNewProjectRecord) {
 
   syncFinalOutcomeToInstallBase(rec, "won", "Quote marked won by rep.");
 
+  // A WON trade-in project automatically becomes a Removal project.
+  void syncWonTradeInToRemovalProject(rec, now);
+
 } else if (status === "lost") {
   rec.rep_status = "lost";
   rec.rep_action = "lost";
@@ -22984,6 +22987,339 @@ queue.unshift(updated);
     }
 
     
+
+const REP_WON_REMOVAL_PENDING_KEY = "espin_connect_pending_projects_v1";
+
+function repWonRemovalText(value) {
+  return String(value ?? "").trim();
+}
+
+function repWonRemovalId(rec) {
+  const sourceId = repWonRemovalText(
+    rec?.id ||
+    rec?.project_id ||
+    rec?.oem_project_id ||
+    rec?.axis_project_id ||
+    rec?.axis_record_id
+  );
+
+  return sourceId
+    ? `won-removal-${sourceId}`
+    : `won-removal-${Date.now()}`;
+}
+
+function buildWonRemovalProjectPacket(rec, now = new Date().toISOString()) {
+  const removalId =
+    repWonRemovalText(rec.removal_project_id) ||
+    repWonRemovalId(rec);
+
+  const make = repWonRemovalText(
+    rec.tradein_equipment_make ||
+    rec.make ||
+    rec.manufacturer
+  );
+
+  const model = repWonRemovalText(
+    rec.tradein_equipment_model ||
+    rec.model ||
+    rec.equipment_model ||
+    rec.equipment
+  );
+
+  const modality = repWonRemovalText(
+    rec.tradein_equipment_modality ||
+    rec.modality ||
+    "OTHER"
+  ).toUpperCase();
+
+  const serialNumber = repWonRemovalText(
+    rec.tradein_equipment_serial_number ||
+    rec.serial_number ||
+    rec.serial
+  );
+
+  const facility = repWonRemovalText(
+    rec.facility_name ||
+    rec.facility ||
+    rec.site ||
+    rec.hospital ||
+    rec.customer_name ||
+    rec.account_name
+  );
+
+  const sourceRecordId = repWonRemovalText(
+    rec.id ||
+    rec.axis_record_id ||
+    rec.oem_project_id ||
+    rec.project_id
+  );
+
+  return {
+    id: removalId,
+    projectId: removalId,
+    project_id: removalId,
+
+    operation_id: removalId,
+    operation_type: "deinstall",
+    project_type: "disposal",
+    status: "active",
+
+    project_name:
+      repWonRemovalText(rec.removal_project_name) ||
+      `${model || make || modality || "Equipment"} · Removal`,
+
+    project_group_id:
+      repWonRemovalText(rec.project_group_id) ||
+      `won-${sourceRecordId || removalId}`,
+
+    facility_id: repWonRemovalText(rec.facility_id),
+    facility_name: facility,
+    facility,
+
+    site_address: repWonRemovalText(
+      rec.site_address ||
+      rec.facility_address ||
+      rec.address
+    ),
+    zip_code: repWonRemovalText(
+      rec.zip_code ||
+      rec.postal_code
+    ),
+
+    equipment: [make, model].filter(Boolean).join(" "),
+    make,
+    model,
+    equipment_model: model,
+    modality,
+    serial_number: serialNumber,
+    asset_id: repWonRemovalText(rec.asset_id),
+    dom: repWonRemovalText(
+      rec.tradein_equipment_dom ||
+      rec.dom
+    ),
+
+    source_record_id: sourceRecordId,
+    tradein_record_id: repWonRemovalText(
+      rec.tradein_record_id ||
+      rec.axis_record_id ||
+      rec.id
+    ),
+    equipment_source: "rep_won_trade_in",
+
+    sales_rep_first: repWonRemovalText(rec.sales_rep_first),
+    sales_rep_last: repWonRemovalText(rec.sales_rep_last),
+    sales_rep_company: repWonRemovalText(rec.sales_rep_company),
+    sales_rep_phone: repWonRemovalText(rec.sales_rep_phone),
+    sales_rep_email: repWonRemovalText(
+      rec.sales_rep_email ||
+      localStorage.getItem("espinUserEmail") ||
+      "rep1@espinlink.demo"
+    ),
+
+    created_at: repWonRemovalText(rec.removal_project_created_at) || now,
+    created_by: repWonRemovalText(
+      rec.sales_rep_email ||
+      localStorage.getItem("espinUserEmail") ||
+      "Rep"
+    ),
+
+    source: "rep_won_trade_in",
+    won_source_record_id: sourceRecordId,
+    won_at: repWonRemovalText(rec.won_at) || now,
+
+    pending_api_sync: true
+  };
+}
+
+function storeWonRemovalProjectPending(packet) {
+  if (!packet) return;
+
+  let pending = [];
+
+  try {
+    pending = JSON.parse(
+      localStorage.getItem(REP_WON_REMOVAL_PENDING_KEY) || "[]"
+    );
+    if (!Array.isArray(pending)) pending = [];
+  } catch {
+    pending = [];
+  }
+
+  const identity = repWonRemovalText(
+    packet.id ||
+    packet.project_id ||
+    packet.operation_id
+  );
+
+  const sourceRecordId = repWonRemovalText(packet.source_record_id);
+
+  const index = pending.findIndex(item => {
+    const itemIdentity = repWonRemovalText(
+      item?.id ||
+      item?.project_id ||
+      item?.operation_id
+    );
+    const itemSourceId = repWonRemovalText(item?.source_record_id);
+
+    return (
+      (identity && itemIdentity === identity) ||
+      (sourceRecordId && itemSourceId === sourceRecordId &&
+        String(item?.operation_type || "").toLowerCase() === "deinstall")
+    );
+  });
+
+  if (index >= 0) {
+    pending[index] = {
+      ...pending[index],
+      ...packet
+    };
+  } else {
+    pending.unshift(packet);
+  }
+
+  localStorage.setItem(
+    REP_WON_REMOVAL_PENDING_KEY,
+    JSON.stringify(pending)
+  );
+}
+
+function updateWonRemovalPendingWithConfirmed(packet, confirmedId) {
+  if (!packet) return;
+
+  let pending = [];
+
+  try {
+    pending = JSON.parse(
+      localStorage.getItem(REP_WON_REMOVAL_PENDING_KEY) || "[]"
+    );
+    if (!Array.isArray(pending)) pending = [];
+  } catch {
+    pending = [];
+  }
+
+  const sourceRecordId = repWonRemovalText(packet.source_record_id);
+  const operationId = repWonRemovalText(packet.operation_id);
+
+  pending = pending.map(item => {
+    const sameSource =
+      sourceRecordId &&
+      repWonRemovalText(item?.source_record_id) === sourceRecordId;
+
+    const sameOperation =
+      operationId &&
+      repWonRemovalText(item?.operation_id) === operationId;
+
+    if (!sameSource && !sameOperation) return item;
+
+    return {
+      ...item,
+      ...packet,
+      id: confirmedId || item.id || packet.id,
+      project_id: confirmedId || item.project_id || packet.project_id,
+      projectId: confirmedId || item.projectId || packet.projectId,
+      pending_api_sync: false
+    };
+  });
+
+  localStorage.setItem(
+    REP_WON_REMOVAL_PENDING_KEY,
+    JSON.stringify(pending)
+  );
+}
+
+async function syncWonTradeInToRemovalProject(rec, now = new Date().toISOString()) {
+  if (!rec) return null;
+
+  // Prevent repeated WON actions from creating duplicate Removal projects.
+  if (
+    rec.removal_project_synced_from_won === true &&
+    repWonRemovalText(rec.removal_project_id)
+  ) {
+    return rec.removal_project_id;
+  }
+
+  const packet = buildWonRemovalProjectPacket(rec, now);
+
+  // Make the project visible to Projects.html immediately while the API request completes.
+  storeWonRemovalProjectPending(packet);
+
+  rec.removal_project_sync_pending = true;
+  rec.removal_project_operation_id = packet.operation_id;
+  rec.removal_project_source_record_id = packet.source_record_id;
+  saveRecords();
+
+  try {
+    const response = await fetch("/api/removal-install/projects", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email":
+          packet.sales_rep_email ||
+          localStorage.getItem("espinUserEmail") ||
+          "rep1@espinlink.demo"
+      },
+      body: JSON.stringify(packet)
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    // 409 means this WON project already has a Removal project.
+    if (!response.ok && response.status !== 409) {
+      throw new Error(
+        result?.error ||
+        result?.message ||
+        `Removal project sync failed (${response.status})`
+      );
+    }
+
+    const existing =
+      result?.existing ||
+      result?.project ||
+      result?.data ||
+      {};
+
+    const confirmedId = repWonRemovalText(
+      result?.id ||
+      result?.projectId ||
+      result?.project_id ||
+      existing?.id ||
+      existing?.projectId ||
+      existing?.project_id ||
+      packet.id
+    );
+
+    rec.removal_project_id = confirmedId;
+    rec.removal_project_operation_id =
+      repWonRemovalText(existing?.operation_id) ||
+      packet.operation_id;
+    rec.removal_project_synced_from_won = true;
+    rec.removal_project_sync_pending = false;
+    rec.removal_project_synced_at = new Date().toISOString();
+    rec.removal_project_route = "Projects.html";
+    rec.removal_project_management_route = "management.html";
+
+    updateWonRemovalPendingWithConfirmed(packet, confirmedId);
+    saveRecords();
+
+    localStorage.setItem(
+      "espin_connect_pending_projects_ping_v1",
+      String(Date.now())
+    );
+
+    return confirmedId;
+  } catch (error) {
+    console.error("WON -> REMOVAL PROJECT SYNC FAILED:", error);
+
+    // Keep the pending packet so Projects.html can still show it immediately.
+    rec.removal_project_sync_pending = true;
+    rec.removal_project_sync_error =
+      error?.message || "Removal project sync failed";
+    saveRecords();
+
+    return null;
+  }
+}
+
 function promoteWonProjectToEquipmentReview(rec, now = new Date().toISOString()) {
   if (!rec) return rec;
 
@@ -23080,6 +23416,9 @@ function markNewProjectWon(id) {
     "won",
     "New project marked won and moved into equipment review."
   );
+
+  // Automatically create/upsert the matching De-Installation project.
+  void syncWonTradeInToRemovalProject(rec, now);
 
   syncFeedStatus(rec);
 
