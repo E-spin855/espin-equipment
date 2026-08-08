@@ -560,10 +560,17 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleMriBlock(e.target.value);
   });
 
+  const syncedInstallationProject = getInstallationProjectFromUrl();
+  if (syncedInstallationProject?.id) {
+    const cached = getCachedInstallProjects();
+    saveCachedInstallProjects([
+      syncedInstallationProject,
+      ...cached.filter(project => String(project?.id || project?.projectId || "") !== syncedInstallationProject.id)
+    ]);
+  }
   loadProjectsSafe();
 
-  const syncedInstallationProject = getInstallationProjectFromUrl();
-  if (syncedInstallationProject && isAdmin) {
+  if (syncedInstallationProject && !syncedInstallationProject.id && isAdmin) {
     openProjectModal(syncedInstallationProject);
   }
 });
@@ -603,14 +610,18 @@ function getInstallationProjectFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const isInstallHandoff =
     String(params.get("project_type") || params.get("created_type") || "").toLowerCase() === "install" ||
+    String(params.get("operation_type") || "").toLowerCase() === "install" ||
     String(params.get("handoff") || "").toLowerCase() === "installation_project";
 
   if (!isInstallHandoff) return null;
 
   return {
-    id: "",
-    project_name: params.get("project_name") || "Installation Project",
-    site_address: params.get("site_address") || "",
+    id: params.get("id") || params.get("projectId") || params.get("project_id") || "",
+    projectId: params.get("id") || params.get("projectId") || params.get("project_id") || "",
+    project_name: params.get("project_name") || params.get("facility_name") || params.get("facility") || "Installation Project",
+    site_address: params.get("site_address") || params.get("facility_address") || "",
+    city: params.get("city") || "",
+    state: params.get("state") || "",
     zip_code: params.get("zip_code") || "",
     modality: (params.get("modality") || "OTHER").toUpperCase(),
     manufacturer: params.get("make") || params.get("manufacturer") || "",
@@ -618,6 +629,13 @@ function getInstallationProjectFromUrl() {
     serial_number: params.get("serial_number") || params.get("serial") || "",
     equipment_description: params.get("equipment_description") || params.get("equipment") || "",
     equipment_source: params.get("equipment_source") || "sales_project",
+    operation_id: params.get("operation_id") || "",
+    operation_type: "install",
+    project_group_id: params.get("project_group_id") || "",
+    facility_id: params.get("facility_id") || "",
+    facility_name: params.get("facility_name") || params.get("facility") || "",
+    source_record_id: params.get("source_record_id") || "",
+    asset_id: params.get("asset_id") || "",
     magnet_event: params.get("magnet_event") || "",
     disposal_required: false
   };
