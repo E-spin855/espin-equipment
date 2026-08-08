@@ -398,6 +398,7 @@ textarea{min-height:120px;resize:vertical}
 }
 
 .archived-banner{
+  display:none;
   margin:0 0 18px;
   padding:13px 16px;
   border:1px solid rgba(40,241,92,.45);
@@ -688,9 +689,6 @@ function applyLockStyle(el) {
     el.style.cursor = "not-allowed";
 }
 
-function lockIfFilled(el) {
-    if (el && el.value && el.value.trim() !== "") applyLockStyle(el);
-}
 
 // Completed By remains editable until the entire project is archived.
 // The whole project becomes read-only only after Project Completed is confirmed and saved.
@@ -730,8 +728,6 @@ var completedToggle = toggle(
                         completionDate: formData.project_completion
                     })
                 });
-
-                applyLockStyle(completedByInput);
 
                 cb.checked = true;
                 cb.disabled = true;
@@ -988,6 +984,12 @@ async function saveData() {
     payload.project_completed_by = formData.project_completed_by;
   }
 
+  if (window.__completionTriggered === true) {
+    payload.project_completed = true;
+    payload.project_completed_by = formData.project_completed_by || "";
+    payload.project_completion = formData.project_completion || "";
+  }
+
   if (!Object.keys(payload).length) {
     payload.notes = formData.notes || "No changes";
   }
@@ -1029,7 +1031,12 @@ async function saveData() {
       console.warn("Saved removal progress was not delivered to Rep.", error);
     }
 
-    if (payload.project_completed === true && window.__projectCompletedFromServer === false) {
+    const archiveNow =
+      payload.project_completed === true &&
+      String(payload.project_completed_by || "").trim() !== "" &&
+      String(payload.project_completion || "").trim() !== "";
+
+    if (archiveNow && window.__projectCompletedFromServer === false) {
       isArchivingNow = true;
       await clearAllProjectBadges();
       window.__projectCompletedFromServer = true;
