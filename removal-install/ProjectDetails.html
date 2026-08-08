@@ -231,10 +231,10 @@ body{padding:28px 24px 48px;-webkit-tap-highlight-color:transparent}
   white-space:nowrap;
   text-align:left;
 }
-.project-page-tabs{display:flex;gap:10px;align-items:center;justify-content:flex-end}
-.project-page-tabs a{min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:10px 15px;border:1px solid rgba(22,217,255,.55);border-radius:7px;color:#bdefff;text-decoration:none;font-size:13px;font-weight:900;letter-spacing:.03em;background:rgba(4,28,48,.82);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
-.project-page-tabs a:hover{color:#fff;border-color:var(--cyan)}
-.project-page-tabs a.active{color:#031a11;border-color:#36f487;background:linear-gradient(180deg,#39dc83,#109a4d);box-shadow:0 0 16px rgba(40,241,92,.22)}
+.topbar::after{content:"Removal Update";font-size:18px;font-weight:850;color:var(--cyan);text-transform:uppercase;letter-spacing:.06em}
+.project-action-buttons{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+.project-action-buttons .btn-submit{margin:0}
+.btn-submit.secondary-submit{border-color:#91b6cf;background:linear-gradient(180deg,#657384,#4d5969 52%,#364252 100%);box-shadow:inset 0 2px 0 rgba(255,255,255,.18),inset 0 -5px 0 rgba(0,21,56,.28),0 8px 0 #1a2735,0 12px 24px rgba(0,0,0,.42)}
 
 .container{
   position:relative;
@@ -476,7 +476,7 @@ textarea{min-height:120px;resize:vertical}
   body{padding:18px 12px 36px}
   .topbar{grid-template-columns:58px 1fr;gap:14px}
   #backToManagement{width:52px;height:52px;font-size:31px!important}
-  .project-page-tabs{grid-column:1/-1;justify-content:stretch}.project-page-tabs a{flex:1}
+  .project-action-buttons{grid-template-columns:1fr}
   .container{padding:16px}
   #form-container{grid-template-columns:1fr}
   #form-container .group:last-child{grid-column:auto}
@@ -491,16 +491,15 @@ textarea{min-height:120px;resize:vertical}
     <div class="topbar">
       <div id="backToManagement" onclick="location.href=window.EspinOperation.url('management.html')" style="cursor:pointer;font-size:30px;font-weight:700;line-height:1">←</div>
        <h1>Project Update</h1>
-       <nav class="project-page-tabs" aria-label="Removal project pages">
-         <a class="active" href="#" onclick="return false;">Project Details</a>
-         <a href="#" onclick="location.href=window.EspinOperation.url('RemovalProjectImages.html?id='+encodeURIComponent(projectId));return false;">Project Images</a>
-       </nav>
     </div>
 
     <div class="container">
         <div id="archiveBanner" class="archived-banner">🔒 Archived · Read-only</div>
         <div id="form-container">Loading…</div>
-        <button class="btn-submit" id="submitBtn" onclick="saveData()">Save & Submit Update</button>
+        <div class="project-action-buttons">
+          <button class="btn-submit" id="continueToImagesBtn" onclick="saveData(true)">Save and Continue to Images</button>
+          <button class="btn-submit secondary-submit" id="sendUpdateBtn" onclick="saveData(false)">Send Project Update Only</button>
+        </div>
     </div>
 
     <script>
@@ -736,7 +735,7 @@ var completedToggle = toggle(
                 window.__completionTriggered = true;
 
                 setTimeout(() => {
-                    document.getElementById("submitBtn").click();
+                    document.getElementById("sendUpdateBtn").click();
                 }, 100);
             },
             () => {
@@ -807,7 +806,7 @@ fc.appendChild(g6);
         /* ───────── ARCHIVE LOCK ───────── */
         if (window.__projectCompletedFromServer) {
             document.getElementById("archiveBanner").style.display = "block";
-            document.getElementById("submitBtn").style.display = "none";
+            document.querySelector(".project-action-buttons").style.display = "none";
 
             document.querySelectorAll("input, textarea").forEach(el => {
                 el.disabled = true;
@@ -972,10 +971,10 @@ function syncRemovalProjectToRep(data) {
   return savedProject;
 }
 
-async function saveData() {
+async function saveData(continueToImages = false) {
   console.log("🔥 SAVE CLICKED");
 
-  const btn = document.getElementById("submitBtn");
+  const btn = document.getElementById(continueToImages ? "continueToImagesBtn" : "sendUpdateBtn");
   btn.disabled = true;
   btn.innerText = "Saving...";
 
@@ -1046,7 +1045,7 @@ async function saveData() {
       window.__projectCompletedFromServer = true;
     }
 
-    if (!isArchivingNow && !isCompletionFlow) {
+    if (!isArchivingNow && !isCompletionFlow && !continueToImages) {
       const existing = readBadges();
       const serverChanged = normalizeKeys((result && result.changedFields) || []);
 
@@ -1075,11 +1074,13 @@ async function saveData() {
 
     if (isArchivingNow) {
       setTimeout(() => location.reload(), 800);
+    } else if (continueToImages) {
+      location.href = window.EspinOperation.url(`RemovalProjectImages.html?id=${encodeURIComponent(projectId)}`);
     } else {
       setTimeout(() => {
         btn.disabled = false;
         btn.classList.remove("success");
-        btn.innerText = "Save & Submit Update";
+        btn.innerText = "Send Project Update Only";
       }, 2000);
     }
 
