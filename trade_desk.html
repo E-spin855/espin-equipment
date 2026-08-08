@@ -1040,7 +1040,7 @@ function normalizeIncomingRecord(item){
       item.facility ||
       item.customer ||
       item.model ||
-      "AXIS Manual Trade Desk Review",
+      "ESPIN LINK Manual Trade Desk Review",
 
     axis_serial_number: item.axis_serial_number || serialNumber || item.hospital_asset_id || item.additional_identifier || "",
     axis_source: item.axis_source || item.source || "field_trade_in_intake",
@@ -1785,7 +1785,7 @@ const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
     `Please carefully review this packet before forwarding. This packet does not contain an appraisal, offer, valuation recommendation, or automatic trade-in credit.`,
     ``,
     `Thank you,`,
-    `AXIS Trade Desk`
+    `ESPIN LINK Trade Desk`
   ].join("\n");
 
   const mailto =
@@ -1851,6 +1851,8 @@ function closeInfoRequestModal(){
 }
 
 function getRepEmail(rec){
+  const managerRep = getManagerAssignedRep(rec);
+  if (managerRep?.email) return String(managerRep.email).trim();
   return String(
     rec.assigned_rep_email ||
     rec.sales_rep_email ||
@@ -1860,7 +1862,21 @@ function getRepEmail(rec){
   ).trim();
 }
 
+function getManagerAssignedRep(rec){
+  let roster = [];
+  try { roster = JSON.parse(localStorage.getItem("espin_manager_rep_roster_v1") || "[]"); } catch (_) {}
+  if (!Array.isArray(roster)) return null;
+  const id = String(rec?.assigned_rep_id || "").trim();
+  const email = String(rec?.assigned_rep_email || rec?.sales_rep_email || rec?.rep_email || "").trim().toLowerCase();
+  return roster.find(rep =>
+    String(rep?.id || "").trim() === id ||
+    (email && String(rep?.email || "").trim().toLowerCase() === email)
+  ) || null;
+}
+
 function getRepName(rec){
+  const managerRep = getManagerAssignedRep(rec);
+  if (managerRep?.name) return String(managerRep.name).trim();
   const first = rec.assigned_rep_first || rec.sales_rep_first || rec.rep_first || "";
   const last = rec.assigned_rep_last || rec.sales_rep_last || rec.rep_last || "";
 
@@ -1933,7 +1949,7 @@ function sendInfoRequestToRep(btn = null){
     `Please update the Trade-In App record and resend the equipment update. Once received, Trade Desk can continue review.`,
     ``,
     `Thank you,`,
-    `AXIS Trade Desk`
+    `ESPIN LINK Trade Desk`
   ].join("\n");
 
   const mailto =
@@ -2034,7 +2050,7 @@ estimated_trade_in_value: "",
     rep_action: rec.rep_action || "manual_credit_review",
     rep_status: rec.rep_status || "pending_rep_review",
     rep_last_action_at: new Date().toISOString(),
-    submitted_to: "AXIS Trade Desk",
+    submitted_to: "ESPIN LINK Trade Desk",
     source: "Manual Trade Desk Credit Reference",
     last_tradein_update_at: new Date().toISOString()
   };
@@ -2729,10 +2745,10 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
             <hr>
 
             <h3 class="section-title">Rep Information</h3>
-            <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(rec.assigned_rep_first || rec.sales_rep_first || rec.rep_first || "-")}</div>
-            <div class="kv"><strong>Rep Last Name:</strong> ${htmlSafe(rec.assigned_rep_last || rec.sales_rep_last || rec.rep_last || "-")}</div>
-            <div class="kv"><strong>Rep Full Name:</strong> ${htmlSafe(rec.assigned_rep_name || rec.rep_name || rec.assigned_rep_email || "-")}</div>
-            <div class="kv"><strong>Rep Email:</strong> ${htmlSafe(rec.assigned_rep_email || rec.sales_rep_email || rec.rep_email || rec.last_tradein_update_by || "-")}</div>
+            <div class="kv"><strong>Rep First Name:</strong> ${htmlSafe(getRepName(rec).split(/\s+/)[0] || "-")}</div>
+            <div class="kv"><strong>Rep Last Name:</strong> ${htmlSafe(getRepName(rec).split(/\s+/).slice(1).join(" ") || "-")}</div>
+            <div class="kv"><strong>Rep Full Name:</strong> ${htmlSafe(getRepName(rec) || "-")}</div>
+            <div class="kv"><strong>Rep Email:</strong> ${htmlSafe(getRepEmail(rec) || "-")}</div>
             <div class="kv"><strong>Rep Phone:</strong> ${htmlSafe(rec.assigned_rep_phone || rec.sales_rep_phone || rec.rep_phone || "-")}</div>
 
             <hr>
