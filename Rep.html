@@ -25034,9 +25034,7 @@ return true;
         // A processed marker must not suppress recovery when an older Rep
         // workspace copy lost the Trade Desk fields. Reapply it as a new
         // visible update unless the linked record still contains this return.
-        const linkedRecord = isNewProjectSync
-          ? existingNewProject
-          : existingLifecycle;
+        const linkedRecord = existingLifecycle;
         const incomingTradeInAt = clean(
           item.last_tradein_update_at || item.updated_at || ""
         );
@@ -25058,16 +25056,13 @@ return true;
         }
 
         if (isNewProjectSync) {
-          if (!existingNewProject) {
-            if (!alreadyProcessed && isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)) saveAsUnmatchedTradeInLead(item);
-            if (syncSeenKey) processedSet.add(syncSeenKey);
+          // Never apply Trade Desk fields to a Rep New Project. A Trade-In
+          // record is separate equipment for Removal, even when both records
+          // share a source-project reference.
+          if (!alreadyProcessed && isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)) {
+            saveAsUnmatchedTradeInLead(item);
             changed = true;
-            return;
           }
-
-          applyTradeInSyncToRecord(existingNewProject, item, tradeInValue, projectId, modalityId, serial, alreadyProcessed, "new_project_tradein_sync");
-
-          changed = true;
           if (syncSeenKey) processedSet.add(syncSeenKey);
           return;
         }
