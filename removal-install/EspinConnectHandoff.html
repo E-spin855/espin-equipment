@@ -89,11 +89,27 @@
     localStorage.setItem("espinAuth", "true");
     localStorage.setItem("espinUserEmail", repEmail);
 
-    const destination = new URL("/removal-install/project_type.html", location.origin);
+    const requestedType = clean(
+      params.get("project_type") ||
+      params.get("operation_type") ||
+      params.get("selected_type")
+    ).toLowerCase();
+    const requestedHandoff = clean(params.get("handoff")).toLowerCase();
+    const isInstall =
+      requestedType === "install" ||
+      requestedType === "installation" ||
+      requestedHandoff === "installation_project" ||
+      requestedHandoff === "install_project";
+    const destination = new URL(
+      isInstall
+        ? "/removal-install/EquipmentSelection_Install.html"
+        : "/removal-install/EquipmentSelection_Removal.html",
+      location.origin
+    );
     params.forEach((value,key) => {
       if (key !== "operation_id" && clean(value)) destination.searchParams.set(key,value);
     });
-    status.textContent = "Choose the workflow, then select the particular equipment.";
+    status.textContent = isInstall ? "Opening installation equipment selection." : "Opening de-installation equipment selection.";
     setTimeout(() => location.replace(destination.toString()), 300);
   }
 

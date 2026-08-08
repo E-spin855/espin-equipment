@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Installation Equipment Selection · ESPIN Connect</title>
+  <script src="operation-context.js"></script>
+  <style>
+    :root{--navy:#071426;--panel:#0d2037;--line:#27506c;--cyan:#25d9bb;--blue:#1686e8;--text:#edf7ff;--muted:#9db4c7;--warn:#ffc857}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(135deg,#06101e,#0a1c31);color:var(--text);font:15px/1.45 system-ui,sans-serif;min-height:100vh}
+    main{max-width:1120px;margin:auto;padding:32px 20px 70px}.eyebrow{color:var(--cyan);font-weight:900;letter-spacing:.16em;text-transform:uppercase}
+    h1{font-size:clamp(28px,5vw,48px);margin:5px 0 8px} h2{margin:0 0 12px} .sub{color:var(--muted);font-size:17px}
+    .steps{display:flex;gap:8px;margin:26px 0}.step{flex:1;padding:10px;border-bottom:3px solid var(--line);color:var(--muted);font-weight:800}.step.active{border-color:var(--cyan);color:var(--text)}
+    .panel{background:rgba(13,32,55,.94);border:1px solid var(--line);border-radius:18px;padding:22px;margin-top:18px;box-shadow:0 18px 48px #0005}
+    .toolbar,.actions,.facts{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.toolbar{justify-content:space-between}
+    .badge{display:inline-flex;padding:6px 10px;border-radius:99px;background:#123a52;color:#aef5e9;font-weight:900;text-transform:uppercase;font-size:12px}
+    .cards{display:grid;gap:14px;margin-top:16px;min-width:0;width:100%}.equipment{display:grid;grid-template-columns:36px minmax(0,1.55fr) minmax(0,.72fr) minmax(0,.78fr) minmax(0,1fr) minmax(0,1.08fr);gap:20px;align-items:center;width:100%;max-width:100%;min-width:0;padding:20px 22px;border:1px solid var(--line);border-radius:14px;cursor:pointer;background:#091a2e}
+    .equipment>div{min-width:0;display:grid;gap:5px;align-content:center}.equipment:hover,.equipment.selected{border-color:var(--cyan);box-shadow:0 0 0 2px #25d9bb33}.equipment strong{display:block;font-size:18px;line-height:1.2;overflow-wrap:anywhere}.equipment small{display:block;color:#c8d7e4;font-size:13px}.label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.11em;line-height:1.2}.equipment>div:not(:nth-child(2)){font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+    .equipment.rep-sync-flash{position:relative;border:2px solid rgba(65,255,156,.98);box-shadow:inset 5px 0 0 rgba(65,255,156,.95),inset -2px 0 0 rgba(65,255,156,.65),0 0 0 1px rgba(65,255,156,.45),0 0 24px rgba(65,255,156,.52);animation:equipmentRepSyncPulse 1.05s ease-in-out infinite}
+    @keyframes equipmentRepSyncPulse{0%,100%{border-color:rgba(65,255,156,.72);box-shadow:inset 5px 0 0 rgba(65,255,156,.82),inset -2px 0 0 rgba(65,255,156,.52),0 0 0 1px rgba(65,255,156,.30),0 0 15px rgba(65,255,156,.28)}50%{border-color:rgba(142,255,195,1);box-shadow:inset 5px 0 0 rgba(142,255,195,1),inset -2px 0 0 rgba(142,255,195,.88),0 0 0 2px rgba(142,255,195,.55),0 0 34px rgba(65,255,156,.82)}}
+    button,.button{border:0;border-radius:11px;padding:12px 17px;background:var(--blue);color:white;font-weight:850;cursor:pointer;text-decoration:none;display:inline-block}
+    button.secondary{background:#18334c;border:1px solid var(--line)}button.confirm{background:var(--cyan);color:#05201d}button:disabled{opacity:.45;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}label{display:grid;gap:6px;color:var(--muted);font-weight:700}input,select{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);background:#071426;color:var(--text);font:inherit}
+    .review{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.fact{padding:13px;border:1px solid var(--line);border-radius:10px}.fact span{display:block;color:var(--muted);font-size:12px}.notice{padding:14px;border:1px solid #806520;background:#302813;border-radius:10px;color:#ffe6a0;margin:14px 0}
+    .hidden{display:none!important}.empty{color:var(--muted);padding:26px;text-align:center;border:1px dashed var(--line);border-radius:12px}
+
+    @media(max-width:980px){.equipment{grid-template-columns:32px minmax(220px,1.4fr) repeat(2,minmax(130px,1fr));gap:16px}.equipment>div:nth-child(6){grid-column:2 / -1}}
+    @media(max-width:760px){.equipment{grid-template-columns:28px 1fr;gap:12px;padding:16px}.equipment>div:nth-child(n+3){grid-column:2}.grid,.review{grid-template-columns:1fr}.steps{font-size:11px}}
+  </style>
+<link rel="stylesheet" href="field-command-theme.css">
+</head>
+<body>
+<main>
+  <div class="eyebrow">ESPIN Connect</div>
+  <h1 id="title">Select equipment</h1>
+  <div class="sub" id="subtitle"></div>
+  <div class="steps"><div class="step">1 · Workflow</div><div class="step active">2 · Equipment</div><div class="step">3 · Confirm</div><div class="step">4 · Manage</div></div>
+
+  <section class="panel hidden" id="waitingForRepPanel">
+    <h2>Waiting for Rep project</h2>
+    <p class="sub">
+      No installation project has been sent from Rep.html.
+      Equipment selection will appear only after the Rep starts the project.
+    </p>
+  </section>
+
+  <section class="panel" id="selectionPanel">
+    <div class="toolbar"><div><h2>Equipment sent from Rep</h2><span class="badge" id="typeBadge"></span></div><button class="secondary hidden" id="manualBtn">Enter manually</button></div>
+    <div id="candidateList" class="cards"></div>
+    <div class="actions" style="margin-top:18px"><button id="reviewBtn" disabled>Review selected equipment</button></div>
+  </section>
+
+  <section class="panel hidden" id="manualPanel">
+    <h2>Manual equipment intake</h2>
+    <p class="sub">Enter as much equipment information as possible. An asset ID or serial number is required; if both are unavailable, ESPIN Connect will issue a temporary ID pending verification.</p>
+    <div class="grid">
+      <label>Make<input id="manualMake"></label><label>Model<input id="manualModel" required></label>
+      <label>Modality<input id="manualModality"></label><label>Serial number<input id="manualSerial"></label>
+      <label>Asset ID<input id="manualAsset"></label><label>Status<select id="manualStatus"><option>Pending</option><option>Purchased</option><option>In service</option><option>Out of service</option></select></label>
+    </div>
+    <div class="actions" style="margin-top:18px"><button class="secondary" id="cancelManual">Back</button><button id="reviewManual">Review equipment</button></div>
+  </section>
+
+  <section class="panel hidden" id="reviewPanel">
+    <h2>Review and confirm</h2><div class="review" id="reviewFacts"></div>
+    <div id="verificationNotice" class="notice hidden"></div><div id="duplicateNotice" class="notice hidden"></div>
+    <div class="actions" style="margin-top:18px"><button class="secondary" id="backBtn">Back</button><button class="confirm" id="confirmBtn">Confirm and create project</button><a class="button hidden" id="openExisting">Open existing project</a></div>
+  </section>
+
+  <section class="panel hidden" id="createdPanel">
+    <h2>Equipment project created</h2><p id="createdSummary"></p>
+    <div class="actions"><a class="button" id="openManagement">Open Projects</a></div>
+  </section>
+</main>
+<script>
+(function(){
+  const params=new URLSearchParams(location.search), clean=v=>String(v??"").trim(), lower=v=>clean(v).toLowerCase();
+  const type="install";
+  const base=window.EspinOperation.context;
+  const facilityId=clean(params.get("facility_id")||base.facility_id);
+  const facilityName=clean(params.get("facility_name")||params.get("facility")||base.facility_name||base.facility);
+  const groupId=clean(params.get("project_group_id")||base.project_group_id);
+  const handoffType=lower(params.get("handoff"));
+  const isExplicitRepHandoff=["installation_project","install_project"].includes(handoffType);
+  // Only the project explicitly sent from Rep may appear here.
+  const KEYS=[];
+  let selected=null, duplicate=null;
+  let creatingProject=false;
+  const $=id=>document.getElementById(id);
+
+  const ESPIN_CONNECT_FULL_RESET_KEY="espin_connect_full_reset_v1";
+  const EQUIPMENT_SELECTION_RESET_APPLIED_KEY=
+    `espin_equipment_selection_reset_applied:${type}:${facilityId||facilityName||"all"}`;
+
+  const REP_SYNC_ACK_KEY="espin_equipment_selection_rep_sync_ack_v1";
+  function readRepSyncAcknowledgments(){try{const value=JSON.parse(localStorage.getItem(REP_SYNC_ACK_KEY)||"{}");return value&&typeof value==="object"&&!Array.isArray(value)?value:{}}catch(_){return{}}}
+  function repSyncRecordSignature(record){return [equipmentIdentity(record),lower(record?.source_record_id),clean(record?.created_at||params.get("created_at")||"initial")].join("::")}
+  function shouldFlashRepSyncRecord(record){if(record?.synced_from_rep!==true)return false;const signature=repSyncRecordSignature(record);return readRepSyncAcknowledgments()[signature]!==true}
+  function acknowledgeRepSyncRecord(record){if(!record||record.synced_from_rep!==true)return;const signature=repSyncRecordSignature(record);const a=readRepSyncAcknowledgments();a[signature]=true;localStorage.setItem(REP_SYNC_ACK_KEY,JSON.stringify(a))}
+
+
+  function resetEquipmentSelectionFields(){
+    selected=null;
+    duplicate=null;
+
+    ["manualMake","manualModel","manualModality","manualSerial","manualAsset"].forEach(id=>{
+      const field=$(id);
+      if(field)field.value="";
+    });
+
+    const status=$("manualStatus");
+    if(status)status.value="Pending";
+
+    document.querySelectorAll(".equipment").forEach(card=>{
+      card.classList.remove("selected");
+      const radio=card.querySelector('input[type="radio"]');
+      if(radio)radio.checked=false;
+    });
+
+    const reviewBtn=$("reviewBtn");
+    if(reviewBtn)reviewBtn.disabled=true;
+
+    const confirmBtn=$("confirmBtn");
+    if(confirmBtn){
+      confirmBtn.disabled=false;
+      confirmBtn.textContent="Confirm and create project";
+    }
+
+    ["reviewFacts","createdSummary"].forEach(id=>{
+      const el=$(id);
+      if(el)el.textContent="";
+    });
+
+    ["verificationNotice","duplicateNotice","openExisting"].forEach(id=>{
+      const el=$(id);
+      if(el)el.classList.add("hidden");
+    });
+
+    ["openExisting","openManagement"].forEach(id=>{
+      const el=$(id);
+      if(el)el.removeAttribute("href");
+    });
+
+    ["waitingForRepPanel","selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(id=>{
+      const panel=$(id);
+      if(panel)panel.classList.toggle("hidden",id!=="selectionPanel");
+    });
+
+    document.querySelectorAll(".step").forEach((step,index)=>{
+      step.classList.toggle("active",index===1);
+    });
+  }
+
+  function clearEquipmentSelectionCreatedRecords(){
+    localStorage.removeItem("espin_equipment_operations_v1");
+    localStorage.removeItem("activeProjectId");
+
+    Object.keys(localStorage).forEach(key=>{
+      if(
+        key.startsWith("espin_operation_context:")||
+        key.startsWith("espin_project_operation_context:")
+      ){
+        localStorage.removeItem(key);
+      }
+    });
+  }
+
+  function applyEquipmentSelectionFullReset(force=false){
+    const resetAt=localStorage.getItem(ESPIN_CONNECT_FULL_RESET_KEY)||"";
+    const appliedAt=localStorage.getItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY)||"";
+
+    if(!force&&(!resetAt||resetAt===appliedAt))return false;
+
+    clearEquipmentSelectionCreatedRecords();
+    resetEquipmentSelectionFields();
+
+    const cleanUrl=new URL(location.href);
+    [
+      "source_record_id",
+      "axis_record_id",
+      "record_id",
+      "asset_id",
+      "equipment_id",
+      "asset_tag",
+      "serial_number",
+      "serial",
+      "system_serial",
+      "make",
+      "manufacturer",
+      "oem",
+      "model",
+      "equipment_model",
+      "equipment",
+      "modality",
+      "equipment_type"
+    ].forEach(key=>cleanUrl.searchParams.delete(key));
+
+    if(cleanUrl.toString()!==location.href){
+      history.replaceState(null,"",cleanUrl.toString());
+    }
+
+    candidates=[];
+    const candidateList=$("candidateList");
+    if(candidateList){
+      candidateList.innerHTML='<div class="empty">Reloading fresh equipment records…</div>';
+    }
+
+    window.setTimeout(()=>{
+      reloadCandidatesFromFreshStorage();
+      render();
+    },150);
+
+    if(resetAt){
+      localStorage.setItem(EQUIPMENT_SELECTION_RESET_APPLIED_KEY,resetAt);
+    }
+    return true;
+  }
+
+  window.addEventListener("storage",event=>{
+    if(event.key===ESPIN_CONNECT_FULL_RESET_KEY){
+      applyEquipmentSelectionFullReset(true);
+    }
+  });
+
+  window.addEventListener("espin-connect-full-reset",()=>{
+    applyEquipmentSelectionFullReset(true);
+  });
+
+  $("title").textContent=`Select equipment for ${type==="install"?"Installation":"Removal"}`;
+  $("subtitle").textContent=facilityName?`Facility: ${facilityName}`:"Choose the particular equipment before creating this project.";
+  $("typeBadge").textContent=type==="install"?"Installation":"Removal";
+
+  function arrayFrom(value){
+    if(Array.isArray(value))return value;
+    if(!value||typeof value!=="object")return[];
+    return Object.values(value).flatMap(item=>Array.isArray(item)?item:(item&&typeof item==="object"?[item]:[]));
+  }
+  function get(r,...names){for(const n of names){if(clean(r?.[n]))return clean(r[n]);}return""}
+  function normalize(r,source,forceRepSync=false){
+    const recordType=lower(get(r,"equipment_source","source","project_type"));
+    return {
+      facility_id:get(r,"facility_id","site_id","account_id")||facilityId,
+      facility_name:get(r,"facility_name","facility","customer_facility","site_name")||facilityName,
+      asset_id:get(r,"asset_id","equipment_id","asset_tag"),
+      serial_number:get(r,"serial_number","serial","system_serial"),
+      make:get(r,"make","manufacturer","oem"),
+      model:get(r,"model","equipment_model","equipment","system_model"),
+      modality:get(r,"modality","equipment_type"),
+      source_record_id:get(r,"source_record_id","axis_record_id","record_id","id","project_id"),
+      equipment_source:recordType.includes("sale")||source.includes("sales")?"sales_project":recordType.includes("install_base")||source.includes("install_base")?"install_base":"synced",
+      synced_from_rep:forceRepSync===true,
+      created_at:get(r,"created_at","rep_last_action_at","new_project_created_at"),
+      equipment_verified:true,
+      status:get(r,"status","equipment_status","project_status")||"Available",
+      current_operation_status:get(r,"current_operation_status","operation_status","progress_status")||"None"
+    };
+  }
+  function sameFacility(r){
+    if(facilityId&&r.facility_id)return lower(r.facility_id)===lower(facilityId);
+    if(facilityName&&r.facility_name)return lower(r.facility_name)===lower(facilityName);
+    return !facilityId&&!facilityName;
+  }
+  function equipmentIdentity(r){
+    const assetId=lower(r?.asset_id);
+    const serialNumber=lower(r?.serial_number);
+
+    if(assetId)return `asset:${assetId}`;
+    if(serialNumber)return `serial:${serialNumber}`;
+
+    return "";
+  }
+
+  function isRealEquipmentCandidate(record){
+    if(!record)return false;
+
+    const make=lower(record.make);
+    const model=lower(record.model);
+    const hasIdentifier=Boolean(equipmentIdentity(record));
+    const hasActualEquipmentName=Boolean(
+      (make&&make!=="not entered")||
+      (model&&model!=="not entered"&&model!=="equipment")
+    );
+
+    return hasIdentifier||hasActualEquipmentName;
+  }
+  let candidates=[];
+
+  function candidatePriority(record){
+    const source=lower(record?.equipment_source);
+    if(source==="install_base")return 4;
+    if(source==="sales_project")return 3;
+    if(source==="synced")return 2;
+    if(source==="manual")return 1;
+    return 0;
+  }
+
+  function mergeCandidate(existing,incoming){
+    if(!existing)return incoming;
+
+    const preferred=
+      candidatePriority(incoming)>candidatePriority(existing)
+        ? incoming
+        : existing;
+    const secondary=preferred===incoming?existing:incoming;
+
+    return {
+      ...secondary,
+      ...preferred,
+      facility_id:preferred.facility_id||secondary.facility_id,
+      facility_name:preferred.facility_name||secondary.facility_name,
+      asset_id:preferred.asset_id||secondary.asset_id,
+      serial_number:preferred.serial_number||secondary.serial_number,
+      make:preferred.make||secondary.make,
+      model:preferred.model||secondary.model,
+      modality:preferred.modality||secondary.modality,
+      source_record_id:preferred.source_record_id||secondary.source_record_id,
+      status:preferred.status||secondary.status||"Available",
+      current_operation_status:
+        preferred.current_operation_status||
+        secondary.current_operation_status||
+        "None"
+    };
+  }
+
+  function reloadCandidatesFromFreshStorage(){
+    const records=[];
+
+    // Do not scan Rep workspace, Rep queue, Install Base, or synced equipment.
+    // This page receives only the project explicitly handed off by Rep.
+    if(isExplicitRepHandoff){
+      const origin=normalize(
+        Object.fromEntries([...params.entries()]),
+        type==="install"?"sales_project":"install_base",
+        true
+      );
+      if(isRealEquipmentCandidate(origin))records.push(origin);
+    }
+
+    const byIdentity=new Map();
+
+    records
+      .filter(sameFacility)
+      .filter(isRealEquipmentCandidate)
+      .forEach(record=>{
+        const equipmentKey=equipmentIdentity(record);
+
+        // Records without Asset ID or Serial are allowed only when they have
+        // a real equipment name. Give those records a stable content identity
+        // instead of using a project/source ID.
+        const key=equipmentKey||[
+          "named",
+          lower(record.make),
+          lower(record.model),
+          lower(record.modality),
+          lower(record.facility_id||record.facility_name)
+        ].join(":");
+
+        byIdentity.set(key,mergeCandidate(byIdentity.get(key),record));
+      });
+
+    candidates=Array.from(byIdentity.values());
+    selected=null;
+    duplicate=null;
+  }
+
+  function esc(v){const d=document.createElement("div");d.textContent=clean(v)||"—";return d.innerHTML}
+
+  function render(){
+    const candidateList=$("candidateList");
+    if(!candidateList)return;
+
+    if(!candidates.length){
+      candidateList.innerHTML='<div class="empty">No project has been sent from the Rep page. Return to Rep and open an Installation or Removal/Disposal project.</div>';
+      return;
+    }
+
+    candidateList.innerHTML=candidates.map((r,i)=>{
+      const flashClass=shouldFlashRepSyncRecord(r)?" rep-sync-flash":"";
+      return `<div class="equipment${flashClass}" data-i="${i}"><input type="radio" name="equipment"><div><span class="label">Equipment</span><strong>${esc([r.make,r.model].filter(Boolean).join(" ")||"Equipment")}</strong><small>rep project</small></div><div><span class="label">Modality</span>${esc(r.modality)}</div><div><span class="label">Serial</span>${esc(r.serial_number)}</div><div><span class="label">Asset ID</span>${esc(r.asset_id)}</div><div><span class="label">Status / operation</span>${esc(r.status)} · ${esc(r.current_operation_status)}</div></div>`;
+    }).join("");
+
+    document.querySelectorAll(".equipment").forEach(card=>card.onclick=()=>{
+      document.querySelectorAll(".equipment").forEach(c=>c.classList.remove("selected"));
+      const record=candidates[+card.dataset.i];
+      acknowledgeRepSyncRecord(record);
+      card.classList.remove("rep-sync-flash");
+      card.classList.add("selected");
+      card.querySelector("input").checked=true;
+      selected=record;
+      $("reviewBtn").disabled=false;
+    });
+  }
+  function show(id){["waitingForRepPanel","selectionPanel","manualPanel","reviewPanel","createdPanel"].forEach(x=>$(x).classList.toggle("hidden",x!==id))}
+  function manualRecord(){
+    let asset=clean($("manualAsset").value),serial=clean($("manualSerial").value),verified=Boolean(asset||serial);
+    if(!verified)asset=`TEMP-EQ-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
+    return {facility_id:facilityId,facility_name:facilityName,asset_id:asset,serial_number:serial,make:clean($("manualMake").value),model:clean($("manualModel").value)||"Manually entered equipment",modality:clean($("manualModality").value),source_record_id:"",equipment_source:"manual",equipment_verified:verified,status:clean($("manualStatus").value),current_operation_status:"None"};
+  }
+  function activeOperations(){try{const a=JSON.parse(localStorage.getItem("espin_equipment_operations_v1")||"[]");return Array.isArray(a)?a:[]}catch(_){return[]}}
+  function duplicateFor(r){return activeOperations().find(o=>lower(o.operation_type)===type&&["source_record_id","asset_id","serial_number"].some(k=>lower(r[k])&&lower(r[k])===lower(o[k]))&&!/complete|cancel|archiv/.test(lower(o.status)))}
+  function review(r){
+    selected=r;duplicate=duplicateFor(r);show("reviewPanel");
+    document.querySelectorAll(".step")[2].classList.add("active");
+    const facts=[["Operation",type==="install"?"Installation":"Removal"],["Equipment",[r.make,r.model].filter(Boolean).join(" ")||"Equipment"],["Modality",r.modality],["Serial number",r.serial_number],["Asset ID",r.asset_id],["Facility",r.facility_name||r.facility_id],["Source",r.equipment_source],["Verification",r.equipment_verified?"Verified identifier":"Pending verification"]];
+    $("reviewFacts").innerHTML=facts.map(([a,b])=>`<div class="fact"><span>${esc(a)}</span><strong>${esc(b)}</strong></div>`).join("");
+    $("verificationNotice").classList.toggle("hidden",r.equipment_verified);$("verificationNotice").textContent="A temporary equipment ID will be used. This manually entered equipment is pending verification.";
+    $("duplicateNotice").classList.toggle("hidden",!duplicate);$("openExisting").classList.toggle("hidden",!duplicate);$("confirmBtn").disabled=Boolean(duplicate);
+    if(duplicate){$("duplicateNotice").textContent="An active project already exists for this equipment and operation type."; $("openExisting").href=duplicate.project_url||managementUrl(duplicate)}
+  }
+  function managementUrl(operation){
+    const u=new URL("install_management.html",location.href);
+    Object.entries(operation).forEach(([k,v])=>{if(["string","number","boolean"].includes(typeof v)&&clean(v)!=="")u.searchParams.set(k,String(v))});
+    if(operation.project_id){u.searchParams.set("projectId",operation.project_id);u.searchParams.set("id",operation.project_id)}
+    return u.toString();
+  }
+  function projectMatchesEquipment(project, equipment){
+    if(!project||!equipment)return false;
+
+    const sameOperation=
+      lower(project.operation_type||project.project_type)===type;
+
+    if(!sameOperation)return false;
+
+    const equipmentIds=[
+      ["source_record_id", equipment.source_record_id],
+      ["asset_id", equipment.asset_id],
+      ["serial_number", equipment.serial_number]
+    ];
+
+    return equipmentIds.some(([field,value])=>
+      lower(value)&&lower(project[field])===lower(value)
+    );
+  }
+
+  async function findExistingProject(equipment){
+    try{
+      const projectsUrl=new URL(
+        "/api/removal-install/projects",
+        location.origin
+      );
+      projectsUrl.search="";
+
+      const response=await fetch(projectsUrl.toString(),{
+        method:"GET",
+        headers:{
+          "x-user-email":clean(
+            localStorage.getItem("espinUserEmail")||
+            params.get("sales_rep_email")||
+            "rep1@espinlink.demo"
+          )
+        },
+        cache:"no-store"
+      });
+
+      if(!response.ok)return null;
+
+      const body=await response.json().catch(()=>[]);
+      const records=
+        Array.isArray(body)
+          ? body
+          : Array.isArray(body?.projects)
+            ? body.projects
+            : Array.isArray(body?.data)
+              ? body.data
+              : Array.isArray(body?.records)
+                ? body.records
+                : [];
+
+      return records.find(project=>
+        projectMatchesEquipment(project,equipment)
+      )||null;
+    }catch(error){
+      console.warn(
+        "Existing project lookup failed.",
+        error
+      );
+      return null;
+    }
+  }
+
+  function openProjectsWithExistingContext(operation,existing){
+    const project={
+      ...operation,
+      ...(existing||{})
+    };
+
+    project.project_id=clean(
+      existing?.id||
+      existing?.project_id||
+      existing?.projectId||
+      operation.project_id||
+      operation.operation_id
+    );
+
+    const projectsUrl=new URL(
+      type==="install" ? "install-projects.html" : "projects.html",
+      location.href
+    );
+
+    Object.entries(project).forEach(([key,value])=>{
+      if(
+        ["string","number","boolean"].includes(typeof value)&&
+        clean(value)!==""
+      ){
+        projectsUrl.searchParams.set(
+          key,
+          String(value)
+        );
+      }
+    });
+
+    if(project.project_id){
+      projectsUrl.searchParams.set(
+        "projectId",
+        project.project_id
+      );
+      projectsUrl.searchParams.set(
+        "id",
+        project.project_id
+      );
+    }
+
+    projectsUrl.searchParams.set(
+      "existing_project",
+      "1"
+    );
+
+    location.href=projectsUrl.toString();
+  }
+
+  async function confirm(){
+    if(creatingProject||!selected)return;
+
+    creatingProject=true;
+    $("confirmBtn").disabled=true;
+    $("confirmBtn").textContent="Creating…";
+
+    const operation={
+      ...selected,
+      operation_id:window.EspinOperation.newOperationId(type),
+      operation_type:type,
+      project_group_id:
+        groupId||
+        `group-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      facility_id:
+        facilityId||
+        selected.facility_id,
+      facility_name:
+        facilityName||
+        selected.facility_name,
+      facility:
+        facilityName||
+        selected.facility_name,
+      created_at:new Date().toISOString(),
+      created_by:clean(
+        params.get("created_by")||
+        localStorage.getItem("espinUserEmail")||
+        "anonymous-rep"
+      ),
+      status:"active"
+    };
+
+    operation.equipment_model=operation.model;
+
+    const payload={
+      ...operation,
+      project_name:
+        `${operation.model||"Equipment"} · ${
+          type==="install"
+            ? "Installation"
+            : "Removal"
+        }`,
+      equipment:
+        [operation.make,operation.model]
+          .filter(Boolean)
+          .join(" "),
+      site_address:clean(
+        params.get("site_address")
+      ),
+      zip_code:clean(
+        params.get("zip_code")
+      ),
+      modality:
+        operation.modality||
+        "OTHER",
+      project_type:"install",
+      sales_rep_email:clean(
+        localStorage.getItem("espinUserEmail")||
+        params.get("sales_rep_email")||
+        "rep1@espinlink.demo"
+      ),
+      source:"espin_link_equipment_intake"
+    };
+
+    try{
+      const response=await fetch(
+        "/api/removal-install/projects",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-user-email":payload.sales_rep_email
+          },
+          body:JSON.stringify(payload)
+        }
+      );
+
+      const result=await response
+        .json()
+        .catch(()=>({}));
+
+      if(response.status===409){
+        const existing=
+          result.existing||
+          result.project||
+          result.data||
+          await findExistingProject(operation);
+
+        duplicate=existing||{
+          ...operation,
+          project_id:clean(
+            result.id||
+            result.projectId||
+            result.project_id||
+            operation.operation_id
+          )
+        };
+
+        // A conflict means the project already exists.
+        // Continue to Projects instead of treating it as an error.
+        openProjectsWithExistingContext(
+          operation,
+          duplicate
+        );
+        return;
+      }
+
+      if(!response.ok){
+        throw new Error(
+          result.error||
+          result.message||
+          `HTTP ${response.status}`
+        );
+      }
+
+      operation.project_id=clean(
+        result.id||
+        result.projectId||
+        result.project_id
+      );
+
+      operation.project_url=
+        managementUrl(operation);
+
+      const records=activeOperations();
+
+      if(!records.some(record=>
+        projectMatchesEquipment(record,operation)
+      )){
+        records.unshift(operation);
+      }
+
+      localStorage.setItem(
+        "espin_equipment_operations_v1",
+        JSON.stringify(records)
+      );
+
+      localStorage.setItem(
+        `espin_operation_context:${operation.operation_id}`,
+        JSON.stringify(operation)
+      );
+
+      localStorage.setItem(
+        `espin_project_operation_context:${operation.project_id}`,
+        JSON.stringify(operation)
+      );
+
+      localStorage.setItem(
+        "activeProjectId",
+        operation.project_id
+      );
+
+      window.EspinOperation
+        .upsertActiveProject(operation);
+
+      try{
+        window.opener?.postMessage(
+          {
+            type:"ESPIN_OPERATION_PROJECT_CREATED",
+            project:operation
+          },
+          "*"
+        );
+      }catch(_){}
+
+      $("createdSummary").textContent=
+        `${type==="install"?"Installation":"Removal"} for ${
+          [operation.make,operation.model]
+            .filter(Boolean)
+            .join(" ")
+        } is ready. Operation ${operation.operation_id}.`;
+
+      const createdProjectsUrl=new URL("install-projects.html",location.href);
+      Object.entries(operation).forEach(([key,value])=>{
+        if(["string","number","boolean"].includes(typeof value)&&clean(value)!==""){
+          createdProjectsUrl.searchParams.set(key,String(value));
+        }
+      });
+      if(operation.project_id){
+        createdProjectsUrl.searchParams.set("projectId",operation.project_id);
+        createdProjectsUrl.searchParams.set("id",operation.project_id);
+      }
+      $("openManagement").href=createdProjectsUrl.toString();
+
+      show("createdPanel");
+
+      document
+        .querySelectorAll(".step")[3]
+        .classList.add("active");
+    }catch(error){
+      alert(
+        `Project could not be created: ${error.message}`
+      );
+
+      $("confirmBtn").disabled=false;
+      $("confirmBtn").textContent=
+        "Confirm and create project";
+    }finally{
+      creatingProject=false;
+    }
+  }
+  $("manualBtn").onclick=()=>show("manualPanel");$("cancelManual").onclick=()=>show("selectionPanel");$("reviewBtn").onclick=()=>review(selected);$("reviewManual").onclick=()=>review(manualRecord());$("backBtn").onclick=()=>show(selected?.equipment_source==="manual"?"manualPanel":"selectionPanel");$("confirmBtn").onclick=confirm;
+
+  // Allow the removal-only source gate below to use the existing selection
+  // and review workflow without navigating or reloading this page.
+  window.EspinEquipmentSelectionPage = {
+    normalize,
+    review,
+    show,
+    escapeHtml: esc
+  };
+
+  const hasRepProjectHandoff = isExplicitRepHandoff;
+
+  if (!hasRepProjectHandoff) {
+    candidates = [];
+    $("selectionPanel").classList.add("hidden");
+    $("manualPanel").classList.add("hidden");
+    $("reviewPanel").classList.add("hidden");
+    $("createdPanel").classList.add("hidden");
+    $("waitingForRepPanel").classList.remove("hidden");
+    $("title").textContent = "Equipment selection";
+    $("subtitle").textContent =
+      "This page opens only after a project is sent from Rep.html.";
+  } else {
+    $("waitingForRepPanel").classList.add("hidden");
+    $("manualPanel").classList.add("hidden");
+
+    reloadCandidatesFromFreshStorage();
+    render();
+
+    // Rep.html is the only equipment source for this page.
+    $("selectionPanel").classList.remove("hidden");
+    $("manualBtn").classList.add("hidden");
+
+    applyEquipmentSelectionFullReset(false);
+  }
+})();
+</script>
+
+
+</body>
+</html>

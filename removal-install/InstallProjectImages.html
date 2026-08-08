@@ -1,0 +1,924 @@
+<head>
+  <script src="operation-context.js"></script>
+<meta charset="UTF-8">
+<title>Installation Project Images | Espin Medical</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<script>
+/* ===============================
+   AUTH + PARAMS
+=============================== */
+(() => {
+  const email = String(
+    localStorage.getItem("espinUserEmail") ||
+    localStorage.getItem("espinEquipment_userEmail") ||
+    "info@espinmedical.com"
+  ).toLowerCase().trim();
+  localStorage.setItem("espinAuth", "true");
+  localStorage.setItem("espinUserEmail", email);
+})();
+
+const API_BASE = "";
+
+const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+
+const params = new URLSearchParams(location.search);
+const urlProjectId = params.get("id") || params.get("projectId");
+if (urlProjectId) localStorage.setItem("activeProjectId", urlProjectId);
+const projectId = localStorage.getItem("activeProjectId");
+
+/* ===============================
+   NEW PILL (IMAGES) — STABLE
+=============================== */
+const BADGE_STORAGE_KEY = `new_images_${projectId}`;
+const BADGE_KV_KEY = `project:badges_images:${projectId}:${userEmail}`;
+let hasClearedBadges = false;
+
+function safeParseArray(value) {
+  try {
+    const v = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqStrings(list) {
+  return Array.from(
+    new Set((list || []).map(x => String(x).trim()).filter(Boolean))
+  );
+}
+
+function candidateIds(p) {
+  const c = [
+    p?.id,
+    p?.photoId,
+    p?.photo_id,
+    p?.uuid,
+    p?.image_id,
+    p?.imageId,
+    p?.photo_uuid
+  ]
+    .map(v => String(v ?? "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(c));
+}
+
+function getPrimaryId(p) {
+  const c = candidateIds(p);
+  return c[0] || "";
+}
+
+function getActiveBadges() {
+  const s = sessionStorage.getItem(BADGE_STORAGE_KEY);
+  const l = localStorage.getItem(BADGE_STORAGE_KEY);
+  return uniqStrings(safeParseArray(s || l || "[]"));
+}
+
+function saveBadgesLocally(list) {
+  const arr = uniqStrings(list);
+  const json = JSON.stringify(arr);
+  sessionStorage.setItem(BADGE_STORAGE_KEY, json);
+  localStorage.setItem(BADGE_STORAGE_KEY, json);
+}
+
+async function syncBadgesFromKV() {
+  try {
+    const r = await fetch(
+      `${API_BASE}/api/removal-install/kv-get?key=${encodeURIComponent(BADGE_KV_KEY)}`,
+      {
+        headers: { "x-user-email": userEmail }
+      }
+    );
+
+    const j = await r.json();
+    const val = uniqStrings(safeParseArray(j?.value));
+    saveBadgesLocally(val);
+    return val;
+  } catch {
+    return getActiveBadges();
+  }
+}
+
+async function writeBadgesToKV(list) {
+  try {
+    const arr = uniqStrings(list);
+    await fetch(`${API_BASE}/api/removal-install/kv-set`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-email": userEmail
+      },
+      body: JSON.stringify({ key: BADGE_KV_KEY, value: JSON.stringify(arr) })
+    });
+  } catch {}
+}
+
+function clearBadgesOnExit() {
+  if (hasClearedBadges) return;
+  hasClearedBadges = true;
+
+  sessionStorage.removeItem(BADGE_STORAGE_KEY);
+  localStorage.removeItem(BADGE_STORAGE_KEY);
+
+  const payload = JSON.stringify({ key: BADGE_KV_KEY, value: "[]" });
+  fetch(`${API_BASE}/api/removal-install/kv-set`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-email": userEmail
+    },
+    body: payload,
+    keepalive: true
+  }).catch(() => {});
+}
+
+function handleBack() {
+  clearBadgesOnExit();
+  setTimeout(() => {
+    location.href = window.EspinOperation.url("install_management.html");
+  }, 100);
+}
+
+function isNewForPhoto(p, badgeSet) {
+  const ids = candidateIds(p);
+  for (const id of ids) {
+    if (badgeSet.has(id)) return true;
+  }
+  return false;
+}
+</script>
+
+<style>
+
+:root{
+  --bg:#020b17;
+  --panel:#061526;
+  --panel2:#091b2e;
+  --line:#0b6f9b;
+  --cyan:#16d9ff;
+  --cyan-soft:#8deeff;
+  --green:#28f15c;
+  --blue:#1686e8;
+  --red:#ff3b30;
+  --red-dark:#8a1f28;
+  --text:#f4fbff;
+  --muted:#91aabd;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  padding:0;
+  width:100%;
+  min-height:100%;
+  overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:
+    radial-gradient(circle at 50% -10%,rgba(0,106,170,.16),transparent 34%),
+    linear-gradient(180deg,#020914 0%,#020b17 100%);
+  color:var(--text);
+}
+.page{
+  height:100vh;
+  min-height:100vh;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:28px 24px 150px;
+  background:transparent;
+}
+.header{
+  max-width:1500px;
+  margin:0 auto 18px;
+  display:grid;
+  grid-template-columns:74px 1fr auto;
+  align-items:center;
+  gap:22px;
+  position:relative;
+  background:transparent;
+  color:var(--text);
+  padding:0;
+}
+.back-arrow{
+  position:static;
+  transform:none;
+  width:62px;
+  height:62px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--cyan);
+  border-radius:8px;
+  color:var(--cyan);
+  background:linear-gradient(180deg,rgba(10,49,76,.9),rgba(2,18,34,.98));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 20px rgba(0,0,0,.35),0 0 15px rgba(22,217,255,.12);
+  font-size:38px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+  user-select:none;
+}
+.back-arrow:active{transform:translateY(3px)}
+.header h1{
+  margin:0;
+  font-size:clamp(28px,3vw,44px);
+  font-weight:850;
+  letter-spacing:-.02em;
+  text-align:left;
+}
+.header::after{
+  content:"Project Images";
+  color:var(--cyan);
+  font-size:18px;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.container{
+  position:relative;
+  max-width:1500px;
+  margin:0 auto;
+  padding:28px;
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(5,21,37,.97),rgba(2,13,25,.98));
+  clip-path:polygon(18px 0,calc(100% - 18px) 0,100% 18px,100% calc(100% - 18px),calc(100% - 18px) 100%,18px 100%,0 calc(100% - 18px),0 18px);
+  box-shadow:0 28px 70px rgba(0,0,0,.36),inset 0 0 32px rgba(0,109,164,.035);
+}
+.container::before{
+  content:"";
+  position:absolute;
+  left:18px;
+  right:18px;
+  top:0;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan) 10%,var(--cyan) 90%,transparent);
+  box-shadow:0 0 10px rgba(22,217,255,.42);
+  pointer-events:none;
+  z-index:2;
+}
+.container::after{
+  content:"";
+  position:absolute;
+  top:0;
+  left:-18%;
+  width:18%;
+  height:3px;
+  background:linear-gradient(90deg,transparent,#fff,var(--cyan),transparent);
+  box-shadow:0 0 16px 5px rgba(22,217,255,.9);
+  animation:topSweep 1.35s ease-out 1 forwards;
+  pointer-events:none;
+  z-index:3;
+}
+@keyframes topSweep{
+  from{left:-18%;opacity:0}
+  12%{opacity:1}
+  to{left:100%;opacity:0}
+}
+.archived-banner{
+  margin:0 0 18px;
+  padding:13px 16px;
+  border:1px solid rgba(40,241,92,.45);
+  border-radius:7px;
+  background:rgba(13,76,37,.22);
+  color:#9af4b0;
+  font-weight:900;
+  text-align:center;
+}
+.section-title{
+  margin:0 0 14px;
+  color:var(--cyan);
+  font-size:16px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.045em;
+}
+.upload-card{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  margin-bottom:24px;
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:linear-gradient(180deg,rgba(5,24,41,.94),rgba(3,16,29,.96));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.upload-card button{
+  flex:1;
+  min-height:60px;
+  border:1px solid var(--cyan);
+  border-radius:7px;
+  color:#fff;
+  font-size:16px;
+  font-weight:900;
+  cursor:pointer;
+  background:linear-gradient(180deg,#0a76c6 0%,#075496 52%,#063c70 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.18),inset 0 -5px 0 rgba(0,21,56,.45),0 7px 0 #031f3e,0 11px 22px rgba(0,0,0,.36),0 0 18px rgba(22,217,255,.18);
+  transition:.15s ease;
+}
+.upload-card button:hover:not(:disabled){transform:translateY(-2px);box-shadow:inset 0 2px 0 rgba(255,255,255,.2),inset 0 -5px 0 rgba(0,21,56,.42),0 9px 0 #031f3e,0 14px 26px rgba(0,0,0,.42),0 0 24px rgba(22,217,255,.28)}
+.upload-card button:active:not(:disabled){transform:translateY(5px);box-shadow:0 2px 0 #031f3e,0 6px 12px rgba(0,0,0,.32)}
+.spinner{
+  width:20px;
+  height:20px;
+  border:3px solid #264154;
+  border-top:3px solid var(--cyan);
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+  display:none;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gallery{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px;
+}
+.card{
+  width:100%;
+  margin:0;
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(22,217,255,.42);
+  border-radius:8px;
+  background:linear-gradient(180deg,rgba(5,24,41,.96),rgba(3,16,29,.98));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 12px 28px rgba(0,0,0,.25);
+}
+.card.missing-title{
+  border-color:var(--red);
+  box-shadow:0 0 0 1px rgba(255,59,48,.35),0 0 18px rgba(255,59,48,.14);
+}
+.card-header{
+  padding:12px;
+  background:linear-gradient(90deg,rgba(10,56,83,.45),rgba(4,20,35,.22));
+  border-bottom:1px solid rgba(22,217,255,.26);
+}
+.card.missing-title .card-header{
+  background:linear-gradient(90deg,rgba(118,23,32,.55),rgba(51,10,14,.28));
+  border-bottom-color:rgba(255,59,48,.45);
+}
+.card-header input,
+.card-body textarea{
+  width:100%;
+  border-radius:6px;
+  border:1px solid #145a7b;
+  background:linear-gradient(180deg,#081b2e,#061526);
+  color:var(--text);
+  outline:none;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.28);
+}
+.card-header input{
+  padding:12px 13px;
+  font-weight:850;
+  font-size:15px;
+  caret-color:#fff;
+}
+.card-body textarea{
+  min-height:86px;
+  padding:12px 13px;
+  resize:vertical;
+  font:inherit;
+}
+.card-header input:focus,
+.card-body textarea:focus{
+  border-color:var(--cyan);
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.28),0 0 0 2px rgba(22,217,255,.10),0 0 14px rgba(22,217,255,.10);
+}
+.card img{
+  width:100%;
+  height:300px;
+  object-fit:cover;
+  display:block;
+  background:#02101d;
+}
+.card-body{padding:12px}
+.card-footer{
+  padding:12px;
+  border-top:1px solid rgba(22,217,255,.16);
+  display:flex;
+  gap:10px;
+  align-items:center;
+  color:#b7c9d6;
+  font-size:13px;
+}
+.card-footer input[type="checkbox"]{
+  appearance:none;
+  -webkit-appearance:none;
+  width:23px;
+  height:23px;
+  min-width:23px;
+  border-radius:50%;
+  border:2px solid #718799;
+  background:#04101e;
+  cursor:pointer;
+  position:relative;
+}
+.card-footer input[type="checkbox"]:checked{
+  border-color:var(--green);
+  box-shadow:0 0 12px rgba(40,241,92,.42);
+  background:#072414;
+}
+.card-footer input[type="checkbox"]:checked::after{
+  content:"";
+  position:absolute;
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:var(--green);
+  left:5px;
+  top:5px;
+  box-shadow:0 0 8px var(--green);
+}
+.new-badge{
+  position:absolute;
+  top:10px;
+  right:10px;
+  z-index:5;
+  padding:5px 10px;
+  border-radius:999px;
+  background:#b91f2a;
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.04em;
+  box-shadow:0 0 14px rgba(255,59,48,.35);
+}
+.archived-overlay{
+  position:absolute;
+  inset:0;
+  z-index:10;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(2,11,23,.72);
+  color:#b8c9d4;
+  font-weight:900;
+}
+.batch-bar{
+  position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
+  width:min(1500px,calc(100% - 48px));
+  z-index:9999;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+  padding:14px;
+  border:1px solid rgba(22,217,255,.32);
+  background:rgba(3,15,27,.96);
+  box-shadow:0 -8px 30px rgba(0,0,0,.28);
+}
+.batch-btn{
+  width:100%;
+  min-height:62px;
+  margin:0;
+  padding:15px 18px;
+  border-radius:7px;
+  font-size:16px;
+  font-weight:900;
+  cursor:pointer;
+  transition:.15s ease;
+}
+#sendBtn{
+  border:1px solid var(--cyan);
+  color:#fff;
+  background:linear-gradient(180deg,#0a76c6 0%,#075496 52%,#063c70 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.18),inset 0 -5px 0 rgba(0,21,56,.45),0 7px 0 #031f3e,0 11px 22px rgba(0,0,0,.36),0 0 18px rgba(22,217,255,.18);
+}
+#deleteBtn{
+  border:1px solid var(--red);
+  color:#fff;
+  background:linear-gradient(180deg,#d94b58 0%,#b12d3b 52%,#7a1e28 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.16),inset 0 -5px 0 rgba(74,8,16,.42),0 7px 0 #4b1118,0 11px 22px rgba(0,0,0,.36),0 0 18px rgba(255,59,48,.18);
+}
+#sendBtn:hover:not(:disabled),
+#deleteBtn:hover:not(:disabled){transform:translateY(-2px)}
+#sendBtn:active:not(:disabled),
+#deleteBtn:active:not(:disabled){transform:translateY(5px)}
+button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none!important;transform:none!important}
+.preview-modal{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,5,12,.90);
+  backdrop-filter:blur(8px);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .2s ease;
+}
+.preview-modal.active{
+  opacity:1;
+  pointer-events:auto;
+}
+.preview-modal img{
+  max-width:92%;
+  max-height:88%;
+  object-fit:contain;
+  border:1px solid rgba(22,217,255,.55);
+  border-radius:8px;
+  box-shadow:0 0 28px rgba(22,217,255,.12),0 24px 60px rgba(0,0,0,.45);
+}
+.preview-close{
+  position:absolute;
+  top:24px;
+  right:28px;
+  width:48px;
+  height:48px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(22,217,255,.55);
+  border-radius:8px;
+  color:#fff;
+  background:linear-gradient(180deg,#0a2943,#06192a);
+  font-size:24px;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:0 8px 18px rgba(0,0,0,.35);
+}
+#newDebug{
+  display:none;
+}
+@media(max-width:900px){
+  .page{padding:18px 12px 142px}
+  .header{grid-template-columns:58px 1fr;gap:14px}
+  .back-arrow{width:52px;height:52px;font-size:31px}
+  .header::after{display:none}
+  .container{padding:16px}
+  .gallery{grid-template-columns:1fr}
+  .card img{height:260px}
+  .batch-bar{width:calc(100% - 24px);bottom:10px;grid-template-columns:1fr}
+}
+
+</style>
+<link rel="stylesheet" href="field-command-theme.css">
+</head>
+<body>
+<div class="page">
+
+<div class="header">
+  <div onclick="handleBack()" class="back-arrow">←</div>
+  <h1>Installation Project Images</h1>
+</div>
+
+<div class="container">
+  <div id="archiveBanner" class="archived-banner" style="display:none">
+    🔒 Archived · Read-only
+  </div>
+
+  <div class="section-title">Upload Image</div>
+  <div class="upload-card">
+    <input id="filePicker" type="file" accept="image/*" hidden>
+    <button id="chooseFileBtn" type="button">Choose Image</button>
+    <div id="uploadSpinner" class="spinner"></div>
+  </div>
+
+  <div id="gallery" class="gallery" style="margin-top:20px;"></div>
+</div>
+
+<div class="batch-bar">
+  <button id="sendBtn" class="batch-btn" disabled>Send Selected Images</button>
+  <button id="deleteBtn" class="batch-btn" disabled>Delete Selected Images</button>
+</div>
+<!-- PREVIEW MODAL -->
+<div id="previewModal" class="preview-modal">
+  <div class="preview-close" id="previewClose">✕</div>
+  <img id="previewImage" src="" alt="Preview">
+</div>
+<script>
+const CLOUD_NAME = "duljf51bg";
+const UPLOAD_PRESET = "espin_unsigned";
+
+const filePicker = document.getElementById("filePicker");
+const chooseFileBtn = document.getElementById("chooseFileBtn");
+const uploadSpinner = document.getElementById("uploadSpinner");
+const gallery = document.getElementById("gallery");
+const sendBtn = document.getElementById("sendBtn");
+const deleteBtn = document.getElementById("deleteBtn");
+/* PREVIEW LOGIC */
+const previewModal = document.getElementById("previewModal");
+const previewImage = document.getElementById("previewImage");
+const previewClose = document.getElementById("previewClose");
+
+function openPreview(src) {
+  previewImage.src = src;
+  previewModal.classList.add("active");
+  document.body.style.overflow = "hidden";
+}
+
+function closePreview() {
+  previewModal.classList.remove("active");
+  previewImage.src = "";
+  document.body.style.overflow = "";
+}
+
+previewClose.onclick = closePreview;
+previewModal.onclick = (e) => {
+  if (e.target === previewModal) closePreview();
+};
+let photos = [];
+let selected = new Set(); // stores primary id strings
+let uploading = false;
+let isArchived = false;
+
+/* ARCHIVE */
+async function loadArchiveState() {
+  try {
+    const r = await fetch(`${API_BASE}/api/removal-install/projects?id=${projectId}`, {
+      headers: { "x-user-email": userEmail }
+    });
+    const p = await r.json();
+    isArchived = p?.project_completed === true;
+  } catch {
+    isArchived = false;
+  }
+}
+
+function applyArchiveUI() {
+  if (!isArchived) return;
+
+  document.getElementById("archiveBanner").style.display = "block";
+  chooseFileBtn.disabled = true;
+  sendBtn.disabled = true;
+  deleteBtn.disabled = true;
+}
+
+function updateBatchState() {
+  if (isArchived) return;
+
+  const sel = photos.filter(p => selected.has(getPrimaryId(p)));
+
+  sendBtn.disabled = !(sel.length && sel.every(p => (p.photo_title || "").trim()));
+  deleteBtn.disabled = sel.length === 0;
+
+  document.querySelectorAll(".card").forEach(card => {
+    const id = card.dataset.id;
+    const p = photos.find(x => getPrimaryId(x) === id);
+
+    if (selected.has(id) && !(p?.photo_title || "").trim()) {
+      card.classList.add("missing-title");
+    } else {
+      card.classList.remove("missing-title");
+    }
+  });
+}
+
+async function saveMeta(p) {
+  if (isArchived) return;
+  await fetch(`${API_BASE}/api/removal-install/project-photos/save`, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+    body: JSON.stringify({
+      photoId: getPrimaryId(p),
+      projectId,
+      photo_title: p.photo_title,
+      photo_comment: p.photo_comment
+    })
+  });
+}
+
+const debouncedSave = ((fn, d=600) => {
+  let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), d); };
+})(saveMeta);
+
+/* RENDER */
+function appendCard(p, badgeSet, forceBadge = false) {
+  const pid = getPrimaryId(p);
+  const card = document.createElement("div");
+  card.className = "card";
+  card.dataset.id = pid;
+
+  const showBadge = forceBadge ? true : isNewForPhoto(p, badgeSet);
+
+  card.innerHTML = `
+    ${showBadge ? '<div class="new-badge">NEW</div>' : ''}
+    <div class="card-header">
+  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Image Title...(Required)">
+</div>
+    <img src="${p.photo_url}">
+    <div class="card-body">
+      <textarea placeholder="Add a comment...">${p.photo_comment||''}</textarea>
+    </div>
+    <div class="card-footer">
+      <input type="checkbox">
+      <label>Select (Required)</label>
+    </div>`;
+const img = card.querySelector("img");
+img.style.cursor = "zoom-in";
+img.onclick = () => openPreview(p.photo_url);
+  const title = card.querySelector("input");
+  const note = card.querySelector("textarea");
+  const cb = card.querySelector("input[type=checkbox]");
+
+  if (isArchived) {
+    title.disabled = true;
+    note.disabled = true;
+    cb.disabled = true;
+  }
+
+  title.oninput = () => {
+    p.photo_title = title.value;
+    debouncedSave(p);
+    updateBatchState();
+  };
+
+  note.oninput = () => {
+    p.photo_comment = note.value;
+    debouncedSave(p);
+  };
+
+ cb.onchange = () => {
+  cb.checked ? selected.add(pid) : selected.delete(pid);
+  updateBatchState();
+};
+
+gallery.append(card);
+return card;
+}
+/* UPLOAD */
+chooseFileBtn.addEventListener("click", function () {
+  if (uploading || isArchived) return;
+
+  // A native click is required to open the browser's file chooser. On phones,
+  // this lets the device offer Camera, Photo Library, or Files as available.
+  filePicker.click();
+});
+
+filePicker.onchange = async () => {
+  if (isArchived) return;
+  const file = filePicker.files[0];
+  if (!file) return;
+
+  uploading = true;
+  uploadSpinner.style.display = "block";
+  chooseFileBtn.disabled = true;
+
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", UPLOAD_PRESET);
+
+    const cloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method:"POST",
+      body:fd
+    });
+    const data = await cloud.json();
+
+    const res = await fetch(`${API_BASE}/api/removal-install/project-photos/save`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json","x-user-email":userEmail },
+      body: JSON.stringify({ projectId, photo_url:data.secure_url, photo_title:"", photo_comment:"" })
+    });
+
+    const out = await res.json();
+    const photoId = String(out?.photoId ?? out?.id ?? "").trim();
+    if (!photoId) return;
+
+    const cur = getActiveBadges();
+    if (!cur.includes(photoId)) cur.push(photoId);
+    saveBadgesLocally(cur);
+    await writeBadgesToKV(cur);
+
+    const p = { id: photoId, photo_url:data.secure_url, photo_title:"", photo_comment:"" };
+    photos.unshift(p);
+
+    const badgeSet = new Set(getActiveBadges());
+    const card = appendCard(p, badgeSet, true);
+card.remove();
+gallery.prepend(card);
+
+    updateBatchState();
+  } finally {
+    uploading = false;
+    uploadSpinner.style.display = "none";
+    chooseFileBtn.disabled = false;
+    filePicker.value = "";
+  }
+};
+
+/* SEND */
+sendBtn.onclick = async () => {
+  if (isArchived || sendBtn.disabled) return;
+
+  const originalText = "Send Selected Images";
+
+  sendBtn.disabled = true;
+  sendBtn.innerText = "Sending...";
+
+  try {
+    const ids = [...selected];
+
+    for (const id of ids) {
+      await fetch(`${API_BASE}/api/removal-install/project-photos/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ photoId: id, queued: true })
+      });
+    }
+
+    await fetch(`${API_BASE}/api/removal-install/project-photos/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+      body: JSON.stringify({ projectId, photoIds: ids })
+    });
+
+    await fetch(`${API_BASE}/api/removal-install/image-tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+      body: JSON.stringify({ projectId, photoIds: ids })
+    });
+
+    selected.clear();
+    document.querySelectorAll(".card-footer input[type=checkbox]").forEach(cb => (cb.checked = false));
+
+    // SUCCESS
+    sendBtn.innerText = "Sent";
+
+    setTimeout(() => {
+      sendBtn.innerText = originalText;
+      updateBatchState();
+    }, 1200);
+
+  } catch (e) {
+    console.error("Send failed:", e);
+    sendBtn.innerText = originalText;
+    sendBtn.disabled = false;
+  }
+};
+
+/* DELETE */
+deleteBtn.onclick = async () => {
+  if (isArchived || !selected.size) return;
+
+  const originalText = "Delete Selected Images";
+
+  deleteBtn.disabled = true;
+  deleteBtn.innerText = "Deleting...";
+
+  try {
+    const badgeList = getActiveBadges();
+
+    for (const id of [...selected]) {
+      await fetch(`${API_BASE}/api/removal-install/project-photos/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ photoId: id, projectId })
+      });
+
+      document.querySelector(`.card[data-id="${id}"]`)?.remove();
+      photos = photos.filter(p => getPrimaryId(p) !== id);
+
+      const idx = badgeList.indexOf(id);
+      if (idx !== -1) badgeList.splice(idx, 1);
+    }
+
+    saveBadgesLocally(badgeList);
+    await writeBadgesToKV(badgeList);
+
+    selected.clear();
+    updateBatchState();
+
+    // SUCCESS
+    deleteBtn.innerText = "Deleted";
+
+    setTimeout(() => {
+      deleteBtn.innerText = originalText;
+      updateBatchState();
+    }, 1200);
+
+  } catch (e) {
+    console.error("Delete failed:", e);
+    alert("Delete failed. Try again.");
+
+    deleteBtn.innerText = originalText;
+    deleteBtn.disabled = false;
+  }
+};
+
+/* INIT */
+(async () => {
+  await loadArchiveState();
+  applyArchiveUI();
+
+  const kvBadges = await syncBadgesFromKV();
+  const badgeSet = new Set(kvBadges);
+
+  const res = await fetch(`${API_BASE}/api/removal-install/project-photos/list?projectId=${projectId}`, {
+    headers: { "x-user-email": userEmail }
+  });
+
+  photos = (await res.json()) || [];
+
+  photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  gallery.innerHTML = "";
+
+  photos.forEach(p => appendCard(p, badgeSet));
+
+  updateBatchState();
+})();
+</script>
+</div>
+</body>
+</html>

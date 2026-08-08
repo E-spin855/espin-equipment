@@ -450,7 +450,7 @@ body::after{
 
 <body>
 
-<div class="header">Projects</div>
+<div class="header">Installation Projects</div>
 <button class="add-project-btn" id="addBtn" onclick="openProjectModal()">ADD PROJECT</button>
 
 <div class="list" id="projectList"></div>
@@ -849,6 +849,18 @@ function getAxisDemoProjectFromUrl() {
     axis_demo: true
   };
 }
+
+function isInstallationProject(project) {
+  const type = String(
+    project?.operation_type ||
+    project?.project_type ||
+    project?.created_type ||
+    ""
+  ).toLowerCase().trim();
+  if (type === "install" || type === "installation") return true;
+  return /\binstallation\b/i.test(String(project?.project_name || ""));
+}
+
 async function loadProjects() {
   const list = document.getElementById("projectList");
 
@@ -907,13 +919,14 @@ async function loadProjects() {
 
     const cachedProjects = getCachedInstallProjects();
     projects = mergeProjectsById(projects, cachedProjects);
+    projects = projects.filter(isInstallationProject);
 
     // Keep the local cache aligned with the latest server data while preserving
     // handoff-created projects that the API has not returned yet.
     saveCachedInstallProjects(projects);
 const axisDemoProject = getAxisDemoProjectFromUrl();
 
-if (axisDemoProject) {
+if (axisDemoProject && isInstallationProject(axisDemoProject)) {
   projects.unshift(axisDemoProject);
 }
 

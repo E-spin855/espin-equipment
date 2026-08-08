@@ -475,7 +475,7 @@ body::after{
 
 <body>
 
-<div class="header">Projects</div>
+<div class="header">De-Installation Projects</div>
 <button class="add-project-btn" id="addBtn" onclick="openProjectModal()">ADD PROJECT</button>
 
 <div class="list" id="projectList"></div>
@@ -992,11 +992,25 @@ function deduplicateProjects(records) {
   return Array.from(merged.values());
 }
 
+
+function isInstallationProject(project) {
+  const type = String(
+    project?.operation_type ||
+    project?.project_type ||
+    project?.created_type ||
+    ""
+  ).toLowerCase().trim();
+  if (type === "install" || type === "installation") return true;
+  return /\binstallation\b/i.test(String(project?.project_name || ""));
+}
+
 async function renderProjectCards(projects) {
   const list = document.getElementById("projectList");
   list.innerHTML = "";
 
-  const sorted = deduplicateProjects(projects).sort((a, b) =>
+  const sorted = deduplicateProjects(projects)
+    .filter(project => !isInstallationProject(project))
+    .sort((a, b) =>
     String(a.project_group_id || a.id).localeCompare(
       String(b.project_group_id || b.id)
     ) ||
@@ -1048,9 +1062,7 @@ async function renderProjectCards(projects) {
       </h3>
 
       <div class="badge-wrap">
-        ${(String(p.operation_type || p.project_type || "").toLowerCase() === "install")
-          ? `<span class="project-type-badge install">⚙ INSTALLATION</span>`
-          : `<span class="project-type-badge removal">↗ REMOVAL</span>`}
+        ${`<span class="project-type-badge removal">↗ REMOVAL</span>`}
         ${!p.project_completed && unreadData > 0
           ? `<span class="badge">⚡ NEW</span>`
           : ""}
@@ -1106,12 +1118,8 @@ async function renderProjectCards(projects) {
     `;
 
     card.onclick = () => {
-      const isInstallation =
-        String(p.operation_type || p.project_type || "").toLowerCase() === "install" ||
-        String(p.operation_type || p.project_type || "").toLowerCase() === "installation";
-
       const destination = new URL(
-        isInstallation ? "install_management.html" : "management.html",
+        "management.html",
         location.href
       );
 
