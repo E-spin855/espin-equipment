@@ -168,6 +168,7 @@ body{
     <button class="btn secondary" id="imagesBtn">🖼 Project Images <span id="imagesBadge" class="badge-dot">NEW</span></button>
   </div>
   <button class="btn" id="manageUsersBtn" style="display:none;">👥 Add / Manage Users</button>
+  <button class="btn" id="clearProjectBtn" style="display:none;background:linear-gradient(180deg,#a42b35,#66151d);border-color:#ff6974;">🗑 Clear Project</button>
 </div>
 
 <div class="nav">
@@ -213,7 +214,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  const isAdmin = userEmail === ADMIN_EMAIL;
+  const sandboxRole = String(window.ESPIN_SANDBOX?.role || "").toLowerCase();
+  const isAdmin = userEmail === ADMIN_EMAIL || ["manager", "sandbox_admin"].includes(sandboxRole);
 
   const projectId =
     urlProjectId ||
@@ -232,6 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   const manageBtn = document.getElementById("manageUsersBtn");
+  const clearProjectBtn = document.getElementById("clearProjectBtn");
   const detailsBadge = document.getElementById("detailsBadge");
   const imagesBadge = document.getElementById("imagesBadge");
 
@@ -242,6 +245,29 @@ document.addEventListener("DOMContentLoaded", () => {
   manageBtn.style.display = isAdmin ? "flex" : "none";
   manageBtn.onclick = () => {
     window.location.href = window.EspinOperation.url(`AdminProjectContacts_Removal.html?id=${projectId}`);
+  };
+
+  clearProjectBtn.style.display = isAdmin ? "flex" : "none";
+  clearProjectBtn.onclick = async () => {
+    if (!confirm("Clear this Removal project and all of its details, images, and authorized users? This cannot be undone.")) return;
+    clearProjectBtn.disabled = true;
+    clearProjectBtn.textContent = "Clearing project…";
+    try {
+      const response = await fetch(`${API_BASE}/api/removal-install/projects`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ action: "delete", projectId })
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "Unable to clear project.");
+      localStorage.removeItem("activeProjectId");
+      localStorage.removeItem(`espin_project_operation_context:${projectId}`);
+      localStorage.removeItem(`espin_operation_context:${projectId}`);
+      location.href = "Projects.html";
+    } catch (error) {
+      clearProjectBtn.disabled = false;
+      clearProjectBtn.textContent = "🗑 Clear Project";
+      alert(error.message || "Unable to clear project.");
+    }
   };
 
   function makeCall(phone) {
