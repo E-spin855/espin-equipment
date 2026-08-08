@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import crypto from "crypto";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -38,6 +39,35 @@ async function isAdmin(client, email) {
   return result.rowCount > 0;
 }
 
+function hasManagerSandboxRole(req) {
+  const cookie = String(req.headers.cookie || "");
+  const match = cookie.match(/(?:^|;\s*)espin_sandbox_auth=([^;]+)/);
+  if (!match || !process.env.SANDBOX_AUTH_HASH_SECRET) return false;
+
+  try {
+    const [encoded, signature] = decodeURIComponent(match[1]).split(".");
+    if (!encoded || !signature) return false;
+    const expected = crypto
+      .createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET)
+      .update(encoded)
+      .digest("hex");
+    const expectedBuffer = Buffer.from(expected);
+    const actualBuffer = Buffer.from(signature);
+    if (
+      expectedBuffer.length !== actualBuffer.length ||
+      !crypto.timingSafeEqual(expectedBuffer, actualBuffer)
+    ) return false;
+
+    const session = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return (
+      Number(session?.exp || 0) > Date.now() &&
+      ["manager", "sandbox_admin"].includes(String(session?.role || "").toLowerCase())
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -49,7 +79,7 @@ export default async function handler(req, res) {
   try {
     client = await pool.connect();
     await prepare(client);
-    const admin = await isAdmin(client, actor);
+    const admin = (await isAdmin(client, actor)) || hasManagerSandboxRole(req);
 
     if (req.method === "GET") {
       if (req.query?.view === "today") {
