@@ -4726,7 +4726,7 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
     <div><button type="button" class="secondary" onclick="espinSandboxLogout()">Log out</button></div>
   </div>
   <script>
-    (() => { const s=window.ESPIN_SANDBOX; if(!s)return; window.addEventListener('DOMContentLoaded',()=>{document.getElementById('sandboxIdentity').textContent=s.display_name||'Manager';const panel=document.getElementById('sandboxRolePanel');if(!panel)return;const box=document.createElement('div');box.id='sandboxViewButtons';box.className='sandbox-notice';box.style='margin:0 0 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';box.innerHTML='<strong style="margin-right:6px">Demo workspace</strong>'+['manager|Manager','vp|VP','quote|Quote','rep_1|Rep 1','rep_2|Rep 2','rep_3|Rep 3'].map(x=>{const [v,l]=x.split('|');return `<button type="button" class="secondary sandbox-view" data-view="${v}">${l}</button>`}).join('');panel.after(box);window.refreshSandboxRepViewButtons=()=>{const invited=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();const assigned=new Set([...(typeof readManagerRepRoster==="function"?readManagerRepRoster():[]).filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>normalizeRepWorkspaceId(rep.workspace_id)),...Object.values(invited).map(normalizeRepWorkspaceId)].filter(Boolean));box.querySelectorAll(".sandbox-view[data-view^=\"rep_\"]").forEach(button=>{button.hidden=assigned.has(button.dataset.view.toUpperCase());});};window.setTimeout(window.refreshSandboxRepViewButtons,0);document.addEventListener('click',e=>{const b=e.target.closest('.sandbox-view');if(!b)return;const v=b.dataset.view;if(!s.allowed_views.includes(v)&&v!=="quote")return;const next={...s,active_view:v};if(/^rep_[123]$/.test(v)){next.assigned_rep_id=v.toUpperCase();next.display_name=`Rep ${v.slice(-1)}`;}sessionStorage.setItem('espinSandboxSession',JSON.stringify(next));const target=v==='manager'?'Manager.html':v==='vp'?'VP.html':v==='quote'?'quote.html':'Rep.html';if(v==='manager'){location.href=target;return;}const child=window.open(target,'_blank');if(child)child.focus();});}); })();
+    (() => { const s=window.ESPIN_SANDBOX; if(!s)return; window.addEventListener('DOMContentLoaded',()=>{document.getElementById('sandboxIdentity').textContent=s.display_name||'Manager';const panel=document.getElementById('sandboxRolePanel');if(!panel)return;const box=document.createElement('div');box.id='sandboxViewButtons';box.className='sandbox-notice';box.style='margin:0 0 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';box.innerHTML='<strong style="margin-right:6px">Demo workspace</strong>'+['manager|Manager','vp|VP','quote|Quote','rep_1|Rep 1','rep_2|Rep 2','rep_3|Rep 3'].map(x=>{const [v,l]=x.split('|');return `<button type="button" class="secondary sandbox-view" data-view="${v}">${l}</button>`}).join('');panel.after(box);const quick=document.getElementById('managerProjectQuickActions');if(quick){quick.hidden=false;box.append(quick);}window.refreshSandboxRepViewButtons=()=>{const invited=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();const assigned=new Set([...(typeof readManagerRepRoster==="function"?readManagerRepRoster():[]).filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>normalizeRepWorkspaceId(rep.workspace_id)),...Object.values(invited).map(normalizeRepWorkspaceId)].filter(Boolean));box.querySelectorAll(".sandbox-view[data-view^=\"rep_\"]").forEach(button=>{button.hidden=assigned.has(button.dataset.view.toUpperCase());});};window.setTimeout(window.refreshSandboxRepViewButtons,0);document.addEventListener('click',e=>{const b=e.target.closest('.sandbox-view');if(!b)return;const v=b.dataset.view;if(!s.allowed_views.includes(v)&&v!=="quote")return;const next={...s,active_view:v};if(/^rep_[123]$/.test(v)){next.assigned_rep_id=v.toUpperCase();next.display_name=`Rep ${v.slice(-1)}`;}sessionStorage.setItem('espinSandboxSession',JSON.stringify(next));const target=v==='manager'?'Manager.html':v==='vp'?'VP.html':v==='quote'?'quote.html':'Rep.html';if(v==='manager'){location.href=target;return;}const child=window.open(target,'_blank');if(child)child.focus();});}); })();
   </script>
   <div id="sandboxRolePanel" class="sandbox-notice" style="display:none;margin-bottom:18px">
     <strong id="sandboxRoleTitle">Sandbox role management</strong>
@@ -4737,6 +4737,11 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
   <script>
   (()=>{const s=window.ESPIN_SANDBOX, panel=document.getElementById('sandboxRolePanel');if(!s||!panel||!["manager","sandbox_admin"].includes(s.role))return;panel.style.display='block';const admin=s.role==='sandbox_admin';document.getElementById('sandboxAdminManagerActions').style.display=admin?'block':'none';document.getElementById('sandboxRoleTitle').textContent=admin?'Sandbox Admin · Manager and Rep access':'Manager · Rep access';const request=async action=>{const email=document.getElementById('sandboxInviteEmail').value.trim();if(!email)return alert('Enter an evaluator work email.');const role=document.getElementById('sandboxInviteRole').value;const r=await fetch('/api/sandbox-roles',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({action,email,role})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Unable to update sandbox access.');const assigned=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();if(action==="assign_rep")assigned[email]=role.toUpperCase();if(action==="revoke_rep")delete assigned[email];localStorage.setItem("espinSandboxAssignedWorkspaces",JSON.stringify(assigned));window.refreshSandboxRepViewButtons?.();alert(d.message||"Sandbox access updated.");};document.getElementById('sandboxInviteButton').onclick=()=>request('assign_rep').catch(e=>alert(e.message));document.getElementById('sandboxRevokeRep').onclick=()=>request('revoke_rep').catch(e=>alert(e.message));document.getElementById('sandboxInviteManager').onclick=()=>request('assign_manager').catch(e=>alert(e.message));document.getElementById('sandboxRevokeManager').onclick=()=>request('revoke_manager').catch(e=>alert(e.message));})();
   </script>
+  <div id="managerProjectQuickActions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Manager's Action</button>
+    <button type="button" class="secondary" onclick="window.open('removal-install/Projects.html','_blank')">Removal Projects</button>
+    <button type="button" class="secondary" onclick="window.open('removal-install/install-projects.html','_blank')">Installation Projects</button>
+  </div>
   <div class="espin-confidential-notice">
     Confidential and Proprietary
   </div>
@@ -4792,24 +4797,6 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
 
     <div class="grid">
       <div>
-        <div class="panel">
-          <div class="panel-head">
-            <h2>Local Inputs</h2>
-            <span class="mini">OEM browser only</span>
-          </div>
-
-          <div class="panel-body">
-            <div class="btns" style="margin-bottom:16px;">
-              <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Manager's Action</button>
-              <button type="button" class="secondary" onclick="window.open('removal-install/Projects.html','_blank')">Removal Projects</button>
-              <button type="button" class="secondary" onclick="window.open('removal-install/install-projects.html','_blank')">Installation Projects</button>
-            </div>
-
-            <div class="footer-note">
-              Restores the original Hub records and clears rep-entered actions without deleting equipment or manager data.
-            </div>
-          </div>
-        </div>
         <div class="panel" style="margin-top:18px">
           <div class="panel-body" id="repAdminPanel"></div>
         </div>
