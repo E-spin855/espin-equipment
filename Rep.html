@@ -25059,6 +25059,17 @@ return true;
           // Never apply Trade Desk fields to a Rep New Project. A Trade-In
           // record is separate equipment for Removal, even when both records
           // share a source-project reference.
+          if (existingNewProject) {
+            applyTradeInStatusToNewProject(
+              existingNewProject,
+              item,
+              tradeInValue,
+              projectId,
+              modalityId,
+              alreadyProcessed
+            );
+            changed = true;
+          }
           if (!alreadyProcessed && isWonTradeInRecord(item) && !isTradeInAttachedToRemovalProject(item)) {
             saveAsUnmatchedTradeInLead(item);
             changed = true;
@@ -25089,6 +25100,30 @@ return true;
       }
 
       return changed;
+    }
+
+    function applyTradeInStatusToNewProject(rec, item, tradeInValue, projectId, modalityId, alreadyProcessed) {
+      // Status-only bridge: it intentionally does not write any equipment or
+      // facility fields, preserving the Rep-created New Project as its own
+      // record while restoring Trade Desk progress visibility.
+      rec.tradein_sync_received = true;
+      rec.tradein_seen_by_rep = alreadyProcessed ? rec.tradein_seen_by_rep : false;
+      rec.tradein_project_id = projectId || rec.tradein_project_id || "";
+      rec.tradein_modality_id = modalityId || rec.tradein_modality_id || "";
+      rec.trade_desk_status = item.trade_desk_status || item.tradein_status || rec.trade_desk_status || "Submitted";
+      rec.tradein_status = item.tradein_status || item.trade_desk_status || rec.tradein_status || "submitted";
+      rec.tradein_evaluation_status = item.tradein_evaluation_status || rec.tradein_evaluation_status || "";
+      rec.external_tradein_value = tradeInValue;
+      rec.external_tradein_status = item.external_tradein_status || "pending_rep_review";
+      rec.external_tradein_received_at = item.last_tradein_update_at || item.updated_at || new Date().toISOString();
+      rec.tradein_last_update_at = item.last_tradein_update_at || item.updated_at || rec.tradein_last_update_at || "";
+      rec.tradein_last_update_by = item.last_tradein_update_by || rec.tradein_last_update_by || "";
+      rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
+      if (!alreadyProcessed) {
+        rec.manager_unseen_update = true;
+        rec.manager_flash_at = new Date().toISOString();
+        rec.manager_flash_type = "tradein_status_sync";
+      }
     }
 
     function applyTradeInSyncToRecord(rec, item, tradeInValue, projectId, modalityId, serial, alreadyProcessed, flashType) {
