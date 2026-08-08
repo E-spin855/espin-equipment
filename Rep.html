@@ -5166,6 +5166,9 @@ tr.unread-message-row td{
 .active-project-stage{margin-top:9px;color:#ffe2e7;font-size:14px;font-weight:900}
 .active-project-card.complete .active-project-stage{color:#caffdf}
 .active-project-count{margin-top:4px;color:#88a9c7;font-size:12px;font-weight:750}
+.active-project-stage-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 18px 16px}
+.active-project-stage-row .active-project-stage{margin-top:0}
+.active-project-stage-row .active-project-actions{margin:0 0 0 auto}
 .active-project-expanded{display:none;padding:0 18px 18px;border-top:1px solid rgba(88,184,255,.12)}
 .active-project-card.open .active-project-expanded{display:block}
 .active-project-milestones{position:relative;margin:15px 0 0;padding-left:4px;display:grid;gap:0}
@@ -5182,6 +5185,7 @@ tr.unread-message-row td{
 .milestone-date{margin-top:3px;color:#66839e;font-size:11px;font-weight:750}
 .active-project-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
 .active-project-open-btn{background:linear-gradient(90deg,#0b7ea5,#00d6ff)!important;color:#03131c!important;box-shadow:0 0 18px rgba(0,214,255,.24)!important}
+@media(max-width:720px){.active-project-stage-row{align-items:flex-start;flex-direction:column}.active-project-stage-row .active-project-actions{margin-left:0}}
 .active-project-empty{padding:18px;border:1px dashed rgba(88,184,255,.22);border-radius:14px;color:#8fa9c1;text-align:center}
 </style>
 
@@ -20904,6 +20908,35 @@ function getActiveProjectTimestamp(project) {
   ).getTime() || 0;
 }
 
+function completedActiveProjectMilestones(project) {
+  return Array.isArray(project?.milestones)
+    ? project.milestones.filter(milestone => milestone?.completed === true).length
+    : 0;
+}
+
+function preserveActiveProjectProgress(existing, incoming) {
+  const existingCompleted = completedActiveProjectMilestones(existing);
+  const incomingCompleted = completedActiveProjectMilestones(incoming);
+  const existingProgress = Number(existing?.progress) || 0;
+  const incomingProgress = Number(incoming?.progress) || 0;
+  const incomingIsAtLeastAsComplete =
+    incomingCompleted > existingCompleted ||
+    (incomingCompleted === existingCompleted && incomingProgress >= existingProgress);
+
+  // A page reload or a stale server response must never erase a milestone
+  // snapshot that the Rep has already received from the project workspace.
+  const progressSource = incomingIsAtLeastAsComplete ? incoming : existing;
+  return {
+    ...existing,
+    ...incoming,
+    milestones: Array.isArray(progressSource?.milestones)
+      ? progressSource.milestones.map(milestone => ({ ...milestone }))
+      : [],
+    progress: Math.max(existingProgress, incomingProgress),
+    current_stage: progressSource?.current_stage || incoming?.current_stage || existing?.current_stage || ""
+  };
+}
+
 function collapseActiveProjectsForRecord(projects, rec) {
   const grouped = new Map();
 
@@ -20935,11 +20968,13 @@ function collapseActiveProjectsForRecord(projects, rec) {
       ? newerMilestones
       : olderMilestones;
 
+    const mergedProgress = preserveActiveProjectProgress(older, newer);
     const merged = {
-      ...older,
-      ...newer,
+      ...mergedProgress,
       operation_type: type,
-      milestones: milestones.map(milestone => ({ ...milestone }))
+      milestones: mergedProgress.milestones.length
+        ? mergedProgress.milestones.map(milestone => ({ ...milestone }))
+        : milestones.map(milestone => ({ ...milestone }))
     };
 
     merged.active_project_id =
@@ -21052,17 +21087,21 @@ function renderActiveProjects() {
               <div class="sci-progress-track"><div class="sci-progress-fill" style="width:${progress}%"></div></div>
               <div class="sci-progress-percent">${progress}%</div>
             </div>
-            <div class="active-project-stage">${escapeHtml(currentStage)}</div>
-            <div class="active-project-count">${completed} of ${milestones.length} milestones complete</div>
           </div>
           <div class="active-project-chevron">⌄</div>
         </button>
-        <div class="active-project-expanded">
-          <div class="active-project-milestones">${milestoneHtml}</div>
+        <div class="active-project-stage-row">
+          <div>
+            <div class="active-project-stage">${escapeHtml(currentStage)}</div>
+            <div class="active-project-count">${completed} of ${milestones.length} milestones complete</div>
+          </div>
           <div class="active-project-actions">
             ${managementUrl ? `<button type="button" class="active-project-open-btn" onclick="window.open('${escapeJs(managementUrl)}','_blank')">Open Project Management</button>` : ""}
             ${project.project_url ? `<button type="button" class="active-project-open-btn" onclick="window.open('${escapeJs(project.project_url)}','_blank')">Open Project</button>` : ""}
           </div>
+        </div>
+        <div class="active-project-expanded">
+          <div class="active-project-milestones">${milestoneHtml}</div>
         </div>
       </article>`;
   }).join("");
@@ -21261,7 +21300,7 @@ function upsertEspinActiveProject(project) {
   });
 
   if (index >= 0) {
-    records[index] = { ...records[index], ...project };
+    records[index] = preserveActiveProjectProgress(records[index], project);
   } else {
     records.unshift(project);
   }

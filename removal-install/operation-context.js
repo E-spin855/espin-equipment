@@ -220,7 +220,32 @@
       if (Array.isArray(parsed)) records = parsed;
     } catch (_) {}
     const index = records.findIndex(item => matches(item, enriched));
-    if (index >= 0) records[index] = { ...records[index], ...enriched };
+    if (index >= 0) {
+      const existing = records[index];
+      const completed = value => Array.isArray(value?.milestones)
+        ? value.milestones.filter(milestone => milestone?.completed === true).length
+        : 0;
+      const existingCompleted = completed(existing);
+      const incomingCompleted = completed(enriched);
+      const existingProgress = Number(existing?.progress) || 0;
+      const incomingProgress = Number(enriched?.progress) || 0;
+      const incomingIsAtLeastAsComplete =
+        incomingCompleted > existingCompleted ||
+        (incomingCompleted === existingCompleted && incomingProgress >= existingProgress);
+      const progressSource = incomingIsAtLeastAsComplete ? enriched : existing;
+
+      // Preserve the latest completed milestones when a page is reopened or
+      // another source sends an older project snapshot.
+      records[index] = {
+        ...existing,
+        ...enriched,
+        milestones: Array.isArray(progressSource?.milestones)
+          ? progressSource.milestones.map(milestone => ({ ...milestone }))
+          : [],
+        progress: Math.max(existingProgress, incomingProgress),
+        current_stage: progressSource?.current_stage || enriched.current_stage || existing.current_stage || ""
+      };
+    }
     else records.unshift(enriched);
     localStorage.setItem(key, JSON.stringify(records));
     return enriched;
