@@ -38,6 +38,7 @@ FROM project_photos p
 WHERE p.project_id = $1
 AND (
       p.uploaded_by_email = $2
+      OR LOWER(COALESCE(p.uploaded_by_email, '')) = 'system'
       OR p.queued_for_email = false
 )
 AND NOT EXISTS (

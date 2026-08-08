@@ -12,6 +12,11 @@ function normalizeUploadcareUrl(url) {
   return match ? `https://ucarecdn.com/${match[0]}/` : url;
 }
 
+function cleanEmail(value) {
+  if (Array.isArray(value)) value = value[0];
+  return String(value || "").toLowerCase().trim();
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -30,6 +35,7 @@ export default async function handler(req, res) {
     photo_title,
     photo_comment
   } = body;
+  const uploadedByEmail = cleanEmail(req.headers["x-user-email"] || req.headers["x-useremail"]) || "system";
 
   const client = await pool.connect();
 
@@ -84,7 +90,7 @@ export default async function handler(req, res) {
           normalizedUrl,
           photo_title || null,
           photo_comment || null,
-          "system" // no user dependency
+          uploadedByEmail
         ]
       );
 
