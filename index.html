@@ -87,13 +87,6 @@ input{
   cursor:pointer;
 }
 .btn:disabled{opacity:.6;}
-#pinInput{
-  text-align:center;
-  letter-spacing:8px;
-  font-size:24px;
-  font-weight:bold;
-}
-.hidden{display:none!important;}
 
 .footer{
   position:fixed;
@@ -118,27 +111,17 @@ input{
 <div class="page">
 <div class="container">
 
-  <div id="emailStep">
+  <div id="loginStep">
     <div class="logo-area">
       <img src="/index logo.png" alt="Espin Medical">
     </div>
     <h1>ESPIN LINK SANDBOX</h1>
-    <p class="subtitle">Approved evaluator access. Enter your work email to receive a one-time access code.</p>
-    <input id="emailInput" type="email" placeholder="Work email" autocomplete="email" inputmode="email">
+    <p class="subtitle">Approved evaluator access. Sign in with your sandbox username and password.</p>
+    <input id="usernameInput" type="text" placeholder="Sandbox username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password">
     <div class="notice"><strong>Fictional information only.</strong><br>Do not enter customer, patient, employee, or confidential business data. This temporary evaluation workspace contains fictional sandbox records.</div>
     <label class="acknowledgment"><input id="sandboxAck" type="checkbox"><span>I understand that I may use only fictional information in this sandbox.</span></label>
-    <button id="btn1" class="btn">Continue</button>
-  </div>
-
-  <div id="pinStep" class="hidden">
-    <div class="logo-area">
-      <img src="/index logo.png" alt="Espin Medical">
-    </div>
-    <h1>Verify Access</h1>
-    <p class="subtitle">Enter the 6-digit one-time code sent to your email.</p>
-    <input id="pinInput" type="text" inputmode="numeric" maxlength="6" placeholder="000000">
-    <button id="btn2" class="btn">Sign In</button>
-    <p id="backBtn" style="margin-top:15px;font-size:14px;opacity:.8;cursor:pointer">← Back</p>
+    <button id="signInButton" class="btn">Sign In</button>
   </div>
 
 </div>
@@ -146,100 +129,56 @@ input{
 
 <div class="footer">
   <strong>ESPIN LINK SANDBOX · Evaluation environment</strong><br>
-  Temporary access only. Tester email is used only to verify access and is not stored in ESPIN LINK sandbox data.
+  Temporary access only. No personal email or contact information is required for sandbox access.
 </div>
 
 <script>
 const API_URL = "";
-
 const SANDBOX_SESSION_KEY = "espinSandboxSession";
-let pendingEmail = ""; // Exists in memory only until PIN verification completes.
 
-/* DOM */
-const emailInput = document.getElementById("emailInput");
-const pinInput   = document.getElementById("pinInput");
-const btn1       = document.getElementById("btn1");
-const btn2       = document.getElementById("btn2");
-const emailStep  = document.getElementById("emailStep");
-const pinStep    = document.getElementById("pinStep");
+const usernameInput = document.getElementById("usernameInput");
+const passwordInput = document.getElementById("passwordInput");
+const signInButton = document.getElementById("signInButton");
 const sandboxAck = document.getElementById("sandboxAck");
-const backBtn    = document.getElementById("backBtn");
+
+// Remove values written by the retired email/PIN login flow if this browser used it before.
+localStorage.removeItem("espinUserEmail");
+localStorage.removeItem("espinEquipment_userEmail");
 
 function resetLogin(){
-  pendingEmail = "";
-  pinInput.value = "";
-  btn2.disabled = false;
-  btn2.textContent = "Sign In";
-  pinStep.classList.add("hidden");
-  emailStep.classList.remove("hidden");
+  passwordInput.value = "";
+  signInButton.disabled = false;
+  signInButton.textContent = "Sign In";
 }
 
-/* SEND PIN */
-btn1.addEventListener("click", async ()=>{
-  const email = emailInput.value.trim().toLowerCase();
-  if(!email.includes("@")) return alert("Enter a valid work email.");
+signInButton.addEventListener("click", async ()=>{
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if(!username || !password) return alert("Enter your sandbox username and password.");
   if(!sandboxAck.checked) return alert("Please acknowledge the fictional-information-only sandbox notice.");
 
-  btn1.disabled = true;
-  btn1.textContent = "Sending…";
+  signInButton.disabled = true;
+  signInButton.textContent = "Signing in…";
 
   try{
-    const res = await fetch(`${API_URL}/api/send-pin`,{
+    const res = await fetch(`${API_URL}/api/sandbox-login`,{
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({
-        email,
-        platform:"ios",
-        deviceToken: window.iosDeviceToken || null
-      })
+      body:JSON.stringify({ username, password })
     });
-
     const data = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error || "Unable to sign in with those credentials.");
 
-    if(!res.ok){
-      throw new Error(data.error || "User not authorized for login");
-    }
-
-    pendingEmail = email;
-    emailStep.classList.add("hidden");
-    pinStep.classList.remove("hidden");
-
-  }catch(err){
-    btn1.disabled = false;
-    btn1.textContent = "Continue";
-    alert(err.message || "Unable to send PIN");
-  }
-});
-
-/* VERIFY PIN */
-btn2.addEventListener("click", async ()=>{
-  const pin = pinInput.value.trim();
-  if(pin.length !== 6) return alert("Enter full PIN");
-
-  const email = pendingEmail;
-  if(!email) return resetLogin();
-
-  btn2.disabled = true;
-  btn2.textContent = "Verifying…";
-
-  try{
-    const res = await fetch(`${API_URL}/api/verify-pin`,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify({ email, pin })
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if(!res.ok) throw new Error(data.error || "Invalid or expired PIN");
-    // The server must determine this assignment from its approved-evaluator configuration.
     const identity = data.sandbox_identity || data.identity || data;
     const allowedViews = Array.isArray(identity.allowed_views) ? identity.allowed_views : [];
     const role = String(identity.role || "").toLowerCase();
     const assignedRepId = String(identity.assigned_rep_id || "").toUpperCase();
-    const isAdmin = role === "sandbox_admin" && ["manager","vp","rep_1","rep_2","rep_3"].every(view => allowedViews.includes(view));
-    const isManager = role === "manager" && ["manager","vp","rep_1","rep_2","rep_3"].every(view => allowedViews.includes(view));
+    const allManagerViews = ["manager","vp","rep_1","rep_2","rep_3"];
+    const isAdmin = role === "sandbox_admin" && allManagerViews.every(view => allowedViews.includes(view));
+    const isManager = role === "manager" && allManagerViews.every(view => allowedViews.includes(view));
     const isRep = role === "rep" && /^REP_[123]$/.test(assignedRepId) && allowedViews.length === 1 && allowedViews[0] === assignedRepId.toLowerCase();
     if (!isAdmin && !isManager && !isRep) throw new Error("Your sandbox access assignment is invalid.");
+
     const session = {
       role: isAdmin ? "sandbox_admin" : (isManager ? "manager" : "rep"),
       display_name: isAdmin ? "Sandbox Admin" : (isManager ? "Manager" : `Rep ${assignedRepId.slice(-1)}`),
@@ -249,18 +188,16 @@ btn2.addEventListener("click", async ()=>{
       expires_at: identity.expires_at || null
     };
     sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify(session));
-    localStorage.setItem("espinUserEmail", email);
-    localStorage.setItem("espinEquipment_userEmail", email);
-    pendingEmail = "";
     location.replace((isAdmin || isManager) ? "Manager.html" : "Rep.html");
   }catch(err){
     resetLogin();
-    alert(err.message || "Unable to verify the PIN.");
+    alert(err.message || "Unable to sign in with those credentials.");
   }
 });
 
-/* BACK */
-backBtn.addEventListener("click", resetLogin);
+passwordInput.addEventListener("keydown", event => {
+  if(event.key === "Enter") signInButton.click();
+});
 </script>
 
 </body>
