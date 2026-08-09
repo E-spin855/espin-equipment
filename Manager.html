@@ -4742,6 +4742,20 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
   <script>
   (()=>{const s=window.ESPIN_SANDBOX, panel=document.getElementById('sandboxRolePanel');if(!s||!panel||!["manager","sandbox_admin"].includes(s.role))return;panel.style.display='block';const admin=s.role==='sandbox_admin';document.getElementById('sandboxAdminManagerActions').style.display=admin?'block':'none';document.getElementById('sandboxRoleTitle').textContent=admin?'Sandbox Admin · Manager and Rep access':'Manager · Rep access';const request=async action=>{const email=document.getElementById('sandboxInviteEmail').value.trim();if(!email)return alert('Enter an evaluator work email.');const role=document.getElementById('sandboxInviteRole').value;const r=await fetch('/api/sandbox-roles',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({action,email,role})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Unable to update sandbox access.');const assigned=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();if(action==="assign_rep")assigned[email]=role.toUpperCase();if(action==="revoke_rep")delete assigned[email];localStorage.setItem("espinSandboxAssignedWorkspaces",JSON.stringify(assigned));window.refreshSandboxRepViewButtons?.();alert(d.message||"Sandbox access updated.");};document.getElementById('sandboxInviteButton').onclick=()=>request('assign_rep').catch(e=>alert(e.message));document.getElementById('sandboxRevokeRep').onclick=()=>request('revoke_rep').catch(e=>alert(e.message));document.getElementById('sandboxInviteManager').onclick=()=>request('assign_manager').catch(e=>alert(e.message));document.getElementById('sandboxRevokeManager').onclick=()=>request('revoke_manager').catch(e=>alert(e.message));})();
   </script>
+  <script>
+    // Keep development revocations local while sandbox authentication is temporarily disabled.
+    document.getElementById('sandboxRevokeRep').addEventListener('click', event => {
+      if (window.SANDBOX_AUTH_ENABLED) return;
+      event.stopImmediatePropagation();
+      const email = document.getElementById('sandboxInviteEmail').value.trim();
+      if (!email) return alert('Enter an evaluator work email.');
+      const assigned = (() => { try { return JSON.parse(localStorage.getItem('espinSandboxAssignedWorkspaces') || '{}'); } catch { return {}; } })();
+      delete assigned[email];
+      localStorage.setItem('espinSandboxAssignedWorkspaces', JSON.stringify(assigned));
+      window.refreshSandboxRepViewButtons?.();
+      alert('Rep access revoked.');
+    }, true);
+  </script>
   <div id="managerProjectQuickActions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Manager's Action</button>
     <button type="button" class="secondary" onclick="window.open('removal-install/Projects.html','_blank')">Removal Projects</button>
@@ -4958,7 +4972,7 @@ const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const MANAGER_REP_ROSTER_KEY = "espin_manager_rep_roster_v1";
 const MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY = "espin_manager_rep_account_assignments_v1";
 // DEVELOPMENT ONLY: change to true before the sandbox trial to require signed server sessions again.
-const SANDBOX_AUTH_ENABLED = false;
+window.SANDBOX_AUTH_ENABLED = false;
 
 // Original manager dataset embedded from Hub.xlsx → "AXIS Upload".
 const HUB_PRELOADED_ROWS = [
@@ -8919,7 +8933,7 @@ async function revokeManagerRepInvitation(repId) {
   const rep = roster.find(item => item.id === repId);
   if (!rep || !confirm(`Revoke ${rep.name}'s Rep workspace access?`)) return;
   try {
-    if (SANDBOX_AUTH_ENABLED) {
+    if (window.SANDBOX_AUTH_ENABLED) {
       const response = await fetch("/api/sandbox-roles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
