@@ -4957,6 +4957,8 @@ const INSTALL_BASE_FINAL_SYNC_KEY = "axis_install_base_final_sync_v1";
 const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const MANAGER_REP_ROSTER_KEY = "espin_manager_rep_roster_v1";
 const MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY = "espin_manager_rep_account_assignments_v1";
+// DEVELOPMENT ONLY: change to true before the sandbox trial to require signed server sessions again.
+const SANDBOX_AUTH_ENABLED = false;
 
 // Original manager dataset embedded from Hub.xlsx → "AXIS Upload".
 const HUB_PRELOADED_ROWS = [
@@ -8917,14 +8919,16 @@ async function revokeManagerRepInvitation(repId) {
   const rep = roster.find(item => item.id === repId);
   if (!rep || !confirm(`Revoke ${rep.name}'s Rep workspace access?`)) return;
   try {
-    const response = await fetch("/api/sandbox-roles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ action: "revoke_rep", email: rep.email, role: normalizeRepWorkspaceId(rep.workspace_id).toLowerCase() })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Unable to revoke access.");
+    if (SANDBOX_AUTH_ENABLED) {
+      const response = await fetch("/api/sandbox-roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ action: "revoke_rep", email: rep.email, role: normalizeRepWorkspaceId(rep.workspace_id).toLowerCase() })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to revoke access.");
+    }
     rep.invitation_status = "revoked";
     rep.revoked_at = new Date().toISOString();
     saveManagerRepRoster(roster);
