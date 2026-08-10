@@ -7,7 +7,7 @@ import { sendPushToUsers } from "../_lib/push-equipment.js";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: true }
 });
 
 const FROM_EMAIL = "Espin Medical <info@espinmedical.com>";

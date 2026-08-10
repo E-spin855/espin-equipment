@@ -10,7 +10,7 @@ const APNS_HOST = "https://api.push.apple.com";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: true }
 });
 
 /* FIREBASE INIT */

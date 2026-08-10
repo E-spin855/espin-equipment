@@ -4,7 +4,7 @@ import { sendPushToUsers } from "./_lib/push.js";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: true }
 });
 
 const ALLOWED_FIELDS = [

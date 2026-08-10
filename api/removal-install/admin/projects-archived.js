@@ -3,7 +3,7 @@ import { kv } from "@vercel/kv";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: true }
 });
 
 // RESTORED: Query the database instead of checking the email string
