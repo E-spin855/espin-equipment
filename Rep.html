@@ -26045,9 +26045,24 @@ if (showCompletedProjectsBtn) {
     el.addEventListener("change", updateQuotePreview);
   });
 
+  async function fetchForRepReset(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("Project cleanup timed out. Please try Reset Rep Actions again.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function clearRemovalInstallProjects() {
     const resetEmail = String(localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
-    const response = await fetch("/api/removal-install/projects", {
+    const response = await fetchForRepReset("/api/removal-install/projects", {
       headers: { "x-user-email": resetEmail }
     });
     const payload = await response.json().catch(() => ([]));
@@ -26065,7 +26080,7 @@ if (showCompletedProjectsBtn) {
         .map(project => String(project?.id || "").trim())
         .filter(Boolean)
         .map(async id => {
-          const deleteResponse = await fetch("/api/removal-install/projects", {
+          const deleteResponse = await fetchForRepReset("/api/removal-install/projects", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -26088,6 +26103,10 @@ if (showCompletedProjectsBtn) {
     resetButton.dataset.originalText ||= resetButton.textContent;
     resetButton.disabled = true;
     resetButton.textContent = "Clearing Projects…";
+
+    // Always clear the local demo inbox, even if the server-side project
+    // cleanup later fails or times out.
+    localStorage.removeItem("espin_demo_email_inbox_v1");
 
     try {
       await clearRemovalInstallProjects();
