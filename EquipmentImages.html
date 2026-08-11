@@ -510,6 +510,24 @@ button:disabled{
   font-weight:800;
   color:#0f172a;
 }
+.demo-library-folder{
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  text-align:center;
+}
+.demo-library-folder .folder-icon{font-size:46px;line-height:1;}
+.demo-library-back{
+  border:none;
+  background:none;
+  color:#0b67b2;
+  font-weight:800;
+  cursor:pointer;
+  padding:6px 0;
+}
 .demo-library-status{
   padding:20px 8px;
   text-align:center;
@@ -567,7 +585,10 @@ button:disabled{
   <div id="demoLibraryModal" class="demo-library-modal" aria-hidden="true">
     <div class="demo-library-sheet">
       <div class="demo-library-head">
-        <div class="demo-library-title">Demo Image Library</div>
+        <div>
+          <button id="demoLibraryBack" class="demo-library-back" type="button" hidden>← All folders</button>
+          <div id="demoLibraryTitle" class="demo-library-title">Demo Image Library</div>
+        </div>
         <button id="demoLibraryClose" class="demo-library-close" type="button" aria-label="Close">✕</button>
       </div>
       <div id="demoLibraryStatus" class="demo-library-status">Loading demo images...</div>
@@ -595,6 +616,9 @@ const demoLibraryModal = document.getElementById("demoLibraryModal");
 const demoLibraryClose = document.getElementById("demoLibraryClose");
 const demoLibraryGrid = document.getElementById("demoLibraryGrid");
 const demoLibraryStatus = document.getElementById("demoLibraryStatus");
+const demoLibraryTitle = document.getElementById("demoLibraryTitle");
+const demoLibraryBack = document.getElementById("demoLibraryBack");
+let demoLibraryItems = [];
 
 previewClose.onclick = () => previewModal.classList.remove("active");
 previewModal.onclick = e => {
@@ -731,8 +755,41 @@ function normalizeDemoImage(item, index){
 
   return {
     url,
-    title: String(item?.title || item?.name || `Demo Image ${index + 1}`).trim()
+    title: String(item?.title || item?.name || `Demo Image ${index + 1}`).trim(),
+    category: String(item?.category || "Other").trim() || "Other"
   };
+}
+
+function renderDemoImageFolders(){
+  demoLibraryGrid.innerHTML = "";
+  demoLibraryTitle.textContent = "Demo Image Library";
+  demoLibraryBack.hidden = true;
+  const categories = [...new Set(demoLibraryItems.map(item => item.category))].sort();
+
+  categories.forEach(category => {
+    const count = demoLibraryItems.filter(item => item.category === category).length;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "demo-library-item demo-library-folder";
+    button.innerHTML = `<span class="folder-icon" aria-hidden="true">📁</span><span>${category} (${count})</span>`;
+    button.onclick = () => renderDemoImagesForCategory(category);
+    demoLibraryGrid.append(button);
+  });
+}
+
+function renderDemoImagesForCategory(category){
+  demoLibraryGrid.innerHTML = "";
+  demoLibraryTitle.textContent = `${category} Images`;
+  demoLibraryBack.hidden = false;
+
+  demoLibraryItems.filter(item => item.category === category).forEach(item => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "demo-library-item";
+    button.innerHTML = `<img src="${item.url}" alt=""><span>${item.title}</span>`;
+    button.onclick = () => addDemoImageToProject(item);
+    demoLibraryGrid.append(button);
+  });
 }
 
 async function loadDemoImageLibrary(){
@@ -754,15 +811,8 @@ async function loadDemoImageLibrary(){
     }
 
     demoLibraryStatus.style.display = "none";
-
-    items.forEach(item => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "demo-library-item";
-      btn.innerHTML = `<img src="${item.url}" alt=""><span>${item.title}</span>`;
-      btn.onclick = () => addDemoImageToProject(item);
-      demoLibraryGrid.append(btn);
-    });
+    demoLibraryItems = items;
+    renderDemoImageFolders();
   } catch (err) {
     console.error("DEMO LIBRARY ERROR:", err);
     demoLibraryStatus.textContent = err.message || "Demo image library could not be loaded.";
@@ -818,6 +868,8 @@ demoLibraryClose.onclick = () => {
   demoLibraryModal.classList.remove("active");
   demoLibraryModal.setAttribute("aria-hidden", "true");
 };
+
+demoLibraryBack.onclick = renderDemoImageFolders;
 
 demoLibraryModal.onclick = e => {
   if (e.target === demoLibraryModal) demoLibraryClose.click();
