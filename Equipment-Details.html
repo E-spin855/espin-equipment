@@ -604,6 +604,7 @@ const ADMIN_DOWNLOAD_EXCEL_ENABLED = false;
 
 const AXIS_TRADE_DESK_INBOX_KEY = "axis_trade_desk_inbox_v1";
 const AXIS_MANAGER_PING_KEY = "axis_manager_sync_ping_v1";
+const DEMO_EMAIL_DRAFT_PREFIX = "espin_demo_equipment_email_draft:";
 
 const projectId =
   params.get("projectId") ||
@@ -2464,6 +2465,18 @@ async function saveData() {
 
   try {
     const { effectiveModality } = await saveDetailsOnly();
+
+    // Keep the saved detail values available until the selected images are sent.
+    // EquipmentImages.html uses this to build one combined demo email.
+    localStorage.setItem(
+      `${DEMO_EMAIL_DRAFT_PREFIX}${projectId}:${modalityId}`,
+      JSON.stringify({
+        projectId,
+        modalityId,
+        modality: effectiveModality,
+        data: { ...formData }
+      })
+    );
 
     const target = new URL("EquipmentImages.html", window.location.href);
     target.searchParams.set("projectId", projectId);

@@ -850,6 +850,77 @@ async function fetchCurrentEquipmentDetailsForAxisSync(){
     return {};
   }
 }
+
+const DEMO_EMAIL_INBOX_KEY = "espin_demo_email_inbox_v1";
+const DEMO_EMAIL_DRAFT_PREFIX = "espin_demo_equipment_email_draft:";
+
+function escapeDemoEmailHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function demoEmailLabel(key) {
+  return String(key || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+async function createCombinedDemoEmail(sentPhotoIds) {
+  const draftKey = `${DEMO_EMAIL_DRAFT_PREFIX}${projectId}:${modalityId}`;
+  let draft = {};
+  try { draft = JSON.parse(localStorage.getItem(draftKey) || "{}"); } catch {}
+
+  const liveDetails = await fetchCurrentEquipmentDetailsForAxisSync();
+  const details = liveDetails?.data && typeof liveDetails.data === "object"
+    ? liveDetails.data
+    : (draft?.data || liveDetails || {});
+  const selectedPhotos = photos.filter(photo => sentPhotoIds.includes(getPrimaryId(photo)));
+  const equipmentName = details.equipment_model || details.equipment || details.model || draft?.modality || "Equipment";
+  const detailRows = Object.entries(details)
+    .filter(([key, value]) => !["id", "projectId", "project_id", "modalityId", "modality_id", "data"].includes(key))
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined && typeof value !== "object")
+    .map(([key, value]) => `
+      <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;">
+        <div style="font-weight:700;">${escapeDemoEmailHtml(demoEmailLabel(key))}</div>
+        <div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(value)}</div>
+      </div>`)
+    .join("");
+  const imageCards = selectedPhotos.map(photo => `
+    <div style="margin:18px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
+      <div style="font-size:18px;font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(photo.photo_title || "Equipment Image")}</div>
+      ${photo.photo_comment ? `<div style="margin:8px 0;color:#333;">${escapeDemoEmailHtml(photo.photo_comment)}</div>` : ""}
+      <img src="${escapeDemoEmailHtml(photo.photo_url)}" alt="${escapeDemoEmailHtml(photo.photo_title || "Equipment image")}" style="display:block;max-width:100%;max-height:420px;margin-top:10px;border-radius:6px;">
+    </div>`).join("");
+
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem(DEMO_EMAIL_INBOX_KEY) || "[]"); } catch {}
+  if (!Array.isArray(inbox)) inbox = [];
+
+  inbox.unshift({
+    id: Date.now().toString(),
+    projectId,
+    modalityId,
+    subject: `Equipment Update: ${equipmentName}`,
+    from: "Espin Medical <info@espinmedical.com>",
+    createdAt: new Date().toLocaleString(),
+    html: `<div style="font-family:Arial,sans-serif;color:#222;">
+      <h1 style="font-size:34px;">Equipment Update: ${escapeDemoEmailHtml(equipmentName)}</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Equipment Details</div>
+      ${detailRows || '<div style="padding:16px;font-size:20px;">No equipment details available.</div>'}
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Selected Images</div>
+      ${imageCards}
+    </div>`
+  });
+
+  localStorage.setItem(DEMO_EMAIL_INBOX_KEY, JSON.stringify(inbox));
+  localStorage.removeItem(draftKey);
+}
+
 async function syncImagesToAxisDemo(sentPhotoIds) {
   const key = "axis_tradein_sync_records_v1";
   const lifecycleKey = "espin_lifecycle_demo_records_v1";
@@ -1247,6 +1318,7 @@ if (!emailRes.ok) {
 }
 
 await syncImagesToAxisDemo(ids);
+    await createCombinedDemoEmail(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
       .forEach(cb => (cb.checked = false));
