@@ -528,6 +528,14 @@ button:disabled{
   cursor:pointer;
   padding:6px 0;
 }
+.demo-library-single{grid-template-columns:minmax(0,1fr);}
+.demo-library-single .demo-library-item{max-width:520px;margin:0 auto;width:100%;}
+.demo-library-single .demo-library-item img{height:280px;}
+.demo-library-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;}
+.demo-library-controls button{border:1px solid #b8c9d9;background:#fff;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer;color:#0f172a;}
+.demo-library-controls button.primary{background:#0b67b2;color:#fff;border-color:#0b67b2;}
+.demo-library-controls button:disabled{opacity:.45;cursor:not-allowed;}
+.demo-library-counter{font-weight:800;color:#52606d;min-width:56px;text-align:center;}
 .demo-library-status{
   padding:20px 8px;
   text-align:center;
@@ -762,6 +770,7 @@ function normalizeDemoImage(item, index){
 
 function renderDemoImageFolders(){
   demoLibraryGrid.innerHTML = "";
+  demoLibraryGrid.classList.remove("demo-library-single");
   demoLibraryTitle.textContent = "Demo Image Library";
   demoLibraryBack.hidden = true;
   const categories = [...new Set(demoLibraryItems.map(item => item.category))].sort();
@@ -778,18 +787,51 @@ function renderDemoImageFolders(){
 }
 
 function renderDemoImagesForCategory(category){
-  demoLibraryGrid.innerHTML = "";
+  const categoryItems = demoLibraryItems.filter(item => item.category === category);
+  let currentIndex = 0;
   demoLibraryTitle.textContent = `${category} Images`;
   demoLibraryBack.hidden = false;
+  demoLibraryGrid.classList.add("demo-library-single");
 
-  demoLibraryItems.filter(item => item.category === category).forEach(item => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "demo-library-item";
-    button.innerHTML = `<img src="${item.url}" alt=""><span>${item.title}</span>`;
-    button.onclick = () => addDemoImageToProject(item);
-    demoLibraryGrid.append(button);
-  });
+  const renderCurrentImage = () => {
+    const item = categoryItems[currentIndex];
+    demoLibraryGrid.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "demo-library-item";
+    card.innerHTML = `<img src="${item.url}" alt=""><span>${item.title}</span>`;
+    demoLibraryGrid.append(card);
+
+    const controls = document.createElement("div");
+    controls.className = "demo-library-controls";
+
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.textContent = "← Previous";
+    previous.disabled = currentIndex === 0;
+    previous.onclick = () => { currentIndex -= 1; renderCurrentImage(); };
+
+    const counter = document.createElement("span");
+    counter.className = "demo-library-counter";
+    counter.textContent = `${currentIndex + 1} / ${categoryItems.length}`;
+
+    const next = document.createElement("button");
+    next.type = "button";
+    next.textContent = "Next →";
+    next.disabled = currentIndex === categoryItems.length - 1;
+    next.onclick = () => { currentIndex += 1; renderCurrentImage(); };
+
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "primary";
+    select.textContent = "Select This Image";
+    select.onclick = () => addDemoImageToProject(item);
+
+    controls.append(previous, counter, next, select);
+    demoLibraryGrid.append(controls);
+  };
+
+  renderCurrentImage();
 }
 
 async function loadDemoImageLibrary(){
