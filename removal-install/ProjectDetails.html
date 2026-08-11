@@ -507,34 +507,69 @@ textarea{min-height:120px;resize:vertical}
 function createDemoEmail() {
   const key = "espin_demo_email_inbox_v1";
   const context = window.EspinOperation?.context || {};
-  const params = new URLSearchParams(location.search);
 
   const equipment = context.equipment_model || context.equipment || "MultiGreeb";
   const manufacturer = context.make || context.manufacturer || "OEM";
   const model = context.model || "1";
   const serial = context.serial_number || "W1234";
 
+  const updatedFields = [];
+
+  document.querySelectorAll(".field, .toggle").forEach(row => {
+    const label = row.querySelector(".label")?.textContent.replace(/NEW/g,"").trim();
+    const input = row.querySelector("input, textarea, select");
+    if (!label || !input) return;
+
+    const value = input.type === "checkbox"
+      ? (input.checked ? "Completed" : "Not Completed")
+      : String(input.value || "").trim();
+
+    if (value) {
+      updatedFields.push({
+        section: row.closest(".group")?.querySelector(".group-title")?.textContent.trim() || "Project Update",
+        field: label,
+        value
+      });
+    }
+  });
+
+  const rows = items => items.map(row => `
+    <div style="display:grid;grid-template-columns:35% 65%;padding:18px;border-bottom:1px solid #ddd;font-size:20px;">
+      <div style="font-weight:700;">${row[0]}</div>
+      <div style="color:#2878c7;font-weight:700;">${row[1]}</div>
+    </div>`).join("");
+
+  let updateHtml = "";
+  const sections = {};
+  updatedFields.forEach(f => (sections[f.section] ||= []).push(f));
+
+  Object.entries(sections).forEach(([section, fields]) => {
+    updateHtml += `
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">
+        ${section}
+      </div>
+      ${rows(fields.map(f => [f.field, f.value]))}`;
+  });
+
   const html = `
     <div style="font-family:Arial,sans-serif;color:#222;">
-      <h1 style="font-size:34px;margin-bottom:28px;">Equipment Update: ${equipment}</h1>
+      <h1 style="font-size:34px;">Equipment Update: ${equipment}</h1>
       <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">
         Equipment Details
       </div>
-      ${[
+      ${rows([
         ["PET Manufacturer", manufacturer],
         ["PET Model", model],
         ["PET Serial", serial],
         ["PET Hard Drives Removed", "—"]
-      ].map(row => `
-        <div style="display:grid;grid-template-columns:35% 65%;padding:22px;border-bottom:1px solid #ddd;font-size:22px;">
-          <div style="font-weight:700;">${row[0]}</div>
-          <div style="color:#2878c7;font-weight:700;">${row[1]}</div>
-        </div>
-      `).join("")}
+      ])}
+      ${updateHtml}
     </div>`;
 
   const emails = JSON.parse(localStorage.getItem(key) || "[]");
   emails.unshift({
+    id: Date.now().toString(),
+    projectId: context.project_id || new URLSearchParams(location.search).get("projectId") || "demo-project",
     subject: `Equipment Update: ${equipment}`,
     from: "Espin Medical <info@espinmedical.com>",
     createdAt: new Date().toLocaleString(),
@@ -543,7 +578,6 @@ function createDemoEmail() {
 
   localStorage.setItem(key, JSON.stringify(emails));
 }
-
 var formData = {};
         var dirtyFields = new Set();
 
