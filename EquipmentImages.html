@@ -442,6 +442,89 @@ button:disabled{
   font-size:28px;
   cursor:pointer;
 }
+
+.demo-library-modal{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.72);
+  display:none;
+  align-items:flex-end;
+  justify-content:center;
+  padding:16px;
+  z-index:12000;
+}
+.demo-library-modal.active{display:flex;}
+.demo-library-sheet{
+  width:100%;
+  max-width:760px;
+  max-height:82vh;
+  overflow:auto;
+  background:#fff;
+  border-radius:20px 20px 14px 14px;
+  padding:16px;
+  box-shadow:0 24px 60px rgba(0,0,0,.28);
+}
+.demo-library-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+.demo-library-title{font-size:20px;font-weight:800;}
+.demo-library-close{
+  border:none;
+  background:#eef2f7;
+  width:40px;
+  height:40px;
+  border-radius:999px;
+  font-size:20px;
+  font-weight:800;
+  cursor:pointer;
+}
+.demo-library-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.demo-library-item{
+  border:1px solid #d9e2ec;
+  background:#fff;
+  border-radius:14px;
+  overflow:hidden;
+  padding:0;
+  text-align:left;
+  cursor:pointer;
+}
+.demo-library-item img{
+  display:block;
+  width:100%;
+  height:150px;
+  object-fit:cover;
+  background:#eef2f7;
+}
+.demo-library-item span{
+  display:block;
+  padding:10px 12px;
+  font-size:13px;
+  font-weight:800;
+  color:#0f172a;
+}
+.demo-library-status{
+  padding:20px 8px;
+  text-align:center;
+  color:#64748b;
+  font-weight:700;
+}
+.sandbox-note{
+  margin-top:10px;
+  font-size:12px;
+  line-height:1.45;
+  color:#64748b;
+  text-align:center;
+}
+@media (max-width:560px){.demo-library-grid{grid-template-columns:1fr;}}
+
 </style>
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
 <link rel="stylesheet" href="field-command-theme.css" />
@@ -457,13 +540,13 @@ button:disabled{
   </div>
 
   <div class="container">
-    <div class="section-title">Upload Image</div>
+    <div class="section-title">Demo Project Images</div>
 
     <div class="upload-card">
-      <input id="filePicker" type="file" accept="image/*" hidden>
-      <button id="chooseFileBtn">Choose Image</button>
+      <button id="chooseDemoImageBtn" type="button">Select Demo Image</button>
       <div id="uploadSpinner" class="spinner"></div>
     </div>
+    <div class="sandbox-note">Sandbox mode: camera and personal photo/file access are disabled. Only approved demo images can be added.</div>
 
     <div id="gallery" class="gallery"></div>
   </div>
@@ -481,12 +564,21 @@ button:disabled{
     <img id="previewImage">
   </div>
 
-<script>
-const CLOUD_NAME = "duljf51bg";
-const UPLOAD_PRESET = "espin_unsigned";
+  <div id="demoLibraryModal" class="demo-library-modal" aria-hidden="true">
+    <div class="demo-library-sheet">
+      <div class="demo-library-head">
+        <div class="demo-library-title">Demo Image Library</div>
+        <button id="demoLibraryClose" class="demo-library-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div id="demoLibraryStatus" class="demo-library-status">Loading demo images...</div>
+      <div id="demoLibraryGrid" class="demo-library-grid"></div>
+    </div>
+  </div>
 
-const filePicker = document.getElementById("filePicker");
-const chooseFileBtn = document.getElementById("chooseFileBtn");
+<script>
+const DEMO_IMAGE_MANIFEST_URL = "/demo-images/manifest.json";
+
+const chooseDemoImageBtn = document.getElementById("chooseDemoImageBtn");
 const uploadSpinner = document.getElementById("uploadSpinner");
 const gallery = document.getElementById("gallery");
 const sendBtn = document.getElementById("sendBtn");
@@ -499,6 +591,10 @@ if (downloadPackageBtn) {
 const previewModal = document.getElementById("previewModal");
 const previewImage = document.getElementById("previewImage");
 const previewClose = document.getElementById("previewClose");
+const demoLibraryModal = document.getElementById("demoLibraryModal");
+const demoLibraryClose = document.getElementById("demoLibraryClose");
+const demoLibraryGrid = document.getElementById("demoLibraryGrid");
+const demoLibraryStatus = document.getElementById("demoLibraryStatus");
 
 previewClose.onclick = () => previewModal.classList.remove("active");
 previewModal.onclick = e => {
@@ -620,42 +716,70 @@ function appendCard(p, badgeSet){
 
   gallery.append(card);
 }
-chooseFileBtn.onclick = () => filePicker.click();
+function normalizeDemoImage(item, index){
+  if (typeof item === "string") {
+    return {
+      url: item.startsWith("/") ? item : `/demo-images/${item}`,
+      title: `Demo Image ${index + 1}`
+    };
+  }
 
-filePicker.onchange = async () => {
-  const file = filePicker.files[0];
-  if (!file) return;
+  const rawUrl = String(item?.url || item?.path || item?.file || "").trim();
+  const url = rawUrl
+    ? (rawUrl.startsWith("/") || /^https?:\/\//i.test(rawUrl) ? rawUrl : `/demo-images/${rawUrl}`)
+    : "";
 
-  uploadSpinner.style.display = "block";
+  return {
+    url,
+    title: String(item?.title || item?.name || `Demo Image ${index + 1}`).trim()
+  };
+}
+
+async function loadDemoImageLibrary(){
+  demoLibraryGrid.innerHTML = "";
+  demoLibraryStatus.style.display = "block";
+  demoLibraryStatus.textContent = "Loading demo images...";
 
   try {
-    const safeProjectId = String(projectId || "").trim();
-    const safeModalityId = String(modalityId || "").trim();
+    const res = await fetch(`${DEMO_IMAGE_MANIFEST_URL}?v=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Demo image library is not configured yet");
 
-    if (!safeProjectId) throw new Error("Missing projectId");
-    if (!safeModalityId) throw new Error("Missing modalityId");
+    const payload = await res.json();
+    const source = Array.isArray(payload) ? payload : (Array.isArray(payload?.images) ? payload.images : []);
+    const items = source.map(normalizeDemoImage).filter(item => item.url);
 
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("upload_preset", UPLOAD_PRESET);
-
-    const cloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-      method: "POST",
-      body: fd
-    });
-
-    const cloudData = await cloud.json(); // ✅ THIS WAS MISSING
-
-    if (!cloud.ok || !cloudData?.secure_url) {
-      throw new Error("Cloud upload failed");
+    if (!items.length) {
+      demoLibraryStatus.textContent = "No demo images are available yet.";
+      return;
     }
 
-    console.log("FINAL PAYLOAD:", {
-      projectId: safeProjectId,
-      modalityId: safeModalityId,
-      url: cloudData.secure_url
-    });
+    demoLibraryStatus.style.display = "none";
 
+    items.forEach(item => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "demo-library-item";
+      btn.innerHTML = `<img src="${item.url}" alt=""><span>${item.title}</span>`;
+      btn.onclick = () => addDemoImageToProject(item);
+      demoLibraryGrid.append(btn);
+    });
+  } catch (err) {
+    console.error("DEMO LIBRARY ERROR:", err);
+    demoLibraryStatus.textContent = err.message || "Demo image library could not be loaded.";
+  }
+}
+
+async function addDemoImageToProject(item){
+  const safeProjectId = String(projectId || "").trim();
+  const safeModalityId = String(modalityId || "").trim();
+  if (!safeProjectId) return alert("Missing projectId");
+  if (!safeModalityId) return alert("Missing modalityId");
+
+  uploadSpinner.style.display = "block";
+  chooseDemoImageBtn.disabled = true;
+
+  try {
+    const absoluteUrl = new URL(item.url, location.origin).href;
     const res = await fetch(`/api/equipment-photos/photo-save`, {
       method: "POST",
       headers: {
@@ -665,36 +789,40 @@ filePicker.onchange = async () => {
       body: JSON.stringify({
         projectId: safeProjectId,
         modalityId: safeModalityId,
-        url: cloudData.secure_url
+        url: absoluteUrl
       })
     });
 
     const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out?.error || "Demo image save failed");
 
-    if (!res.ok) {
-      console.error("SAVE ERROR:", out);
-      throw new Error(out?.error || "Photo save failed");
-    }
-
-    const p = {
-      id: out.id,
-      project_id: safeProjectId,
-      modality_id: safeModalityId,
-      photo_url: cloudData.secure_url,
-      photo_title: "",
-      photo_comment: ""
-    };
-
-  await loadPhotos({ silent: true });
-
+    await loadPhotos({ silent: true });
+    demoLibraryModal.classList.remove("active");
+    demoLibraryModal.setAttribute("aria-hidden", "true");
   } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    alert(err.message);
+    console.error("DEMO IMAGE SAVE ERROR:", err);
+    alert(err.message || "Demo image could not be added");
   } finally {
     uploadSpinner.style.display = "none";
-    filePicker.value = "";
+    chooseDemoImageBtn.disabled = false;
   }
+}
+
+chooseDemoImageBtn.onclick = async () => {
+  demoLibraryModal.classList.add("active");
+  demoLibraryModal.setAttribute("aria-hidden", "false");
+  await loadDemoImageLibrary();
 };
+
+demoLibraryClose.onclick = () => {
+  demoLibraryModal.classList.remove("active");
+  demoLibraryModal.setAttribute("aria-hidden", "true");
+};
+
+demoLibraryModal.onclick = e => {
+  if (e.target === demoLibraryModal) demoLibraryClose.click();
+};
+
 async function fetchCurrentEquipmentDetailsForAxisSync(){
   try {
     const res = await fetch(`/api/equipment-details?projectId=${encodeURIComponent(projectId)}&modalityId=${encodeURIComponent(modalityId)}`, {
