@@ -13,6 +13,8 @@ function safe(v) {
   return String(v || "").trim();
 }
 
+const ADMIN_EMAIL = "info@espinmedical.com";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -48,10 +50,13 @@ export default async function handler(req, res) {
         ON em.project_id = ep.id
       WHERE ep.id = $1
         AND em.id = $2
-        AND LOWER(TRIM(ep.sales_rep_email)) = $3
+        AND (
+          LOWER(TRIM(ep.sales_rep_email)) = $3
+          OR $3 = $4
+        )
       LIMIT 1
       `,
-      [projectId, modalityId, userEmail]
+      [projectId, modalityId, userEmail, ADMIN_EMAIL]
     );
 
     if (!access.rowCount) {
