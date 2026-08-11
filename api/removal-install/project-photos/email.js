@@ -11,6 +11,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FROM_EMAIL = "Espin Medical <info@espinmedical.com>";
 const ADMIN_EMAIL = "info@espinmedical.com";
+const DEMO_EMAIL_ONLY = true;
 
 /* HELPERS */
 const clean = (v) => String(v || "").toLowerCase().trim();
@@ -164,6 +165,18 @@ if (!recipients.length) {
 
     if (!prepared.length) {
       return res.status(200).json({ sent: false });
+    }
+
+    if (DEMO_EMAIL_ONLY) {
+      await client.query(
+        `UPDATE project_photos SET queued_for_email = false WHERE id = ANY($1::uuid[])`,
+        [validIds]
+      );
+      return res.status(200).json({
+        sent: false,
+        demoOnly: true,
+        images: prepared.length
+      });
     }
 
     /* FULL HTML (File 1 logic) */
