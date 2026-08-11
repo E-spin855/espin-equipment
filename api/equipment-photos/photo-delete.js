@@ -46,14 +46,12 @@ export default async function handler(req, res) {
       `
       SELECT p.id
       FROM equipment_photos p
-      JOIN equipment_projects ep ON ep.id = p.project_id
       WHERE p.id = $1
         AND p.project_id = $2
         AND p.modality_id = $3
-        AND LOWER(TRIM(ep.sales_rep_email)) = $4
       LIMIT 1
       `,
-      [photoId, projectId, modalityId, email]
+      [photoId, projectId, modalityId]
     );
 
     if (!access.rowCount) {

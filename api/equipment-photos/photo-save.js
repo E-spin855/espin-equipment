@@ -13,8 +13,6 @@ function safe(v) {
   return String(v || "").trim();
 }
 
-const ADMIN_EMAIL = "info@espinmedical.com";
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -44,19 +42,17 @@ export default async function handler(req, res) {
   try {
     const access = await client.query(
       `
+      -- Development sandbox: any signed-in user may add a demo image,
+      -- but the modality must still belong to the requested project.
       SELECT ep.id
       FROM equipment_projects ep
       JOIN equipment_modalities em
         ON em.project_id = ep.id
       WHERE ep.id = $1
         AND em.id = $2
-        AND (
-          LOWER(TRIM(ep.sales_rep_email)) = $3
-          OR $3 = $4
-        )
       LIMIT 1
       `,
-      [projectId, modalityId, userEmail, ADMIN_EMAIL]
+      [projectId, modalityId]
     );
 
     if (!access.rowCount) {

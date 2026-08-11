@@ -44,17 +44,13 @@ export default async function handler(req, res) {
       SET
         photo_title = COALESCE($2, p.photo_title),
         photo_comment = COALESCE($3, p.photo_comment)
-      FROM equipment_projects ep
       WHERE p.id = $1
-        AND ep.id = p.project_id
-        AND LOWER(TRIM(ep.sales_rep_email)) = $4
       RETURNING p.id
       `,
       [
         photoId,
         photo_title ?? null,
-        photo_comment ?? null,
-        userEmail
+        photo_comment ?? null
       ]
     );
 
