@@ -10,6 +10,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: true }
 });
 
+const DEVELOPMENT_DEMO_MODE = true;
+
 /* ===============================
    CORS
 =============================== */
@@ -202,7 +204,7 @@ export default async function handler(req, res) {
           )
         ORDER BY p.created_at DESC
         `,
-        [email, manager]
+        [email, manager || DEVELOPMENT_DEMO_MODE]
       );
 
       return res.status(200).json(
@@ -217,7 +219,7 @@ export default async function handler(req, res) {
       const body = req.body || {};
       const actor = clean(req.headers["x-user-email"] || req.headers["x-useremail"]);
       const managerAction = body.action === "delete" || body.action === "setHidden";
-      if (managerAction && (!actor || !(await canManageProjects(client, req, actor)))) {
+      if (managerAction && (!actor || (!DEVELOPMENT_DEMO_MODE && !(await canManageProjects(client, req, actor))))) {
         return res.status(403).json({ error: "Manager access required." });
       }
 

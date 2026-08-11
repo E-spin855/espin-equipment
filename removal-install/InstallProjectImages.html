@@ -622,6 +622,74 @@ let selected = new Set(); // stores primary id strings
 let uploading = false;
 let isArchived = false;
 
+function escapeDemoEmailHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function demoEmailLabel(key) {
+  return String(key || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatDemoDate(value) {
+  const date = new Date(String(value || "").replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true
+  });
+}
+
+function createInstallationDemoEmail(sentPhotoIds) {
+  const detailsKey = "espin_installation_project_details_v1";
+  let allDetails = {};
+  try { allDetails = JSON.parse(localStorage.getItem(detailsKey) || "{}"); } catch {}
+  const details = allDetails?.[projectId] || {};
+  const selectedPhotos = photos.filter(photo => sentPhotoIds.includes(getPrimaryId(photo)));
+  const detailRows = Object.entries(details)
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined)
+    .map(([key, value]) => {
+      const displayValue = /date|start|completion|go_live/i.test(key) && String(value).match(/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/)
+        ? formatDemoDate(value)
+        : value;
+      return `<div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;">
+        <div style="font-weight:700;">${escapeDemoEmailHtml(demoEmailLabel(key))}</div>
+        <div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(displayValue)}</div>
+      </div>`;
+    }).join("");
+  const imageCards = selectedPhotos.map(photo => `<div style="margin:18px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
+    <div style="font-size:18px;font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(photo.photo_title || "Project Image")}</div>
+    ${photo.photo_comment ? `<div style="margin:8px 0;color:#333;">${escapeDemoEmailHtml(photo.photo_comment)}</div>` : ""}
+    <img src="${escapeDemoEmailHtml(photo.photo_url)}" alt="${escapeDemoEmailHtml(photo.photo_title || "Project image")}" style="display:block;max-width:100%;max-height:420px;margin-top:10px;border-radius:6px;">
+  </div>`).join("");
+
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem("espin_demo_email_inbox_v1") || "[]"); } catch {}
+  if (!Array.isArray(inbox)) inbox = [];
+  inbox.unshift({
+    id: Date.now().toString(),
+    projectId,
+    subject: "Installation Project Update",
+    from: "Espin Medical <info@espinmedical.com>",
+    createdAt: new Date().toLocaleString(),
+    html: `<div style="font-family:Arial,sans-serif;color:#222;">
+      <h1 style="font-size:34px;">Installation Project Update</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Installation Details</div>
+      ${detailRows || '<div style="padding:16px;font-size:20px;">No installation details available.</div>'}
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Selected Images</div>
+      ${imageCards}
+    </div>`
+  });
+  localStorage.setItem("espin_demo_email_inbox_v1", JSON.stringify(inbox));
+}
+
 /* ARCHIVE */
 async function loadArchiveState() {
   try {
@@ -830,6 +898,8 @@ sendBtn.onclick = async () => {
       headers: { "Content-Type": "application/json", "x-user-email": userEmail },
       body: JSON.stringify({ projectId, photoIds: ids })
     });
+
+    createInstallationDemoEmail(ids);
 
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]").forEach(cb => (cb.checked = false));
