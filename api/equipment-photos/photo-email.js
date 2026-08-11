@@ -10,6 +10,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: true }
 });
 
+// Development demo: the browser writes the rendered message to Demo_Email.html.
+// Do not deliver a real email or create recipient notifications in this mode.
+const DEMO_EMAIL_ONLY = true;
+
 const FROM_EMAIL = "Espin Medical <info@espinmedical.com>";
 const ADMIN_EMAIL = "info@espinmedical.com";
 
@@ -392,11 +396,11 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!process.env.RESEND_API_KEY) {
+  if (!DEMO_EMAIL_ONLY && !process.env.RESEND_API_KEY) {
     return res.status(500).json({ error: "Missing RESEND_API_KEY" });
   }
 
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resend = DEMO_EMAIL_ONLY ? null : new Resend(process.env.RESEND_API_KEY);
   const client = await pool.connect();
 
   try {
@@ -471,6 +475,15 @@ const equipmentHtml = buildEquipmentHtml(detailsRes.rows[0] || {});
 
     if (!prepared.length) {
       return res.status(400).json({ error: "No valid image URLs" });
+    }
+
+    if (DEMO_EMAIL_ONLY) {
+      return res.status(200).json({
+        success: true,
+        demoOnly: true,
+        sent: false,
+        photoCount: prepared.length
+      });
     }
 
     const imagesHtml = prepared
