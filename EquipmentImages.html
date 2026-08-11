@@ -947,6 +947,9 @@ async function fetchCurrentEquipmentDetailsForAxisSync(){
 
 const DEMO_EMAIL_INBOX_KEY = "espin_demo_email_inbox_v1";
 const DEMO_EMAIL_DRAFT_PREFIX = "espin_demo_equipment_email_draft:";
+const demoEmailChannel = typeof BroadcastChannel === "function"
+  ? new BroadcastChannel("espin_demo_email_inbox")
+  : null;
 
 function escapeDemoEmailHtml(value) {
   return String(value ?? "")
@@ -995,7 +998,7 @@ async function createCombinedDemoEmail(sentPhotoIds) {
   try { inbox = JSON.parse(localStorage.getItem(DEMO_EMAIL_INBOX_KEY) || "[]"); } catch {}
   if (!Array.isArray(inbox)) inbox = [];
 
-  inbox.unshift({
+  const demoEmail = {
     id: Date.now().toString(),
     projectId,
     modalityId,
@@ -1009,10 +1012,13 @@ async function createCombinedDemoEmail(sentPhotoIds) {
       <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Selected Images</div>
       ${imageCards}
     </div>`
-  });
+  };
+  inbox.unshift(demoEmail);
 
   localStorage.setItem(DEMO_EMAIL_INBOX_KEY, JSON.stringify(inbox));
+  demoEmailChannel?.postMessage({ type: "inbox-updated" });
   localStorage.removeItem(draftKey);
+  return demoEmail;
 }
 
 async function syncImagesToAxisDemo(sentPhotoIds) {
@@ -1430,8 +1436,9 @@ if (!emailRes.ok) {
   throw new Error(emailOut?.error || "Image email failed");
 }
 
-await syncImagesToAxisDemo(ids);
+    // Create the Demo Email record before leaving the page for Trade Desk.
     await createCombinedDemoEmail(ids);
+    await syncImagesToAxisDemo(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
       .forEach(cb => (cb.checked = false));
