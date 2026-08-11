@@ -1333,6 +1333,25 @@ sync_note: "Selected equipment images were manually submitted from Espin Trade-I
   localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
 
   console.log("✅ AXIS IMAGE SYNC RECORD:", imageSyncRecord);
+  return imageSyncRecord;
+}
+
+function openTradeDeskAfterImageSend() {
+  const target = new URL("trade_desk.html", window.location.href);
+  target.searchParams.set("projectId", projectId);
+  if (modalityId) target.searchParams.set("modalityId", modalityId);
+
+  [
+    "modality", "axis_record_id", "axis_parent_record_id", "axis_project_id",
+    "axis_serial_number", "axis_parent_project_type", "axis_parent_project_name",
+    "axis_source", "sync_mode", "sales_rep_first", "sales_rep_last",
+    "sales_rep_company", "sales_rep_phone", "sales_rep_email", "project_type"
+  ].forEach(key => {
+    const value = params.get(key);
+    if (value) target.searchParams.set(key, value);
+  });
+
+  location.href = target.toString();
 }
 /* SEND */
 sendBtn.onclick = async () => {
@@ -1418,7 +1437,7 @@ await syncImagesToAxisDemo(ids);
       .forEach(cb => (cb.checked = false));
 
     sendBtn.innerText = "Sent";
-    location.href = `/Demo_Email.html?projectId=${encodeURIComponent(projectId)}&modalityId=${encodeURIComponent(modalityId)}`;
+    openTradeDeskAfterImageSend();
 
   } catch (e) {
     console.error("Send failed:", e);
