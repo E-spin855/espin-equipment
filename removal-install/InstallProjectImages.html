@@ -799,8 +799,6 @@ gallery.prepend(card);
 
 /* SEND */
 sendBtn.onclick = async () => {
-  window.location.href = '/Demo_Email.html';
-  return;
   if (isArchived || sendBtn.disabled) return;
 
   const originalText = "Send Selected Images";
@@ -819,11 +817,13 @@ sendBtn.onclick = async () => {
       });
     }
 
-    await fetch(`${API_BASE}/api/removal-install/project-photos/email`, {
+    const emailRes = await fetch(`${API_BASE}/api/removal-install/project-photos/email`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-user-email": userEmail },
       body: JSON.stringify({ projectId, photoIds: ids })
     });
+
+    if (!emailRes.ok) throw new Error("Image email failed");
 
     await fetch(`${API_BASE}/api/removal-install/image-tasks`, {
       method: "POST",
@@ -836,11 +836,7 @@ sendBtn.onclick = async () => {
 
     // SUCCESS
     sendBtn.innerText = "Sent";
-
-    setTimeout(() => {
-      sendBtn.innerText = originalText;
-      updateBatchState();
-    }, 1200);
+    location.href = `/Demo_Email.html?projectId=${encodeURIComponent(projectId)}`;
 
   } catch (e) {
     console.error("Send failed:", e);
