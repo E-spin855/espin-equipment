@@ -609,16 +609,10 @@ function initializeProjectCompletionLock() {
 }
 
     
-function createDemoEmail() {
-  const key = "espin_demo_email_inbox_v1";
-  const context = window.EspinOperation?.context || {};
-
-  const equipment = context.equipment_model || context.equipment || "MultiGreeb";
-  const manufacturer = context.make || context.manufacturer || "OEM";
-  const model = context.model || "1";
-  const serial = context.serial_number || "W1234";
-
-  const updatedFields = [];
+function collectInstallationEmailChanges() {
+  const allDetails = JSON.parse(localStorage.getItem(INSTALLATION_DETAILS_KEY) || "{}");
+  const previous = allDetails[getInstallationProjectId()] || {};
+  const changes = [];
 
   document.querySelectorAll(".field, .toggle").forEach(row => {
     const label = row.querySelector(".label")?.textContent.replace(/NEW/g,"").trim();
@@ -629,8 +623,12 @@ function createDemoEmail() {
       ? (input.checked ? "Completed" : "Not Completed")
       : String(input.value || "").trim();
 
-    if (value) {
-      updatedFields.push({
+    const oldValue = input.type === "checkbox"
+      ? (previous[label] ? "Completed" : "Not Completed")
+      : String(previous[label] || "").trim();
+
+    if (value !== oldValue && value !== "") {
+      changes.push({
         section: row.closest(".group")?.querySelector(".group-title")?.textContent.trim() || "Project Update",
         field: label,
         value
@@ -638,50 +636,68 @@ function createDemoEmail() {
     }
   });
 
+  return changes;
+}
+
+function createDemoEmail(updatedFields = []) {
+  const key = "espin_demo_email_inbox_v1";
+  const context = window.EspinOperation?.context || {};
+
+  const equipment = context.equipment_model || context.equipment || "MultiGreeb";
+  const manufacturer = context.make || context.manufacturer || "OEM";
+  const model = context.model || "1";
+  const serial = context.serial_number || "W1234";
+
   const formatEmailDate = value => {
     if (!value) return "—";
     const d = new Date(String(value).replace(" ", "T"));
     if (isNaN(d)) return value;
     return d.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit"
+      month:"short",
+      day:"numeric",
+      year:"numeric",
+      hour:"numeric",
+      minute:"2-digit"
     });
   };
 
   const rows = items => items.map(row => `
     <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;">
       <div style="font-weight:700;">${row[0]}</div>
-      <div style="font-weight:700;color:${row[1] !== "—" ? "#0b67b2" : "#222"};">${row[1]}</div>
+      <div style="font-weight:700;color:#0b67b2;">${row[1]}</div>
     </div>`).join("");
 
-  let updateHtml = "";
   const sections = {};
   updatedFields.forEach(f => (sections[f.section] ||= []).push(f));
 
+  let updateHtml = "";
   Object.entries(sections).forEach(([section, fields]) => {
     updateHtml += `
       <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">
         ${section}
       </div>
-      ${rows(fields.map(f => [f.field, f.value]))}`;
+      ${rows(fields.map(f => [f.field, f.value.includes("T") ? formatEmailDate(f.value) : f.value]))}`;
   });
 
   const html = `
     <div style="font-family:Arial,sans-serif;color:#222;">
       <h1 style="font-size:34px;">Equipment Update: ${equipment}</h1>
+
       <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">
         Equipment Update Details
       </div>
+
       ${rows([
-        ["PET Manufacturer", manufacturer],
-        ["PET Model", model],
-        ["PET Serial", serial],
-        ["PET Hard Drives Removed", "—"]
+        ["Manufacturer", manufacturer],
+        ["Model", model],
+        ["Serial", serial],
+        ["Hard Drives Removed", "—"]
       ])}
-      ${updateHtml}
+
+      ${updateHtml || `
+        <div style="padding:20px;font-size:20px;">
+          No field changes detected.
+        </div>`}
     </div>`;
 
   const emails = JSON.parse(localStorage.getItem(key) || "[]");
@@ -696,8 +712,10 @@ function createDemoEmail() {
 
   localStorage.setItem(key, JSON.stringify(emails));
 }
+
 function demoSave(button, continueToImages = false){
       if (button.disabled || document.querySelector(".project-shell")?.classList.contains("project-readonly")) return;
+      const emailChanges = collectInstallationEmailChanges();
       saveInstallationDetails();
       const savedProjectSnapshot = syncInstallationProjectToRep();
 
@@ -724,7 +742,7 @@ function demoSave(button, continueToImages = false){
 }
 
 if (button.textContent.includes("Send Project Update Only")) {
-  createDemoEmail();
+  createDemoEmail(emailChanges);
   location.href = "/Demo_Email.html";
   return;
 }
