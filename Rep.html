@@ -26045,7 +26045,60 @@ if (showCompletedProjectsBtn) {
     el.addEventListener("change", updateQuotePreview);
   });
 
-  $("clearBtn").addEventListener("click", event => {
+  async function clearRemovalInstallProjects() {
+    const resetEmail = String(localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
+    const response = await fetch("/api/removal-install/projects", {
+      headers: { "x-user-email": resetEmail }
+    });
+    const payload = await response.json().catch(() => ([]));
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to load removal-install projects for reset.");
+    }
+
+    const projects = Array.isArray(payload)
+      ? payload
+      : (payload?.projects || payload?.data || payload?.records || []);
+
+    const results = await Promise.all(
+      projects
+        .map(project => String(project?.id || "").trim())
+        .filter(Boolean)
+        .map(async id => {
+          const deleteResponse = await fetch("/api/removal-install/projects", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-email": resetEmail
+            },
+            body: JSON.stringify({ action: "delete", id })
+          });
+          if (!deleteResponse.ok) {
+            const detail = await deleteResponse.json().catch(() => ({}));
+            throw new Error(detail?.error || `Unable to delete removal-install project ${id}.`);
+          }
+        })
+    );
+
+    return results;
+  }
+
+  $("clearBtn").addEventListener("click", async event => {
+    const resetButton = event.currentTarget;
+    resetButton.dataset.originalText ||= resetButton.textContent;
+    resetButton.disabled = true;
+    resetButton.textContent = "Clearing Projects…";
+
+    try {
+      await clearRemovalInstallProjects();
+    } catch (error) {
+      console.error("Removal-install project reset failed:", error);
+      resetButton.disabled = false;
+      resetButton.textContent = resetButton.dataset.originalText || "Reset Rep Actions";
+      showBanner(error.message || "Unable to clear removal-install projects.");
+      return;
+    }
+
     const originalRecords = state.records
       .filter(rec => rec?.manager_preloaded_sync === true)
       .map(resetRepActionFieldsOnly)
@@ -26088,6 +26141,10 @@ if (showCompletedProjectsBtn) {
 
     // Clear all messages displayed in the ESPIN LINK demo inbox.
     localStorage.removeItem("espin_demo_email_inbox_v1");
+
+    // Clear removal-install project caches and locally saved installation details.
+    localStorage.removeItem("espin_connect_pending_projects_v1");
+    localStorage.removeItem("espin_installation_project_details_v1");
 
     // Clear ESPIN Connect Equipment Selection state and all temporary
     // operation context created by that page.
