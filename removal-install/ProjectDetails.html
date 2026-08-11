@@ -498,12 +498,53 @@ textarea{min-height:120px;resize:vertical}
         <div id="form-container">Loading…</div>
         <div class="project-action-buttons">
           <button class="btn-submit" id="continueToImagesBtn" onclick="saveData(true)">Save and Continue to Images</button>
-          <button class="btn-submit secondary-submit" id="sendUpdateBtn" onclick="window.location.href='/Demo_Email.html'">Send Project Update Only</button>
+          <button class="btn-submit secondary-submit" id="sendUpdateBtn" onclick="createDemoEmail(); window.location.href='/Demo_Email.html'">Send Project Update Only</button>
         </div>
     </div>
 
     <script>
-        var formData = {};
+        
+function createDemoEmail() {
+  const key = "espin_demo_email_inbox_v1";
+  const context = window.EspinOperation?.context || {};
+  const params = new URLSearchParams(location.search);
+
+  const equipment = context.equipment_model || context.equipment || "MultiGreeb";
+  const manufacturer = context.make || context.manufacturer || "OEM";
+  const model = context.model || "1";
+  const serial = context.serial_number || "W1234";
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#222;">
+      <h1 style="font-size:34px;margin-bottom:28px;">Equipment Update: ${equipment}</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">
+        Equipment Details
+      </div>
+      ${[
+        ["PET Manufacturer", manufacturer],
+        ["PET Model", model],
+        ["PET Serial", serial],
+        ["PET Hard Drives Removed", "—"]
+      ].map(row => `
+        <div style="display:grid;grid-template-columns:35% 65%;padding:22px;border-bottom:1px solid #ddd;font-size:22px;">
+          <div style="font-weight:700;">${row[0]}</div>
+          <div style="color:#2878c7;font-weight:700;">${row[1]}</div>
+        </div>
+      `).join("")}
+    </div>`;
+
+  const emails = JSON.parse(localStorage.getItem(key) || "[]");
+  emails.unshift({
+    subject: `Equipment Update: ${equipment}`,
+    from: "Espin Medical <info@espinmedical.com>",
+    createdAt: new Date().toLocaleString(),
+    html
+  });
+
+  localStorage.setItem(key, JSON.stringify(emails));
+}
+
+var formData = {};
         var dirtyFields = new Set();
 
         function showConfirm(message, onOk, onCancel) {
