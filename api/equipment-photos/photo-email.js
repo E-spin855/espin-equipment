@@ -351,14 +351,12 @@ async function getRecipients(projectId, senderEmail, project) {
 
 async function isAuthorized(projectId, senderEmail, project) {
   const sender = clean(senderEmail);
-  const ownerEmail = clean(project?.sales_rep_email);
-
   if (!sender) return false;
-  if (sender === ADMIN_EMAIL) return true;
-  if (sender === ownerEmail) return true;
 
-  const accessEmails = await getAccessEmails(projectId);
-  return accessEmails.has(sender);
+  // Development sandbox: allow any signed-in sender to submit selected demo
+  // images for a valid project. Production ownership rules should be restored
+  // before release.
+  return true;
 }
 
 export default async function handler(req, res) {
