@@ -16225,18 +16225,28 @@ function syncInstallBaseCorrection(updated) {
   render();
 }
 function sendQuickRepManagerMessage() {
-  const notesEl = $("repManagerMessage");
-  const notes = notesEl?.value?.trim() || "";
+  const action = $("repManagerMessageAction")?.value || "";
+  const labels = {
+    rep_reviewed: "Reviewed",
+    customer_contacted: "Customer Contacted",
+    follow_up_scheduled: "Follow-Up Scheduled",
+    quote_update: "Quote Update",
+    tradein_update: "Trade-In Update",
+    project_update: "Project Update",
+    needs_manager_review: "Needs Manager Review",
+    project_complete: "Project Complete"
+  };
+  const label = labels[action] || "";
 
-  if (!notes) {
-    alert("Type a message to Manager.");
+  if (!action) {
+    alert("Choose a pre-made message for Manager.");
     return;
   }
 
   flashRepMessageSentButton("sendRepManagerMessageBtn", "Message Sent");
   state.managerCommunicationFrameActive = false;
 
-  sendRepManagerMessage("custom_message", "Rep Message", notes);
+  sendRepManagerMessage(action, label, label);
 
   const activeManagerCommRec = findSelectedRecord();
   if (activeManagerCommRec) {
@@ -16247,7 +16257,10 @@ function sendQuickRepManagerMessage() {
     }, 350);
   }
 
-  if (notesEl) notesEl.value = "";
+}
+
+function showDemoNotesDisabled() {
+  alert("Notes are disabled in the demo version. Please choose a pre-made message.");
 }
     
 function getDetailUpdateFlashState(rec) {
@@ -16803,11 +16816,22 @@ function renderRepManagerCommunication(rec) {
       ${ui.composerOpen ? `
         <div class="comm-composer">
           <div class="row" style="margin-bottom:10px;">
-            <label for="repManagerMessage">Message to Manager</label>
-            <textarea
-              id="repManagerMessage"
-              placeholder="Type a message to Manager..."
-            ></textarea>
+            <label for="repManagerMessageAction">Message to Manager</label>
+            <select id="repManagerMessageAction">
+              <option value="">Select message</option>
+              <option value="rep_reviewed">Reviewed</option>
+              <option value="customer_contacted">Customer Contacted</option>
+              <option value="follow_up_scheduled">Follow-Up Scheduled</option>
+              <option value="quote_update">Quote Update</option>
+              <option value="tradein_update">Trade-In Update</option>
+              <option value="project_update">Project Update</option>
+              <option value="needs_manager_review">Needs Manager Review</option>
+              <option value="project_complete">Project Complete</option>
+            </select>
+          </div>
+          <div class="row" style="margin-bottom:10px;">
+            <label for="repManagerMessage">Notes</label>
+            <button type="button" id="repManagerMessage" class="secondary" onclick="showDemoNotesDisabled()">Notes disabled for demo version</button>
           </div>
           <div class="btns">
             <button
