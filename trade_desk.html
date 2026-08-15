@@ -731,22 +731,23 @@ function publishTradeDeskProgress(rec, progress = {}){
 }
 function openMailDraft(mailto){
   resetDemoButtons();
-
-  const a = document.createElement("a");
-  a.href = mailto;
-  a.style.display = "none";
-
-  document.body.appendChild(a);
-  a.click();
-
-  setTimeout(() => {
-    a.remove();
-    resetDemoButtons();
-
-    if (!isTradeDeskInputFocused()) {
-      render();
-    }
-  }, 900);
+  const draft = new URL(mailto, window.location.href);
+  const inboxKey = "espin_demo_email_inbox_v1";
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
+  if (!Array.isArray(inbox)) inbox = [];
+  inbox.unshift({
+    from: "ESPIN LINK Trade Desk",
+    to: decodeURIComponent(String(draft.pathname || "").replace(/^mailto:/, "")),
+    cc: draft.searchParams.get("cc") || "",
+    subject: draft.searchParams.get("subject") || "Equipment Update",
+    body: draft.searchParams.get("body") || "",
+    createdAt: new Date().toISOString()
+  });
+  localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
+  try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
+  window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
+  if (!isTradeDeskInputFocused()) render();
 }
 function resetDemoButtons(){
   document.querySelectorAll("button").forEach(btn => {
@@ -3037,6 +3038,15 @@ console.log("TRADE DESK LOADED:", {
 });
 importAutomaticIntake();
 render();
+</script>
+<script>
+/* Keep Trade Desk requests constrained to the approved checklist. */
+document.querySelectorAll('textarea, input[type="email"], input[type="text"], input:not([type])').forEach(el => {
+  el.disabled = true;
+  el.setAttribute('aria-disabled', 'true');
+  el.title = 'Free-text notes are disabled in the closed sandbox';
+});
+document.querySelectorAll('a[href^="mailto:"],a[href^="tel:"]').forEach(a => { a.removeAttribute('href'); });
 </script>
 
 </body>

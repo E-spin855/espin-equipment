@@ -24174,9 +24174,9 @@ function reviewApprovedQuote() {
   syncFeedStatus(rec);
   render();
 
-  const subject = encodeURIComponent(`Approved Quote ${rec.oem_project_id || rec.serial_number || ""}`);
+  const subject = `Approved Quote ${rec.oem_project_id || rec.serial_number || ""}`;
 
-  const body = encodeURIComponent(
+  const body = (
 `Hello,
 
 Please find the approved quote attached.
@@ -24196,13 +24196,17 @@ Please review and let me know if you have any questions.
 Thank you.`
   );
 
-  const cc = rec.quote_cc_email ? `&cc=${encodeURIComponent(rec.quote_cc_email)}` : "";
-  const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${subject}${cc}&body=${body}`;
-
-  showBanner("✅ Quote PDF prepared. Opening email draft...");
+  const inboxKey = "espin_demo_email_inbox_v1";
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
+  if (!Array.isArray(inbox)) inbox = [];
+  inbox.unshift({ from: "ESPIN LINK Quotes", to: recipient, cc: rec.quote_cc_email || "", subject, body, createdAt: new Date().toISOString() });
+  localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
+  try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
+  showBanner("✅ Quote PDF prepared in the Demo Inbox.");
 
   setTimeout(() => {
-    window.location.href = mailtoUrl;
+    window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
   }, 700);
 }
 function openDecisionModal(recordId = state.selectedId, followUpDate = "", actionLabel = "Open Removal/Disposal Project") {
@@ -26564,6 +26568,18 @@ window.addEventListener("load", () => {
       };
     }
   };
+})();
+</script>
+<script>
+/* Sandbox closed-system guard: arbitrary text, addresses, contacts, and customer email entry are not permitted. */
+(() => {
+  const apply = () => {
+    document.querySelectorAll('input:not([type="hidden"]):not([type="date"]):not([type="number"]), textarea, [contenteditable="true"]').forEach(el => {
+      el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.title = 'Disabled in the closed sandbox';
+    });
+    document.querySelectorAll('a[href^="mailto:"],a[href^="tel:"]').forEach(a => { a.removeAttribute('href'); a.title = 'External contact actions are disabled in the closed sandbox'; });
+  };
+  apply(); new MutationObserver(apply).observe(document.body, { childList:true, subtree:true });
 })();
 </script>
 
