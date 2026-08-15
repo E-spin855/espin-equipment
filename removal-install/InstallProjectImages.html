@@ -988,5 +988,16 @@ deleteBtn.onclick = async () => {
 })();
 </script>
 </div>
+<script>
+/* Closed sandbox: use only Vercel-hosted demo-images, never the desktop picker. */
+(() => {
+  const button=document.getElementById("chooseFileBtn"); const legacyPicker=document.getElementById("filePicker"); if(legacyPicker)legacyPicker.disabled=true; if(!button)return;
+  const modal=document.createElement("div"); modal.style.cssText="display:none;position:fixed;inset:0;z-index:9999;padding:24px;background:rgba(0,0,0,.72);overflow:auto";
+  modal.innerHTML='<div style="max-width:980px;margin:30px auto;background:#fff;padding:22px;border-radius:12px"><button type="button" data-close style="float:right">Close</button><h2>ESPIN LINK Demo Image Library</h2><p>Select a fictional demo image only.</p><div data-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px"></div></div>'; document.body.append(modal);
+  const close=()=>modal.style.display="none"; modal.querySelector("[data-close]").onclick=close;
+  async function open(){const grid=modal.querySelector("[data-grid]");grid.textContent="Loading demo images…";modal.style.display="block";const r=await fetch("/demo-images/manifest.json",{cache:"no-store"}),d=await r.json();grid.innerHTML="";(d.images||[]).forEach(item=>{const b=document.createElement("button");b.type="button";b.innerHTML=`<img src="${item.url}" alt="" style="width:100%;height:130px;object-fit:cover"><strong>${item.category}</strong><br><small>${item.name}</small>`;b.onclick=async()=>{b.disabled=true;const save=await fetch(`${API_BASE}/api/removal-install/project-photos/save`,{method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({projectId,photo_url:new URL(item.url,location.origin).href,photo_title:item.name,photo_comment:"Demo image"})});if(!save.ok){b.disabled=false;return alert("Demo image could not be selected.");}close();location.reload();};grid.append(b);});}
+  document.addEventListener("click",e=>{if(e.target===button){e.preventDefault();e.stopImmediatePropagation();open().catch(()=>alert("Demo image library is unavailable."));}},true);button.textContent="Select Demo Image";
+})();
+</script>
 </body>
 </html>
