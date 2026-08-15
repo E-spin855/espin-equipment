@@ -1,6 +1,38 @@
 import crypto from "crypto";
 import { kv } from "@vercel/kv";
-import { Resend } from "resend";
-const h=v=>crypto.createHmac("sha256",process.env.SANDBOX_AUTH_HASH_SECRET).update(v).digest("hex"), email=v=>String(v||"").trim().toLowerCase();
-function session(req){const raw=(req.headers.cookie||"").match(/(?:^|; )espin_sandbox_auth=([^;]+)/)?.[1];if(!raw)return null;const [data,sig]=raw.split(".");if(!data||!sig||!crypto.timingSafeEqual(Buffer.from(h(data)),Buffer.from(sig)))return null;try{const x=JSON.parse(Buffer.from(data,"base64url"));return x.exp>Date.now()?x:null}catch{return null}}
-export default async function handler(req,res){if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});const actor=session(req);if(!actor||!["manager","sandbox_admin"].includes(actor.role))return res.status(401).json({error:"Sign in is required."});try{const b=req.body||{},action=b.action,to=email(b.email),role=String(b.role||"").toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))return res.status(400).json({error:"Enter a valid work email."});if(action==="assign_manager"){if(actor.role!=="sandbox_admin")return res.status(403).json({error:"Only Sandbox Admin can manage the Manager."});await kv.set(`sandbox:role:${h(to)}`,{role:"manager"},{ex:2592000});}else if(action==="revoke_manager"){if(actor.role!=="sandbox_admin")return res.status(403).json({error:"Only Sandbox Admin can revoke the Manager."});await kv.set(`sandbox:role:${h(to)}`,{role:"revoked"},{ex:2592000});return res.status(200).json({message:"Manager access revoked."});}else if(action==="assign_rep"){if(!/^rep_[123]$/.test(role))return res.status(400).json({error:"Choose Rep 1, 2, or 3."});await kv.set(`sandbox:role:${h(to)}`,{role:"rep",assigned_rep_id:role.toUpperCase()},{ex:2592000});}else if(action==="revoke_rep"){await kv.set(`sandbox:role:${h(to)}`,{role:"revoked"},{ex:2592000});return res.status(200).json({message:"Rep access revoked."});}else return res.status(400).json({error:"Unsupported request."});const base=String(process.env.SANDBOX_APP_URL||"").replace(/\/$/,"");if(!/^https:\/\//.test(base))throw new Error("Sandbox app URL is not configured.");const label=role.replace("_"," ").toUpperCase();await new Resend(process.env.RESEND_API_KEY).emails.send({from:process.env.SANDBOX_FROM_EMAIL,to,subject:"ESPIN LINK Sandbox invitation",html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>ESPIN LINK Sandbox invitation</h2><p>You have been assigned the fictional <strong>${label}</strong> sandbox workspace.</p><p><a href="${base}/#" style="display:inline-block;background:#1f7bc8;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700">Open ESPIN LINK Sandbox</a></p><p>Verify this email with a one-time PIN. Use fictional information only.</p></div>`});return res.status(200).json({message:"Invitation sent."});}catch(e){console.error("Sandbox role update failed:",e.message);return res.status(500).json({error:"Unable to update sandbox access."})}}
+
+const CODE_SECONDS = 30 * 24 * 60 * 60;
+const h = value => crypto.createHmac("sha256", process.env.SANDBOX_AUTH_HASH_SECRET).update(value).digest("hex");
+const codeHash = code => h(`rep-access-code:${code}`);
+const clean = value => String(value || "").trim();
+
+function session(req) {
+  const raw = (req.headers.cookie || "").match(/(?:^|; )espin_sandbox_auth=([^;]+)/)?.[1];
+  if (!raw) return null;
+  const [data, sig] = raw.split(".");
+  const expected = h(data || "");
+  if (!data || !sig || sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return null;
+  try { const value = JSON.parse(Buffer.from(data, "base64url")); return value.exp > Date.now() ? value : null; } catch { return null; }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (!process.env.SANDBOX_AUTH_HASH_SECRET) return res.status(500).json({ error: "Missing sandbox authentication configuration" });
+  const actor = session(req);
+  if (!actor || !["manager", "sandbox_admin"].includes(actor.role)) return res.status(401).json({ error: "Sign in is required." });
+  try {
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    if (body.action !== "create_rep_access") return res.status(400).json({ error: "Unsupported request." });
+    const workspaceId = clean(body.workspace_id || body.role).toUpperCase();
+    const repId = clean(body.rep_id);
+    const repName = clean(body.rep_name).slice(0, 80);
+    if (!/^REP_[123]$/.test(workspaceId)) return res.status(400).json({ error: "Choose Rep 1, 2, or 3." });
+    if (!repId || !repName) return res.status(400).json({ error: "A representative name and workspace are required." });
+    const accessCode = crypto.randomBytes(5).toString("hex").toUpperCase();
+    await kv.set(`sandbox:rep-access:${codeHash(accessCode)}`, { role: "rep", rep_id: repId, rep_name: repName, assigned_rep_id: workspaceId, created_by: actor.role, created_at: new Date().toISOString(), consumed: false }, { ex: CODE_SECONDS });
+    return res.status(200).json({ message: "One-time Rep Access Code created.", access_code: accessCode, workspace_id: workspaceId, expires_at: new Date(Date.now() + CODE_SECONDS * 1000).toISOString() });
+  } catch (error) {
+    console.error("Sandbox access-code creation failed:", error.message);
+    return res.status(500).json({ error: "Unable to create Rep Access Code." });
+  }
+}

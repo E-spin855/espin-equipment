@@ -119,9 +119,12 @@ input{
     <p class="subtitle">Approved evaluator access. Sign in with your sandbox username and password.</p>
     <input id="usernameInput" type="text" placeholder="Sandbox username" autocomplete="username" autocapitalize="none" spellcheck="false">
     <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password">
+    <div style="margin:16px 0 8px;font-weight:800;color:#17324b">Representative access</div>
+    <input id="accessCodeInput" type="text" placeholder="One-time Rep Access Code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="10">
     <div class="notice"><strong>Fictional information only.</strong><br>Do not enter customer, patient, employee, or confidential business data. This temporary evaluation workspace contains fictional sandbox records.</div>
     <label class="acknowledgment"><input id="sandboxAck" type="checkbox"><span>I understand that I may use only fictional information in this sandbox.</span></label>
     <button id="signInButton" class="btn">Sign In</button>
+    <button id="joinButton" class="btn" type="button">Join with Rep Access Code</button>
   </div>
 
 </div>
@@ -137,7 +140,7 @@ const API_URL = "";
 const SANDBOX_SESSION_KEY = "espinSandboxSession";
 
 // DEVELOPMENT BYPASS: set to true before the 30-day sandbox trial.
-const SANDBOX_AUTH_ENABLED = false;
+const SANDBOX_AUTH_ENABLED = true;
 if (!SANDBOX_AUTH_ENABLED) {
   const devSession = {
     role: "sandbox_admin",
@@ -155,6 +158,8 @@ const usernameInput = document.getElementById("usernameInput");
 const passwordInput = document.getElementById("passwordInput");
 const signInButton = document.getElementById("signInButton");
 const sandboxAck = document.getElementById("sandboxAck");
+const accessCodeInput = document.getElementById("accessCodeInput");
+const joinButton = document.getElementById("joinButton");
 
 // Remove values written by the retired email/PIN login flow if this browser used it before.
 localStorage.removeItem("espinUserEmail");
@@ -212,6 +217,25 @@ signInButton.addEventListener("click", async ()=>{
 
 passwordInput.addEventListener("keydown", event => {
   if(event.key === "Enter") signInButton.click();
+});
+
+joinButton.addEventListener("click", async () => {
+  const access_code = accessCodeInput.value.trim().toUpperCase();
+  if (!access_code) return alert("Enter your one-time Rep Access Code.");
+  if (!sandboxAck.checked) return alert("Please acknowledge the fictional-information-only sandbox notice.");
+  joinButton.disabled = true; joinButton.textContent = "Joining…";
+  try {
+    const res = await fetch(`${API_URL}/api/sandbox-join`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ access_code }) });
+    const data = await res.json().catch(() => ({}));
+    const identity = data.sandbox_identity;
+    const assignedRepId = String(identity?.assigned_rep_id || "").toUpperCase();
+    if (!res.ok || identity?.role !== "rep" || !/^REP_[123]$/.test(assignedRepId)) throw new Error(data.error || "Unable to join with that access code.");
+    sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify({ role:"rep", display_name:identity.display_name || `Rep ${assignedRepId.slice(-1)}`, assigned_rep_id:assignedRepId, allowed_views:[assignedRepId.toLowerCase()], active_view:assignedRepId.toLowerCase(), expires_at:identity.expires_at || null }));
+    location.replace("Rep.html");
+  } catch (error) {
+    joinButton.disabled = false; joinButton.textContent = "Join with Rep Access Code";
+    alert(error.message || "Unable to join with that access code.");
+  }
 });
 </script>
 

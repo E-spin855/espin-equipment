@@ -4730,31 +4730,9 @@ body .red-hot-service-card.manager-red-hot-alert-frame.manager-field-update-fram
     <div><div class="sandbox-toolbar__label">ESPIN LINK SANDBOX · EVALUATION ONLY</div><div style="font-size:12px;color:var(--muted);margin-top:4px">Signed in as fictional identity: <strong id="sandboxIdentity">Manager</strong></div></div>
     <div><button type="button" class="secondary" onclick="espinSandboxLogout()">Log out</button></div>
   </div>
+  <div id="sandboxRolePanel" hidden></div>
   <script>
     (() => { const s=window.ESPIN_SANDBOX; if(!s)return; window.addEventListener('DOMContentLoaded',()=>{document.getElementById('sandboxIdentity').textContent=s.display_name||'Manager';const panel=document.getElementById('sandboxRolePanel');if(!panel)return;const box=document.createElement('div');box.id='sandboxViewButtons';box.className='sandbox-notice';box.style='margin:0 0 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';box.innerHTML='<strong style="margin-right:6px">Demo workspace</strong>'+['manager|Manager','vp|VP','quote|Quote','rep_1|Rep 1','rep_2|Rep 2','rep_3|Rep 3'].map(x=>{const [v,l]=x.split('|');return `<button type="button" class="secondary sandbox-view" data-view="${v}">${l}</button>`}).join('');panel.after(box);const quick=document.getElementById('managerProjectQuickActions');if(quick){quick.hidden=false;box.append(quick);}window.refreshSandboxRepViewButtons=()=>{const invited=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();const assigned=new Set([...(typeof readManagerRepRoster==="function"?readManagerRepRoster():[]).filter(rep=>lower(rep.status||"active")!=="inactive").map(rep=>normalizeRepWorkspaceId(rep.workspace_id)),...Object.values(invited).map(normalizeRepWorkspaceId)].filter(Boolean));box.querySelectorAll(".sandbox-view[data-view^=\"rep_\"]").forEach(button=>{button.hidden=assigned.has(button.dataset.view.toUpperCase());});};window.setTimeout(window.refreshSandboxRepViewButtons,0);document.addEventListener('click',e=>{const b=e.target.closest('.sandbox-view');if(!b)return;const v=b.dataset.view;if(!s.allowed_views.includes(v)&&v!=="quote")return;const next={...s,active_view:v};if(/^rep_[123]$/.test(v)){next.assigned_rep_id=v.toUpperCase();next.display_name=`Rep ${v.slice(-1)}`;}sessionStorage.setItem('espinSandboxSession',JSON.stringify(next));const target=v==='manager'?'Manager.html':v==='vp'?'VP.html':v==='quote'?'quote.html':'Rep.html';if(v==='manager'){location.href=target;return;}const child=window.open(target,'_blank');if(child)child.focus();});}); })();
-  </script>
-  <div id="sandboxRolePanel" class="sandbox-notice" style="display:none;margin-bottom:18px">
-    <strong id="sandboxRoleTitle">Sandbox role management</strong>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px"><input id="sandboxInviteEmail" type="email" placeholder="Evaluator work email" style="min-width:250px;padding:9px"><select id="sandboxInviteRole" style="padding:9px"><option value="rep_1">Rep 1</option><option value="rep_2">Rep 2</option><option value="rep_3">Rep 3</option></select><button type="button" class="green" id="sandboxInviteButton">Send Rep Invitation</button><button type="button" class="red" id="sandboxRevokeRep">Revoke Rep</button></div>
-    <div id="sandboxAdminManagerActions" style="display:none;margin-top:9px"><button type="button" class="secondary" id="sandboxInviteManager">Invite / Replace Manager</button><button type="button" class="red" id="sandboxRevokeManager">Revoke Manager</button></div>
-    <p style="margin:9px 0 0;color:var(--muted);font-size:12px">Real email addresses are sent only to the authentication service and are never displayed in ESPIN LINK.</p>
-  </div>
-  <script>
-  (()=>{const s=window.ESPIN_SANDBOX, panel=document.getElementById('sandboxRolePanel');if(!s||!panel||!["manager","sandbox_admin"].includes(s.role))return;panel.style.display='block';const admin=s.role==='sandbox_admin';document.getElementById('sandboxAdminManagerActions').style.display=admin?'block':'none';document.getElementById('sandboxRoleTitle').textContent=admin?'Sandbox Admin · Manager and Rep access':'Manager · Rep access';const request=async action=>{const email=document.getElementById('sandboxInviteEmail').value.trim();if(!email)return alert('Enter an evaluator work email.');const role=document.getElementById('sandboxInviteRole').value;const r=await fetch('/api/sandbox-roles',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({action,email,role})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Unable to update sandbox access.');const assigned=(()=>{try{return JSON.parse(localStorage.getItem("espinSandboxAssignedWorkspaces")||"{}")}catch{return {}}})();if(action==="assign_rep")assigned[email]=role.toUpperCase();if(action==="revoke_rep")delete assigned[email];localStorage.setItem("espinSandboxAssignedWorkspaces",JSON.stringify(assigned));window.refreshSandboxRepViewButtons?.();alert(d.message||"Sandbox access updated.");};document.getElementById('sandboxInviteButton').onclick=()=>request('assign_rep').catch(e=>alert(e.message));document.getElementById('sandboxRevokeRep').onclick=()=>request('revoke_rep').catch(e=>alert(e.message));document.getElementById('sandboxInviteManager').onclick=()=>request('assign_manager').catch(e=>alert(e.message));document.getElementById('sandboxRevokeManager').onclick=()=>request('revoke_manager').catch(e=>alert(e.message));})();
-  </script>
-  <script>
-    // Keep development revocations local while sandbox authentication is temporarily disabled.
-    document.getElementById('sandboxRevokeRep').addEventListener('click', event => {
-      if (window.SANDBOX_AUTH_ENABLED) return;
-      event.stopImmediatePropagation();
-      const email = document.getElementById('sandboxInviteEmail').value.trim();
-      if (!email) return alert('Enter an evaluator work email.');
-      const assigned = (() => { try { return JSON.parse(localStorage.getItem('espinSandboxAssignedWorkspaces') || '{}'); } catch { return {}; } })();
-      delete assigned[email];
-      localStorage.setItem('espinSandboxAssignedWorkspaces', JSON.stringify(assigned));
-      window.refreshSandboxRepViewButtons?.();
-      alert('Rep access revoked.');
-    }, true);
   </script>
   <div id="managerProjectQuickActions" hidden style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button type="button" class="secondary reset-action-btn" id="clearBtn">Reset Manager's Action</button>
@@ -4972,7 +4950,7 @@ const INSTALL_BASE_FINAL_SYNC_PING_KEY = "axis_install_base_final_sync_ping_v1";
 const MANAGER_REP_ROSTER_KEY = "espin_manager_rep_roster_v1";
 const MANAGER_REP_ACCOUNT_ASSIGNMENTS_KEY = "espin_manager_rep_account_assignments_v1";
 // DEVELOPMENT ONLY: change to true before the sandbox trial to require signed server sessions again.
-window.SANDBOX_AUTH_ENABLED = false;
+window.SANDBOX_AUTH_ENABLED = true;
 
 // Original manager dataset embedded from Hub.xlsx → "AXIS Upload".
 const HUB_PRELOADED_ROWS = [
@@ -8908,48 +8886,23 @@ async function inviteManagerRep(repId) {
   const rep = roster.find(item => item.id === repId);
   if (!rep) return alert("Representative not found.");
   const workspaceId = normalizeRepWorkspaceId(rep.workspace_id);
-  if (!workspaceId) return alert("Choose Rep 1, Rep 2, or Rep 3 before sending the invitation.");
-  if (!/^\S+@\S+\.\S+$/.test(clean(rep.email))) return alert("Enter a valid representative email.");
+  if (!workspaceId) return alert("Choose Rep 1, Rep 2, or Rep 3 before creating access.");
   try {
     const response = await fetch("/api/sandbox-roles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ action: "assign_rep", email: rep.email, role: workspaceId.toLowerCase() })
+      body: JSON.stringify({ action: "create_rep_access", rep_id: rep.id, rep_name: rep.name, workspace_id: workspaceId })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Unable to send invitation.");
-    rep.invitation_status = "invited";
-    rep.invited_at = new Date().toISOString();
+    if (!response.ok) throw new Error(data.error || "Unable to create Rep Access Code.");
+    rep.invitation_status = "access_code_created";
+    rep.access_code_created_at = new Date().toISOString();
     saveManagerRepRoster(roster);
     render();
-    showBanner(`Invitation sent to ${rep.name}.`);
+    alert(`Rep Access Code for ${rep.name} (${repWorkspaceLabel(workspaceId)}):\n\n${data.access_code}\n\nShare this code privately. It can be used once.`);
   } catch (error) {
-    alert(error.message || "Unable to send invitation.");
-  }
-}
-async function revokeManagerRepInvitation(repId) {
-  const roster = readManagerRepRoster();
-  const rep = roster.find(item => item.id === repId);
-  if (!rep || !confirm(`Revoke ${rep.name}'s Rep workspace access?`)) return;
-  try {
-    if (window.SANDBOX_AUTH_ENABLED) {
-      const response = await fetch("/api/sandbox-roles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ action: "revoke_rep", email: rep.email, role: normalizeRepWorkspaceId(rep.workspace_id).toLowerCase() })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Unable to revoke access.");
-    }
-    rep.invitation_status = "revoked";
-    rep.revoked_at = new Date().toISOString();
-    saveManagerRepRoster(roster);
-    render();
-    showBanner(`${rep.name}'s Rep access was revoked.`);
-  } catch (error) {
-    alert(error.message || "Unable to revoke access.");
+    alert(error.message || "Unable to create Rep Access Code.");
   }
 }
 function saveManagerRepRoster(roster) {
@@ -8974,12 +8927,10 @@ function managerRepForAccount(rec) {
 }
 function addManagerRep() {
   const name = clean($("newRepName")?.value);
-  const email = clean($("newRepEmail")?.value).toLowerCase();
+  const email = "";
   const phone = clean($("newRepPhone")?.value);
-  if (!name || !email) return alert("Enter the representative's name and email.");
-  if (!/^\S+@\S+\.\S+$/.test(email)) return alert("Enter a valid email address.");
+  if (!name) return alert("Enter the representative's name.");
   const roster = readManagerRepRoster();
-  if (roster.some(rep => clean(rep.email) === email)) return alert("That representative email is already on the roster.");
   const workspaceId = normalizeRepWorkspaceId($("newRepWorkspace")?.value);
   if (!workspaceId) return alert("Choose a Rep workspace.");
   if (roster.some(rep => normalizeRepWorkspaceId(rep.workspace_id) === workspaceId && lower(rep.status || "active") !== "inactive")) return alert(`${repWorkspaceLabel(workspaceId)} is already assigned to an active representative.`);
@@ -9015,12 +8966,12 @@ function renderRepAdministration() {
 
 function managerRepRecord(rec, rep) {
   const pieces=clean(rep?.name).split(/\s+/);
-  return {...rec,assigned_rep_id:rep?.id||"",assigned_rep_workspace_id:normalizeRepWorkspaceId(rep?.workspace_id),assigned_rep_name:rep?.name||"",assigned_rep_email:rep?.email||"",assigned_rep_phone:rep?.phone||"",sales_rep_first:pieces[0]||"",sales_rep_last:pieces.slice(1).join(" "),sales_rep_email:rep?.email||"",sales_rep_phone:rep?.phone||"",sales_rep_company:rep?.company||"",territory:rep?.territory||rec.territory||"",rep_assignment_updated_at:new Date().toISOString(),rep_access_policy:"manager_project_assignment_only"};
+  return {...rec,assigned_rep_id:rep?.id||"",assigned_rep_workspace_id:normalizeRepWorkspaceId(rep?.workspace_id),assigned_rep_name:rep?.name||"",assigned_rep_email:"",assigned_rep_phone:"",sales_rep_first:pieces[0]||"",sales_rep_last:pieces.slice(1).join(" "),sales_rep_email:"",sales_rep_phone:"",sales_rep_company:"",territory:rec.territory||"",rep_assignment_updated_at:new Date().toISOString(),rep_access_policy:"manager_project_assignment_only"};
 }
 function assignSelectedManagerProject() { const rec=findSelectedRecord(), rep=readManagerRepRoster().find(item=>item.id===$("managerProjectRep")?.value && lower(item.status||"active")!=="inactive"); if(!rec||!rep)return alert("Choose an active rep."); const updated=managerRepRecord(rec,rep); syncRecordEverywhere(updated); writeArrayKey(REP_QUEUE_KEY,[updated,...readArrayKey(REP_QUEUE_KEY).filter(item=>!sameRecord(item,rec))]); localStorage.setItem(REP_SYNC_KEY,String(Date.now())); render(); showBanner(`Project assigned to ${rep.name}.`); }
 function removeSelectedManagerProjectRep() { const rec=findSelectedRecord(); if(!rec)return; const updated=managerRepRecord(rec,null); syncRecordEverywhere(updated); writeArrayKey(REP_QUEUE_KEY,readArrayKey(REP_QUEUE_KEY).filter(item=>!sameRecord(item,rec))); localStorage.setItem(REP_SYNC_KEY,String(Date.now())); render(); showBanner("Project is now unassigned."); }
 function showUnassignedProjects() { state.selectedRep="__unassigned__"; renderTable(); }
-function editManagerRep(id) { const roster=readManagerRepRoster(), rep=roster.find(item=>item.id===id); if(!rep)return; const name=prompt("Name",rep.name); if(name===null||!clean(name))return; const workspace=normalizeRepWorkspaceId(prompt("Workspace: REP_1, REP_2, or REP_3",rep.workspace_id||"")||""); if(!workspace)return alert("Choose REP_1, REP_2, or REP_3."); if(roster.some(item=>item.id!==id&&normalizeRepWorkspaceId(item.workspace_id)===workspace&&lower(item.status||"active")!=="inactive"))return alert(`${repWorkspaceLabel(workspace)} is already assigned.`); rep.name=clean(name); rep.workspace_id=workspace; rep.email=clean(prompt("Email",rep.email)||"").toLowerCase(); rep.phone=clean(prompt("Phone",rep.phone)||""); rep.company=clean(prompt("Company",rep.company||"")||""); rep.territory=clean(prompt("Territory",rep.territory||"")||""); rep.status=clean(prompt("Status: active or inactive",rep.status||"active")||"active").toLowerCase()==="inactive"?"inactive":"active"; saveManagerRepRoster(roster); state.records.filter(rec=>clean(rec.assigned_rep_id)===id).forEach(rec=>syncRecordEverywhere(managerRepRecord(rec,rep))); render(); }
+function editManagerRep(id) { const roster=readManagerRepRoster(), rep=roster.find(item=>item.id===id); if(!rep)return; const name=prompt("Representative name",rep.name); if(name===null||!clean(name))return; const workspace=normalizeRepWorkspaceId(prompt("Workspace: REP_1, REP_2, or REP_3",rep.workspace_id||"")||""); if(!workspace)return alert("Choose REP_1, REP_2, or REP_3."); if(roster.some(item=>item.id!==id&&normalizeRepWorkspaceId(item.workspace_id)===workspace&&lower(item.status||"active")!=="inactive"))return alert(`${repWorkspaceLabel(workspace)} is already assigned.`); rep.name=clean(name); rep.workspace_id=workspace; rep.email=""; rep.phone=""; rep.company=""; rep.territory=""; rep.status="active"; saveManagerRepRoster(roster); state.records.filter(rec=>clean(rec.assigned_rep_id)===id).forEach(rec=>syncRecordEverywhere(managerRepRecord(rec,rep))); render(); }
 function reassignManagerRep(id) { const from=readManagerRepRoster().find(item=>item.id===id), choices=readManagerRepRoster().filter(item=>item.id!==id&&lower(item.status||"active")!=="inactive"); if(!from)return; const target=choices.find(item=>item.id===clean(prompt(`Enter replacement rep ID for ${from.name}:\n${choices.map(item=>`${item.id} = ${item.name}`).join("\n")}`))); if(!target)return alert("Choose a valid active rep ID."); state.records.filter(rec=>managerRepForAccount(rec)?.id===id).forEach(rec=>syncRecordEverywhere(managerRepRecord(rec,target))); render(); showBanner(`Projects reassigned to ${target.name}.`); }
 
 function selectRep(name) {
@@ -15077,14 +15028,21 @@ window.addEventListener("pageshow", () => {
 <script>
 /* Sandbox closed-system guard: free composition and live invitations are disabled. */
 (() => {
-  const lock = root => root.querySelectorAll('input:not([type="hidden"]):not([type="date"]):not([type="number"]), textarea, [contenteditable="true"]').forEach(el => {
+  const lock = root => root.querySelectorAll('input:not([type="hidden"]):not([type="date"]):not([type="number"]):not(#newRepName), textarea, [contenteditable="true"]').forEach(el => {
     el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.title = 'Disabled in the closed sandbox';
   });
-  const lockInvites = root => root.querySelectorAll('#sandboxInviteButton, #sandboxRevokeRep, #sandboxInviteManager, #sandboxRevokeManager, button[onclick*="inviteManagerRep"]').forEach(el => {
+  const lockInvites = root => root.querySelectorAll('#sandboxInviteButton, #sandboxRevokeRep, #sandboxInviteManager, #sandboxRevokeManager').forEach(el => {
     el.disabled = true; el.title = 'Use Rep Access Codes in the closed sandbox';
   });
   const blockLinks = root => root.querySelectorAll('a[href^="mailto:"],a[href^="tel:"]').forEach(a => { a.removeAttribute('href'); a.title = 'External contact actions are disabled in the closed sandbox'; });
-  const apply = () => { lock(document); lockInvites(document); blockLinks(document); };
+  const apply = () => {
+    lock(document); lockInvites(document); blockLinks(document);
+    document.querySelectorAll('#newRepEmail,#newRepPhone,#newRepCompany,#newRepTerritory').forEach(el => el.remove());
+    document.querySelectorAll('button[onclick*="revokeManagerRepInvitation"]').forEach(el => el.remove());
+    document.querySelectorAll('button[onclick*="inviteManagerRep"]').forEach(el => { el.disabled = false; el.textContent = 'Create Rep Access Code'; });
+    document.querySelectorAll('#repAdminPanel .panel-head h2').forEach(el => { el.textContent = 'Representative Access & Project Assignment'; });
+    document.querySelectorAll('#repAdminPanel .mini').forEach(el => { if (/Invitation:|@/.test(el.textContent)) el.textContent = el.textContent.replace(/\s*·\s*Invitation:.*$/, ''); });
+  };
   apply(); new MutationObserver(apply).observe(document.body, { childList:true, subtree:true });
 })();
 </script>
