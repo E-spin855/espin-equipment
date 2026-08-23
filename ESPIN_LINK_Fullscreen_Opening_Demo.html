@@ -187,4 +187,22 @@ start();
   setInterval(renderBriefing, 3000);
   renderBriefing();
 }());
+</script><script>
+/* Personal Generic Calendar bridge: Manager imports stay with Manager; Rep imports stay with the assigned Rep workspace. */
+(function(){
+  var KEY="espin_link_calendar_sync_v1", PING="espin_link_calendar_sync_ping_v1";
+  var session; try{session=JSON.parse(sessionStorage.getItem("espinSandboxSession")||"null")}catch(_){session=null}
+  if(!session)return;
+  var isRep=String(session.role||"").toLowerCase()==="rep", repId=String(session.assigned_rep_id||"").toUpperCase();
+  function read(){try{var v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v:[]}catch(_){return[]}}
+  function owns(item){return item&&item.owner_role===(isRep?"rep":"manager")&&(!isRep||String(item.assigned_rep_id||"").toUpperCase()===repId)}
+  function today(v){var d=new Date(v),n=new Date();return !isNaN(d)&&d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
+  function esc(v){var x=document.createElement("div");x.textContent=String(v||"");return x.innerHTML}
+  var priorRender=window.render;
+  function renderCalendarItems(){if(typeof priorRender==="function")priorRender();var rows=document.getElementById("rows"),count=document.getElementById("count"),openCount=document.getElementById("openCount");if(!rows)return;var events=read().filter(function(x){return owns(x)&&today(x.synced_at)});if(!events.length)return;rows.insertAdjacentHTML("beforeend",events.map(function(x,i){return "<div class=\"row\"><span class=\"task-tile tile-"+((i%5)+1)+"\"><b class=\"num\">"+String(i+1).padStart(2,"0")+"</b></span><div class=\"task-copy\">Calendar: "+esc(x.title)+"<small>Generic Calendar import</small></div><span class=\"pill\">ACTIVE</span></div>"}).join(""));var total=Number(count&&count.textContent||0)+events.length;if(count)count.textContent=total;if(openCount)openCount.textContent=total}
+  window.render=renderCalendarItems;
+  window.sync=function(){show("sync");setTimeout(function(){var imports=(selected||[]).map(function(key){var p=String(key).split("-"),day=cal[Number(p[0])],title=day&&day[1]&&day[1][Number(p[1])];return title?{id:"calendar-"+Date.now()+"-"+key,title:title,synced_at:new Date().toISOString(),owner_role:isRep?"rep":"manager",assigned_rep_id:isRep?repId:"",source:"generic_calendar"}:null}).filter(Boolean);var all=read().filter(function(x){return !owns(x)});localStorage.setItem(KEY,JSON.stringify(all.concat(imports)));localStorage.setItem(PING,String(Date.now()));synced=true;renderCalendarItems();show("menu")},1500)};
+  window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)renderCalendarItems()});
+  renderCalendarItems();
+}());
 </script></body></html>
