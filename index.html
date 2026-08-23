@@ -139,22 +139,8 @@ input{
 const API_URL = "";
 const SANDBOX_SESSION_KEY = "espinSandboxSession";
 
-// DEVELOPMENT BYPASS: set to true before the 30-day sandbox trial.
-const SANDBOX_AUTH_ENABLED = false;
-if (!SANDBOX_AUTH_ENABLED) {
-  const devSession = {
-    role: "sandbox_admin",
-    display_name: "Sandbox Admin",
-    assigned_rep_id: "",
-    allowed_views: ["manager", "vp", "rep_1", "rep_2", "rep_3"],
-    active_view: "manager",
-    expires_at: null
-  };
-  sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify(devSession));
-  localStorage.setItem("espinEquipment_auth", "true");
-  localStorage.setItem("espinEquipment_userEmail", "info@espinmedical.com");
-  location.replace("ESPIN_LINK_Fullscreen_Opening_Demo.html");
-}
+// DEVELOPMENT LOGIN: turn false when the server/API sandbox is ready again.
+const DEVELOPMENT_LOGIN_ENABLED = true;
 
 const usernameInput = document.getElementById("usernameInput");
 const passwordInput = document.getElementById("passwordInput");
@@ -178,6 +164,20 @@ signInButton.addEventListener("click", async ()=>{
   const password = passwordInput.value;
   if(!username || !password) return alert("Enter your sandbox username and password.");
   if(!sandboxAck.checked) return alert("Please acknowledge the fictional-information-only sandbox notice.");
+
+  if (DEVELOPMENT_LOGIN_ENABLED) {
+    const login = username.toLowerCase();
+    const developmentSessions = {
+      manager: { password:"1", session:{ role:"manager", display_name:"Manager", assigned_rep_id:"", allowed_views:["manager","vp","rep_1","rep_2","rep_3"], active_view:"manager", expires_at:null } },
+      rep: { password:"2", session:{ role:"rep", display_name:"Rep 1", assigned_rep_id:"REP_1", allowed_views:["rep_1"], active_view:"rep_1", expires_at:null } }
+    };
+    const match = developmentSessions[login];
+    if (!match || password !== match.password) return alert("Use the development credentials provided for this sandbox.");
+    sessionStorage.setItem(SANDBOX_SESSION_KEY, JSON.stringify(match.session));
+    localStorage.setItem("espinEquipment_auth", "true");
+    location.replace("ESPIN_LINK_Fullscreen_Opening_Demo.html");
+    return;
+  }
 
   signInButton.disabled = true;
   signInButton.textContent = "Signing in…";
@@ -216,6 +216,11 @@ signInButton.addEventListener("click", async ()=>{
     alert(err.message || "Unable to sign in with those credentials.");
   }
 });
+
+/*
+  PRODUCTION/API LOGIN (preserved above in the sign-in handler).
+  Set DEVELOPMENT_LOGIN_ENABLED to false to re-enable /api/sandbox-login.
+*/
 
 passwordInput.addEventListener("keydown", event => {
   if(event.key === "Enter") signInButton.click();
