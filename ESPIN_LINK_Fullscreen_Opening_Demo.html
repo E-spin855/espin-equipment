@@ -219,4 +219,14 @@ start();
   window.sync=function(){show("sync");setTimeout(function(){var keys=selected&&selected.length?selected:["1-0","2-1"];var imports=keys.map(function(key){var p=key.split("-"),day=cal[Number(p[0])],name=day&&day[1]&&day[1][Number(p[1])];return name?{id:"calendar-"+Date.now()+"-"+key,title:name,synced_at:new Date().toISOString(),owner_role:isRep?"rep":"manager",assigned_rep_id:isRep?rep:"",source:"generic_calendar"}:null}).filter(Boolean);localStorage.setItem(KEY,JSON.stringify(read().filter(function(x){return !owns(x)}).concat(imports)));localStorage.setItem(PING,String(Date.now()));synced=true;if(typeof window.render==="function")window.render();keepVisible();show("menu")},1500)};
   new MutationObserver(keepVisible).observe(document.getElementById("rows"),{childList:true});window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)keepVisible()});setInterval(keepVisible,500);keepVisible();
 }());
+</script><script>
+/* Final calendar control: route the visible button to the persistent fake-calendar import. */
+(function(){var button=document.querySelector("#calendar .calfoot .btn");if(button){button.onclick=function(event){event.preventDefault();if(typeof window.sync==="function")window.sync()}}}());
+</script><script>
+/* Safe fake-calendar import: never leave the demo on the syncing screen. */
+(function(){
+  var KEY="espin_link_calendar_sync_v1",PING="espin_link_calendar_sync_ping_v1",button=document.querySelector("#calendar .calfoot .btn");
+  if(!button)return;
+  button.onclick=function(event){event.preventDefault();show("sync");setTimeout(function(){try{var s=JSON.parse(sessionStorage.getItem("espinSandboxSession")||"null")||{},role=String(s.role||"").toLowerCase(),rep=String(s.assigned_rep_id||"").toUpperCase(),all;try{all=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(_){all=[]}if(!Array.isArray(all))all=[];all=all.filter(function(x){return !(x&&x.owner_role===role&&(role!=="rep"||String(x.assigned_rep_id||"").toUpperCase()===rep))});["Team strategy stand-up","Product design review"].forEach(function(title,index){all.push({id:"calendar-"+Date.now()+"-"+index,title:title,synced_at:new Date().toISOString(),owner_role:role==="rep"?"rep":"manager",assigned_rep_id:role==="rep"?rep:"",source:"generic_calendar"})});localStorage.setItem(KEY,JSON.stringify(all));localStorage.setItem(PING,String(Date.now()));if(typeof window.render==="function")window.render()}catch(error){console.error("Generic Calendar import failed",error)}finally{show("menu")}},650)};
+}());
 </script></body></html>
