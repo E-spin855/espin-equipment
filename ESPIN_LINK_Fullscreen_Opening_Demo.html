@@ -205,4 +205,18 @@ start();
   window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)renderCalendarItems()});
   renderCalendarItems();
 }());
+</script><style>.alex-copy b{font-size:clamp(40px,6vw,86px);letter-spacing:.045em;white-space:nowrap}</style><script>
+/* Calendar import reliability: selected fake events (or two default demo events) stay visible in the briefing. */
+(function(){
+  var KEY="espin_link_calendar_sync_v1", PING="espin_link_calendar_sync_ping_v1";
+  var s;try{s=JSON.parse(sessionStorage.getItem("espinSandboxSession")||"null")}catch(_){s=null}if(!s)return;
+  var rep=String(s.assigned_rep_id||"").toUpperCase(),isRep=String(s.role||"").toLowerCase()==="rep";
+  function read(){try{var v=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(v)?v:[]}catch(_){return[]}}
+  function owns(x){return x&&x.owner_role===(isRep?"rep":"manager")&&(!isRep||String(x.assigned_rep_id||"").toUpperCase()===rep)}
+  function current(x){var d=new Date(x.synced_at),n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
+  function esc(v){var d=document.createElement("div");d.textContent=String(v||"");return d.innerHTML}
+  function keepVisible(){var rows=document.getElementById("rows");if(!rows||Array.prototype.some.call(rows.children,function(x){return x.textContent.indexOf("Calendar:")===0}))return;var items=read().filter(function(x){return owns(x)&&current(x)});if(!items.length)return;rows.insertAdjacentHTML("beforeend",items.map(function(x,i){return "<div class=\"row\" data-calendar-import=\"true\"><span class=\"task-tile tile-"+((i%5)+1)+"\"><b class=\"num\">"+String(i+1).padStart(2,"0")+"</b></span><div class=\"task-copy\">Calendar: "+esc(x.title)+"<small>Generic Calendar import</small></div><span class=\"pill\">ACTIVE</span></div>"}).join(""));var count=document.getElementById("count"),open=document.getElementById("openCount"),total=Number(count&&count.textContent||0)+items.length;if(count)count.textContent=total;if(open)open.textContent=total}
+  window.sync=function(){show("sync");setTimeout(function(){var keys=selected&&selected.length?selected:["1-0","2-1"];var imports=keys.map(function(key){var p=key.split("-"),day=cal[Number(p[0])],name=day&&day[1]&&day[1][Number(p[1])];return name?{id:"calendar-"+Date.now()+"-"+key,title:name,synced_at:new Date().toISOString(),owner_role:isRep?"rep":"manager",assigned_rep_id:isRep?rep:"",source:"generic_calendar"}:null}).filter(Boolean);localStorage.setItem(KEY,JSON.stringify(read().filter(function(x){return !owns(x)}).concat(imports)));localStorage.setItem(PING,String(Date.now()));synced=true;if(typeof window.render==="function")window.render();keepVisible();show("menu")},1500)};
+  new MutationObserver(keepVisible).observe(document.getElementById("rows"),{childList:true});window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)keepVisible()});setInterval(keepVisible,500);keepVisible();
+}());
 </script></body></html>
