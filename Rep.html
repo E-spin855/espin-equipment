@@ -8174,18 +8174,41 @@ installBaseFixResponseRecordId: "",
     const ageFromDom = window.AxisUtils?.ageFromDom || AxisFallback.ageFromDom;
 
     const fakeContacts = [
-      { name: "Michael Carter", email: "m.carter@hospital.org", phone: "(206) 555-2143" },
-      { name: "Jennifer Lopez", email: "j.lopez@hospital.org", phone: "(425) 555-7782" },
-      { name: "David Kim", email: "d.kim@hospital.org", phone: "(253) 555-6621" },
-      { name: "Sarah Mitchell", email: "s.mitchell@hospital.org", phone: "(360) 555-9034" },
-      { name: "Robert Hayes", email: "r.hayes@hospital.org", phone: "(509) 555-1187" },
-      { name: "Emily Chen", email: "e.chen@hospital.org", phone: "(206) 555-4472" },
-      { name: "Daniel Brooks", email: "d.brooks@hospital.org", phone: "(425) 555-3319" },
-      { name: "Lisa Rodriguez", email: "l.rodriguez@hospital.org", phone: "(253) 555-8891" }
+      { name: "Facility Contact 1", email: "contact1@example.test", phone: "(555) 010-0001" },
+      { name: "Facility Contact 2", email: "contact2@example.test", phone: "(555) 010-0002" },
+      { name: "Facility Contact 3", email: "contact3@example.test", phone: "(555) 010-0003" }
     ];
 
     function clean(v) {
       return String(v || "").trim();
+    }
+
+    function anonymizeRepRecord(rec, index = 0) {
+      const slot = (index % 3) + 1;
+      const facility = `Facility ${String.fromCharCode(64 + slot)}`;
+      return {
+        ...rec,
+        site: facility,
+        site_name: facility,
+        facility,
+        facility_name: facility,
+        hospital: facility,
+        hospital_name: facility,
+        customer: facility,
+        customer_name: facility,
+        site_address: "123 Main St",
+        city: "Any City",
+        state: "CA",
+        zip_code: `0000${slot}`,
+        contact_name: `Facility Contact ${slot}`,
+        contact_title: "Facility Contact",
+        contact_phone: `(555) 010-000${slot}`,
+        contact_email: `contact${slot}@example.test`,
+        assigned_rep_name: `Rep ${slot}`,
+        assigned_rep_email: `rep${slot}@example.test`,
+        manager_name: "Manager",
+        manager_email: "manager@example.test"
+      };
     }
 
     function lower(v) {
@@ -10585,7 +10608,8 @@ function resetStoredRepActionsOnly(key) {
     sharedRecords
   ).filter(isAllowedRepWorkspaceRecord);
 
-  state.records = combinedRecords.map(rec => {
+  state.records = combinedRecords.map((rawRec, index) => {
+    const rec = anonymizeRepRecord(rawRec, index);
     const isRepCreated =
       rec?.rep_added_install_base === true ||
       rec?.rep_owned_install_base === true ||
