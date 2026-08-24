@@ -125,9 +125,12 @@ if (openBriefingDirectly) {
   function owner(rec) { return text(rec.assigned_rep_id || rec.rep_id || rec.rep_workspace_id || rec.workspace_id || rec.assigned_workspace || rec.active_view).toUpperCase(); }
   function belongsToRep(rec) { return owner(rec) === repId; }
   function title(rec) { return text(rec.oem_project_id || rec.project_id || rec.asset_id || rec.site || rec.customer_name || "Record"); }
-  function add(items, when, label, detail, rec, kind) {
+  function friendlyLabel(value) {
+    return text(value).replace(/[_-]+/g, " ").replace(/\b\w/g, function (letter) { return letter.toUpperCase(); }) || "Workspace update";
+  }
+  function add(items, when, label, detail, rec, kind, focus) {
     if (!isToday(when)) return;
-    items.push({ when: when, label: label, detail: detail || title(rec), id: recordId(rec, items.length), kind: kind || "update" });
+    items.push({ when: when, label: friendlyLabel(label), detail: detail || title(rec), id: recordId(rec, items.length), kind: kind || "update", focus: focus || "detailGrid" });
   }
   function readRecords() {
     var seen = Object.create(null), all = [];
@@ -148,11 +151,11 @@ if (openBriefingDirectly) {
     if (isToday(rec.rep_follow_up_date || rec.follow_up_date || rec.next_action_date)) {
       add(items, rec.rep_follow_up_date || rec.follow_up_date || rec.next_action_date, "Follow-up due", recordTitle, rec, "followup");
     }
-    if (isRep || !isRep) add(items, rec.rep_last_action_at || rec.rep_action_event_at, repAction || "Rep activity", recordTitle, rec, "rep");
+    if (isRep || !isRep) add(items, rec.rep_last_action_at || rec.rep_action_event_at, repAction || "Rep activity", recordTitle, rec, "rep", "detailGrid");
     if (!isRep) add(items, rec.rep_manager_message_at, "Rep message", text(rec.rep_manager_message || rec.manager_message || recordTitle), rec, "message");
     if (isRep) add(items, rec.manager_response_at, "Manager update", text(rec.manager_response || rec.manager_response_action || recordTitle), rec, "manager");
     if (!isRep) add(items, rec.manager_response_at, "Manager response", text(rec.manager_response || rec.manager_response_action || recordTitle), rec, "manager");
-    if (!isRep) add(items, rec.manager_flash_at, "Manager update", recordTitle, rec, "manager");
+    if (!isRep) add(items, rec.manager_flash_at, rec.manager_flash_text || "Manager update", recordTitle, rec, "manager", "detailGrid");
     if (!isRep) add(items, rec.manager_message_to_install_base_at, "Manager message", recordTitle, rec, "manager");
     add(items, rec.external_tradein_received_at || rec.tradein_received_at || rec.tradein_last_update_at, "Trade-in update", recordTitle, rec, "tradein");
     add(items, rec.quote_created_at || rec.quote_updated_at || rec.quote_approval_decision_at, "Quote update", recordTitle, rec, "quote");
@@ -160,12 +163,12 @@ if (openBriefingDirectly) {
     (Array.isArray(rec.workflow_event_history) ? rec.workflow_event_history : []).forEach(function (event) {
       var at = event && (event.at || event.timestamp || event.created_at || event.updated_at || event.date);
       var label = text(event && (event.action || event.event || event.type || event.label)) || "Workflow update";
-      add(items, at, label, text(event && (event.detail || event.message || event.note)) || recordTitle, rec, "workflow");
+      add(items, at, label, text(event && (event.detail || event.message || event.note)) || recordTitle, rec, "workflow", "detailGrid");
     });
     (Array.isArray(rec.active_project_snapshots) ? rec.active_project_snapshots : []).forEach(function (project) {
       var at = project && (project.updated_at || project.status_updated_at || project.milestone_at || project.date);
       var label = text(project && (project.milestone || project.status || project.project_name)) || "Project update";
-      add(items, at, label, recordTitle, rec, "project");
+      add(items, at, label, recordTitle, rec, "project", "activeProjectsPanel");
     });
     return items;
   }
@@ -182,12 +185,15 @@ if (openBriefingDirectly) {
     var items = briefingItems(), rows = document.getElementById("rows"), count = document.getElementById("count"), openCount = document.getElementById("openCount");
     if (!rows) return;
     rows.innerHTML = items.length ? items.map(function (item, i) {
-      return '<div class="row"><span class="task-tile tile-'+((i%5)+1)+'"><b class="num">'+String(i+1).padStart(2,"0")+'</b></span><div class="task-copy">'+esc(item.label)+'<small>'+esc(item.detail)+'</small></div><span class="pill">ACTIVE</span></div>';
+      return '<div class="row" role="button" tabindex="0" onclick="openBriefingUpdate('+JSON.stringify(String(item.id))+','+JSON.stringify(item.focus)+')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openBriefingUpdate('+JSON.stringify(String(item.id))+','+JSON.stringify(item.focus)+')}"><span class="task-tile tile-'+((i%5)+1)+'"><b class="num">'+String(i+1).padStart(2,"0")+'</b></span><div class="task-copy">'+esc(item.label)+'<small>'+esc(item.detail)+'</small></div><span class="pill">OPEN</span></div>';
     }).join("") : '<div class="row"><span class="task-tile tile-1"><b class="num">00</b></span><div class="task-copy">No current items for today<small>Shared records will appear here when their existing activity date is today.</small></div><span class="pill">CLEAR</span></div>';
     if (count) count.textContent = items.length;
     if (openCount) openCount.textContent = items.length;
   }
   function dashboard() { location.href = isRep ? "Rep.html" : "Manager.html"; }
+  window.openBriefingUpdate = function (id, focus) {
+    location.href = (isRep ? "Rep.html" : "Manager.html") + "?record=" + encodeURIComponent(id) + "&focus=" + encodeURIComponent(focus || "detailGrid");
+  };
   var dashboardButton = document.querySelector("#menu .foot .btn");
   if (dashboardButton) { dashboardButton.replaceWith(dashboardButton.cloneNode(true)); dashboardButton = document.querySelector("#menu .foot .btn"); dashboardButton.addEventListener("click", dashboard); }
   window.addEventListener("storage", function (event) { if (REFRESH_KEYS.indexOf(event.key) !== -1) renderBriefing(); });
