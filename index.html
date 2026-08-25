@@ -62,6 +62,7 @@ h1{font-size:27px;letter-spacing:.2px;margin:0 0 16px;font-weight:800;}
   transition:border-color .2s,box-shadow .2s;
 }
 .field input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,213,255,.12);}
+.field input:disabled{opacity:1;cursor:text;}
 .field input::placeholder{color:#a8b0bf;opacity:1;}
 .field svg{position:absolute;left:17px;bottom:19px;width:22px;height:22px;stroke:#d9e7fa;fill:none;stroke-width:1.9;pointer-events:none;}
 .rep-heading{margin:1px 0 13px;color:var(--cyan);font-weight:800;font-size:16px;}
@@ -124,11 +125,11 @@ h1{font-size:27px;letter-spacing:.2px;margin:0 0 16px;font-weight:800;}
     <h1>ESPIN LINK SANDBOX</h1>
     <p class="subtitle">Approved evaluator access. Sign in with your sandbox username and password.</p>
     <div class="login-row">
-      <div class="field"><label for="usernameInput">Sandbox username</label><input id="usernameInput" type="text" placeholder="Username" autocomplete="new-password" autocapitalize="none" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" readonly><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c0-4.1 3.1-6.4 7.5-6.4s7.5 2.3 7.5 6.4"></path></svg></div>
-      <div class="field"><label for="passwordInput">Password</label><input id="passwordInput" type="password" placeholder="Password" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" readonly><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="1"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"></path></svg></div>
+      <div class="field"><label for="usernameInput">Sandbox username</label><input id="usernameInput" type="text" placeholder="Username" autocomplete="new-password" autocapitalize="none" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" readonly disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M4.5 20c0-4.1 3.1-6.4 7.5-6.4s7.5 2.3 7.5 6.4"></path></svg></div>
+      <div class="field"><label for="passwordInput">Password</label><input id="passwordInput" type="password" placeholder="Password" autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" readonly disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="1"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"></path></svg></div>
     </div>
     <div class="rep-heading">Representative access</div>
-    <div class="field code-field"><input id="accessCodeInput" type="text" placeholder="One-time Rep Access Code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="10" readonly><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="16" r="3"></circle><path d="m10.2 13.8 7.4-7.4a3 3 0 1 1 4.2 4.2l-7.4 7.4M14.5 9.5l2 2M12.2 11.8l2 2"></path></svg></div>
+    <div class="field code-field"><input id="accessCodeInput" type="text" placeholder="One-time Rep Access Code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="10" readonly disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="16" r="3"></circle><path d="m10.2 13.8 7.4-7.4a3 3 0 1 1 4.2 4.2l-7.4 7.4M14.5 9.5l2 2M12.2 11.8l2 2"></path></svg></div>
     <div class="notice"><span class="notice-icon">i</span><div><strong>Fictional information only.</strong>Do not enter customer, patient, employee, or confidential business data. This temporary evaluation workspace contains fictional sandbox records.</div></div>
     <label class="acknowledgment"><input id="sandboxAck" type="checkbox"><span>I understand that I may use only fictional information in this sandbox.</span></label>
     <button id="signInButton" class="btn"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h5v18h-5M3 12h11M10 8l4 4-4 4"></path></svg>Sign In</button>
@@ -157,10 +158,13 @@ const sandboxAck = document.getElementById("sandboxAck");
 const accessCodeInput = document.getElementById("accessCodeInput");
 const joinButton = document.getElementById("joinButton");
 
-// Keep browser credential UI from interrupting the opening until a field is directly clicked.
-[usernameInput, passwordInput, accessCodeInput].forEach(input => {
-  input.addEventListener("pointerdown", () => { input.readOnly = false; }, { once:true, capture:true });
-});
+// Keep browser credential UI from seeing active login fields until one is directly clicked.
+document.addEventListener("pointerdown", event => {
+  const input = event.target.closest(".field")?.querySelector("input:disabled");
+  if (!input) return;
+  input.disabled = false;
+  input.readOnly = false;
+}, true);
 
 // Remove values written by the retired email/PIN login flow if this browser used it before.
 localStorage.removeItem("espinUserEmail");
