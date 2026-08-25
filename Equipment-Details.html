@@ -1299,7 +1299,33 @@ function triggerRender(m){
   if (m === "XRAY") renderXRAY();
   if (m === "CARM") renderCARM();
   if (m === "PETCT") renderPETCT();
-  setTimeout(applyChangedFieldStyling, 50);
+  setTimeout(() => { applyChangedFieldStyling(); applySandboxFieldControls(); }, 50);
+}
+function applySandboxFieldControls(){
+  const presets = {
+    additional_identifier:["Room 1","Room 2","Generic Identifier"],
+    ct_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"], mri_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"],
+    mamo_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"], xray_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"],
+    carm_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"], pet_manufacturer:["OEM","OEM 1","OEM 2","OEM 3"],
+    ct_serial:["A123","B345","C567"], mri_serial:["A123","B345","C567"], mamo_serial:["A123","B345","C567"],
+    xray_serial:["A123","B345","C567"], carm_serial:["A123","B345","C567"], pet_serial:["A123","B345","C567"]
+  };
+  document.querySelectorAll("#form-container [data-key]").forEach(box => {
+    const key=box.dataset.key, control=box.querySelector("input, textarea, select"); if(!control) return;
+    if(presets[key] && control.tagName !== "SELECT"){
+      const select=document.createElement("select");
+      select.innerHTML='<option value="">Select</option>'+presets[key].map(v=>`<option value="${v}">${v}</option>`).join("");
+      select.value=formData[key] || control.value || "";
+      select.onchange=()=>{formData[key]=select.value;dirtyFields.add(key);};
+      control.replaceWith(select);
+      return;
+    }
+    if(!presets[key] && control.type !== "hidden"){
+      control.readOnly=true;
+      control.title="Disabled for sandbox test";
+      control.addEventListener("focus",()=>{alert("Disabled for sandbox test");control.blur();},{once:true});
+    }
+  });
 }
 function appendCommonIdentifierFields(groupEl, serialKey){
   const axisProjectField = field(
@@ -1319,11 +1345,8 @@ function appendCommonIdentifierFields(groupEl, serialKey){
 
   groupEl.appendChild(axisProjectField);
 
-  groupEl.appendChild(field("Serial Number", serialKey));
-
-  const identifierField = field("Additional Identifier", "additional_identifier");
-  identifierField.querySelector("input").placeholder = "e.g. Room 2, Asset Tag 123, Hospital ID";
-  groupEl.appendChild(identifierField);
+  groupEl.appendChild(selectField("Serial Number", serialKey, "", ["A123","B345","C567"]));
+  groupEl.appendChild(selectField("Additional Identifier", "additional_identifier", "", ["Room 1","Room 2","Generic Identifier"]));
 }
 function renderCT(){
   const fc = document.getElementById("form-container");

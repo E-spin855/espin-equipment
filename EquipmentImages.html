@@ -677,7 +677,7 @@ function appendCard(p, badgeSet){
     <!-- NOTES -->
     <div class="card-body">
       <div class="field-label-dark">NOTES</div>
-      <textarea placeholder="Add notes...">${p.photo_comment || ""}</textarea>
+      <select aria-label="Image note"><option value="">Select a sandbox note</option><option value="Equipment condition documented">Equipment condition documented</option><option value="Installation reference image">Installation reference image</option><option value="Removal reference image">Removal reference image</option></select><div class="sandbox-note">Custom notes are disabled for sandbox test.</div>
     </div>
 
     <div class="card-footer">
@@ -688,7 +688,7 @@ function appendCard(p, badgeSet){
 
   const img = card.querySelector("img");
   const title = card.querySelector("input");
-  const note = card.querySelector("textarea");
+  const note = card.querySelector("select[aria-label='Image note']");
   const cb = card.querySelector("input[type=checkbox]");
 
   img.onclick = () => {
@@ -697,7 +697,7 @@ function appendCard(p, badgeSet){
   };
 
   // ===== TITLE =====
-  title.oninput = () => {
+  title.oninput = async () => {
   p.photo_title = title.value;
 
   if ((p.photo_title || "").trim()) {
@@ -713,6 +713,7 @@ function appendCard(p, badgeSet){
   }
 
   updateBatchState();
+  await fetch(`/api/equipment-photos/photo-update`, {method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({photoId:p.id,photo_title:p.photo_title})});
 };
   // ===== NOTE =====
   note.oninput = async () => {

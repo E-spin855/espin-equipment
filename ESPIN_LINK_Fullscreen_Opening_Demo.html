@@ -126,7 +126,11 @@ if (openBriefingDirectly) {
   function recordId(rec, index) { return text(rec.oem_project_id || rec.project_id || rec.asset_id || rec.id || rec.record_id || rec.serial_number || index); }
   function owner(rec) { return text(rec.assigned_rep_id || rec.rep_id || rec.rep_workspace_id || rec.workspace_id || rec.assigned_workspace || rec.active_view).toUpperCase(); }
   function belongsToRep(rec) { return owner(rec) === repId; }
-  function title(rec) { return text(rec.oem_project_id || rec.project_id || rec.asset_id || rec.site || rec.customer_name || "Record"); }
+  function title(rec) { return text(rec.site || rec.facility || rec.customer_name || rec.hospital || "Facility"); }
+  function recordSummary(rec) {
+    var facility = title(rec), project = text(rec.oem_project_id || rec.project_id || rec.asset_id || rec.id || "");
+    return project ? facility + " · " + project : facility;
+  }
   function friendlyLabel(value) {
     return text(value).replace(/[_-]+/g, " ").replace(/\b\w/g, function (letter) { return letter.toUpperCase(); }) || "Workspace update";
   }
@@ -148,7 +152,7 @@ if (openBriefingDirectly) {
     return all;
   }
   function activityFor(rec) {
-    var items = [], recordTitle = title(rec), repAction = text(rec.rep_action || rec.rep_last_action || rec.action);
+    var items = [], recordTitle = recordSummary(rec), repAction = text(rec.rep_action || rec.rep_last_action || rec.action);
     if (isRep && !belongsToRep(rec)) return items;
     if (isToday(rec.rep_follow_up_date || rec.follow_up_date || rec.next_action_date)) {
       add(items, rec.rep_follow_up_date || rec.follow_up_date || rec.next_action_date, "Follow-up due", recordTitle, rec, "followup");
@@ -225,7 +229,7 @@ if (openBriefingDirectly) {
   window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)renderCalendarItems()});
   renderCalendarItems();
 }());
-</script><style>.greeting-copy b{font-size:clamp(40px,6vw,86px);letter-spacing:.045em;white-space:nowrap}</style><script>
+</script><style>.greeting-copy b{font-size:clamp(40px,6vw,86px);letter-spacing:.045em;white-space:nowrap}#menu .row{grid-template-columns:88px minmax(0,1fr) auto!important;gap:18px!important}#menu .task-copy{min-width:0!important;line-height:1.25}#menu .task-copy small{overflow-wrap:anywhere}@media(max-width:850px){#menu .row{grid-template-columns:68px minmax(0,1fr) auto!important;gap:12px!important;padding-right:18px!important}#menu .task-copy{font-size:18px!important}}</style><script>
 /* Calendar import reliability: selected fake events (or two default demo events) stay visible in the briefing. */
 (function(){
   var KEY="espin_link_calendar_sync_v1", PING="espin_link_calendar_sync_ping_v1";
