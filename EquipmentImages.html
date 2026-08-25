@@ -105,6 +105,9 @@ function getPrimaryId(p){
 const BADGE_STORAGE_KEY = modalityId
   ? `new_images_${projectId}_${modalityId}`
   : `new_images_${projectId}`;
+const PHOTO_NOTE_STORAGE_KEY = modalityId
+  ? `equipment_image_notes_${projectId}_${modalityId}`
+  : `equipment_image_notes_${projectId}`;
 
 
 function safeParseArray(v){
@@ -130,6 +133,21 @@ function saveBadgesLocally(list){
   const j = JSON.stringify(uniq(list));
   sessionStorage.setItem(BADGE_STORAGE_KEY, j);
   localStorage.setItem(BADGE_STORAGE_KEY, j);
+}
+
+function getSavedPhotoNotes(){
+  try {
+    const notes = JSON.parse(localStorage.getItem(PHOTO_NOTE_STORAGE_KEY) || "{}");
+    return notes && typeof notes === "object" && !Array.isArray(notes) ? notes : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePhotoNote(id, note){
+  const notes = getSavedPhotoNotes();
+  notes[String(id)] = String(note || "");
+  localStorage.setItem(PHOTO_NOTE_STORAGE_KEY, JSON.stringify(notes));
 }
 
 function isNewForPhoto(p, badgeSet){
@@ -690,6 +708,7 @@ function appendCard(p, badgeSet){
   const title = card.querySelector("input");
   const note = card.querySelector("select[aria-label='Image note']");
   const cb = card.querySelector("input[type=checkbox]");
+  note.value = p.photo_comment || getSavedPhotoNotes()[pid] || "";
 
   img.onclick = () => {
     previewImage.src = p.photo_url;
@@ -716,8 +735,9 @@ function appendCard(p, badgeSet){
   await fetch(`/api/equipment-photos/photo-update`, {method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({photoId:p.id,photo_title:p.photo_title})});
 };
   // ===== NOTE =====
-  note.oninput = async () => {
+  note.onchange = async () => {
     p.photo_comment = note.value;
+    savePhotoNote(pid, p.photo_comment);
 
     await fetch(`/api/equipment-photos/photo-update`, {
       method: "POST",
@@ -1546,7 +1566,11 @@ async function loadPhotos({ silent = false } = {}) {
 
     if (userEditing) return;
 
-    photos = Array.isArray(out) ? out : [];
+    const savedNotes = getSavedPhotoNotes();
+    photos = (Array.isArray(out) ? out : []).map(photo => ({
+      ...photo,
+      photo_comment: photo.photo_comment || savedNotes[getPrimaryId(photo)] || ""
+    }));
 
     let serverBadges = [];
 
