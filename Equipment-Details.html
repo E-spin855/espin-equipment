@@ -1326,7 +1326,16 @@ function applySandboxFieldControls(){
     if(!presets[key] && control.type !== "hidden"){
       control.readOnly=true;
       control.title="Disabled for sandbox test";
-      control.addEventListener("focus",()=>{alert("Disabled for sandbox test");control.blur();},{once:true});
+      const blockSandboxControl = event => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        alert("Disabled for sandbox test");
+        control.blur();
+      };
+      control.addEventListener("focus", blockSandboxControl);
+      control.addEventListener("pointerdown", blockSandboxControl, true);
+      control.addEventListener("keydown", blockSandboxControl, true);
+      control.addEventListener("change", blockSandboxControl, true);
     }
   });
 }
@@ -2490,6 +2499,27 @@ function openTradeDeskAfterEquipmentSend(result = {}) {
   location.href = target.toString();
 }
 
+function openDemoEmailForEquipmentUpdate(result = {}) {
+  const inboxKey = "espin_demo_email_inbox_v1";
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
+  if (!Array.isArray(inbox)) inbox = [];
+
+  const modality = result.effectiveModality || formData.modality || currentModality || "Equipment";
+  inbox.unshift({
+    id: `equipment_update_${Date.now()}`,
+    projectId,
+    modalityId,
+    subject: `Equipment Update: ${modality}`,
+    from: "ESPIN LINK Sandbox <sandbox@example.test>",
+    createdAt: new Date().toLocaleString(),
+    html: `<div style="font-family:Arial,sans-serif;color:#222;"><h1>Equipment Update</h1><p>Sandbox equipment details were sent for review.</p><p><strong>Project:</strong> ${String(projectId)}</p><p><strong>Modality:</strong> ${String(modality)}</p></div>`
+  });
+  localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
+  try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
+  location.href = "Demo_Email.html";
+}
+
 async function saveData() {
   setButtonState("save");
 
@@ -2561,32 +2591,13 @@ async function sendEquipmentOnly() {
       syncTradeInToAxisTradeDesk(result);
     }
 
-    const res = await fetch("/api/send-equipment-emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-user-email": userEmail
-      },
-      body: JSON.stringify({
-        projectId,
-        modalityId,
-        changedFields: result.changedFields || []
-      })
-    });
-
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(json?.error || json?.message || "Failed to send equipment update");
-    }
-
     sendEquipmentBtn.classList.remove("loading");
     sendEquipmentBtn.classList.add("success");
     sendEquipmentBtn.innerHTML = "Update Sent";
 
-    // Continue directly to Trade Desk after a successful equipment-only send.
+    // Show the sandbox-only email preview after a successful equipment update.
     setTimeout(() => {
-      openTradeDeskAfterEquipmentSend(result);
+      openDemoEmailForEquipmentUpdate(result);
     }, 450);
 
   } catch (err) {

@@ -709,6 +709,7 @@ function appendCard(p, badgeSet){
   const note = card.querySelector("select[aria-label='Image note']");
   const cb = card.querySelector("input[type=checkbox]");
   note.value = p.photo_comment || getSavedPhotoNotes()[pid] || "";
+  cb.checked = selected.has(pid);
 
   img.onclick = () => {
     previewImage.src = p.photo_url;
@@ -1438,26 +1439,7 @@ sendBtn.onclick = async () => {
   }
 }
 
-   const emailRes = await fetch(`/api/equipment-photos/photo-email`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-user-email": userEmail
-  },
-  body: JSON.stringify({
-    projectId,
-    modalityId,
-    photoIds: ids
-  })
-});
-
-const emailOut = await emailRes.json().catch(() => ({}));
-
-if (!emailRes.ok) {
-  throw new Error(emailOut?.error || "Image email failed");
-}
-
-    // Create the Demo Email record before leaving the page for Trade Desk.
+    // Create the sandbox-only email record before opening the email preview.
     await createCombinedDemoEmail(ids);
     await syncImagesToAxisDemo(ids);
     selected.clear();
@@ -1465,7 +1447,7 @@ if (!emailRes.ok) {
       .forEach(cb => (cb.checked = false));
 
     sendBtn.innerText = "Sent";
-    openTradeDeskAfterImageSend();
+    location.href = "Demo_Email.html";
 
   } catch (e) {
     console.error("Send failed:", e);
