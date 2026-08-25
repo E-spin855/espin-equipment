@@ -53,7 +53,10 @@ function escapeHtml(value){
 
 function loadInbox(){
   const container = document.getElementById("container");
-  const emails = DEMO_EMAILS;
+  let storedEmails = [];
+  try { storedEmails = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
+  if (!Array.isArray(storedEmails)) storedEmails = [];
+  const emails = [...storedEmails, ...DEMO_EMAILS];
 
   container.innerHTML = emails.map(email => `
     <div class="card">
@@ -63,7 +66,7 @@ function loadInbox(){
         <b>Received:</b> ${formatEmailDate(email.createdAt)}</div>
       </div>
       <div class="email-body">
-        ${escapeHtml(email.body || email.html || "").replace(/\n/g, "<br>")}
+        ${email.html || escapeHtml(email.body || "").replace(/\n/g, "<br>")}
       </div>
     </div>
   `).join("");

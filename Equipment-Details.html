@@ -159,6 +159,8 @@ input[type="date"]{
   margin-bottom:10px;
   font-size:18px;
 }
+.sandbox-locked-control{position:relative}
+.sandbox-lock-overlay{position:absolute;inset:0;z-index:5;cursor:not-allowed}
 
 /* ===== BUTTONS ===== */
 .button-row{
@@ -1325,17 +1327,21 @@ function applySandboxFieldControls(){
     }
     if(!presets[key] && control.type !== "hidden"){
       control.readOnly=true;
+      control.tabIndex=-1;
+      control.setAttribute("aria-disabled", "true");
       control.title="Disabled for sandbox test";
-      const blockSandboxControl = event => {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        alert("Disabled for sandbox test");
-        control.blur();
-      };
-      control.addEventListener("focus", blockSandboxControl);
-      control.addEventListener("pointerdown", blockSandboxControl, true);
-      control.addEventListener("keydown", blockSandboxControl, true);
-      control.addEventListener("change", blockSandboxControl, true);
+      box.classList.add("sandbox-locked-control");
+      if (!box.querySelector(".sandbox-lock-overlay")) {
+        const overlay = document.createElement("button");
+        overlay.type = "button";
+        overlay.className = "sandbox-lock-overlay";
+        overlay.setAttribute("aria-label", "Disabled for sandbox test");
+        overlay.onclick = event => {
+          event.preventDefault();
+          alert("Disabled for sandbox test");
+        };
+        box.appendChild(overlay);
+      }
     }
   });
 }
@@ -2499,13 +2505,20 @@ function openTradeDeskAfterEquipmentSend(result = {}) {
   location.href = target.toString();
 }
 
-function openDemoEmailForEquipmentUpdate(result = {}) {
+function openDemoEmailForEquipmentUpdate(result = {}, previewWindow = null) {
   const inboxKey = "espin_demo_email_inbox_v1";
   let inbox = [];
   try { inbox = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
   if (!Array.isArray(inbox)) inbox = [];
 
   const modality = result.effectiveModality || formData.modality || currentModality || "Equipment";
+  const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+  })[char]);
+  const detailRows = Object.entries(formData)
+    .filter(([key, value]) => key !== "modality" && value !== "" && value != null)
+    .map(([key, value]) => `<tr><td style="padding:8px;border-bottom:1px solid #ddd;font-weight:700;">${escapeHtml(key.replace(/_/g, " "))}</td><td style="padding:8px;border-bottom:1px solid #ddd;">${escapeHtml(value)}</td></tr>`)
+    .join("");
   inbox.unshift({
     id: `equipment_update_${Date.now()}`,
     projectId,
@@ -2513,11 +2526,11 @@ function openDemoEmailForEquipmentUpdate(result = {}) {
     subject: `Equipment Update: ${modality}`,
     from: "ESPIN LINK Sandbox <sandbox@example.test>",
     createdAt: new Date().toLocaleString(),
-    html: `<div style="font-family:Arial,sans-serif;color:#222;"><h1>Equipment Update</h1><p>Sandbox equipment details were sent for review.</p><p><strong>Project:</strong> ${String(projectId)}</p><p><strong>Modality:</strong> ${String(modality)}</p></div>`
+    html: `<div style="font-family:Arial,sans-serif;color:#222;"><h1>Equipment Update</h1><p>Sandbox equipment details were submitted to Trade Desk.</p><p><strong>Project:</strong> ${escapeHtml(projectId)}</p><p><strong>Modality:</strong> ${escapeHtml(modality)}</p><table style="width:100%;border-collapse:collapse;">${detailRows}</table></div>`
   });
   localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
   try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
-  location.href = "Demo_Email.html";
+  if (previewWindow && !previewWindow.closed) previewWindow.focus();
 }
 
 async function saveData() {
@@ -2582,6 +2595,7 @@ async function sendEquipmentOnly() {
   sendEquipmentBtn.classList.add("loading");
   sendEquipmentBtn.innerHTML = `<span class="send-spinner"></span> Sending...`;
   saveBtn.disabled = true;
+  const demoEmailPreview = window.open("Demo_Email.html", "_blank");
 
   try {
     const result = await saveDetailsOnly();
@@ -2597,7 +2611,8 @@ async function sendEquipmentOnly() {
 
     // Show the sandbox-only email preview after a successful equipment update.
     setTimeout(() => {
-      openDemoEmailForEquipmentUpdate(result);
+      openDemoEmailForEquipmentUpdate(result, demoEmailPreview);
+      openTradeDeskAfterEquipmentSend(result);
     }, 450);
 
   } catch (err) {
