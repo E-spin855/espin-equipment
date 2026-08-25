@@ -15,17 +15,21 @@ body{margin:0;background:#f5f8fc;font-family:-apple-system,BlinkMacSystemFont,"S
 </style>
 <style>#dailyBriefingBack{position:absolute;top:12px;right:20px;z-index:99999}#dailyBriefingBack .btn{min-height:36px;padding:9px 13px;border:1px solid #39d9ff;border-radius:8px;background:#06213a;color:#e9fbff;font-weight:700;letter-spacing:.04em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.28)}@media(max-width:640px){#dailyBriefingBack{position:static;margin:12px 16px;text-align:center}}</style></head>
 <body><div id="dailyBriefingBack"><button class="btn" type="button" onclick="window.location.href='ESPIN_LINK_Fullscreen_Opening_Demo.html?view=briefing'">← GO BACK TO DAILY BRIEFING</button></div>
-<div class="header">ESPIN LINK Demo Inbox</div>
+<div class="header">ESPIN LINK Demo Inbox <button type="button" onclick="clearSandboxEmails()" style="float:right;background:#06213a;color:#e9fbff;border:1px solid #39d9ff;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer;">DELETE SANDBOX EMAILS</button></div>
 
 <div class="wrap" id="container"></div>
 
 <script>
 const inboxKey = "espin_demo_email_inbox_v1";
-const DEMO_EMAILS = [
-  { subject:"Project review update", from:"Operations Desk", createdAt:"2026-08-22T09:15:00", body:"Hello,\n\nA project review has been updated in the demo workspace. Please review the current status and any follow-up date already recorded.\n\nThank you,\nOperations Desk" },
-  { subject:"Quote activity received", from:"Commercial Support", createdAt:"2026-08-22T08:40:00", body:"Hello,\n\nA quote-related update has been added to the demo records. This message is for visibility only; no action is required from this inbox.\n\nCommercial Support" },
-  { subject:"Daily briefing reminder", from:"ESPIN LINK Notifications", createdAt:"2026-08-22T08:00:00", body:"Good morning,\n\nYour Daily Briefing is ready. Calendar items and workspace updates appear in their respective demo views.\n\nESPIN LINK Notifications" }
-];
+const DEMO_EMAILS = (() => {
+  const now = Date.now();
+  const received = minutesAgo => new Date(now - minutesAgo * 60 * 1000).toISOString();
+  return [
+    { subject:"Project review update", from:"Operations Desk", createdAt:received(3), body:"Hello,\n\nA project review has been updated in the demo workspace. Please review the current status and any follow-up date already recorded.\n\nThank you,\nOperations Desk" },
+    { subject:"Quote activity received", from:"Commercial Support", createdAt:received(8), body:"Hello,\n\nA quote-related update has been added to the demo records. This message is for visibility only; no action is required from this inbox.\n\nCommercial Support" },
+    { subject:"Daily briefing reminder", from:"ESPIN LINK Notifications", createdAt:received(14), body:"Good morning,\n\nYour Daily Briefing is ready. Calendar items and workspace updates appear in their respective demo views.\n\nESPIN LINK Notifications" }
+  ];
+})();
 
 const inboxChannel = typeof BroadcastChannel === "function"
   ? new BroadcastChannel("espin_demo_email_inbox")
@@ -51,6 +55,19 @@ function escapeHtml(value){
   })[ch]);
 }
 
+function displaySandboxSender(value){
+  const sender = String(value || "Sandbox Sender");
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(sender)
+    ? "Sandbox Sender <sender@example.test>"
+    : sender;
+}
+
+function clearSandboxEmails(){
+  localStorage.removeItem(inboxKey);
+  inboxChannel?.postMessage({ type: "inbox-cleared" });
+  loadInbox();
+}
+
 function loadInbox(){
   const container = document.getElementById("container");
   let storedEmails = [];
@@ -62,7 +79,7 @@ function loadInbox(){
     <div class="card">
       <h2 style="font-size:28px;">${escapeHtml(email.subject || "Equipment Update")}</h2>
       <div class="meta">
-        <div style="font-size:20px;"><b>From:</b> ${escapeHtml(email.from || "Espin Medical")}<br>
+        <div style="font-size:20px;"><b>From:</b> ${escapeHtml(displaySandboxSender(email.from))}<br>
         <b>Received:</b> ${formatEmailDate(email.createdAt)}</div>
       </div>
       <div class="email-body">
