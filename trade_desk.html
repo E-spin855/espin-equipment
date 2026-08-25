@@ -1474,6 +1474,13 @@ function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
 
+  const isEquipmentDetailsIntake = item =>
+    item &&
+    (
+      item.equipment_details_source === true ||
+      item.source === "Equipment Details"
+    );
+
   const sources = [
     AXIS_TRADE_DESK_QUEUE_KEY,
     AXIS_TRADE_DESK_INBOX_KEY,
@@ -1485,6 +1492,11 @@ function importAutomaticIntake(){
     if (!incoming.length) return;
 
     incoming.forEach(item => {
+      // Trade Desk receives trade-in equipment only from Equipment Details:
+      // either its direct send or the Equipment Details → Images handoff.
+      // Rep New Project intake is intentionally not a Trade Desk source.
+      if (!isEquipmentDetailsIntake(item)) return;
+
       const hasTradeDeskValue =
         item.trade_desk_id ||
         item.trade_desk_status ||
