@@ -1320,6 +1320,28 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
+    // A Rep additional-information response is deliberately a partial update.
+    // Merge only fields the rep answered and append (never replace) images.
+    if (incoming.trade_desk_info_request_status === "rep_responded") {
+      const values = incoming.trade_desk_info_request_updated_values || {};
+      Object.entries(values).forEach(([key, value]) => {
+        if (value !== "" && value !== null && value !== undefined) existing[key] = value;
+      });
+      const imageKey = image => String(image?.id || image?.url || image?.path || image?.title || "").trim().toLowerCase();
+      const currentImages = Array.isArray(existing.images) ? existing.images : [];
+      const incomingImages = Array.isArray(incoming.images) ? incoming.images : [];
+      existing.images = [...currentImages, ...incomingImages.filter(image => {
+        const key = imageKey(image);
+        return key && !currentImages.some(current => imageKey(current) === key);
+      })];
+      existing.image_count = existing.images.length;
+      ["trade_desk_info_request_id", "trade_desk_info_request_status", "trade_desk_info_request_items",
+       "trade_desk_info_request_notes", "trade_desk_info_request_sent_at", "trade_desk_info_request_responded_at",
+       "trade_desk_info_request_updated_fields", "last_tradein_update_at"].forEach(key => {
+        if (incoming[key] !== undefined) existing[key] = incoming[key];
+      });
+      return;
+    }
     const keepEquipmentDetails =
       existing.equipment_details_source === true &&
       record.equipment_details_source !== true;
@@ -1511,6 +1533,7 @@ function importAutomaticIntake(){
       const isTradeDeskRelevant =
         hasTradeDeskValue ||
         hasImages ||
+        item.trade_desk_info_request_status ||
         item.sync_mode === "attach_field_intake_to_existing_record" ||
         item.sync_mode === "attach_field_intake_to_project_review" ||
         item.sync_mode === "create_manual_trade_desk_review_record" ||
@@ -1996,8 +2019,23 @@ function sendInfoRequestToRep(btn = null){
   rec.info_request_notes = notes;
   rec.info_request_sent_to = repEmail;
   rec.info_request_sent_at = new Date().toISOString();
+  // This is an update to the already-synced equipment record, not a new intake.
+  rec.trade_desk_info_request_id = uid("trade_desk_info_request");
+  rec.trade_desk_info_request_status = "requested";
+  rec.trade_desk_info_request_items = checked;
+  rec.trade_desk_info_request_notes = notes;
+  rec.trade_desk_info_request_sent_at = rec.info_request_sent_at;
+  rec.last_tradein_update_at = rec.info_request_sent_at;
 
   saveData(data, true);
+  publishTradeDeskProgress(rec, {
+    trade_desk_info_request_id: rec.trade_desk_info_request_id,
+    trade_desk_info_request_status: "requested",
+    trade_desk_info_request_items: checked,
+    trade_desk_info_request_notes: notes,
+    trade_desk_info_request_sent_at: rec.info_request_sent_at,
+    last_tradein_update_at: rec.info_request_sent_at
+  });
 
   const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
@@ -2480,13 +2518,22 @@ function tradeInFieldRows(rec){
 }
 
 function renderInfoRequestSummary(rec){
-  const items = Array.isArray(rec.info_request_items) ? rec.info_request_items : [];
+  const items = Array.isArray(rec.trade_desk_info_request_items)
+    ? rec.trade_desk_info_request_items
+    : (Array.isArray(rec.info_request_items) ? rec.info_request_items : []);
 
   if (!items.length && !rec.info_request_notes) return "";
 
   return `
-    <div class="field-block">
+    <div class="field-block" style="border-color:${rec.trade_desk_info_request_status === "rep_responded" ? "rgba(65,255,156,.65)" : ""};">
       <h3 class="section-title">Requested Additional Information</h3>
+
+      ${rec.trade_desk_info_request_status === "rep_responded" ? `
+        <div class="review-detail" style="color:#41ff9c;"><strong>✓ Rep Update Received</strong><br>
+          Responded: ${htmlSafe(rec.trade_desk_info_request_responded_at || rec.last_tradein_update_at || "-")}<br>
+          ${Array.isArray(rec.trade_desk_info_request_updated_fields) && rec.trade_desk_info_request_updated_fields.length ? htmlSafe(rec.trade_desk_info_request_updated_fields.join(", ")) + " updated" : "Equipment details and/or images updated"}
+        </div>
+        <button class="emerald" onclick="markInfoRequestReviewed('${jsSafe(rec.id)}')">Mark Reviewed</button>` : ""}
 
       ${
         items.length
@@ -2499,8 +2546,8 @@ function renderInfoRequestSummary(rec){
       }
 
       ${
-        rec.info_request_notes
-          ? `<p class="small"><strong>Trade Desk Notes:</strong><br>${htmlSafe(rec.info_request_notes)}</p>`
+        (rec.trade_desk_info_request_notes || rec.info_request_notes)
+          ? `<p class="small"><strong>Trade Desk Notes:</strong><br>${htmlSafe(rec.trade_desk_info_request_notes || rec.info_request_notes)}</p>`
           : ""
       }
 
@@ -2508,6 +2555,22 @@ function renderInfoRequestSummary(rec){
       <div class="kv"><strong>Sent At:</strong> ${htmlSafe(rec.info_request_sent_at || "-")}</div>
     </div>
   `;
+}
+
+function markInfoRequestReviewed(id){
+  const data = loadData();
+  const rec = findById(data, id);
+  if (!rec) return;
+  rec.trade_desk_info_request_status = "reviewed";
+  rec.trade_desk_info_request_reviewed_at = new Date().toISOString();
+  rec.last_tradein_update_at = rec.trade_desk_info_request_reviewed_at;
+  saveData(data, true);
+  publishTradeDeskProgress(rec, {
+    trade_desk_info_request_status: "reviewed",
+    trade_desk_info_request_reviewed_at: rec.trade_desk_info_request_reviewed_at,
+    last_tradein_update_at: rec.last_tradein_update_at
+  });
+  render();
 }
 
 function renderSharingTracker(rec){

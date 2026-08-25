@@ -20218,6 +20218,71 @@ function saveInstallBaseFix(id) {
       );
     }
 
+    const TRADE_DESK_DEMO_IMAGES_KEY = "espin_sandbox_demo_images_v1";
+    const TRADE_DESK_REQUEST_FIELD_MAP = {
+      "Serial number missing or unclear": [["tradein_equipment_serial_number", "Serial Number"]],
+      "Additional identifier needed": [["hospital_asset_id", "Additional Identifier"]],
+      "Manufacturer/model does not match submitted details or photos": [["tradein_equipment_make", "Manufacturer"], ["tradein_equipment_model", "Model"]],
+      "Modality unclear or needs confirmation": [["tradein_equipment_modality", "Modality"]],
+      "Availability timeframe needed": [["availability_timeframe", "Availability Timeframe"]],
+      "System in-use status needed": [["in_use_status", "System In-Use Status"]],
+      "Out-of-use date needed": [["out_of_use_date", "Out-of-Use Date"]],
+      "Removal pathway details needed": [["removal_pathways", "Removal Pathway Details"]],
+      "Loading dock access needs confirmation": [["loading_dock", "Loading Dock Access"]],
+      "Rigging, hallway, elevator, or room access details needed": [["removal_pathways", "Rigging / Access Details"]],
+      "Hard drive removal status needed": [["hard_drive_removed", "Hard Drive Removal Status"]],
+      "Software version needed": [["software_version", "Software Version"]],
+      "Installed date or DOM needed": [["tradein_equipment_dom", "Installed Date / DOM"]],
+      "Service, upgrade, or configuration history needed": [["upgrade_notes", "Service / Upgrade History"]]
+    };
+    const isTradeDeskPhotoRequest = item => /photo|console|workstation|tube|gantry|magnet|detector|room|access path|hallway|elevator|dock|damage|condition/i.test(String(item || ""));
+    function sandboxDemoImages() {
+      try { const images = JSON.parse(localStorage.getItem(TRADE_DESK_DEMO_IMAGES_KEY) || "[]"); return Array.isArray(images) ? images : []; } catch (_) { return []; }
+    }
+    function renderTradeDeskRequestPanel(rec) {
+      const status = rec.trade_desk_info_request_status;
+      if (!status || status === "reviewed") return "";
+      const items = Array.isArray(rec.trade_desk_info_request_items) ? rec.trade_desk_info_request_items : [];
+      const requestId = escapeJs(rec.trade_desk_info_request_id || "");
+      if (status === "rep_responded") return `<div class="detail-card" style="grid-column:1/-1;border:1px solid rgba(65,255,156,.6);background:rgba(65,255,156,.07);"><div class="k" style="color:#41ff9c;">TRADE DESK REQUEST</div><div class="v">✓ Update Sent to Trade Desk</div><div class="mini">Submitted: ${escapeHtml(workflowDateOnly(rec.trade_desk_info_request_responded_at || rec.last_tradein_update_at))}</div></div>`;
+      const fields = items.flatMap(item => TRADE_DESK_REQUEST_FIELD_MAP[item] || []);
+      const photoRequest = items.some(isTradeDeskPhotoRequest);
+      return `<div class="detail-card" style="grid-column:1/-1;border:1px solid rgba(255,216,77,.65);background:rgba(255,216,77,.07);"><div class="k" style="color:#ffd84d;">TRADE DESK REQUEST</div><div class="v">Additional Information Required</div><div class="mini" style="margin:6px 0 10px;">Trade Desk needs the following before continuing review.</div><div class="mini"><strong>Requested Items</strong><br>${items.map(item => `• ${escapeHtml(item)}`).join("<br>")}</div>${rec.trade_desk_info_request_notes ? `<div class="mini" style="margin-top:10px;"><strong>Trade Desk Note</strong><br>${escapeHtml(rec.trade_desk_info_request_notes)}</div>` : ""}<div class="trade-desk-request-fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px;">${fields.map(([key,label]) => `<label>${escapeHtml(label)}<input data-trade-desk-request-field="${escapeHtml(key)}" value="${escapeHtml(rec[key] || "")}" /></label>`).join("")}</div>${photoRequest ? `<div style="margin-top:12px;"><strong>Requested Images</strong><div class="mini">Select approved demo images only.</div><div class="trade-desk-demo-images" data-request-id="${requestId}" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">${sandboxDemoImages().map((image,index) => `<label style="width:110px;"><input type="checkbox" data-trade-desk-demo-image="${index}" /> <img src="${escapeHtml(image.url || image.path || "")}" alt="${escapeHtml(image.title || "Demo image")}" style="width:100%;height:70px;object-fit:cover;border-radius:6px;display:block;" /><span class="mini">${escapeHtml(image.title || "Demo image")}</span></label>`).join("") || `<span class="mini">No approved sandbox demo images are currently available.</span>`}</div></div>` : ""}<button type="button" class="green" style="margin-top:12px;" onclick="submitTradeDeskRequestUpdate('${escapeJs(rec.id)}')">Submit Update to Trade Desk</button></div>`;
+    }
+    function submitTradeDeskRequestUpdate(recordId) {
+      const rec = state.records.find(item => String(item.id) === String(recordId));
+      if (!rec || rec.trade_desk_info_request_status !== "requested") return;
+      const updatedValues = {};
+      document.querySelectorAll("[data-trade-desk-request-field]").forEach(input => { if (String(input.value || "").trim()) updatedValues[input.dataset.tradeDeskRequestField] = input.value.trim(); });
+      const images = sandboxDemoImages().filter((_, index) => document.querySelector(`[data-trade-desk-demo-image="${index}"]`)?.checked);
+      const imageKey = image => clean(image?.id || image?.url || image?.path || image?.title).toLowerCase();
+      const currentImages = Array.isArray(rec.images) ? rec.images : [];
+      const newImages = images.filter(image => imageKey(image) && !currentImages.some(existing => imageKey(existing) === imageKey(image)));
+      if (!Object.keys(updatedValues).length && !newImages.length) { alert("Enter a requested value or select an approved demo image."); return; }
+      Object.assign(rec, updatedValues);
+      const deskFieldAliases = {
+        tradein_equipment_make: "make", tradein_equipment_model: "model",
+        tradein_equipment_modality: "modality", tradein_equipment_serial_number: "serial_number",
+        tradein_equipment_dom: "dom"
+      };
+      const deskUpdatedValues = Object.fromEntries(Object.entries(updatedValues).map(([key, value]) => [deskFieldAliases[key] || key, value]));
+      rec.images = [...currentImages, ...newImages];
+      rec.image_count = rec.images.length;
+      rec.trade_desk_info_request_status = "rep_responded";
+      rec.trade_desk_info_request_responded_at = new Date().toISOString();
+      rec.trade_desk_info_request_updated_fields = [...Object.keys(updatedValues), ...(newImages.length ? [`${newImages.length} additional image${newImages.length === 1 ? "" : "s"}`] : [])];
+      rec.last_tradein_update_at = rec.trade_desk_info_request_responded_at;
+      saveRecords();
+      const update = { ...rec, ...deskUpdatedValues, equipment_details_source: true, trade_desk_info_request_updated_values: deskUpdatedValues, last_tradein_update_at: rec.last_tradein_update_at, updated_at: rec.last_tradein_update_at };
+      let synced = []; try { synced = JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]"); if (!Array.isArray(synced)) synced = []; } catch (_) {}
+      const same = item => tradeInReturnMatchesRecord(rec, item);
+      const index = synced.findIndex(same); if (index >= 0) synced[index] = { ...synced[index], ...update, images: rec.images }; else synced.unshift(update);
+      localStorage.setItem("axis_tradein_sync_records_v1", JSON.stringify(synced));
+      localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+      renderNewProjectDetail(rec);
+      showBanner("✅ Update sent to Trade Desk");
+    }
+
     function renderNewProjectDetail(rec) {
       const detail = $("newProjectDetailArea");
       const grid = $("newProjectDetailGrid");
@@ -20489,7 +20554,7 @@ function saveInstallBaseFix(id) {
             ? ""
             : rec.tradein_sync_received
             ? `
-              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
+              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid ${rec.trade_desk_info_request_status === "requested" ? "rgba(255,216,77,.65)" : "rgba(65,255,156,.35)"};background:${rec.trade_desk_info_request_status === "requested" ? "rgba(255,216,77,.07)" : "rgba(65,255,156,.07)"};">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">${escapeHtml(rec.tradein_equipment_make || "-")} ${escapeHtml(rec.tradein_equipment_model || "")}</div>
@@ -20573,6 +20638,7 @@ function saveInstallBaseFix(id) {
                     </div>
                   </div>
                 ` : ""}
+                ${renderTradeDeskRequestPanel(rec)}
               </div>
             `
             : `
@@ -24908,11 +24974,17 @@ return true;
         item.id ||
         `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
       const version =
+        item.trade_desk_info_request_id || "";
+      const change =
+        item.trade_desk_info_request_status || "";
+      const updated =
+        item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at || "";
+      const baseVersion =
         item.last_tradein_update_at ||
         item.updated_at ||
         `${item.trade_in_value || item.trade_in_credit || item.tradein_credit || ""}_${item.image_count || item.images?.length || 0}`;
 
-      return `${identity}_${version}`.trim();
+      return `${identity}_${version}_${change}_${updated}_${baseVersion}`.trim();
     }
 
     function isWonTradeInRecord(item) {
@@ -25282,6 +25354,11 @@ return true;
       rec.tradein_last_update_at = item.last_tradein_update_at || item.updated_at || rec.tradein_last_update_at || "";
       rec.tradein_last_update_by = item.last_tradein_update_by || rec.tradein_last_update_by || "";
       rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
+      ["trade_desk_info_request_id", "trade_desk_info_request_status", "trade_desk_info_request_items",
+       "trade_desk_info_request_notes", "trade_desk_info_request_sent_at", "trade_desk_info_request_responded_at",
+       "trade_desk_info_request_reviewed_at", "trade_desk_info_request_updated_fields"].forEach(key => {
+        if (item[key] !== undefined && item[key] !== null && item[key] !== "") rec[key] = item[key];
+      });
       if (!alreadyProcessed) {
         rec.manager_unseen_update = true;
         rec.manager_flash_at = new Date().toISOString();
@@ -25389,10 +25466,23 @@ return true;
       );
 
       rec.image_sync_received = item.image_sync_received || Boolean(item.images && item.images.length) || rec.image_sync_received || false;
-      rec.image_count = item.image_count || item.images?.length || rec.image_count || 0;
-      rec.images = item.images || rec.images || [];
+      const existingImages = Array.isArray(rec.images) ? rec.images : [];
+      const incomingImages = Array.isArray(item.images) ? item.images : [];
+      const imageKey = image => clean(image?.id || image?.url || image?.path || image?.title).toLowerCase();
+      rec.images = [...existingImages, ...incomingImages.filter(image => {
+        const key = imageKey(image);
+        return key && !existingImages.some(existing => imageKey(existing) === key);
+      })];
+      rec.image_count = rec.images.length || rec.image_count || 0;
       rec.last_image_update_by = item.last_image_update_by || rec.last_image_update_by || "";
       rec.last_image_update_at = item.last_image_update_at || rec.last_image_update_at || "";
+
+      // Additional-information requests stay attached to this existing record.
+      ["trade_desk_info_request_id", "trade_desk_info_request_status", "trade_desk_info_request_items",
+       "trade_desk_info_request_notes", "trade_desk_info_request_sent_at", "trade_desk_info_request_responded_at",
+       "trade_desk_info_request_reviewed_at", "trade_desk_info_request_updated_fields"].forEach(key => {
+        if (item[key] !== undefined && item[key] !== null && item[key] !== "") rec[key] = item[key];
+      });
 
       if (!alreadyProcessed) {
         syncToManagerQueue(rec);
