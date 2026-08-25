@@ -1045,6 +1045,8 @@ function normalizeIncomingRecord(item){
 
     axis_serial_number: item.axis_serial_number || serialNumber || item.hospital_asset_id || item.additional_identifier || "",
     axis_source: item.axis_source || item.source || "field_trade_in_intake",
+    equipment_details_source:
+      item.equipment_details_source === true || item.source === "Equipment Details",
     sync_mode: item.sync_mode || item.axis_sync_mode || "create_manual_trade_desk_review_record",
 
     project_id: projectId || `REVIEW-${Date.now()}`,
@@ -1317,6 +1319,9 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
+    const keepEquipmentDetails =
+      existing.equipment_details_source === true &&
+      record.equipment_details_source !== true;
 
     deskData[matchIndex] = {
       ...existing,
@@ -1384,6 +1389,20 @@ function mergeRecordIntoDesk(deskData, incoming){
       image_sync_received: Boolean(record.images && record.images.length) || existing.image_sync_received || false,
       image_count: record.images && record.images.length ? record.images.length : existing.image_count || 0
     };
+
+    // Rep project updates can continue to update workflow state, but they
+    // cannot replace the facility or equipment details saved in Equipment Details.
+    if (keepEquipmentDetails) {
+      const merged = deskData[matchIndex];
+      [
+        "equipment_details_source", "source", "site", "site_address", "city", "state", "zip_code",
+        "modality", "make", "model", "serial_number", "axis_serial_number", "hospital_asset_id",
+        "dom", "installed_date", "in_use_status", "out_of_use_date", "availability_timeframe",
+        "removal_pathways", "loading_dock", "hard_drive_removed", "software_version", "upgrade_notes"
+      ].forEach(key => {
+        merged[key] = existing[key];
+      });
+    }
   } else {
     deskData.unshift(record);
   }
