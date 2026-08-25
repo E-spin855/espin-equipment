@@ -1050,6 +1050,18 @@ async function syncImagesToAxisDemo(sentPhotoIds) {
   let records = [];
   let lifecycleRecords = [];
   const liveDetails = await fetchCurrentEquipmentDetailsForAxisSync();
+  let savedEquipmentDraft = {};
+  try {
+    savedEquipmentDraft = JSON.parse(
+      localStorage.getItem(`${DEMO_EMAIL_DRAFT_PREFIX}${projectId}:${modalityId}`) || "{}"
+    );
+  } catch (_) {}
+  const equipmentDetails = {
+    ...liveDetails,
+    ...(savedEquipmentDraft?.data && typeof savedEquipmentDraft.data === "object"
+      ? savedEquipmentDraft.data
+      : {})
+  };
   try {
     records = JSON.parse(localStorage.getItem(key) || "[]");
     if (!Array.isArray(records)) records = [];
@@ -1191,7 +1203,7 @@ async function syncImagesToAxisDemo(sentPhotoIds) {
 
   const imageSyncRecord = {
     ...existing,
-    ...liveDetails,
+    ...equipmentDetails,
     // The selected images are attached to the equipment record saved on
     // Equipment Details; this must supersede Rep New Project intake values.
     equipment_details_source: true,
@@ -1219,50 +1231,50 @@ async function syncImagesToAxisDemo(sentPhotoIds) {
     modality_id: modalityId,
 
    make:
-  liveDetails.make ||
-  liveDetails.tradein_equipment_make ||
-  liveDetails.ct_manufacturer ||
-  liveDetails.mri_manufacturer ||
-  liveDetails.xray_manufacturer ||
-  liveDetails.carm_manufacturer ||
-  liveDetails.pet_manufacturer ||
-  liveDetails.mamo_manufacturer ||
+  equipmentDetails.make ||
+  equipmentDetails.tradein_equipment_make ||
+  equipmentDetails.ct_manufacturer ||
+  equipmentDetails.mri_manufacturer ||
+  equipmentDetails.xray_manufacturer ||
+  equipmentDetails.carm_manufacturer ||
+  equipmentDetails.pet_manufacturer ||
+  equipmentDetails.mamo_manufacturer ||
   existing.make ||
   lifecycleMatch.tradein_equipment_make ||
   lifecycleMatch.make ||
   "",
 
 model:
-  liveDetails.model ||
-  liveDetails.tradein_equipment_model ||
-  liveDetails.ct_model ||
-  liveDetails.mri_model ||
-  liveDetails.xray_model ||
-  liveDetails.carm_model ||
-  liveDetails.pet_model ||
-  liveDetails.mamo_model ||
+equipmentDetails.model ||
+equipmentDetails.tradein_equipment_model ||
+equipmentDetails.ct_model ||
+equipmentDetails.mri_model ||
+equipmentDetails.xray_model ||
+equipmentDetails.carm_model ||
+equipmentDetails.pet_model ||
+equipmentDetails.mamo_model ||
   existing.model ||
   lifecycleMatch.tradein_equipment_model ||
   lifecycleMatch.model ||
   "",
 
 modality:
-  liveDetails.modality ||
-  liveDetails.tradein_equipment_modality ||
+equipmentDetails.modality ||
+equipmentDetails.tradein_equipment_modality ||
   existing.modality ||
   lifecycleMatch.tradein_equipment_modality ||
   lifecycleMatch.modality ||
   "",
 
 serial_number:
-  liveDetails.serial_number ||
-  liveDetails.tradein_equipment_serial_number ||
-  liveDetails.ct_serial ||
-  liveDetails.mri_serial ||
-  liveDetails.xray_serial ||
-  liveDetails.carm_serial ||
-  liveDetails.pet_serial ||
-  liveDetails.mamo_serial ||
+equipmentDetails.serial_number ||
+equipmentDetails.tradein_equipment_serial_number ||
+equipmentDetails.ct_serial ||
+equipmentDetails.mri_serial ||
+equipmentDetails.xray_serial ||
+equipmentDetails.carm_serial ||
+equipmentDetails.pet_serial ||
+equipmentDetails.mamo_serial ||
   existing.serial_number ||
   axisSerialNumber ||
   lifecycleMatch.tradein_equipment_serial_number ||
@@ -1270,24 +1282,24 @@ serial_number:
   "",
 
 dom:
-  liveDetails.dom ||
-  liveDetails.tradein_equipment_dom ||
-  liveDetails.ct_dom ||
-  liveDetails.mri_yom ||
-  liveDetails.xray_dom ||
-  liveDetails.carm_dom ||
-  liveDetails.pet_dom ||
-  liveDetails.mamo_dom ||
+equipmentDetails.dom ||
+equipmentDetails.tradein_equipment_dom ||
+equipmentDetails.ct_dom ||
+equipmentDetails.mri_yom ||
+equipmentDetails.xray_dom ||
+equipmentDetails.carm_dom ||
+equipmentDetails.pet_dom ||
+equipmentDetails.mamo_dom ||
   existing.dom ||
   lifecycleMatch.tradein_equipment_dom ||
   lifecycleMatch.dom ||
   "",
 
 site:
-  liveDetails.site ||
-  liveDetails.project_name ||
-  liveDetails.facility ||
-  liveDetails.hospital ||
+equipmentDetails.site ||
+equipmentDetails.project_name ||
+equipmentDetails.facility ||
+equipmentDetails.hospital ||
   existing.site ||
   lifecycleMatch.site ||
   lifecycleMatch.facility ||
@@ -1295,26 +1307,26 @@ site:
   "",
 
 site_address:
-  liveDetails.site_address ||
+equipmentDetails.site_address ||
   existing.site_address ||
   lifecycleMatch.site_address ||
   "",
 
 city:
-  liveDetails.city ||
+equipmentDetails.city ||
   existing.city ||
   lifecycleMatch.city ||
   "",
 
 state:
-  liveDetails.state ||
+equipmentDetails.state ||
   existing.state ||
   lifecycleMatch.state ||
   "",
 
 zip_code:
-  liveDetails.zip_code ||
-  liveDetails.zip ||
+equipmentDetails.zip_code ||
+equipmentDetails.zip ||
   existing.zip_code ||
   lifecycleMatch.zip_code ||
   "",
@@ -1444,9 +1456,9 @@ sendBtn.onclick = async () => {
   }
 }
 
-    // Create the sandbox-only email record before opening the email preview.
-    await createCombinedDemoEmail(ids);
     await syncImagesToAxisDemo(ids);
+    // Build the sandbox email after Trade Desk receives the saved equipment details.
+    await createCombinedDemoEmail(ids);
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]")
       .forEach(cb => (cb.checked = false));
