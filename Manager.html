@@ -9750,6 +9750,9 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   const textValue = String(normalHtml || "")
     .replace(/<[^>]*>/g, "")
     .trim();
+  const isNewProject = ["new_project_record", "new_sales_project"].includes(
+    String(rec?.project_type || "").toLowerCase()
+  ) || rec?.rep_created_new_project === true || rec?.is_new_project === true;
 
   if (wasManagerFieldCorrected(rec, fieldName)) {
     return renderManagerCorrectedValue(
@@ -9760,6 +9763,17 @@ function renderManagerFixOrValue(rec, fieldName, normalHtml) {
   }
 
   if (isManagerFieldAwaitingRepFix(rec, fieldName)) {
+    return `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`;
+  }
+
+  // A Rep-created project must identify every missing equipment field at
+  // the field level, even when the source used a placeholder such as
+  // “Not Entered” rather than an explicit missing-field flag.
+  if (
+    isNewProject &&
+    managerMissingValue(textValue) &&
+    !isManagerFieldPersistentlyCorrected(rec, fieldName)
+  ) {
     return `<span class="awaiting-rep-fix">Awaiting Rep Fix</span>`;
   }
 
@@ -10758,7 +10772,7 @@ function getManagerInstallBaseInputValue(rec, key) {
 
 function managerMissingValue(value) {
   const v = lower(clean(value));
-  return !v || ["-", "unknown", "none", "n/a", "na", "null", "undefined", "unassigned", "unassigned rep"].includes(v);
+  return !v || ["-", "unknown", "none", "n/a", "na", "null", "undefined", "unassigned", "unassigned rep", "not entered", "not provided"].includes(v);
 }
 
 function isManagerInstallBaseLikeRecord(rec) {
