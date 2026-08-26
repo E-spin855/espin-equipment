@@ -6410,6 +6410,23 @@ body{
     </div>
   </div>
 
+    <div class="modal" id="demoQuoteEmailModal">
+      <div class="modal-box">
+        <h3>Demo Quote Email</h3>
+        <p style="margin:0;color:#666;line-height:1.45;">Sandbox demonstration only. No PDF is created and no email is sent externally.</p>
+        <label>To</label>
+        <input id="demoQuoteEmailTo" type="email" readonly>
+        <label>CC</label>
+        <input id="demoQuoteEmailCc" type="text" readonly>
+        <label>Subject</label>
+        <input id="demoQuoteEmailSubject" type="text" readonly>
+        <label>Message</label>
+        <textarea id="demoQuoteEmailBody" readonly></textarea>
+        <button class="green" onclick="sendDemoQuoteEmail()">Send Demo Email</button>
+        <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeDemoQuoteEmailModal()">Cancel</button>
+      </div>
+    </div>
+
   <script>
 const STORAGE_KEY = "espin_lifecycle_demo_records_v1";
 const REP_WORKSPACE_BACKUP_KEY = "espin_rep_workspace_records_v1";
@@ -12516,7 +12533,7 @@ function renderQuoteApprovalActionPanel(rec) {
 
         <div class="btns" style="margin-top:12px;">
           <button type="button" class="green" onclick="reviewApprovedQuote()">Review Approved Quote</button>
-         <button type="button" class="green" onclick="sendQuoteToCustomer()">Download PDF + Open Email Draft</button>
+         <button type="button" class="green" onclick="sendQuoteToCustomer()">Open Demo Email</button>
         </div>
 
         <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
@@ -19496,6 +19513,9 @@ function reviewApprovedQuote() {
     }
 
     function buildQuotePDF(rec, shouldSave = true) {
+      alert("Disabled fro sandbox test");
+      return null;
+
       if (!rec) {
         alert("Open a record first");
         return null;
@@ -19658,6 +19678,9 @@ function reviewApprovedQuote() {
     return;
   }
 
+  openDemoQuoteEmail(rec);
+  return;
+
   if (rec.quote_customer_release_allowed !== true) {
     alert("Quote is not approved yet. Customer email is locked until Quote Approval approves it.");
     return;
@@ -19727,6 +19750,27 @@ Thank you.`
     window.location.href = mailtoUrl;
   }, 700);
 }
+
+function openDemoQuoteEmail(rec) {
+  const quoteAmount = Number(rec.quote_amount || 0);
+  const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
+  const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  $("demoQuoteEmailTo").value = rec.quote_recipient_email || rec.contact_email || "demo-recipient@espinlink.sandbox";
+  $("demoQuoteEmailCc").value = rec.quote_cc_email || "";
+  $("demoQuoteEmailSubject").value = `Demo Quote ${rec.oem_project_id || rec.serial_number || ""}`.trim();
+  $("demoQuoteEmailBody").value = `Hello,\n\nThis is a sandbox-only quote email preview.\n\nFacility: ${rec.site || ""}\nEquipment / Project: ${rec.make || ""} ${rec.model || ""}\nSerial: ${rec.serial_number || ""}\n\nGross Quote: ${money(quoteAmount)}\nTrade-In Credit: -${money(tradeInCredit)}\nNet Quote: ${money(netQuote)}\n\nNo PDF is attached and no external email will be sent.`;
+  $("demoQuoteEmailModal").style.display = "flex";
+}
+
+function closeDemoQuoteEmailModal() {
+  $("demoQuoteEmailModal").style.display = "none";
+}
+
+function sendDemoQuoteEmail() {
+  closeDemoQuoteEmailModal();
+  showBanner("✅ Demo email recorded. No email was sent.");
+}
+
 function openDecisionModal() {
   const rec = state.records.find(r => r.id === state.selectedId);
 
