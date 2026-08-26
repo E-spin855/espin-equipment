@@ -11463,7 +11463,9 @@ function hasMergeValue(v) {
 
 function mergeConversationHistory(existingHistory, incomingHistory) {
   const combined = [];
-  const seen = new Set();
+  const seen = new Set([
+    [current.make, current.model, current.serial_number].join("|").toLowerCase()
+  ]);
 
   [existingHistory, incomingHistory].forEach(list => {
     if (!Array.isArray(list)) return;
@@ -24479,39 +24481,107 @@ Thank you.`
     window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
   }, 700);
 }
+function getRemovalEquipmentChoices(rec) {
+  const current = {
+    id: "current",
+    source: "current_field_equipment",
+    label: `Current field equipment — ${[rec.make, rec.model, rec.serial_number || rec.serial].filter(Boolean).join(" · ") || "Equipment details"}`,
+    make: rec.make || "",
+    model: rec.model || "",
+    modality: rec.modality || "",
+    serial_number: rec.serial_number || rec.serial || "",
+    dom: rec.dom || ""
+  };
+  let synced = [];
+  try { synced = JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]"); } catch (_) {}
+  if (!Array.isArray(synced)) synced = [];
+
+  const recordIds = [rec.id, rec.axis_record_id, rec.oem_project_id, rec.project_id]
+    .map(value => clean(value)).filter(Boolean);
+  const related = synced.filter(item => {
+    const itemIds = [item.id, item.axis_record_id, item.axis_parent_record_id, item.project_id, item.axis_project_id, item.trade_desk_record_id]
+      .map(value => clean(value)).filter(Boolean);
+    return itemIds.some(value => recordIds.includes(value));
+  });
+  const tradeDeskRecords = (related.length ? related : synced)
+    .filter(item => item && (item.make || item.tradein_equipment_make || item.model || item.tradein_equipment_model));
+  const seen = new Set();
+  const choices = [current];
+  tradeDeskRecords.forEach(item => {
+    const make = clean(item.make || item.tradein_equipment_make);
+    const model = clean(item.model || item.tradein_equipment_model);
+    const serial = clean(item.serial_number || item.axis_serial_number || item.tradein_equipment_serial_number);
+    const key = [make, model, serial].join("|").toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    choices.push({
+      id: `trade-desk-${item.id || item.trade_desk_record_id || key}`,
+      source: "trade_desk_equipment",
+      trade_desk_record_id: item.id || item.trade_desk_record_id || "",
+      label: `Trade Desk equipment — ${[make, model, serial ? `S/N ${serial}` : ""].filter(Boolean).join(" · ")}`,
+      make,
+      model,
+      modality: clean(item.modality || item.tradein_equipment_modality),
+      serial_number: serial,
+      dom: clean(item.dom || item.tradein_equipment_dom)
+    });
+  });
+  return choices;
+}
+
+function chooseRemovalEquipment(rec, onChoose) {
+  const choices = getRemovalEquipmentChoices(rec);
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(1,8,20,.78);display:flex;align-items:center;justify-content:center;padding:20px;";
+  overlay.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="Choose removal equipment" style="width:min(620px,100%);background:#071b31;border:1px solid #39d9ff;border-radius:16px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.55);color:#e9fbff;">
+      <h2 style="margin:0 0 8px;">Choose Equipment for Removal</h2>
+      <p style="margin:0 0 18px;color:#b8cbe0;">Select the current field equipment or equipment previously sent to Trade Desk. This choice applies only to the Removal project.</p>
+      <label for="removalEquipmentChoice" style="display:block;font-weight:800;margin-bottom:8px;">Equipment to remove</label>
+      <select id="removalEquipmentChoice" style="width:100%;padding:13px;border-radius:8px;margin-bottom:18px;">
+        ${choices.map((choice, index) => `<option value="${index}">${escapeHtml(choice.label)}</option>`).join("")}
+      </select>
+      <div style="display:flex;justify-content:flex-end;gap:10px;"><button type="button" class="secondary" data-cancel>Cancel</button><button type="button" class="green" data-confirm>Open Removal Project</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("[data-cancel]").onclick = () => overlay.remove();
+  overlay.querySelector("[data-confirm]").onclick = () => {
+    const index = Number(overlay.querySelector("#removalEquipmentChoice").value || 0);
+    const choice = choices[index] || choices[0];
+    overlay.remove();
+    onChoose(choice);
+  };
+}
+
 function openDecisionModal(recordId = state.selectedId, followUpDate = "", actionLabel = "Open Removal/Disposal Project") {
   const rec = state.records.find(r => String(r.id) === String(recordId));
-
   if (!rec) {
     alert("Open a record first");
     return;
   }
 
-  const decisionContext = {
-    recordId: String(rec.id),
-    followUpDate: String(followUpDate || ""),
-    actionLabel: String(actionLabel || "Open Removal/Disposal Project").trim()
-  };
+  chooseRemovalEquipment(rec, equipment => {
+    rec.removal_equipment_source = equipment.source;
+    rec.removal_equipment_trade_desk_record_id = equipment.trade_desk_record_id || "";
+    rec.removal_equipment_make = equipment.make || rec.make || "";
+    rec.removal_equipment_model = equipment.model || rec.model || "";
+    rec.removal_equipment_modality = equipment.modality || rec.modality || "";
+    rec.removal_equipment_serial_number = equipment.serial_number || rec.serial_number || rec.serial || "";
+    rec.removal_equipment_dom = equipment.dom || rec.dom || "";
+    saveRecords();
 
-  const modality = String(rec.modality || "").toUpperCase().trim();
-  const magnetEvent = modality === "MRI" ? "ramp_down" : "";
-  const disposalRequired = true;
-
-  const connectWindow = window.open("about:blank", "_blank");
-  if (connectWindow) {
-    try {
-      connectWindow.document.body.innerHTML =
-        "<div style=\"font-family:-apple-system,sans-serif;padding:36px\"><h2>Creating Espin Connect project…</h2><p>Please wait.</p></div>";
-    } catch {}
-  }
-
-  void sendToConnectWithDecision(
-    rec,
-    magnetEvent,
-    disposalRequired,
-    connectWindow,
-    decisionContext
-  );
+    const decisionContext = {
+      recordId: String(rec.id),
+      followUpDate: String(followUpDate || ""),
+      actionLabel: String(actionLabel || "Open Removal/Disposal Project").trim()
+    };
+    const modality = String(rec.removal_equipment_modality || rec.modality || "").toUpperCase().trim();
+    const connectWindow = window.open("about:blank", "_blank");
+    if (connectWindow) {
+      try { connectWindow.document.body.innerHTML = "<div style=\"font-family:-apple-system,sans-serif;padding:36px\"><h2>Creating Espin Connect project…</h2><p>Please wait.</p></div>"; } catch (_) {}
+    }
+    void sendToConnectWithDecision(rec, modality === "MRI" ? "ramp_down" : "", true, connectWindow, decisionContext);
+  });
 }
 function openConnectDemoWindow(rec, magnetEvent, disposalRequired) {
   const connectUrl = new URL(
@@ -24886,7 +24956,7 @@ return true;
 
   const cleanText = value => String(value || "").trim();
   const operation = buildEspinOperationContext(rec, "deinstall");
-  const modality = cleanText(rec.modality).toUpperCase() || "OTHER";
+  const modality = cleanText(rec.removal_equipment_modality || rec.modality).toUpperCase() || "OTHER";
   const repEmail = cleanText(
     rec.sales_rep_email ||
     rec.assigned_rep_email ||
@@ -24895,13 +24965,13 @@ return true;
   ).toLowerCase();
 
   const equipmentParts = [
-    cleanText(rec.make),
-    cleanText(rec.model),
-    cleanText(rec.serial_number || rec.serial)
-      ? `S/N ${cleanText(rec.serial_number || rec.serial)}`
+    cleanText(rec.removal_equipment_make || rec.make),
+    cleanText(rec.removal_equipment_model || rec.model),
+    cleanText(rec.removal_equipment_serial_number || rec.serial_number || rec.serial)
+      ? `S/N ${cleanText(rec.removal_equipment_serial_number || rec.serial_number || rec.serial)}`
       : "",
-    cleanText(rec.dom)
-      ? `DOM ${cleanText(rec.dom)}`
+    cleanText(rec.removal_equipment_dom || rec.dom)
+      ? `DOM ${cleanText(rec.removal_equipment_dom || rec.dom)}`
       : ""
   ].filter(Boolean);
 
@@ -24930,6 +25000,8 @@ return true;
   );
   handoffUrl.searchParams.set("equipment", equipmentParts.join(" · "));
   handoffUrl.searchParams.set("modality", modality);
+  handoffUrl.searchParams.set("equipment_source", cleanText(rec.removal_equipment_source || "current_field_equipment"));
+  handoffUrl.searchParams.set("trade_desk_record_id", cleanText(rec.removal_equipment_trade_desk_record_id));
   handoffUrl.searchParams.set(
     "magnet_event",
     modality === "MRI" ? cleanText(magnetEvent) : ""
