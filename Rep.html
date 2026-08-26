@@ -20388,6 +20388,7 @@ function saveInstallBaseFix(id) {
                     External Trade-In Reference: <strong>${money(externalTradeInValue)}</strong><br>
                     Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
                   </div>
+                  ${renderSandboxTradeDeskResponseFields(rec)}
                   <label style="display:block;margin-top:12px;">Trade-In Reference</label>
                   <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || externalTradeInValue || "")}" placeholder="Enter trade-in value" />
                   <button type="button" class="green" style="margin-top:10px;" onclick="saveAndApplyNewProjectTradeInValue('${rec.id}')">Save and Apply Trade-In Value</button>
@@ -24790,15 +24791,77 @@ return true;
       sendToEspin(kind, rec);
     }
 
+    function hasSandboxTradeDeskRequest(rec, token) {
+      const requested = Array.isArray(rec?.trade_desk_info_request_items)
+        ? rec.trade_desk_info_request_items
+        : (Array.isArray(rec?.info_request_items) ? rec.info_request_items : []);
+      return requested.some(item => clean(item).toLowerCase().includes(clean(token).toLowerCase()));
+    }
+
+    function saveSandboxTradeDeskResponse(recordId, field, value) {
+      const rec = state.records.find(item => String(item.id) === String(recordId));
+      if (!rec) return;
+      rec[field] = value;
+      saveRecords();
+    }
+
+    function renderSandboxTradeDeskResponseFields(rec) {
+      if (!rec?.tradein_sync_received) return "";
+      if (rec.trade_desk_info_request_status === "rep_responded") return `<div class="mini" style="margin-top:12px;color:#41ff9c;font-weight:900;">✓ Update Sent to Trade Desk</div>`;
+      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
+      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
+      if (!needsInUse && !needsHardDrive) return "";
+      return `<div style="margin-top:12px;border-top:1px solid rgba(65,255,156,.35);padding-top:12px;"><div class="k">Trade Desk Request</div>
+        ${needsInUse ? `<label>System In-Use Status</label><select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','trade_desk_in_use_status_response',this.value)"><option value="">Select status</option><option value="In Use" ${rec.trade_desk_in_use_status_response === "In Use" ? "selected" : ""}>In Use</option><option value="Out of Use" ${rec.trade_desk_in_use_status_response === "Out of Use" ? "selected" : ""}>Out of Use</option></select>` : ""}
+        ${needsHardDrive ? `<label>Hard Drive Removal Status</label><select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','trade_desk_hard_drive_removal_status_response',this.value)"><option value="">Select status</option><option value="Removed" ${rec.trade_desk_hard_drive_removal_status_response === "Removed" ? "selected" : ""}>Removed</option><option value="Not Removed" ${rec.trade_desk_hard_drive_removal_status_response === "Not Removed" ? "selected" : ""}>Not Removed</option></select>` : ""}
+        <button type="button" class="green" style="margin-top:10px;" onclick="submitSandboxTradeDeskResponses('${escapeJs(rec.id)}')">Submit Update to Trade Desk</button></div>`;
+    }
+
+    function submitSandboxTradeDeskResponses(recordId) {
+      const rec = state.records.find(item => String(item.id) === String(recordId));
+      if (!rec) return alert("Open a record first");
+      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
+      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
+      if (needsInUse && !clean(rec.trade_desk_in_use_status_response)) return alert("Select System in-use status.");
+      if (needsHardDrive && !clean(rec.trade_desk_hard_drive_removal_status_response)) return alert("Select Hard drive removal status.");
+      const now = new Date().toISOString();
+      rec.trade_desk_info_request_status = "rep_responded";
+      rec.trade_desk_info_request_responded_at = now;
+      rec.trade_desk_info_request_updated_fields = [
+        ...(needsInUse ? ["in_use_status"] : []),
+        ...(needsHardDrive ? ["hard_drive_removed"] : [])
+      ];
+      rec.trade_desk_response_status = "submitted";
+      saveRecords();
+      ["axis_tradein_sync_records_v1", "espin_tradein_sync_records_v1"].forEach(key => {
+        let rows = []; try { rows = JSON.parse(localStorage.getItem(key) || "[]"); } catch (_) {}
+        if (!Array.isArray(rows)) return;
+        localStorage.setItem(key, JSON.stringify(rows.map(item => tradeInReturnMatchesRecord(rec, item) ? {
+          ...item,
+          in_use_status: rec.trade_desk_in_use_status_response || item.in_use_status || "",
+          hard_drive_removed: rec.trade_desk_hard_drive_removal_status_response || item.hard_drive_removed || "",
+          trade_desk_info_request_id: rec.trade_desk_info_request_id || item.trade_desk_info_request_id || "",
+          trade_desk_info_request_status: "rep_responded",
+          trade_desk_info_request_responded_at: now,
+          trade_desk_info_request_updated_fields: rec.trade_desk_info_request_updated_fields,
+          last_tradein_update_at: now,
+          updated_at: now
+        } : item)));
+      });
+      render();
+    }
+
     function getTradeInSyncSeenKey(item) {
       const identity =
         item.sync_event_id ||
         item.id ||
         `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
-      const version =
+      const requestVersion = [item.trade_desk_info_request_id, item.trade_desk_info_request_status, item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at].filter(Boolean).join("_");
+      const payloadVersion =
         item.last_tradein_update_at ||
         item.updated_at ||
         `${item.trade_in_value || item.trade_in_credit || item.tradein_credit || ""}_${item.image_count || item.images?.length || 0}`;
+      const version = [requestVersion, payloadVersion].filter(Boolean).join("_");
 
       return `${identity}_${version}`.trim();
     }
@@ -25169,6 +25232,9 @@ return true;
       rec.external_tradein_received_at = item.last_tradein_update_at || item.updated_at || new Date().toISOString();
       rec.tradein_last_update_at = item.last_tradein_update_at || item.updated_at || rec.tradein_last_update_at || "";
       rec.tradein_last_update_by = item.last_tradein_update_by || rec.tradein_last_update_by || "";
+      rec.trade_desk_info_request_id = item.trade_desk_info_request_id || rec.trade_desk_info_request_id || "";
+      rec.trade_desk_info_request_status = item.trade_desk_info_request_status || rec.trade_desk_info_request_status || "";
+      rec.trade_desk_info_request_items = Array.isArray(item.trade_desk_info_request_items) ? item.trade_desk_info_request_items : (rec.trade_desk_info_request_items || []);
       rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
       if (!alreadyProcessed) {
         rec.manager_unseen_update = true;
@@ -25241,6 +25307,9 @@ return true;
       rec.tradein_synced_to_axis_at = incomingTradeInAt;
       rec.tradein_last_update_by = item.last_tradein_update_by || "";
       rec.tradein_last_update_at = item.last_tradein_update_at || "";
+      rec.trade_desk_info_request_id = item.trade_desk_info_request_id || rec.trade_desk_info_request_id || "";
+      rec.trade_desk_info_request_status = item.trade_desk_info_request_status || rec.trade_desk_info_request_status || "";
+      rec.trade_desk_info_request_items = Array.isArray(item.trade_desk_info_request_items) ? item.trade_desk_info_request_items : (rec.trade_desk_info_request_items || []);
       rec.tradein_acceptance_deadline =
         item.tradein_acceptance_deadline ||
         item.trade_in_acceptance_deadline ||
@@ -26318,6 +26387,23 @@ window.addEventListener("load", () => {
     return left.some(id => right.includes(id));
   };
   const evaluatedTradeIn = rec => tradeInRecords().find(t => sameProject(t,rec) && (t.tradein_evaluation_complete === true || lower(t.tradein_evaluation_status) === "evaluation_complete" || lower(t.tradein_status) === "evaluation_complete"));
+  function openTradeInProjectsForRemoval(rec) {
+    localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({
+      parent_record_id: rec.id || "",
+      parent_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
+      project_group_id: rec.project_group_id || "",
+      sales_rep_email: rec.sales_rep_email || "",
+      facility_name: rec.site || rec.facility || rec.hospital || ""
+    }));
+    rec.removal_equipment_selection_opened_at = new Date().toISOString();
+    rec.removal_handoff_source = "tradein_projects_picker";
+    if (typeof saveRecords === "function") saveRecords();
+    if (typeof render === "function") render();
+    const projectsUrl = new URL("equipmentprojects.html", location.href);
+    projectsUrl.searchParams.set("mode", "removal-select");
+    projectsUrl.searchParams.set("source", "rep-removal");
+    window.open(projectsUrl.toString(), "_blank", "noopener,noreferrer");
+  }
   const activeRemoval = identity => { try { return JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]").find(o => lower(o.operation_type)==="deinstall" && !/complete|cancel|archiv/.test(lower(o.status)) && [o.tradein_record_id,o.source_record_id,o.asset_id,o.serial_number].map(lower).includes(lower(identity))); } catch (_) { return null; } };
   const management = operation => { const u=new URL("/removal-install/management.html",location.origin); Object.entries(operation).forEach(([k,v]) => { if (["string","number","boolean"].includes(typeof v) && clean(v)) u.searchParams.set(k,String(v)); }); if (operation.project_id) u.searchParams.set("projectId",operation.project_id); return u.toString(); };
   const saveOperation = operation => { let records=[]; try { records=JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]"); if(!Array.isArray(records)) records=[]; } catch (_) {} records.unshift(operation); localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records)); localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation)); if(operation.project_id) localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation)); };
@@ -26416,7 +26502,10 @@ window.addEventListener("load", () => {
       new Date().toISOString()
     );
 
-    notifyManagerRemovalStarted(rec, identity, "rep_selected_equipment");
+    // Selection has opened, but a Removal project does not exist yet.
+    rec.removal_equipment_selection_opened_at = new Date().toISOString();
+    rec.removal_handoff_source = "rep_selected_equipment";
+    if (typeof saveRecords === "function") saveRecords();
     if (typeof render === "function") render();
     window.open(selection.toString(), "_blank");
   }
@@ -26501,9 +26590,7 @@ window.addEventListener("load", () => {
         <h2 style="margin-top:0">What equipment is being removed?</h2>
         <p style="color:#9db4c7">
           Start removal for the selected equipment record.
-          ${trade
-            ? "An evaluated trade-in linked to this project is also available."
-            : ""}
+          Select the current field equipment, or choose a Trade-In Project and its equipment.
         </p>
 
         <div style="display:grid;gap:12px">
@@ -26521,9 +26608,8 @@ window.addEventListener("load", () => {
             Use selected equipment
           </button>
 
-          ${trade ? `
-            <button
-              id="useTrade"
+          <button
+              id="chooseTradeInProject"
               style="
                 padding:14px;
                 border-radius:10px;
@@ -26533,9 +26619,8 @@ window.addEventListener("load", () => {
                 font-weight:800
               "
             >
-              Use evaluated Trade-In equipment
+              Choose from Trade-In Projects
             </button>
-          ` : ""}
 
           <button
             id="cancelChoice"
@@ -26561,12 +26646,10 @@ window.addEventListener("load", () => {
       launchSelectedEquipment(rec);
     };
 
-    if (trade) {
-      modal.querySelector("#useTrade").onclick = event => {
-        modal.remove();
-        launchEvaluated(rec, trade, event.currentTarget);
-      };
-    }
+    modal.querySelector("#chooseTradeInProject").onclick = () => {
+      modal.remove();
+      openTradeInProjectsForRemoval(rec);
+    };
   };
 })();
 </script>
