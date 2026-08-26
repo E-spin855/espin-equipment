@@ -683,7 +683,20 @@ const debouncedSave = ((fn, d=600) => {
 })(saveMeta);
 
 /* RENDER */
+function isDemoImageUrl(url) {
+  try {
+    const parsed = new URL(url, location.origin);
+    return parsed.origin === location.origin && parsed.pathname.startsWith("/demo-images/");
+  } catch {
+    return false;
+  }
+}
+
 function appendCard(p, badgeSet, forceBadge = false) {
+  // Old persisted records can contain retired external Uploadcare URLs.  The
+  // closed sandbox renders only same-origin /demo-images/ assets.
+  if (!isDemoImageUrl(p.photo_url)) return null;
+
   const pid = getPrimaryId(p);
   const card = document.createElement("div");
   card.className = "card";
@@ -906,7 +919,7 @@ deleteBtn.onclick = async () => {
     headers: { "x-user-email": userEmail }
   });
 
-  photos = (await res.json()) || [];
+  photos = ((await res.json()) || []).filter(p => isDemoImageUrl(p.photo_url));
 
   photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
