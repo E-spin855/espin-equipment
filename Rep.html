@@ -12537,7 +12537,7 @@ function renderQuoteApprovalActionPanel(rec) {
         </div>
 
         <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
-          Customer email is available only after quote approval. AXIS opens a draft only; the rep still manually reviews and sends the email.
+          Customer email is available only after quote approval. Sandbox review opens a read-only quote preview and a demo customer email; no PDF is downloaded and no external email is sent.
         </div>
       </div>
     `;
@@ -19363,19 +19363,100 @@ function reviewApprovedQuote() {
   const quoteAmount = Number(rec.quote_amount || 0);
   const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
   const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  const quoteNumber = rec.quote_approval_id || rec.oem_project_id || rec.project_id || rec.serial_number || "APPROVED-QUOTE";
+  const facility = rec.site || rec.facility || rec.hospital || "-";
+  const equipment = `${rec.make || ""} ${rec.model || ""}`.trim() || "-";
+  const serial = rec.serial_number || rec.serial || "-";
+  const recipient = rec.quote_recipient_email || rec.contact_email || "-";
+  const cc = rec.quote_cc_email || "None";
+  const approvalNotes = rec.quote_approval_notes || "None";
+  const approvedAt = rec.quote_approval_decision_at
+    ? new Date(rec.quote_approval_decision_at).toLocaleString()
+    : "-";
 
-  alert(
-    "APPROVED QUOTE REVIEW\n\n" +
-    `Facility: ${rec.site || "-"}\n` +
-    `Project / Equipment: ${rec.make || ""} ${rec.model || ""}\n` +
-    `Serial: ${rec.serial_number || "-"}\n\n` +
-    `Gross Quote: ${money(quoteAmount)}\n` +
-    `Trade-In Credit: -${money(tradeInCredit)}\n` +
-    `Net Quote: ${money(netQuote)}\n\n` +
-    `Recipient: ${rec.quote_recipient_email || rec.contact_email || "-"}\n` +
-    `CC: ${rec.quote_cc_email || "None"}\n\n` +
-    `Approval Notes: ${rec.quote_approval_notes || "None"}`
-  );
+  const preview = window.open("about:blank", "_blank");
+  if (!preview) {
+    alert("Allow pop-ups to review the approved quote.");
+    return;
+  }
+
+  preview.document.open();
+  preview.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Approved Quote Preview</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#cfd6de;color:#17202a}
+  body{padding:28px}
+  .sandbox{max-width:880px;margin:0 auto 14px;padding:10px 14px;border:1px solid #d39d00;background:#fff7d6;color:#6d5200;border-radius:8px;font-size:13px;font-weight:700;text-align:center}
+  .page{width:816px;max-width:100%;min-height:1056px;margin:0 auto;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.22);padding:58px 64px;position:relative}
+  .brand{font-size:25px;font-weight:800;color:#0b66ad;letter-spacing:.04em}
+  .doc-title{margin-top:34px;font-size:30px;font-weight:800;color:#111827}
+  .approved{display:inline-block;margin-top:10px;padding:7px 12px;border:2px solid #1f9d63;border-radius:999px;color:#177548;font-size:12px;font-weight:800;letter-spacing:.08em}
+  .rule{height:2px;background:#0b66ad;margin:24px 0}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:12px 28px;font-size:14px;line-height:1.45}
+  .meta strong{display:block;color:#687385;font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+  table{width:100%;border-collapse:collapse;margin-top:28px;font-size:15px}
+  th,td{padding:13px 12px;border-bottom:1px solid #dfe5eb;text-align:left}
+  th{background:#eef5fb;color:#244866;font-size:12px;text-transform:uppercase;letter-spacing:.07em}
+  td:last-child,th:last-child{text-align:right}
+  .net td{font-size:19px;font-weight:800;border-top:2px solid #0b66ad;border-bottom:2px solid #0b66ad}
+  .notes{margin-top:28px;padding:16px;border:1px solid #dfe5eb;border-radius:8px;background:#fafbfd;font-size:14px;line-height:1.55}
+  .footer{position:absolute;left:64px;right:64px;bottom:42px;border-top:1px solid #dfe5eb;padding-top:13px;color:#7b8794;font-size:11px;line-height:1.45}
+  @media(max-width:700px){body{padding:10px}.page{padding:32px 24px;min-height:900px}.meta{grid-template-columns:1fr}.footer{position:static;margin-top:40px}}
+</style>
+</head>
+<body>
+<div class="sandbox">SANDBOX PREVIEW ONLY — READ ONLY — DOWNLOAD DISABLED</div>
+<section class="page">
+  <div class="brand">ESPIN LINK</div>
+  <div class="doc-title">Approved Quote</div>
+  <div class="approved">APPROVED</div>
+  <div class="rule"></div>
+
+  <div class="meta">
+    <div><strong>Approval ID</strong>${escapeHtml(quoteNumber)}</div>
+    <div><strong>Approved At</strong>${escapeHtml(approvedAt)}</div>
+    <div><strong>Facility</strong>${escapeHtml(facility)}</div>
+    <div><strong>Recipient</strong>${escapeHtml(recipient)}</div>
+    <div><strong>Equipment / Project</strong>${escapeHtml(equipment)}</div>
+    <div><strong>CC</strong>${escapeHtml(cc)}</div>
+    <div><strong>Serial</strong>${escapeHtml(serial)}</div>
+    <div><strong>Approved By</strong>${escapeHtml(rec.quote_approval_decision_by || "Pricing Desk")}</div>
+  </div>
+
+  <table>
+    <thead><tr><th>Description</th><th>Amount</th></tr></thead>
+    <tbody>
+      <tr><td>Gross Quote</td><td>${money(quoteAmount)}</td></tr>
+      <tr><td>Trade-In Credit</td><td>-${money(tradeInCredit)}</td></tr>
+      <tr class="net"><td>Approved Net Quote</td><td>${money(netQuote)}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="notes"><strong>Approval Notes</strong><br>${escapeHtml(approvalNotes)}</div>
+
+  <div class="footer">
+    This is a read-only sandbox representation of the approved quote. No PDF file is generated,
+    downloaded, transmitted, or attached from this preview.
+  </div>
+</section>
+<script>
+document.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("keydown", e => {
+  const key = String(e.key || "").toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && (key === "s" || key === "p")) {
+    e.preventDefault();
+    alert("Disabled fro sandbox test");
+  }
+});
+<\/script>
+</body>
+</html>`);
+  preview.document.close();
 }
     function submitQuoteForApproval(rec) {
   if (!rec || !rec.quote_amount) return;
@@ -19678,55 +19759,24 @@ function reviewApprovedQuote() {
     return;
   }
 
-  openDemoQuoteEmail(rec);
-  return;
-
   if (rec.quote_customer_release_allowed !== true) {
     alert("Quote is not approved yet. Customer email is locked until Quote Approval approves it.");
     return;
   }
 
-  const recipient = rec.quote_recipient_email || rec.contact_email || "";
-
-  if (!recipient) {
-    alert("Enter quote recipient email in Quote Review first");
-    return;
-  }
-
-  const pdfResult = buildQuotePDF(rec, true);
-
-  if (!pdfResult) {
-    alert("Quote PDF could not be prepared.");
-    return;
-  }
-
+  const recipient = rec.quote_recipient_email || rec.contact_email || "demo-recipient@espinlink.sandbox";
   const quoteAmount = Number(rec.quote_amount || 0);
   const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
   const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
+  const quoteRef = rec.quote_approval_id || rec.oem_project_id || rec.project_id || rec.serial_number || "Approved Quote";
 
-  rec.quote_delivery_status = "email_draft_opened_pdf_prepared";
-  rec.quote_pdf_saved_at = new Date().toISOString();
-  rec.quote_pdf_file_name = pdfResult.fileName;
-  rec.quote_sent_at = new Date().toISOString();
-  rec.quote_sent_to = recipient;
-  rec.quote_sent_cc = rec.quote_cc_email || "";
-
-  rec.manager_unseen_update = true;
-  rec.manager_flash_at = new Date().toISOString();
-  rec.manager_flash_type = "quote_email_draft_opened";
-  rec.manager_flash_text = "Approved quote PDF prepared and customer email draft opened";
-
-  syncFeedStatus(rec);
-  render();
-
-  const subject = encodeURIComponent(`Approved Quote ${rec.oem_project_id || rec.serial_number || ""}`);
-
-  const body = encodeURIComponent(
+  const subject = `Approved Quote ${rec.oem_project_id || rec.serial_number || ""}`.trim();
+  const body =
 `Hello,
 
 Please find the approved quote attached.
 
-Facility: ${rec.site || ""}
+Facility: ${rec.site || rec.facility || ""}
 Equipment / Project: ${rec.make || ""} ${rec.model || ""}
 Serial: ${rec.serial_number || ""}
 
@@ -19734,21 +19784,50 @@ Gross Quote: ${money(quoteAmount)}
 Trade-In Credit: -${money(tradeInCredit)}
 Net Quote: ${money(netQuote)}
 
-Quote PDF prepared: ${pdfResult.fileName}
-
 Please review and let me know if you have any questions.
 
-Thank you.`
-  );
+Thank you.`;
 
-  const cc = rec.quote_cc_email ? `&cc=${encodeURIComponent(rec.quote_cc_email)}` : "";
-  const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${subject}${cc}&body=${body}`;
+  const inboxKey = "espin_demo_email_inbox_v1";
+  let inbox = [];
+  try {
+    inbox = JSON.parse(localStorage.getItem(inboxKey) || "[]");
+  } catch (_) {
+    inbox = [];
+  }
+  if (!Array.isArray(inbox)) inbox = [];
 
-  showBanner("✅ Quote PDF prepared. Opening email draft...");
+  inbox.unshift({
+    from: rec.sales_rep_email || "rep@espinlink.sandbox",
+    fromName: `${rec.sales_rep_first || ""} ${rec.sales_rep_last || ""}`.trim() || "ESPIN LINK Rep",
+    to: recipient,
+    cc: rec.quote_cc_email || "",
+    subject,
+    body,
+    createdAt: new Date().toISOString(),
+    quoteRef,
+    attachmentName: "Approved_Quote.pdf",
+    attachmentDisabled: true,
+    sandbox: true
+  });
 
-  setTimeout(() => {
-    window.location.href = mailtoUrl;
-  }, 700);
+  localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
+  try {
+    new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email");
+  } catch (_) {}
+
+  rec.quote_delivery_status = "demo_email_preview_opened";
+  rec.quote_sent_to = recipient;
+  rec.quote_sent_cc = rec.quote_cc_email || "";
+  rec.manager_unseen_update = true;
+  rec.manager_flash_at = new Date().toISOString();
+  rec.manager_flash_type = "quote_demo_email_opened";
+  rec.manager_flash_text = "Approved quote customer email preview opened";
+
+  syncFeedStatus(rec);
+  render();
+
+  window.open("demo_email.html", "_blank", "noopener,noreferrer");
 }
 
 function openDemoQuoteEmail(rec) {
