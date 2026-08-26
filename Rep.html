@@ -25045,15 +25045,19 @@ return true;
     }
 
     function hasSandboxTradeDeskRequest(rec, token) {
-      const requested = Array.isArray(rec?.info_request_items)
-        ? rec.info_request_items
-        : [];
+      const requested = Array.isArray(rec?.trade_desk_info_request_items)
+        ? rec.trade_desk_info_request_items
+        : (Array.isArray(rec?.info_request_items) ? rec.info_request_items : []);
       const target = clean(token).toLowerCase();
       return requested.some(item => clean(item).toLowerCase().includes(target));
     }
 
     function renderSandboxTradeDeskResponseFields(rec) {
       if (!rec || !rec.tradein_sync_received) return "";
+      if (rec.trade_desk_info_request_status === "rep_responded") {
+        return `<div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(65,255,156,.45);color:#41ff9c;font-weight:900;">✓ Update Sent to Trade Desk</div>`;
+      }
+      if (rec.trade_desk_info_request_status && rec.trade_desk_info_request_status !== "requested") return "";
 
       const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
       const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
@@ -25253,10 +25257,16 @@ return true;
         item.sync_event_id ||
         item.id ||
         `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
-      const version =
+      const requestVersion = [
+        item.trade_desk_info_request_id,
+        item.trade_desk_info_request_status,
+        item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at
+      ].filter(Boolean).join("_");
+      const payloadVersion =
         item.last_tradein_update_at ||
         item.updated_at ||
         `${item.trade_in_value || item.trade_in_credit || item.tradein_credit || ""}_${item.image_count || item.images?.length || 0}`;
+      const version = [requestVersion, payloadVersion].filter(Boolean).join("_");
 
       return `${identity}_${version}`.trim();
     }
@@ -25632,6 +25642,8 @@ return true;
       rec.trade_desk_info_request_id = item.trade_desk_info_request_id || rec.trade_desk_info_request_id || "";
       rec.trade_desk_info_request_status = item.trade_desk_info_request_status || rec.trade_desk_info_request_status || "";
       rec.trade_desk_info_request_items = Array.isArray(item.trade_desk_info_request_items) ? item.trade_desk_info_request_items : (rec.trade_desk_info_request_items || []);
+      rec.trade_desk_info_request_sent_at = item.trade_desk_info_request_sent_at || rec.trade_desk_info_request_sent_at || "";
+      rec.trade_desk_info_request_responded_at = item.trade_desk_info_request_responded_at || rec.trade_desk_info_request_responded_at || "";
       rec.trade_desk_in_use_status_response = item.trade_desk_in_use_status_response || rec.trade_desk_in_use_status_response || "";
       rec.trade_desk_hard_drive_removal_status_response = item.trade_desk_hard_drive_removal_status_response || rec.trade_desk_hard_drive_removal_status_response || "";
       rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
@@ -25711,6 +25723,8 @@ return true;
       rec.trade_desk_info_request_id = item.trade_desk_info_request_id || rec.trade_desk_info_request_id || "";
       rec.trade_desk_info_request_status = item.trade_desk_info_request_status || rec.trade_desk_info_request_status || "";
       rec.trade_desk_info_request_items = Array.isArray(item.trade_desk_info_request_items) ? item.trade_desk_info_request_items : (rec.trade_desk_info_request_items || []);
+      rec.trade_desk_info_request_sent_at = item.trade_desk_info_request_sent_at || rec.trade_desk_info_request_sent_at || "";
+      rec.trade_desk_info_request_responded_at = item.trade_desk_info_request_responded_at || rec.trade_desk_info_request_responded_at || "";
       rec.trade_desk_in_use_status_response = item.trade_desk_in_use_status_response || rec.trade_desk_in_use_status_response || "";
       rec.trade_desk_hard_drive_removal_status_response = item.trade_desk_hard_drive_removal_status_response || rec.trade_desk_hard_drive_removal_status_response || "";
       rec.tradein_acceptance_deadline =
