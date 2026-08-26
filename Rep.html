@@ -6330,6 +6330,7 @@ body{
   <option value="true">Yes</option>
   <option value="false">No</option>
 </select>
+        <button class="gold" onclick="openTradeInProjectsForRemoval()">Choose from Trade-In Projects</button>
         <button class="green" onclick="confirmDecision()">Send to Connect</button>
         <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeDecisionModal()">Cancel</button>
       </div>
@@ -19747,6 +19748,31 @@ function openDecisionModal() {
   }
 
   $("decisionModal").style.display = "flex";
+}
+
+function openTradeInProjectsForRemoval() {
+  const rec = state.records.find(r => r.id === state.selectedId);
+  if (!rec) {
+    alert("Open a record first");
+    return;
+  }
+
+  localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({
+    parent_record_id: rec.id || "",
+    parent_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
+    project_group_id: rec.project_group_id || "",
+    sales_rep_email: rec.sales_rep_email || "",
+    facility_name: rec.site || rec.facility || rec.hospital || ""
+  }));
+  rec.removal_equipment_selection_opened_at = new Date().toISOString();
+  rec.removal_handoff_source = "tradein_projects_picker";
+  if (typeof saveRecords === "function") saveRecords();
+  closeDecisionModal();
+
+  const projectsUrl = new URL("equipmentprojects.html", window.location.href);
+  projectsUrl.searchParams.set("mode", "removal-select");
+  projectsUrl.searchParams.set("source", "rep-removal");
+  window.open(projectsUrl.toString(), "_blank", "noopener,noreferrer");
 }
     function closeDecisionModal() {
       $("decisionModal").style.display = "none";

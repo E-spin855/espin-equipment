@@ -413,6 +413,7 @@ localStorage.setItem(EMAIL_KEY, email);
 
 const ADMIN_EMAIL = "info@espinmedical.com";
 const isAdmin = email === ADMIN_EMAIL;
+const removalSelectionMode = new URLSearchParams(window.location.search).get("mode") === "removal-select";
 
 
 let deleteBusy = false;
@@ -568,6 +569,22 @@ async function goToEquipmentIndex(projectId) {
   resetProjectState(projectId);
   await markProjectRead(projectId);
   window.location.href = `equipmentindex.html?projectId=${encodeURIComponent(projectId)}`;
+}
+
+function selectTradeInProjectForRemoval(project) {
+  let context = {};
+  try { context = JSON.parse(localStorage.getItem("espin_removal_tradein_context_v1") || "{}"); } catch (_) {}
+  localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({
+    ...context,
+    tradein_project_id: project.id || "",
+    tradein_project_name: project.project_name || "",
+    facility_name: project.project_name || context.facility_name || "",
+    site_address: project.site_address || "",
+    city: project.city || "",
+    state: project.state || "",
+    zip_code: project.zip_code || ""
+  }));
+  window.location.href = `equipmentindex.html?projectId=${encodeURIComponent(project.id)}&mode=removal-select`;
 }
 
 function openProjectModal(p = null) {
@@ -813,7 +830,18 @@ const hasChangedImages = changedMap[p.id]?.images;
   const editBtn = card.querySelector(`[data-edit="${p.id}"]`);
   const deleteBtn = card.querySelector(`[data-delete="${p.id}"]`);
 
-  bindSafeTap(main, () => goToEquipmentIndex(p.id));
+  if (removalSelectionMode) {
+    const selectBtn = document.createElement("button");
+    selectBtn.type = "button";
+    selectBtn.className = "add-project-btn";
+    selectBtn.textContent = "SELECT FOR REMOVAL";
+    selectBtn.style.margin = "0 16px 16px";
+    bindSafeTap(main, () => selectTradeInProjectForRemoval(p));
+    bindSafeTap(selectBtn, () => selectTradeInProjectForRemoval(p));
+    card.appendChild(selectBtn);
+  } else {
+    bindSafeTap(main, () => goToEquipmentIndex(p.id));
+  }
   bindSafeTap(editBtn, () => openProjectModal(p));
   bindSafeTap(deleteBtn, () => openDeleteModal(p.id, p.project_name));
 

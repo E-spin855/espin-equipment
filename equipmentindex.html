@@ -606,6 +606,7 @@ const MODALITY_KEY = `${APP_PREFIX}activeModality`;
 
 const userEmail = String(localStorage.getItem(EMAIL_KEY) || "").toLowerCase().trim();
 const params = new URLSearchParams(location.search);
+const removalSelectionMode = params.get("mode") === "removal-select";
 
 const projectId =
   params.get("projectId") ||
@@ -971,6 +972,35 @@ function getCreateDetailsUrl(modality){
 function getImagesUrl(modalityId){
   const qp = new URLSearchParams({ projectId, modalityId });
   return `/EquipmentImages.html?${qp.toString()}`;
+}
+
+function selectTradeInEquipmentForRemoval(row) {
+  let context = {};
+  try { context = JSON.parse(localStorage.getItem("espin_removal_tradein_context_v1") || "{}"); } catch (_) {}
+
+  const rowId = getStableRowId(row) || row.id || row.modality_id || "";
+  const value = (key, ...fallbacks) => row[key] || row.data?.[key] || fallbacks.find(Boolean) || "";
+  const removalUrl = new URL("removal-install/EquipmentSelection_Removal.html", window.location.href);
+  removalUrl.searchParams.set("operation_type", "deinstall");
+  removalUrl.searchParams.set("handoff", "removal_project");
+  removalUrl.searchParams.set("equipment_source", "tradein_project");
+  removalUrl.searchParams.set("removal_equipment_source", "tradein_project");
+  removalUrl.searchParams.set("tradein_project_id", context.tradein_project_id || projectId);
+  removalUrl.searchParams.set("source_record_id", rowId);
+  removalUrl.searchParams.set("tradein_record_id", rowId);
+  removalUrl.searchParams.set("parent_project_id", context.parent_project_id || "");
+  removalUrl.searchParams.set("project_group_id", context.project_group_id || "");
+  removalUrl.searchParams.set("facility_name", value("facility_name", project?.project_name, context.facility_name));
+  removalUrl.searchParams.set("site_address", value("site_address", project?.site_address, context.site_address));
+  removalUrl.searchParams.set("make", value("make", row.tradein_equipment_make));
+  removalUrl.searchParams.set("model", value("model", row.tradein_equipment_model));
+  removalUrl.searchParams.set("modality", value("modality", row.tradein_equipment_modality));
+  removalUrl.searchParams.set("serial_number", value("serial_number", row.axis_serial_number, row.tradein_equipment_serial_number));
+  removalUrl.searchParams.set("asset_id", value("asset_id", row.hospital_asset_id));
+  removalUrl.searchParams.set("dom", value("dom", row.tradein_equipment_dom));
+  removalUrl.searchParams.set("sales_rep_email", context.sales_rep_email || userEmail || "");
+  localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({ ...context, selected_tradein_record_id: rowId }));
+  window.location.href = removalUrl.toString();
 }
 
 async function clearIosBadgeOnly() {
@@ -1397,6 +1427,7 @@ const changedSet = new Set(
       </div>
 
       <div class="card-actions">
+        ${removalSelectionMode ? `<button class="secondary-btn" data-select-removal="${esc(rowId)}" type="button">Select for Removal</button>` : ""}
         <button class="secondary-btn" data-open-details="${esc(rowId)}" type="button">Open Details</button>
         <button class="outline-btn" data-open-images="${esc(rowId)}" type="button">Open Images</button>
       </div>
@@ -1405,6 +1436,9 @@ const changedSet = new Set(
     card.querySelector("[data-open-details]").onclick = () => {
       openDetails(rowId, row.modality);
     };
+
+    const selectForRemoval = card.querySelector("[data-select-removal]");
+    if (selectForRemoval) selectForRemoval.onclick = () => selectTradeInEquipmentForRemoval(row);
 
     card.querySelector("[data-open-images]").onclick = () => {
       openImages(rowId, row.modality);
