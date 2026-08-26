@@ -1883,79 +1883,79 @@ if (bidderIdx >= 0) {
 saveArray(BIDDER_PORTAL_PACKAGES_KEY, bidderPortalPackages);
  activePacketId = packetId;
 localStorage.setItem(ACTIVE_PACKET_KEY, packetId);
-
-const buyerEmails = matchingBuyers.map(b => b.email).filter(Boolean).join(",");
-  const ccEmail = TRADE_DESK_EMAIL;
-
-  const buyerList = matchingBuyers
-    .map(b => `- ${b.company} / ${b.contact} / ${b.email}`)
-    .join("\n");
-
-  const imageLines =
-    Array.isArray(rec.images) && rec.images.length
-      ? rec.images.map((img, i) => `${i + 1}. ${img.title || "Equipment Image"}${img.url ? `\n   ${img.url}` : ""}`).join("\n")
-      : "No images included yet.";
-
-  const subject =
-    `Review Packet ${packetId} – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
-
-  const body = [
-    `Hello,`,
-    ``,
-    `Trade Desk prepared this equipment review packet for manual sharing with approved buyers.`,
-    ``,
-    `REVIEW PACKET`,
-    `Packet ID: ${packetId}`,
-    `Packet Status: Prepared for Manual Sharing`,
-    `Response Deadline: ${formatResponseDeadline({ response_deadline: responseDeadline })}`,
-    `Packet Link: ${packetUrl}`,
-    ``,
-    `EQUIPMENT SUMMARY`,
-    `Modality: ${rec.modality || "-"}`,
-    `Manufacturer: ${rec.make || "-"}`,
-    `Model: ${rec.model || "-"}`,
-    `Serial Number: ${rec.serial_number || rec.axis_serial_number || "-"}`,
-    `Additional Identifier: ${rec.hospital_asset_id || "-"}`,
-    `Date Manufactured / Year: ${rec.dom || "-"}`,
-    `Date Installed: ${rec.installed_date || "-"}`,
-    `System In Use: ${rec.in_use_status || "-"}`,
-    `Date Removed From Service: ${rec.out_of_use_date || "-"}`,
-    `Availability Time Frame: ${rec.availability_timeframe || "-"}`,
-    `Removal Pathways: ${rec.removal_pathways || "-"}`,
-    `Loading Dock Available: ${rec.loading_dock || "-"}`,
-    `Hard Drives Removed: ${rec.hard_drive_removed || "-"}`,
-    `Software Version: ${rec.software_version || "-"}`,
-    `Upgrade Notes: ${rec.upgrade_notes || "-"}`,
-    ``,
-    `FACILITY`,
-    `Facility: ${rec.site || rec.axis_parent_project_name || rec.project_name || "-"}`,
-    `Address: ${[rec.site_address, rec.city, rec.state, rec.zip_code].filter(Boolean).join(", ") || "-"}`,
-    ``,
-    `IMAGES`,
-    imageLines,
-    ``,
-    `BUYERS PREPARED FOR SHARING`,
-    buyerList,
-    ``,
-    `Please carefully review this packet before forwarding. This packet does not contain an appraisal, offer, valuation recommendation, or automatic trade-in credit.`,
-    ``,
-    `Thank you,`,
-    `ESPIN LINK Trade Desk`
-  ].join("\n");
-
-  const mailto =
-    `mailto:${encodeURIComponent(buyerEmails)}` +
-    `?cc=${encodeURIComponent(ccEmail)}` +
-    `&subject=${encodeURIComponent(subject)}` +
-    `&body=${encodeURIComponent(body)}`;
 buttonSpinConfirm(btn, "Preparing packet...", "Packet Prepared", () => {
   suppressRenderUntil = 0;
   render();
-
-  setTimeout(() => {
-    openMailDraft(mailto);
-  }, 150);
 });
+}
+
+function sendPreparedPacketToApprovedBuyers(id, btn = null){
+  const data = loadData();
+  const rec = findById(data, id);
+  if (!rec || !rec.review_packet_prepared) {
+    alert("Prepare the Buyer Review Package before sending it to approved buyers.");
+    return;
+  }
+  if (rec.sandbox_buyer_email_sent_at) {
+    alert("This Buyer Review Package has already been sent to the sandbox inbox.");
+    return;
+  }
+
+  const packetId = getReviewPacketId(rec);
+  const packetUrl = rec.review_packet_url || buildBuyerReviewUrl(rec);
+  const responseDeadline = getResponseDeadline(rec);
+  const now = new Date().toISOString();
+  const facility = rec.site || rec.facility_name || rec.axis_parent_project_name || rec.project_name || "-";
+  const subject = `Buyer Review Request – ${rec.modality || "Equipment"} ${rec.make || ""} ${rec.model || ""}`.trim();
+  const body = [
+    "An equipment opportunity is available for review.", "",
+    `Review Packet ID: ${packetId}`,
+    `Modality: ${rec.modality || "-"}`,
+    `Make: ${rec.make || "-"}`,
+    `Model: ${rec.model || "-"}`,
+    `Serial Number: ${rec.serial_number || rec.axis_serial_number || "-"}`,
+    `Site / Facility: ${facility}`,
+    `Buyer Response Deadline: ${formatResponseDeadline({ response_deadline: responseDeadline })}`,
+    "", "Review Equipment & Submit Response", packetUrl, "",
+    "Sandbox simulation only — no external email was transmitted."
+  ].join("\n");
+  const emailHtml = [
+    "<p>An equipment opportunity is available for review.</p>",
+    `<p><strong>Review Packet ID:</strong> ${htmlSafe(packetId)}<br>`,
+    `<strong>Modality:</strong> ${htmlSafe(rec.modality || "-")}<br>`,
+    `<strong>Make:</strong> ${htmlSafe(rec.make || "-")}<br>`,
+    `<strong>Model:</strong> ${htmlSafe(rec.model || "-")}<br>`,
+    `<strong>Serial Number:</strong> ${htmlSafe(rec.serial_number || rec.axis_serial_number || "-")}<br>`,
+    `<strong>Site / Facility:</strong> ${htmlSafe(facility)}<br>`,
+    `<strong>Buyer Response Deadline:</strong> ${htmlSafe(formatResponseDeadline({ response_deadline: responseDeadline }))}</p>`,
+    `<p><a href="${htmlSafe(packetUrl)}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#087f5b;color:#fff;text-decoration:none;font-weight:800;">Review Equipment &amp; Submit Response</a></p>`,
+    "<p><em>Sandbox simulation only — no external email was transmitted.</em></p>"
+  ].join("");
+
+  buttonSpinConfirm(btn, "Sending to buyers...", "Sent to Approved Buyers", () => {
+    let inbox = [];
+    try { inbox = JSON.parse(localStorage.getItem("espin_demo_email_inbox_v1") || "[]"); } catch (_) {}
+    if (!Array.isArray(inbox)) inbox = [];
+    inbox.unshift({ from: "ESPIN LINK Trade Desk", to: "Approved Buyer Network", subject, body, html: emailHtml, createdAt: now, review_packet_id: packetId, sandbox_simulation: true });
+    localStorage.setItem("espin_demo_email_inbox_v1", JSON.stringify(inbox.slice(0, 100)));
+
+    rec.sandbox_buyer_email_sent_at = now;
+    rec.buyer_response_status = "Shared with Approved Buyers";
+    rec.review_packet = { ...(rec.review_packet || {}), status: "Shared with Approved Buyers", shared_at: now };
+    rec.manually_shared_with_buyers = (rec.manually_shared_with_buyers || []).map(buyer => ({ ...buyer, shared_status: "Shared with Approved Buyers", shared_at: now }));
+    saveData(data, true);
+
+    const updatePacket = packet => String(packet.review_packet_id || packet.bid_package_id || packet.packet_id || packet.package_id || packet.id || "") === String(packetId)
+      ? { ...packet, status: "Shared with Approved Buyers", shared_at: now, manually_shared_with_buyers: rec.manually_shared_with_buyers }
+      : packet;
+    saveArray(BUYER_PACKET_KEY, loadArray(BUYER_PACKET_KEY).map(updatePacket));
+    saveArray(BIDDER_PORTAL_PACKAGES_KEY, loadArray(BIDDER_PORTAL_PACKAGES_KEY).map(updatePacket));
+    publishTradeDeskProgress(rec, { buyer_response_status: rec.buyer_response_status });
+    try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
+    suppressRenderUntil = 0;
+    render();
+    window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
+  });
 }
 
 function openTradeDeskPacket(id){
@@ -2892,6 +2892,7 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
     String(rec.buyer_response_status || "") === "Prepared for Manual Sharing" ||
     String(rec.buyer_response_status || "") === "Buyer Responses Received" ||
     String(rec.buyer_response_status || "") === "Manual Response Selected";
+  const isSentToApprovedBuyers = Boolean(rec.sandbox_buyer_email_sent_at);
 
   const deadlineInputId = `responseDeadline_${String(rec.id || "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
 
@@ -3032,7 +3033,11 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
 
             <hr>
 
-            <button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>
+            ${
+              isPrepared
+                ? `<button class="emerald" ${isSentToApprovedBuyers ? "disabled aria-disabled=\"true\"" : ""} onclick="sendPreparedPacketToApprovedBuyers('${safeId}', this)">${isSentToApprovedBuyers ? "Sent to Approved Buyers" : "Send to Approved Buyers"}</button>`
+                : `<button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>`
+            }
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
 
             <details>
@@ -3042,7 +3047,11 @@ function renderTradeDeskPackageCard(rec, safeId, rawId){
           `
           : `
             <hr>
-            <button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>
+            ${
+              isPrepared
+                ? `<button class="emerald" ${isSentToApprovedBuyers ? "disabled aria-disabled=\"true\"" : ""} onclick="sendPreparedPacketToApprovedBuyers('${safeId}', this)">${isSentToApprovedBuyers ? "Sent to Approved Buyers" : "Send to Approved Buyers"}</button>`
+                : `<button onclick="prepareBuyerReviewPacket('${safeId}', this)">Prepare Buyer Review Packet</button>`
+            }
             <button class="gold" onclick="openInfoRequestModal('${safeId}')">Needs More Information</button>
           `
       }
