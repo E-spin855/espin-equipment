@@ -1,71 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Demo Customer Email</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESPIN LINK Demo Inbox</title>
 <style>
-:root{--bg:#eef2f6;--panel:#fff;--line:#d8e0e8;--text:#1f2933;--muted:#6b7280;--blue:#0066B2;--green:#1f9d63;--yellow:#d39d00}
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
-.top{background:#fff;border-bottom:1px solid var(--line);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.brand{font-size:20px;font-weight:850;color:var(--blue)}
-.sandbox{font-size:12px;font-weight:800;color:#745800;background:#fff4c4;border:1px solid #e1bc39;padding:7px 10px;border-radius:999px}
-.wrap{max-width:980px;margin:28px auto;padding:0 18px}
-.email{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.08);overflow:hidden}
-.head{padding:22px 24px;border-bottom:1px solid var(--line)}
-.subject{font-size:24px;font-weight:800;margin-bottom:18px}
-.addr{display:grid;grid-template-columns:56px 1fr;gap:6px 10px;font-size:14px;line-height:1.45}
-.addr .k{color:var(--muted);font-weight:700}
-.body{padding:28px 24px;white-space:pre-wrap;font-size:16px;line-height:1.65;min-height:300px}
-.attach{margin:0 24px 26px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:#fafbfd;display:flex;align-items:center;justify-content:space-between;gap:16px}
-.attach strong{display:block;margin-bottom:3px}
-.attach span{font-size:12px;color:var(--muted)}
-.disabled{padding:8px 10px;border-radius:8px;background:#edf1f5;color:#7a8793;font-size:12px;font-weight:800;border:1px solid #d3dbe3}
-.note{margin:0 24px 24px;padding:12px 14px;border:1px solid #f0d986;background:#fff9df;color:#6b5600;border-radius:10px;font-size:12px;line-height:1.45}
-.empty{padding:40px;text-align:center;color:var(--muted)}
+body{margin:0;background:#f5f8fc;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#0f172a}
+.header{background:#1F7BC8;color:white;padding:20px;font-size:22px;font-weight:800}
+.wrap{max-width:900px;margin:20px auto;padding:0 16px}
+.card{background:white;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.08);margin-bottom:16px}
+.meta{color:#64748b;margin-bottom:12px;font-size:18px}
+.email-body{border-top:1px solid #ddd;padding-top:16px}
+.empty{text-align:center;padding:40px;color:#64748b}
+.inbox-actions{max-width:900px;margin:16px auto 0;padding:0 16px;text-align:right}
+.inbox-actions button{background:#06213a;color:#e9fbff;border:1px solid #39d9ff;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
 </style>
-</head>
-<body>
-<div class="top">
-  <div class="brand">ESPIN LINK · Demo Email</div>
-  <div class="sandbox">SANDBOX ONLY · NOT SENT</div>
-</div>
-<div class="wrap">
-  <div class="email" id="emailCard">
-    <div class="empty">Loading demo email…</div>
-  </div>
-</div>
+<style>#dailyBriefingBack{position:absolute;top:12px;right:20px;z-index:99999}#dailyBriefingBack .btn{min-height:36px;padding:9px 13px;border:1px solid #39d9ff;border-radius:8px;background:#06213a;color:#e9fbff;font-weight:700;letter-spacing:.04em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.28)}@media(max-width:640px){#dailyBriefingBack{position:static;margin:12px 16px;text-align:center}}</style></head>
+<body><div id="dailyBriefingBack"><button class="btn" type="button" onclick="window.location.href='ESPIN_LINK_Fullscreen_Opening_Demo.html?view=briefing'">← GO BACK TO DAILY BRIEFING</button></div>
+<div class="header">ESPIN LINK Demo Inbox</div>
+<div class="inbox-actions"><button type="button" onclick="clearSandboxEmails()">DELETE SANDBOX EMAILS</button></div>
+
+<div class="wrap" id="container"></div>
+
 <script>
-const INBOX_KEY="espin_demo_email_inbox_v1";
-function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
-function render(){
-  let inbox=[];
-  try{inbox=JSON.parse(localStorage.getItem(INBOX_KEY)||"[]")}catch(_){inbox=[]}
-  if(!Array.isArray(inbox)) inbox=[];
-  const msg=inbox[0];
-  const card=document.getElementById("emailCard");
-  if(!msg){card.innerHTML='<div class="empty">No demo customer email has been prepared yet.</div>';return}
-  card.innerHTML=`
-    <div class="head">
-      <div class="subject">${esc(msg.subject||"Approved Quote")}</div>
-      <div class="addr">
-        <div class="k">From</div><div>${esc(msg.fromName||msg.from||"ESPIN LINK Rep")} &lt;${esc(msg.from||"rep@espinlink.sandbox")}&gt;</div>
-        <div class="k">To</div><div>${esc(msg.to||"-")}</div>
-        ${msg.cc?`<div class="k">CC</div><div>${esc(msg.cc)}</div>`:""}
+const inboxKey = "espin_demo_email_inbox_v1";
+const DEMO_EMAILS = (() => {
+  const now = Date.now();
+  const received = minutesAgo => new Date(now - minutesAgo * 60 * 1000).toISOString();
+  return [
+    { subject:"Project review update", from:"Operations Desk", createdAt:received(3), body:"Hello,\n\nA project review has been updated in the demo workspace. Please review the current status and any follow-up date already recorded.\n\nThank you,\nOperations Desk" },
+    { subject:"Quote activity received", from:"Commercial Support", createdAt:received(8), body:"Hello,\n\nA quote-related update has been added to the demo records. This message is for visibility only; no action is required from this inbox.\n\nCommercial Support" },
+    { subject:"Daily briefing reminder", from:"ESPIN LINK Notifications", createdAt:received(14), body:"Good morning,\n\nYour Daily Briefing is ready. Calendar items and workspace updates appear in their respective demo views.\n\nESPIN LINK Notifications" }
+  ];
+})();
+
+const inboxChannel = typeof BroadcastChannel === "function"
+  ? new BroadcastChannel("espin_demo_email_inbox")
+  : null;
+
+function formatEmailDate(value){
+  if (!value) return "";
+  const d = new Date(String(value).replace(" ", "T"));
+  if (isNaN(d)) return value;
+  return d.toLocaleString("en-US", {
+    month:"short",
+    day:"numeric",
+    year:"numeric",
+    hour:"numeric",
+    minute:"2-digit",
+    hour12:true
+  });
+}
+
+function escapeHtml(value){
+  return String(value ?? "").replace(/[&<>\"']/g, ch => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;"
+  })[ch]);
+}
+
+function displaySandboxSender(value){
+  const sender = String(value || "Sandbox Sender");
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(sender)
+    ? "Sandbox Sender <sender@example.test>"
+    : sender;
+}
+
+function clearSandboxEmails(){
+  localStorage.removeItem(inboxKey);
+  inboxChannel?.postMessage({ type: "inbox-cleared" });
+  loadInbox();
+}
+
+function loadInbox(){
+  const container = document.getElementById("container");
+  let storedEmails = [];
+  try { storedEmails = JSON.parse(localStorage.getItem(inboxKey) || "[]"); } catch (_) {}
+  if (!Array.isArray(storedEmails)) storedEmails = [];
+  const emails = [...storedEmails, ...DEMO_EMAILS];
+
+  container.innerHTML = emails.map(email => `
+    <div class="card">
+      <h2 style="font-size:28px;">${escapeHtml(email.subject || "Equipment Update")}</h2>
+      <div class="meta">
+        <div style="font-size:20px;"><b>From:</b> ${escapeHtml(displaySandboxSender(email.from))}<br>
+        <b>Received:</b> ${formatEmailDate(email.createdAt)}</div>
+      </div>
+      <div class="email-body">
+        ${email.html || escapeHtml(email.body || "").replace(/\n/g, "<br>")}
       </div>
     </div>
-    <div class="body">${esc(msg.body||"")}</div>
-    <div class="attach">
-      <div><strong>📎 ${esc(msg.attachmentName||"Approved_Quote.pdf")}</strong><span>Sandbox attachment representation only</span></div>
-      <div class="disabled">DOWNLOAD DISABLED</div>
-    </div>
-    <div class="note">This page demonstrates what the customer email would look like. No external email is sent and no PDF attachment is downloadable in the sandbox.</div>
-  `;
+  `).join("");
 }
-document.addEventListener("DOMContentLoaded",render);
-window.addEventListener("storage",e=>{if(e.key===INBOX_KEY)render()});
-try{new BroadcastChannel("espin_demo_email_inbox").addEventListener("message",render)}catch(_){}
+
+loadInbox();
+
+// Reflect inbox changes made by Reset Rep Actions without requiring a manual refresh.
+window.addEventListener("storage", event => {
+  if (event.key === inboxKey) loadInbox();
+});
+inboxChannel && (inboxChannel.onmessage = () => loadInbox());
+window.addEventListener("pageshow", loadInbox);
 </script>
 </body>
 </html>
