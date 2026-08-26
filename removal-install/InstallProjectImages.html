@@ -652,6 +652,11 @@ function createInstallationDemoEmail(sentPhotoIds) {
   let allDetails = {};
   try { allDetails = JSON.parse(localStorage.getItem(detailsKey) || "{}"); } catch {}
   const details = allDetails?.[projectId] || {};
+  const context = window.EspinOperation?.context || {};
+  const equipment = context.equipment_model || context.equipment || "Installation Project";
+  const manufacturer = context.make || context.manufacturer || "—";
+  const model = context.model || "—";
+  const serial = context.serial_number || "—";
   const selectedPhotos = photos.filter(photo => sentPhotoIds.includes(getPrimaryId(photo)));
   const detailRows = Object.entries(details)
     .filter(([, value]) => value !== "" && value !== null && value !== undefined)
@@ -676,12 +681,16 @@ function createInstallationDemoEmail(sentPhotoIds) {
   inbox.unshift({
     id: Date.now().toString(),
     projectId,
-    subject: "Installation Project Update",
+    subject: `Equipment Update: ${equipment}`,
     from: "Espin Medical <info@espinmedical.com>",
     createdAt: new Date().toLocaleString(),
     html: `<div style="font-family:Arial,sans-serif;color:#222;">
-      <h1 style="font-size:34px;">Installation Project Update</h1>
-      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Installation Details</div>
+      <h1 style="font-size:34px;">Equipment Update: ${escapeDemoEmailHtml(equipment)}</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Equipment Update Details</div>
+      <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;"><div style="font-weight:700;">Manufacturer</div><div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(manufacturer)}</div></div>
+      <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;"><div style="font-weight:700;">Model</div><div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(model)}</div></div>
+      <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;"><div style="font-weight:700;">Serial</div><div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(serial)}</div></div>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Installation Details</div>
       ${detailRows || '<div style="padding:16px;font-size:20px;">No installation details available.</div>'}
       <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Selected Images</div>
       ${imageCards}
@@ -751,7 +760,22 @@ const debouncedSave = ((fn, d=600) => {
 })(saveMeta);
 
 /* RENDER */
+function demoImagePath(url) {
+  try {
+    const parsed = new URL(url, location.origin);
+    return parsed.pathname.startsWith("/demo-images/") ? `${parsed.pathname}${parsed.search}` : "";
+  } catch {
+    return "";
+  }
+}
+
+function isAutomaticImageTitle(title) {
+  return /\.(?:avif|gif|heic|jpe?g|png|webp)$/i.test(String(title || "").trim());
+}
+
 function appendCard(p, badgeSet, forceBadge = false) {
+  p.photo_url = demoImagePath(p.photo_url);
+  if (!p.photo_url) return null;
   const pid = getPrimaryId(p);
   const card = document.createElement("div");
   card.className = "card";
@@ -762,7 +786,7 @@ function appendCard(p, badgeSet, forceBadge = false) {
   card.innerHTML = `
     ${showBadge ? '<div class="new-badge">NEW</div>' : ''}
     <div class="card-header">
-  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Image Title...(Required)">
+  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Input image title here">
 </div>
     <img src="${p.photo_url}">
     <div class="card-body">
@@ -893,13 +917,15 @@ sendBtn.onclick = async () => {
 
     if (!emailRes.ok) throw new Error("Image email failed");
 
+    // Mirror the removal workflow: place the sandbox email in Demo Email as
+    // soon as the image-email request succeeds.
+    createInstallationDemoEmail(ids);
+
     await fetch(`${API_BASE}/api/removal-install/image-tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-user-email": userEmail },
       body: JSON.stringify({ projectId, photoIds: ids })
     });
-
-    createInstallationDemoEmail(ids);
 
     selected.clear();
     document.querySelectorAll(".card-footer input[type=checkbox]").forEach(cb => (cb.checked = false));
@@ -976,7 +1002,16 @@ deleteBtn.onclick = async () => {
     headers: { "x-user-email": userEmail }
   });
 
-  photos = (await res.json()) || [];
+  const filenameTitledPhotos = [];
+  photos = ((await res.json()) || []).map(p => {
+    const photo = { ...p, photo_url: demoImagePath(p.photo_url) };
+    if (isAutomaticImageTitle(photo.photo_title)) {
+      photo.photo_title = "";
+      filenameTitledPhotos.push(photo);
+    }
+    return photo;
+  }).filter(p => p.photo_url);
+  await Promise.all(filenameTitledPhotos.map(saveMeta));
 
   photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -995,7 +1030,7 @@ deleteBtn.onclick = async () => {
   const modal=document.createElement("div"); modal.style.cssText="display:none;position:fixed;inset:0;z-index:9999;padding:24px;background:rgba(0,0,0,.72);overflow:auto";
   modal.innerHTML='<div style="max-width:980px;margin:30px auto;background:#fff;padding:22px;border-radius:12px"><button type="button" data-close style="float:right">Close</button><h2>ESPIN LINK Demo Image Library</h2><p>Select a fictional demo image only.</p><div data-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px"></div></div>'; document.body.append(modal);
   const close=()=>modal.style.display="none"; modal.querySelector("[data-close]").onclick=close;
-  async function open(){const grid=modal.querySelector("[data-grid]");grid.textContent="Loading demo images…";modal.style.display="block";const r=await fetch("/demo-images/manifest.json",{cache:"no-store"}),d=await r.json();grid.innerHTML="";(d.images||[]).forEach(item=>{const b=document.createElement("button");b.type="button";b.innerHTML=`<img src="${item.url}" alt="" style="width:100%;height:130px;object-fit:cover"><strong>${item.category}</strong><br><small>${item.name}</small>`;b.onclick=async()=>{b.disabled=true;const save=await fetch(`${API_BASE}/api/removal-install/project-photos/save`,{method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({projectId,photo_url:new URL(item.url,location.origin).href,photo_title:item.name,photo_comment:"Demo image"})});if(!save.ok){b.disabled=false;return alert("Demo image could not be selected.");}close();location.reload();};grid.append(b);});}
+  async function open(){const grid=modal.querySelector("[data-grid]");grid.textContent="Loading demo images…";modal.style.display="block";const r=await fetch("/demo-images/manifest.json",{cache:"no-store"}),d=await r.json();grid.innerHTML="";(d.images||[]).forEach(item=>{const imagePath=demoImagePath(item.url);if(!imagePath)return;const b=document.createElement("button");b.type="button";b.innerHTML=`<img src="${imagePath}" alt="" style="width:100%;height:130px;object-fit:cover"><strong>${item.category}</strong><br><small>${item.name}</small>`;b.onclick=async()=>{b.disabled=true;const save=await fetch(`${API_BASE}/api/removal-install/project-photos/save`,{method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({projectId,photo_url:imagePath,photo_title:"",photo_comment:"Demo image"})});if(!save.ok){b.disabled=false;return alert("Demo image could not be selected.");}close();location.reload();};grid.append(b);});}
   document.addEventListener("click",e=>{if(e.target===button){e.preventDefault();e.stopImmediatePropagation();open().catch(()=>alert("Demo image library is unavailable."));}},true);button.textContent="Select Demo Image";
 })();
 </script>

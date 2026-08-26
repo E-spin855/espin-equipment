@@ -162,8 +162,8 @@ textarea{min-height:120px;resize:vertical}
           <div class="label">Project Start Date</div>
           <input type="datetime-local">
         </div>
-        <div class="field field-updated">
-          <div class="label">Target Installation Date <span class="new-pill">NEW</span></div>
+        <div class="field">
+          <div class="label">Target Installation Date</div>
           <input type="datetime-local">
         </div>
         <div class="field">
@@ -182,8 +182,8 @@ textarea{min-height:120px;resize:vertical}
           <div class="label">Site Readiness Confirmed</div>
           <input type="checkbox">
         </div>
-        <div class="toggle field-updated">
-          <div class="label">Room Construction Completed <span class="new-pill">NEW</span></div>
+        <div class="toggle">
+          <div class="label">Room Construction Completed</div>
           <input type="checkbox">
         </div>
         <div class="toggle">
@@ -639,6 +639,23 @@ function collectInstallationEmailChanges() {
   return changes;
 }
 
+function markInstallationUpdates(updatedFields) {
+  updatedFields.forEach(update => {
+    const row = [...document.querySelectorAll(".field, .toggle")].find(item =>
+      item.querySelector(".label")?.textContent.replace(/NEW/g, "").trim() === update.field
+    );
+    if (!row) return;
+    row.classList.add("field-updated");
+    const label = row.querySelector(".label");
+    if (label && !label.querySelector(".new-pill")) {
+      const pill = document.createElement("span");
+      pill.className = "new-pill";
+      pill.textContent = "NEW";
+      label.append(" ", pill);
+    }
+  });
+}
+
 function createDemoEmail(updatedFields = []) {
   const key = "espin_demo_email_inbox_v1";
   const context = window.EspinOperation?.context || {};
@@ -730,6 +747,7 @@ function demoSave(button, continueToImages = false){
       if (button.disabled || document.querySelector(".project-shell")?.classList.contains("project-readonly")) return;
       const emailChanges = collectInstallationEmailChanges();
       saveInstallationDetails();
+      markInstallationUpdates(emailChanges);
       const savedProjectSnapshot = syncInstallationProjectToRep();
 
       try {
