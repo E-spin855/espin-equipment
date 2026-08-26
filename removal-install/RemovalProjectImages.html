@@ -821,13 +821,38 @@ async function syncImagesToDemoEmail(photoIds) {
     if (projectRes.ok) project = await projectRes.json();
   } catch {}
   const projectName = project?.project_name || project?.name || project?.facility_name || `Project ${projectId}`;
+  const equipment = project?.equipment_model || project?.equipment || project?.modality || projectName;
+  const manufacturer = project?.make || project?.manufacturer || "—";
+  const model = project?.model || "—";
+  const serial = project?.serial_number || "—";
+  const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[char]));
+  const rows = items => items.map(row => `
+    <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;">
+      <div style="font-weight:700;">${escapeHtml(row[0])}</div>
+      <div style="font-weight:700;color:${row[1] !== "—" ? "#0b67b2" : "#222"};">${escapeHtml(row[1])}</div>
+    </div>`).join("");
+  const imagesHtml = selectedPhotos.map(p => `
+    <div style="padding:16px;border-bottom:1px solid #ddd;">
+      <div style="font-size:20px;font-weight:700;color:#0b67b2;margin-bottom:10px;">${escapeHtml(p.photo_title)}</div>
+      <img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.photo_title)}" style="display:block;max-width:100%;max-height:420px;border:1px solid #ddd;border-radius:4px;">
+      ${p.photo_comment ? `<div style="margin-top:10px;font-size:18px;">${escapeHtml(p.photo_comment)}</div>` : ""}
+    </div>`).join("");
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#222;">
+      <h1 style="font-size:34px;">Equipment Update: ${escapeHtml(equipment)}</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Equipment Update Details</div>
+      ${rows([["PET Manufacturer", manufacturer], ["PET Model", model], ["PET Serial", serial], ["Project", projectName]])}
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Project Images</div>
+      ${imagesHtml}
+    </div>`;
   const imageLines = selectedPhotos.map(p => `${p.photo_title}: ${p.photo_url}`).join("\n");
   const message = {
     id: `project-images-${projectId}-${Date.now()}`,
-    from: "ESPIN LINK",
+    from: "Espin Medical <info@espinmedical.com>",
     to: userEmail || "ESPIN LINK Team",
-    subject: `Project Update — ${projectName}`,
+    subject: `Equipment Update: ${equipment}`,
     body: `Project images are ready for review.\n\nProject: ${projectName}\nProject ID: ${projectId}\n\nImages:\n${imageLines}`,
+    html,
     projectId,
     images: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
     attachments: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
