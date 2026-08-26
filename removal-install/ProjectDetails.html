@@ -647,10 +647,16 @@ var formData = {};
                     i.value = val; formData[key] = val;
                 }
             }
-            i.oninput = function () {
-                formData[key] = (type === "datetime-local") ? i.value.replace("T", " ") + ":00" : i.value;
+            function recordInputValue() {
+                formData[key] = (type === "datetime-local" && i.value)
+                    ? i.value.replace("T", " ") + ":00"
+                    : i.value;
                 dirtyFields.add(key);
-            };
+            }
+            // Native date/time pickers do not consistently emit input on every
+            // platform, so listen for both events before saving or navigating.
+            i.addEventListener("input", recordInputValue);
+            i.addEventListener("change", recordInputValue);
             d.appendChild(i);
             return d;
         }
@@ -1074,8 +1080,9 @@ async function saveData(continueToImages = false) {
 
   let isArchivingNow = false;
 
+  const fieldsBeingSaved = new Set(dirtyFields);
   const payload = {};
-  dirtyFields.forEach(k => (payload[k] = formData[k]));
+  fieldsBeingSaved.forEach(k => (payload[k] = formData[k]));
 
   if (formData.project_completed_by) {
     payload.project_completed_by = formData.project_completed_by;
@@ -1093,8 +1100,6 @@ async function saveData(continueToImages = false) {
 
   const isCompletionFlow = window.__completionTriggered === true;
 
-  dirtyFields.clear();
-
   try {
     const res = await fetch("/api/removal-install/project-details", {
       method: "POST",
@@ -1105,7 +1110,12 @@ async function saveData(continueToImages = false) {
       body: JSON.stringify({ projectId, data: payload })
     });
 
-    const result = await res.json();
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || "Project details could not be saved");
+
+    // Preserve edits made while this request was in flight; clear only fields
+    // that were included in the successful save.
+    fieldsBeingSaved.forEach(k => dirtyFields.delete(k));
 
     const savedProjectSnapshot = syncRemovalProjectToRep({
       ...formData,

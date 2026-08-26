@@ -683,19 +683,19 @@ const debouncedSave = ((fn, d=600) => {
 })(saveMeta);
 
 /* RENDER */
-function isDemoImageUrl(url) {
+function demoImagePath(url) {
   try {
     const parsed = new URL(url, location.origin);
-    return parsed.origin === location.origin && parsed.pathname.startsWith("/demo-images/");
+    return parsed.pathname.startsWith("/demo-images/") ? `${parsed.pathname}${parsed.search}` : "";
   } catch {
-    return false;
+    return "";
   }
 }
 
 function appendCard(p, badgeSet, forceBadge = false) {
-  // Old persisted records can contain retired external Uploadcare URLs.  The
-  // closed sandbox renders only same-origin /demo-images/ assets.
-  if (!isDemoImageUrl(p.photo_url)) return null;
+  // Do not render retired external image records in the closed sandbox.
+  p.photo_url = demoImagePath(p.photo_url);
+  if (!p.photo_url) return null;
 
   const pid = getPrimaryId(p);
   const card = document.createElement("div");
@@ -707,7 +707,7 @@ function appendCard(p, badgeSet, forceBadge = false) {
   card.innerHTML = `
     ${showBadge ? '<div class="new-badge">NEW</div>' : ''}
     <div class="card-header">
-  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Image Title...(Required)">
+  <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Input image title here">
 </div>
     <img src="${p.photo_url}">
     <div class="card-body">
@@ -811,6 +811,37 @@ gallery.prepend(card);
 };
 
 /* SEND */
+async function syncImagesToDemoEmail(photoIds) {
+  const selectedPhotos = photos.filter(p => photoIds.includes(getPrimaryId(p)));
+  let project = {};
+  try {
+    const projectRes = await fetch(`${API_BASE}/api/removal-install/projects?id=${projectId}`, {
+      headers: { "x-user-email": userEmail }
+    });
+    if (projectRes.ok) project = await projectRes.json();
+  } catch {}
+  const projectName = project?.project_name || project?.name || project?.facility_name || `Project ${projectId}`;
+  const imageLines = selectedPhotos.map(p => `${p.photo_title}: ${p.photo_url}`).join("\n");
+  const message = {
+    id: `project-images-${projectId}-${Date.now()}`,
+    from: "ESPIN LINK",
+    to: userEmail || "ESPIN LINK Team",
+    subject: `Project Update — ${projectName}`,
+    body: `Project images are ready for review.\n\nProject: ${projectName}\nProject ID: ${projectId}\n\nImages:\n${imageLines}`,
+    projectId,
+    images: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
+    attachments: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
+    createdAt: new Date().toISOString(),
+    timestamp: Date.now(),
+    read: false
+  };
+  let inbox = [];
+  try { inbox = JSON.parse(localStorage.getItem("espin_demo_email_inbox_v1") || "[]"); } catch {}
+  inbox.unshift(message);
+  localStorage.setItem("espin_demo_email_inbox_v1", JSON.stringify(inbox));
+  try { new BroadcastChannel("espin_demo_email").postMessage({ type: "email", message }); } catch {}
+}
+
 sendBtn.onclick = async () => {
   if (isArchived || sendBtn.disabled) return;
 
@@ -837,6 +868,8 @@ sendBtn.onclick = async () => {
     });
 
     if (!emailRes.ok) throw new Error("Image email failed");
+
+    await syncImagesToDemoEmail(ids);
 
     await fetch(`${API_BASE}/api/removal-install/image-tasks`, {
       method: "POST",
@@ -919,7 +952,7 @@ deleteBtn.onclick = async () => {
     headers: { "x-user-email": userEmail }
   });
 
-  photos = ((await res.json()) || []).filter(p => isDemoImageUrl(p.photo_url));
+  photos = ((await res.json()) || []).map(p => ({ ...p, photo_url: demoImagePath(p.photo_url) })).filter(p => p.photo_url);
 
   photos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -938,7 +971,7 @@ deleteBtn.onclick = async () => {
   const modal=document.createElement("div"); modal.style.cssText="display:none;position:fixed;inset:0;z-index:9999;padding:24px;background:rgba(0,0,0,.72);overflow:auto";
   modal.innerHTML='<div style="max-width:980px;margin:30px auto;background:#fff;padding:22px;border-radius:12px"><button type="button" data-close style="float:right">Close</button><h2>ESPIN LINK Demo Image Library</h2><p>Select a fictional demo image only.</p><div data-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px"></div></div>'; document.body.append(modal);
   const close=()=>modal.style.display="none"; modal.querySelector("[data-close]").onclick=close;
-  async function open(){const grid=modal.querySelector("[data-grid]");grid.textContent="Loading demo images…";modal.style.display="block";const r=await fetch("/demo-images/manifest.json",{cache:"no-store"}),d=await r.json();grid.innerHTML="";(d.images||[]).forEach(item=>{const b=document.createElement("button");b.type="button";b.innerHTML=`<img src="${item.url}" alt="" style="width:100%;height:130px;object-fit:cover"><strong>${item.category}</strong><br><small>${item.name}</small>`;b.onclick=async()=>{b.disabled=true;const save=await fetch(`${API_BASE}/api/removal-install/project-photos/save`,{method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({projectId,photo_url:new URL(item.url,location.origin).href,photo_title:item.name,photo_comment:"Demo image"})});if(!save.ok){b.disabled=false;return alert("Demo image could not be selected.");}close();location.reload();};grid.append(b);});}
+  async function open(){const grid=modal.querySelector("[data-grid]");grid.textContent="Loading demo images…";modal.style.display="block";const r=await fetch("/demo-images/manifest.json",{cache:"no-store"}),d=await r.json();grid.innerHTML="";(d.images||[]).forEach(item=>{const imagePath=demoImagePath(item.url);if(!imagePath)return;const b=document.createElement("button");b.type="button";b.innerHTML=`<img src="${imagePath}" alt="" style="width:100%;height:130px;object-fit:cover"><strong>${item.category}</strong><br><small>${item.name}</small>`;b.onclick=async()=>{b.disabled=true;const save=await fetch(`${API_BASE}/api/removal-install/project-photos/save`,{method:"POST",headers:{"Content-Type":"application/json","x-user-email":userEmail},body:JSON.stringify({projectId,photo_url:imagePath,photo_title:"",photo_comment:"Demo image"})});if(!save.ok){b.disabled=false;return alert("Demo image could not be selected.");}close();location.reload();};grid.append(b);});}
   document.addEventListener("click",e=>{if(e.target===button){e.preventDefault();e.stopImmediatePropagation();open().catch(()=>alert("Demo image library is unavailable."));}},true);button.textContent="Select Demo Image";
 })();
 </script>
