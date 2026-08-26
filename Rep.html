@@ -20507,6 +20507,7 @@ function saveInstallBaseFix(id) {
                     External Trade-In Reference: <strong>${money(externalTradeInValue)}</strong><br>
                     Rep Applied Quote Credit: <strong>${money(tradeInCredit)}</strong>
                   </div>
+                  ${renderSandboxTradeDeskResponseFields(rec)}
                   <label style="display:block;margin-top:12px;">Trade-In Reference</label>
                   <input data-tradein-credit-input data-record-id="${escapeHtml(rec.id)}" type="number" value="${escapeHtml(rec.tradein_credit || rec.quote_trade_in_credit || externalTradeInValue || "")}" placeholder="Enter trade-in value" />
                   <button type="button" class="green" style="margin-top:10px;" onclick="saveAndApplyNewProjectTradeInValue('${rec.id}')">Save and Apply Trade-In Value</button>
@@ -25043,6 +25044,109 @@ return true;
       }).finally(() => clearTimeout(timer));
     }
 
+    function hasSandboxTradeDeskRequest(rec, token) {
+      const requested = Array.isArray(rec?.info_request_items)
+        ? rec.info_request_items
+        : [];
+      const target = clean(token).toLowerCase();
+      return requested.some(item => clean(item).toLowerCase().includes(target));
+    }
+
+    function renderSandboxTradeDeskResponseFields(rec) {
+      if (!rec || !rec.tradein_sync_received) return "";
+
+      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
+      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
+      if (!needsInUse && !needsHardDrive) return "";
+
+      const inUseValue = clean(rec.trade_desk_in_use_status_response || "");
+      const hardDriveValue = clean(rec.trade_desk_hard_drive_removal_status_response || "");
+
+      return `
+        <div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,216,77,.30);">
+          <div class="mini" style="margin-bottom:10px;font-weight:900;color:#ffd84d;">TRADE DESK REQUESTED INFORMATION</div>
+          ${needsInUse ? `
+            <label style="display:block;margin-top:8px;">System in-use status</label>
+            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','in_use',this.value)">
+              <option value="" ${!inUseValue ? "selected" : ""}>Select response</option>
+              <option value="In Use" ${inUseValue === "In Use" ? "selected" : ""}>In Use</option>
+              <option value="Not In Use" ${inUseValue === "Not In Use" ? "selected" : ""}>Not In Use</option>
+            </select>
+          ` : ""}
+          ${needsHardDrive ? `
+            <label style="display:block;margin-top:10px;">Hard drive removal status</label>
+            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','hard_drive',this.value)">
+              <option value="" ${!hardDriveValue ? "selected" : ""}>Select response</option>
+              <option value="Removed" ${hardDriveValue === "Removed" ? "selected" : ""}>Removed</option>
+              <option value="Not Removed" ${hardDriveValue === "Not Removed" ? "selected" : ""}>Not Removed</option>
+            </select>
+          ` : ""}
+        </div>
+      `;
+    }
+
+    function saveSandboxTradeDeskResponse(recordId, fieldName, value) {
+      const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+      if (!rec) return;
+
+      const normalizedValue = clean(value || "");
+      const now = new Date().toISOString();
+
+      if (fieldName === "in_use") {
+        rec.trade_desk_in_use_status_response = normalizedValue;
+      } else if (fieldName === "hard_drive") {
+        rec.trade_desk_hard_drive_removal_status_response = normalizedValue;
+      } else {
+        return;
+      }
+
+      rec.trade_desk_response_updated_at = now;
+      saveRecords();
+
+      // Update the existing associated Trade-In sync record rather than creating
+      // a second equipment record. Trade Desk imports this same record.
+      const keys = ["axis_tradein_sync_records_v1", "espin_tradein_sync_records_v1"];
+      let latestPayload = null;
+
+      keys.forEach(key => {
+        let records = [];
+        try {
+          records = JSON.parse(localStorage.getItem(key) || "[]");
+          if (!Array.isArray(records)) records = [];
+        } catch (_) {
+          records = [];
+        }
+
+        let found = false;
+        records = records.map(item => {
+          if (!tradeInReturnMatchesRecord(rec, item)) return item;
+          found = true;
+          const updated = {
+            ...item,
+            info_request_items: Array.isArray(rec.info_request_items) ? rec.info_request_items : item.info_request_items || [],
+            trade_desk_in_use_status_response: rec.trade_desk_in_use_status_response || "",
+            trade_desk_hard_drive_removal_status_response: rec.trade_desk_hard_drive_removal_status_response || "",
+            in_use_status: rec.trade_desk_in_use_status_response || item.in_use_status || "",
+            hard_drive_removed: rec.trade_desk_hard_drive_removal_status_response || item.hard_drive_removed || "",
+            last_tradein_update_at: now,
+            updated_at: now
+          };
+          latestPayload = updated;
+          return updated;
+        });
+
+        if (found) localStorage.setItem(key, JSON.stringify(records));
+      });
+
+      if (latestPayload) {
+        localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(latestPayload));
+        localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+      }
+
+      renderDetail();
+      showBanner("Trade Desk response saved.");
+    }
+
     function submitAssociatedTradeIn(kind) {
       const rec = state.records.find(r => r.id === state.selectedId);
 
@@ -25438,6 +25542,10 @@ return true;
       rec.external_tradein_received_at = item.last_tradein_update_at || item.updated_at || new Date().toISOString();
       rec.tradein_last_update_at = item.last_tradein_update_at || item.updated_at || rec.tradein_last_update_at || "";
       rec.tradein_last_update_by = item.last_tradein_update_by || rec.tradein_last_update_by || "";
+      rec.info_request_items = Array.isArray(item.info_request_items) ? item.info_request_items : (rec.info_request_items || []);
+      rec.info_request_sent_at = item.info_request_sent_at || rec.info_request_sent_at || "";
+      rec.trade_desk_in_use_status_response = item.trade_desk_in_use_status_response || rec.trade_desk_in_use_status_response || "";
+      rec.trade_desk_hard_drive_removal_status_response = item.trade_desk_hard_drive_removal_status_response || rec.trade_desk_hard_drive_removal_status_response || "";
       rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
       if (!alreadyProcessed) {
         rec.manager_unseen_update = true;
@@ -25510,6 +25618,10 @@ return true;
       rec.tradein_synced_to_axis_at = incomingTradeInAt;
       rec.tradein_last_update_by = item.last_tradein_update_by || "";
       rec.tradein_last_update_at = item.last_tradein_update_at || "";
+      rec.info_request_items = Array.isArray(item.info_request_items) ? item.info_request_items : (rec.info_request_items || []);
+      rec.info_request_sent_at = item.info_request_sent_at || rec.info_request_sent_at || "";
+      rec.trade_desk_in_use_status_response = item.trade_desk_in_use_status_response || rec.trade_desk_in_use_status_response || "";
+      rec.trade_desk_hard_drive_removal_status_response = item.trade_desk_hard_drive_removal_status_response || rec.trade_desk_hard_drive_removal_status_response || "";
       rec.tradein_acceptance_deadline =
         item.tradein_acceptance_deadline ||
         item.trade_in_acceptance_deadline ||

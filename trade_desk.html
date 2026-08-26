@@ -543,7 +543,7 @@ Trade-In App / ESPIN LINK Rep Workflow → Manual Trade Desk Review → Prepare 
     <div class="check-group">
       <h3>Availability / Removal</h3>
       <label class="check-row"><input type="checkbox" value="Availability timeframe needed"> Availability timeframe needed</label>
-      <label class="check-row"><input type="checkbox" value="System in-use status needed"> System in-use status needed</label>
+      <label class="check-row"><input type="checkbox" value="System in-use status needed" checked disabled data-sandbox-required="true"> System in-use status</label>
       <label class="check-row"><input type="checkbox" value="Out-of-use date needed"> Out-of-use date needed</label>
       <label class="check-row"><input type="checkbox" value="Removal pathway details needed"> Removal pathway details needed</label>
       <label class="check-row"><input type="checkbox" value="Loading dock access needs confirmation"> Loading dock access needs confirmation</label>
@@ -552,7 +552,7 @@ Trade-In App / ESPIN LINK Rep Workflow → Manual Trade Desk Review → Prepare 
 
     <div class="check-group">
       <h3>Data / Compliance</h3>
-      <label class="check-row"><input type="checkbox" value="Hard drive removal status needed"> Hard drive removal status needed</label>
+      <label class="check-row"><input type="checkbox" value="Hard drive removal status needed" checked disabled data-sandbox-required="true"> Hard drive removal status</label>
       <label class="check-row"><input type="checkbox" value="Software version needed"> Software version needed</label>
       <label class="check-row"><input type="checkbox" value="Installed date or DOM needed"> Installed date or DOM needed</label>
       <label class="check-row"><input type="checkbox" value="Service, upgrade, or configuration history needed"> Service, upgrade, or configuration history needed</label>
@@ -569,7 +569,7 @@ Trade-In App / ESPIN LINK Rep Workflow → Manual Trade Desk Review → Prepare 
     </div>
 
     <label style="font-weight:800;">Trade Desk Notes</label>
-    <textarea id="infoRequestNotes" placeholder="Optional notes to the rep..."></textarea>
+    <textarea id="infoRequestNotes" disabled>Disabled for sandbox test.</textarea>
 
     <div class="modal-actions">
       <button class="secondary" onclick="closeInfoRequestModal()">Cancel</button>
@@ -1281,6 +1281,13 @@ function normalizeIncomingRecord(item){
     quote_sync_status: item.quote_sync_status || "Waiting on Trade Desk Review",
     quote_id: item.quote_id || projectId || "",
 
+    info_request_items: Array.isArray(item.info_request_items) ? item.info_request_items : [],
+    info_request_notes: item.info_request_notes || "",
+    info_request_sent_to: item.info_request_sent_to || "",
+    info_request_sent_at: item.info_request_sent_at || "",
+    trade_desk_in_use_status_response: item.trade_desk_in_use_status_response || "",
+    trade_desk_hard_drive_removal_status_response: item.trade_desk_hard_drive_removal_status_response || "",
+
     trade_in_credit: "",
     tradein_credit: "",
     quote_trade_in_credit: "",
@@ -1871,11 +1878,16 @@ function openInfoRequestModal(id){
   activeInfoRequestId = String(id || "");
 
   document.querySelectorAll("#infoRequestModal input[type='checkbox']").forEach(cb => {
-    cb.checked = false;
+    const sandboxRequired = cb.dataset.sandboxRequired === "true";
+    cb.checked = sandboxRequired;
+    cb.disabled = sandboxRequired;
   });
 
   const notes = document.getElementById("infoRequestNotes");
-  if (notes) notes.value = "";
+  if (notes) {
+    notes.value = "Disabled for sandbox test.";
+    notes.disabled = true;
+  }
 
   const subtitle = document.getElementById("infoRequestSubtitle");
   if (subtitle) {
@@ -1980,10 +1992,11 @@ function sendInfoRequestToRep(btn = null){
     document.querySelectorAll("#infoRequestModal input[type='checkbox']:checked")
   ).map(cb => cb.value);
 
-  const notes = String(document.getElementById("infoRequestNotes")?.value || "").trim();
+  // Sandbox test: free-text Trade Desk notes are intentionally disabled.
+  const notes = "";
 
-  if (!checked.length && !notes) {
-    alert("Select at least one missing item or enter a note.");
+  if (!checked.length) {
+    alert("Select at least one missing item.");
     return;
   }
 
@@ -2005,6 +2018,18 @@ function sendInfoRequestToRep(btn = null){
   rec.info_request_sent_at = new Date().toISOString();
 
   saveData(data, true);
+
+  // Publish the request into the existing Trade-In sync record so the Rep's
+  // Associated Trade-In Equipment card can show the requested response fields.
+  publishTradeDeskProgress(rec, {
+    info_request_items: checked,
+    info_request_notes: "",
+    info_request_sent_to: repEmail,
+    info_request_sent_at: rec.info_request_sent_at,
+    trade_desk_status: rec.trade_desk_status,
+    buyer_response_status: rec.buyer_response_status,
+    crm_status: rec.crm_status
+  });
 
   const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
