@@ -25081,6 +25081,7 @@ return true;
               <option value="Not Removed" ${hardDriveValue === "Not Removed" ? "selected" : ""}>Not Removed</option>
             </select>
           ` : ""}
+          <button type="button" class="green" style="margin-top:12px;" onclick="submitSandboxTradeDeskResponses('${escapeJs(rec.id)}')">Submit Additional Data to Trade Desk</button>
         </div>
       `;
     }
@@ -25145,6 +25146,80 @@ return true;
 
       renderDetail();
       showBanner("Trade Desk response saved.");
+    }
+
+    function submitSandboxTradeDeskResponses(recordId) {
+      const rec = state.records.find(r => String(r.id || "") === String(recordId || ""));
+      if (!rec) {
+        alert("Open a record first");
+        return;
+      }
+
+      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
+      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
+      const inUseValue = clean(rec.trade_desk_in_use_status_response || "");
+      const hardDriveValue = clean(rec.trade_desk_hard_drive_removal_status_response || "");
+
+      if (needsInUse && !inUseValue) {
+        alert("Select System in-use status.");
+        return;
+      }
+      if (needsHardDrive && !hardDriveValue) {
+        alert("Select Hard drive removal status.");
+        return;
+      }
+
+      // Sandbox additional-information submission is independent of the optional
+      // Trade-In Reference / quote-credit field. Do not require or modify it here.
+      const now = new Date().toISOString();
+      rec.trade_desk_additional_data_submitted_at = now;
+      rec.trade_desk_response_status = "submitted";
+      rec.trade_desk_response_updated_at = now;
+      saveRecords();
+
+      const keys = ["axis_tradein_sync_records_v1", "espin_tradein_sync_records_v1"];
+      let latestPayload = null;
+
+      keys.forEach(key => {
+        let records = [];
+        try {
+          records = JSON.parse(localStorage.getItem(key) || "[]");
+          if (!Array.isArray(records)) records = [];
+        } catch (_) {
+          records = [];
+        }
+
+        let found = false;
+        records = records.map(item => {
+          if (!tradeInReturnMatchesRecord(rec, item)) return item;
+          found = true;
+          const updated = {
+            ...item,
+            info_request_items: Array.isArray(rec.info_request_items) ? rec.info_request_items : item.info_request_items || [],
+            trade_desk_in_use_status_response: inUseValue,
+            trade_desk_hard_drive_removal_status_response: hardDriveValue,
+            in_use_status: inUseValue || item.in_use_status || "",
+            hard_drive_removed: hardDriveValue || item.hard_drive_removed || "",
+            trade_desk_response_status: "submitted",
+            trade_desk_additional_data_submitted_at: now,
+            trade_desk_response_updated_at: now,
+            last_tradein_update_at: now,
+            updated_at: now
+          };
+          latestPayload = updated;
+          return updated;
+        });
+
+        if (found) localStorage.setItem(key, JSON.stringify(records));
+      });
+
+      if (latestPayload) {
+        localStorage.setItem("axis_tradein_last_sync_v1", JSON.stringify(latestPayload));
+        localStorage.setItem("axis_manager_sync_ping_v1", String(Date.now()));
+      }
+
+      renderDetail();
+      showBanner("Additional data submitted to Trade Desk.");
     }
 
     function submitAssociatedTradeIn(kind) {

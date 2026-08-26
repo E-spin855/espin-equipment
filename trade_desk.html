@@ -243,6 +243,14 @@ textarea#infoRequestNotes{
   min-height:90px;
 }
 
+#infoRequestModal .sandbox-disabled-option{
+  opacity:.48;
+  cursor:not-allowed;
+}
+#infoRequestModal .sandbox-disabled-option input{
+  pointer-events:none;
+}
+
 .package-card{
   border:1px solid #2b4a68;
   border-radius:14px;
@@ -1866,6 +1874,15 @@ function openTradeDeskPacket(id){
   render();
 }
 
+function showSandboxDisabledNotice(event){
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  alert("Disabled for Sandbox test");
+  return false;
+}
+
 function openInfoRequestModal(id){
   const data = loadData();
   const rec = findById(data, id);
@@ -1880,7 +1897,14 @@ function openInfoRequestModal(id){
   document.querySelectorAll("#infoRequestModal input[type='checkbox']").forEach(cb => {
     const sandboxRequired = cb.dataset.sandboxRequired === "true";
     cb.checked = sandboxRequired;
-    cb.disabled = sandboxRequired;
+    cb.disabled = true;
+
+    const row = cb.closest(".check-row");
+    if (row) {
+      row.classList.toggle("sandbox-disabled-option", !sandboxRequired);
+      row.onclick = sandboxRequired ? null : showSandboxDisabledNotice;
+      row.setAttribute("aria-disabled", sandboxRequired ? "false" : "true");
+    }
   });
 
   const notes = document.getElementById("infoRequestNotes");
