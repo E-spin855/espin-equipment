@@ -5112,11 +5112,13 @@ tr.unread-message-row td{
 .active-project-meta{margin-top:5px;color:#8fb9dc;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.09em}
 .active-project-chevron{color:#72dcff;font-size:20px;text-shadow:0 0 12px rgba(0,229,255,.65);transition:transform .2s ease}
 .active-project-card.open .active-project-chevron{transform:rotate(180deg)}
-.sci-progress-row{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:12px;align-items:center;margin-top:13px}
+.sci-progress-row{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:center;margin-top:13px}
 .sci-progress-track{position:relative;height:19px;border-radius:999px;padding:3px;background:#020812;border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 0 12px rgba(0,0,0,.95),0 0 16px rgba(255,53,79,.12);overflow:hidden}
 .sci-progress-track::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 8.8%,rgba(255,255,255,.14) 9% 9.7%,transparent 10% 11%);z-index:3;pointer-events:none}
 .sci-progress-fill{position:relative;height:100%;min-width:7px;border-radius:999px;background:linear-gradient(90deg,#650816,#d31831 48%,#ff5268);box-shadow:0 0 10px rgba(255,45,69,.85),0 0 24px rgba(255,45,69,.48);transition:width .55s cubic-bezier(.2,.8,.2,1);overflow:hidden}
 .sci-progress-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.55) 48%,transparent 72%);transform:translateX(-120%);animation:projectEnergySweep 2.2s linear infinite}
+.active-project-card.installation:not(.complete) .sci-progress-track{box-shadow:inset 0 0 12px rgba(0,0,0,.95),0 0 16px rgba(0,229,255,.14)}
+.active-project-card.installation:not(.complete) .sci-progress-fill{background:linear-gradient(90deg,#087ea5,#00bfe8 52%,#67e8f9);box-shadow:0 0 10px rgba(0,229,255,.85),0 0 24px rgba(56,189,248,.48)}
 .active-project-card.complete .sci-progress-fill{background:linear-gradient(90deg,#087141,#16b86b 52%,#6affb2);box-shadow:0 0 11px rgba(65,255,156,.88),0 0 26px rgba(65,255,156,.5)}
 @keyframes projectEnergySweep{to{transform:translateX(130%)}}
 .sci-progress-percent{font-size:15px;font-weight:950;color:#ff8191;text-align:right;text-shadow:0 0 12px rgba(255,60,80,.55)}
@@ -6330,7 +6332,6 @@ body{
   <option value="true">Yes</option>
   <option value="false">No</option>
 </select>
-        <button class="gold" onclick="openTradeInProjectsForRemoval()">Choose from Trade-In Projects</button>
         <button class="green" onclick="confirmDecision()">Send to Connect</button>
         <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeDecisionModal()">Cancel</button>
       </div>
@@ -15610,6 +15611,9 @@ if (hideCompletedProjectBtn) {
     !completed
   );
 }
+
+/* Populate Active Projects immediately after this detail panel is built. */
+renderActiveProjects();
 }
 function needsInstallBaseCommunication(rec) {
   if (!rec) return false;
@@ -17512,6 +17516,11 @@ function renderActiveProjects() {
     const open = activeProjectOpenState[project.project_id] === true;
     const currentStage = project.current_stage || (complete ? "Project Completed" : "Project In Progress");
     const typeLabel = String(project.project_type || "project").replace(/_/g," ");
+    const projectTypeKey = String(project.project_type || "").toLowerCase();
+    const installationProject =
+      projectTypeKey === "install" ||
+      projectTypeKey === "installation" ||
+      (projectTypeKey.includes("install") && !projectTypeKey.includes("deinstall"));
 
     const milestoneHtml = milestones.map((milestone, index) => {
       const isDone = milestone.completed === true;
@@ -17527,14 +17536,13 @@ function renderActiveProjects() {
     }).join("");
 
     return `
-      <article class="active-project-card ${complete ? "complete" : ""} ${open ? "open" : ""}">
+      <article class="active-project-card ${installationProject ? "installation" : "removal"} ${complete ? "complete" : ""} ${open ? "open" : ""}">
         <button type="button" class="active-project-summary" onclick="toggleActiveProjectCard('${escapeJs(project.project_id)}')">
           <div>
             <div class="active-project-name">${escapeHtml(project.project_name || project.project_id)}</div>
             <div class="active-project-meta">${escapeHtml(typeLabel)} · ${escapeHtml(project.facility || "ESPIN Connect")}</div>
             <div class="sci-progress-row">
               <div class="sci-progress-track"><div class="sci-progress-fill" style="width:${progress}%"></div></div>
-              <div class="sci-progress-percent">${progress}%</div>
             </div>
             <div class="active-project-stage">${escapeHtml(currentStage)}</div>
             <div class="active-project-count">${completed} of ${milestones.length} milestones complete</div>
@@ -19748,31 +19756,6 @@ function openDecisionModal() {
   }
 
   $("decisionModal").style.display = "flex";
-}
-
-function openTradeInProjectsForRemoval() {
-  const rec = state.records.find(r => r.id === state.selectedId);
-  if (!rec) {
-    alert("Open a record first");
-    return;
-  }
-
-  localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({
-    parent_record_id: rec.id || "",
-    parent_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
-    project_group_id: rec.project_group_id || "",
-    sales_rep_email: rec.sales_rep_email || "",
-    facility_name: rec.site || rec.facility || rec.hospital || ""
-  }));
-  rec.removal_equipment_selection_opened_at = new Date().toISOString();
-  rec.removal_handoff_source = "tradein_projects_picker";
-  if (typeof saveRecords === "function") saveRecords();
-  closeDecisionModal();
-
-  const projectsUrl = new URL("equipmentprojects.html", window.location.href);
-  projectsUrl.searchParams.set("mode", "removal-select");
-  projectsUrl.searchParams.set("source", "rep-removal");
-  window.open(projectsUrl.toString(), "_blank", "noopener,noreferrer");
 }
     function closeDecisionModal() {
       $("decisionModal").style.display = "none";
