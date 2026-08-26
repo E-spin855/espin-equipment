@@ -7006,6 +7006,26 @@ function hasFollowUpOverdueBy7Days(rec) {
 const MANAGER_REP_ACTION_HISTORY_SEEN_KEY =
   "espin_manager_rep_action_history_seen_v1";
 
+function hasConfirmedRemovalProject(rec) {
+  return Boolean(
+    rec?.removal_project_started === true &&
+    clean(
+      rec?.removal_project_id ||
+      rec?.removal_project_operation_id ||
+      rec?.deinstall_operation_id
+    )
+  );
+}
+
+function isPrematureRemovalProjectStart(rec, item) {
+  const action = lower(item?.action || "");
+  const label = lower(item?.label || "");
+  const claimsStarted =
+    action === "removal_project_started" ||
+    label.includes("removal project started");
+  return claimsStarted && !hasConfirmedRemovalProject(rec);
+}
+
 function mergeManagerRepActionHistories(existingHistory, incomingHistory) {
   const combined = [
     ...(Array.isArray(existingHistory) ? existingHistory : []),
@@ -7128,7 +7148,8 @@ function getLatestRepActionHistorySignature(rec) {
     .filter(item =>
       item &&
       clean(item.action) &&
-      clean(item.at || item.date || item.timestamp)
+      clean(item.at || item.date || item.timestamp) &&
+      !isPrematureRemovalProjectStart(rec, item)
     )
     .slice()
     .sort((a, b) => {
@@ -7304,7 +7325,8 @@ function getManagerRepActionHistory(rec) {
         .filter(item =>
           item &&
           clean(item.action) &&
-          clean(item.at || item.date || item.timestamp)
+          clean(item.at || item.date || item.timestamp) &&
+          !isPrematureRemovalProjectStart(rec, item)
         )
         .map(item => ({
           at: clean(item.at || item.date || item.timestamp),

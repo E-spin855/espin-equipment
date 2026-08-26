@@ -26999,7 +26999,11 @@ window.addEventListener("load", () => {
       new Date().toISOString()
     );
 
-    notifyManagerRemovalStarted(rec, identity, "rep_selected_equipment");
+    // Opening equipment selection is not a started Removal project. The
+    // selection page confirms the project separately after the Rep finishes.
+    rec.removal_equipment_selection_opened_at = new Date().toISOString();
+    rec.removal_handoff_source = "rep_selected_equipment";
+    if (typeof saveRecords === "function") saveRecords();
     if (typeof render === "function") render();
     window.open(selection.toString(), "_blank");
   }
@@ -27026,7 +27030,11 @@ window.addEventListener("load", () => {
     });
     selection.searchParams.set("facility_name",trade.facility || trade.site || trade.facility_name || rec.facility || rec.site || "");
     selection.searchParams.set("sales_rep_email",rec.sales_rep_email || "");
-    notifyManagerRemovalStarted(rec, identity, "trade_desk_equipment");
+    // Do not announce a started project until the equipment-selection page
+    // has actually created/started one.
+    rec.removal_equipment_selection_opened_at = new Date().toISOString();
+    rec.removal_handoff_source = "trade_desk_equipment";
+    if (typeof saveRecords === "function") saveRecords();
     if (typeof render === "function") render();
     window.open(selection.toString(),"_blank");
     return;
