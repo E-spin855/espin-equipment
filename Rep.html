@@ -6879,6 +6879,13 @@ tr.red-hot-row{
   border-color:#8a8a8a!important;
   box-shadow:0 0 0 3px rgba(67,176,255,.16)!important;
 }
+
+/* New Project FIX mode: outline only missing Make / Model / Serial inputs. */
+#newProjectModal .new-project-fix-missing,
+#newProjectModal .new-project-fix-missing:focus{
+  border:2px solid #ff4d4d!important;
+  box-shadow:0 0 0 3px rgba(255,77,77,.18),0 0 14px rgba(255,77,77,.26)!important;
+}
 </style>
 
 
@@ -13703,9 +13710,9 @@ function renderNewProjectFixButton(rec) {
           <button
             type="button"
             class="review-reason-button"
-            onclick="event.stopPropagation(); openInstallBaseReviewReason('${escapeJs(rec.id)}');"
-            aria-label="Open Install Base review reason"
-            title="Show why this Install Base review was created"
+            onclick="event.stopPropagation(); ${!isRedHotServiceAlert(rec) && getNewProjectFixDescription(rec) ? `openNewProjectFixModal('${escapeJs(rec.id)}')` : `openInstallBaseReviewReason('${escapeJs(rec.id)}')`};"
+            aria-label="${!isRedHotServiceAlert(rec) && getNewProjectFixDescription(rec) ? "Fix missing New Project fields" : "Open Install Base review reason"}"
+            title="${!isRedHotServiceAlert(rec) && getNewProjectFixDescription(rec) ? "Complete missing New Project fields" : "Show why this Install Base review was created"}"
           >
             ${isRedHotServiceAlert(rec) ? renderRedHotInlineBadge(rec) : renderNewProjectFixButton(rec)}
           </button>
@@ -22123,8 +22130,15 @@ manager_flash_at: now,        manager_flash_type: "rep_added_install_base",
       );
     }
 
-    function setNewProjectSubmitMode(isFix) {
+    function clearNewProjectFixFieldHighlights() {
+      ["newProjectMake", "newProjectModel", "newProjectSerial"].forEach(id => {
+        $(id)?.classList.remove("new-project-fix-missing");
+      });
+    }
+
+    function setNewProjectSubmitMode(isFix, recordId = "") {
       window.__newProjectFixMode = Boolean(isFix);
+      window.__newProjectFixRecordId = isFix ? String(recordId || "") : "";
       const button = $("newProjectSubmitBtn");
       if (button) button.textContent = isFix ? "Submit Fixed Data" : "Create New Project";
     }
@@ -22132,6 +22146,7 @@ manager_flash_at: now,        manager_flash_type: "rep_added_install_base",
     function openNewProjectModal() {
       // Every normal launch starts clean; FIX mode must be set explicitly.
       setNewProjectSubmitMode(false);
+      clearNewProjectFixFieldHighlights();
       [
   "newProjectCustomer",
   "newProjectStreet",
@@ -22157,8 +22172,59 @@ manager_flash_at: now,        manager_flash_type: "rep_added_install_base",
       $("newProjectModal").style.display = "flex";
     }
 
+    function openNewProjectFixModal(recordId) {
+      const selectedId = String(recordId || "").trim();
+      const rec = state.records.find(r => String(r.id || "") === selectedId);
+      if (!rec || rec.project_type !== "new_project_record") return;
+
+      state.selectedId = rec.id;
+      clearNewProjectFixFieldHighlights();
+      setNewProjectSubmitMode(true, rec.id);
+
+      const values = {
+        newProjectCustomer: rec.site || rec.facility || "",
+        newProjectStreet: rec.site_address || rec.address || "",
+        newProjectCity: rec.city || "",
+        newProjectState: rec.state || rec.region || "",
+        newProjectZip: rec.zip_code || rec.zip || "",
+        newProjectContactName: rec.contact_name || "",
+        newProjectContactTitle: rec.contact_title || "",
+        newProjectContactPhone: rec.contact_phone || "",
+        newProjectContactEmail: rec.contact_email || "",
+        newProjectName: rec.new_project_name || rec.modality || "",
+        newProjectMake: lower(clean(rec.make || "")) === "not entered" ? "" : clean(rec.make || ""),
+        newProjectModel: lower(clean(rec.model || "")) === "not entered" ? "" : clean(rec.model || ""),
+        newProjectSerial: clean(rec.serial_number || rec.serial || ""),
+        newProjectDOM: clean(rec.dom || rec.year || rec.manufacture_year || "2026") || "2026",
+        newProjectTradeInRequired: rec.tradein_required || "yes"
+      };
+
+      Object.entries(values).forEach(([id, value]) => {
+        const el = $(id);
+        if (el) el.value = value;
+      });
+
+      const missingKeys = new Set(
+        getNewProjectMissingFixFields(rec).map(field => field.key)
+      );
+
+      if (missingKeys.has("make")) $("newProjectMake")?.classList.add("new-project-fix-missing");
+      if (missingKeys.has("model")) $("newProjectModel")?.classList.add("new-project-fix-missing");
+      if (missingKeys.has("serial_number")) $("newProjectSerial")?.classList.add("new-project-fix-missing");
+
+      $("newProjectModal").style.display = "flex";
+
+      window.setTimeout(() => {
+        const firstMissing =
+          document.querySelector("#newProjectModal .new-project-fix-missing") ||
+          $("newProjectMake");
+        firstMissing?.focus({ preventScroll: true });
+      }, 40);
+    }
+
     function closeNewProjectModal() {
       $("newProjectModal").style.display = "none";
+      clearNewProjectFixFieldHighlights();
       setNewProjectSubmitMode(false);
     }
 
@@ -22193,6 +22259,94 @@ const repLast = repNameParts.slice(1).join(" ") || "Rep";
 
       const now = new Date().toISOString();
       const contactEmail = clean($("newProjectContactEmail").value);
+
+      if (window.__newProjectFixMode === true) {
+        const fixRecordId = String(window.__newProjectFixRecordId || "").trim();
+        const existing = state.records.find(
+          record => String(record.id || "") === fixRecordId
+        );
+
+        if (!existing || existing.project_type !== "new_project_record") {
+          alert("The project to fix could not be found. Reopen the FIX and try again.");
+          return;
+        }
+
+        existing.site = customer;
+        existing.site_address = clean($("newProjectStreet").value);
+        existing.city = clean($("newProjectCity").value);
+        existing.state = clean($("newProjectState").value);
+        existing.zip_code = clean($("newProjectZip").value);
+        existing.contact_name = clean($("newProjectContactName").value);
+        existing.contact_title = clean($("newProjectContactTitle").value);
+        existing.contact_phone = clean($("newProjectContactPhone").value);
+        existing.contact_email = contactEmail;
+        existing.quote_recipient_email = existing.quote_recipient_email || contactEmail;
+        existing.new_project_name = projectModality;
+        existing.modality = projectModality;
+        existing.make = projectMake || "Not Entered";
+        existing.model = projectModel || "Not Entered";
+        existing.serial_number = projectSerial;
+        existing.serial = projectSerial;
+        existing.dom = projectDOM;
+        existing.manufacture_year = projectDOM;
+        existing.tradein_required = $("newProjectTradeInRequired").value;
+        existing.disposal_required = $("newProjectTradeInRequired").value === "yes";
+
+        const stillMissing = getNewProjectMissingFixFields(existing);
+        if (stillMissing.length) {
+          clearNewProjectFixFieldHighlights();
+          const missingKeys = new Set(stillMissing.map(field => field.key));
+          if (missingKeys.has("make")) $("newProjectMake")?.classList.add("new-project-fix-missing");
+          if (missingKeys.has("model")) $("newProjectModel")?.classList.add("new-project-fix-missing");
+          if (missingKeys.has("serial_number")) $("newProjectSerial")?.classList.add("new-project-fix-missing");
+          alert(`Complete the missing field${stillMissing.length === 1 ? "" : "s"}: ${stillMissing.map(field => field.label).join(", ")}.`);
+          return;
+        }
+
+        existing.install_base_fix_request = false;
+        existing.install_base_fix_request_fields = "";
+        existing.install_base_fix_request_field = "";
+        existing.install_base_issue_field = "";
+        existing.install_base_issue_type = "";
+        existing.install_base_issue_reason = "";
+        existing.install_base_action_label = "";
+        existing.install_base_action_reason = "";
+        existing.manager_fix_required = "";
+        existing.rep_fix_required = "";
+        existing.new_project_missing_fields = [];
+        existing.new_project_fix_description = "";
+        existing.new_project_fixed_at = now;
+        existing.rep_last_action_at = now;
+        existing.manager_unseen_update = true;
+        existing.manager_flash_at = now;
+        existing.manager_flash_type = "new_project_fixed";
+        existing.manager_flash_text = "Rep submitted fixed New Project data";
+
+        state.selectedId = existing.id;
+        saveRecords();
+        syncToManagerQueue(existing);
+        closeNewProjectModal();
+
+        state.detailUpdateFlash = {
+          manager: false,
+          review: false,
+          financial: true
+        };
+
+        render();
+        renderDetail();
+        showBanner("Fixed project data submitted.");
+
+        window.setTimeout(() => {
+          const quoteCard = document.querySelector(
+            "#newProjectDetailGrid .new-project-financial-card, #detailGrid .new-project-financial-card, .new-project-financial-card"
+          );
+          if (!quoteCard) return;
+          quoteCard.classList.add("detail-update-frame");
+          quoteCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 60);
+        return;
+      }
 
       const rec = {
         id: uuid(),
