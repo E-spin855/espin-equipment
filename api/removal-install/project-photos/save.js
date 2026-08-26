@@ -6,10 +6,15 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: true }
 });
 
-function normalizeUploadcareUrl(url) {
+function normalizePhotoUrl(url) {
   if (!url) return null;
-  const match = url.match(/[a-f0-9-]{36}/i);
-  return match ? `https://ucarecdn.com/${match[0]}/` : url;
+
+  const value = String(url).trim();
+  // Demo image filenames are UUID-shaped. Keep their local path intact rather
+  // than mistaking the filename for an Uploadcare asset ID.
+  if (value.startsWith("/demo-images/")) return value;
+
+  return value;
 }
 
 function cleanEmail(value) {
@@ -40,7 +45,7 @@ export default async function handler(req, res) {
   const client = await pool.connect();
 
   try {
-    const normalizedUrl = normalizeUploadcareUrl(photo_url);
+    const normalizedUrl = normalizePhotoUrl(photo_url);
 
     /* ===============================
        RESOLVE photoId IF MISSING
