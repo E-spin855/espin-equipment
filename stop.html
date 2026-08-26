@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Visit Stop</title>
+<style>
+:root{--blue:#0066B2;--secondary:#0a74c9;--text:#1f2933;--muted:#6b7280;--line:#e0e7ef;--soft:#f5f8fb;--red:#ff3b30}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:#fff}
+body{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+.header{background:var(--blue);color:#fff;padding:calc(18px + env(safe-area-inset-top)) 16px 18px;display:flex;align-items:center;justify-content:center;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.header h1{margin:0;font-size:20px;font-weight:800}
+.header .back{position:absolute;left:16px;top:calc(50% + env(safe-area-inset-top)/2);transform:translateY(-50%);color:#fff;text-decoration:none;font-size:30px;font-weight:700;line-height:1}
+.container{max-width:420px;margin:0 auto;padding:18px 20px 24px}
+.kicker{font-size:12px;font-weight:800;color:var(--blue);margin-bottom:7px;text-transform:uppercase;letter-spacing:.5px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 3px 10px rgba(31,123,200,.08)}
+.card.soft{background:var(--soft);box-shadow:none}
+.title{font-size:22px;font-weight:850;color:var(--blue);line-height:1.2;margin-bottom:7px}
+.meta{color:var(--muted);font-size:14px;line-height:1.45}
+.detail-row{display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.detail-row:last-child{border-bottom:none}
+.label{color:var(--muted);font-size:13px;font-weight:750}
+.value{color:var(--text);font-size:14px;font-weight:700;text-align:right;overflow-wrap:anywhere}
+.btn{width:100%;padding:14px;margin:9px 0;font-size:16px;font-weight:700;color:#fff;background:var(--blue);border:none;border-radius:14px;cursor:pointer;display:flex;justify-content:center;align-items:center;text-decoration:none}
+.btn.white{background:#fff;color:var(--blue);border:1px solid var(--line)}
+.notice{border:1px solid rgba(31,123,200,.22);background:rgba(31,123,200,.06);border-radius:14px;padding:12px 14px;color:var(--muted);font-size:12px;line-height:1.45}
+.error{border-color:rgba(255,59,48,.35);background:rgba(255,59,48,.06);color:#8a2d27}
+</style>
+</head>
+<body>
+<header class="header"><a class="back" href="today.html" aria-label="Back to Today">‹</a><h1>Visit Stop</h1></header>
+<main class="container"><div id="content"><div class="card soft"><div class="meta">Loading visit details…</div></div></div></main>
+<script>
+const MOBILE_PLAN_KEY="espin_rep_manual_day_plan_v1";
+function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+function loadPlan(){try{const s=JSON.parse(localStorage.getItem(MOBILE_PLAN_KEY)||"[]");return Array.isArray(s)?s:[]}catch(e){console.error("Unable to load visit plan.",e);return[]}}
+function normalizeStop(stop,index){return{
+id:String(stop.id||stop.recordId||`visit-${index+1}`),
+recordId:String(stop.recordId||""),
+name:String(stop.name||stop.facility||"Unnamed Account"),
+address:String(stop.address||""),
+time:String(stop.time||""),
+purpose:String(stop.purpose||"Equipment review"),
+status:String(stop.status||"Selected by Rep"),
+repName:String(stop.repName||stop.rep_name||stop.assigned_rep_name||stop.rep||""),
+projectId:String(stop.projectId||stop.project_id||""),
+make:String(stop.make||stop.brand||""),
+model:String(stop.model||""),
+modality:String(stop.modality||""),
+serialNumber:String(stop.serialNumber||stop.serial_number||stop.serial||"")
+}}
+function openMaps(address){if(!address){alert("No address is available for this stop.");return}window.location.href="https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(address)}
+function row(label,value){if(!value)return"";return`<div class="detail-row"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>`}
+function renderStop(){
+const id=String(new URLSearchParams(location.search).get("id")||"");
+const plan=loadPlan().map(normalizeStop);
+const stop=id?plan.find(x=>x.id===id||x.recordId===id):plan[0];
+const root=document.getElementById("content");
+if(!stop){root.innerHTML=`<div class="notice error">This visit is no longer available in Today’s Plan.</div><a class="btn white" href="today.html">Back to Today</a>`;return}
+const equipment=[stop.make,stop.model].filter(Boolean).join(" ");
+root.innerHTML=`
+<div class="kicker">Today’s Visit</div>
+<section class="card"><div class="title">${esc(stop.name)}</div><div class="meta">${esc(stop.time||"Time not set")} · ${esc(stop.purpose||"Equipment review")}</div></section>
+<section class="card">
+${row("Address",stop.address||"Address not available")}
+${row("Rep",stop.repName)}
+${row("Project ID",stop.projectId||stop.recordId)}
+${row("Modality",stop.modality)}
+${row("Equipment",equipment)}
+${row("Serial",stop.serialNumber)}
+${row("Status",stop.status)}
+</section>
+<button class="btn" type="button" onclick='openMaps(${JSON.stringify(stop.address)})'>Open in Maps</button>
+<a class="btn white" href="today.html">Back to Today</a>
+<div class="notice">Sandbox visit detail only. This page displays information the Rep manually placed into Today’s Plan. It does not select, rank, optimize, track, predict, or automatically change the visit.</div>`;
+}
+document.addEventListener("DOMContentLoaded",renderStop);
+window.addEventListener("storage",e=>{if(e.key===MOBILE_PLAN_KEY||e.key==="espin_rep_manual_day_plan_ping_v1")renderStop()});
+window.addEventListener("focus",renderStop);
+</script>
+</body>
+</html>
