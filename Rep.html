@@ -14679,7 +14679,7 @@ function renderRepProximityView(rec){
                         Open in Maps
                       </button>
 
-                      <button type="button" class="green" onclick="addRepRecordToVisitList('${escapeJs(item.rec.id)}')">Add to Visit List</button>
+                      <button type="button" class="green" onclick="openVisitListNoteModal('${escapeJs(item.rec.id)}')">Add to Visit List</button>
                     </div>
                   </div>
                 `;
@@ -14797,7 +14797,56 @@ function readEspinMobilePlan(){
   }
 }
 
-function addRepRecordToVisitList(recordId, event){
+let pendingVisitListRecordId = "";
+
+function ensureVisitListNoteModal(){
+  if ($("visitListNoteModal")) return;
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.id = "visitListNoteModal";
+  modal.innerHTML = `
+    <div class="modal-box">
+      <h3>Add Visit to List</h3>
+      <p style="margin:0;color:#666;line-height:1.45;">Select a sandbox visit note to display on the stop details.</p>
+      <label for="visitListNoteSelect">Visit Note</label>
+      <select id="visitListNoteSelect">
+        <option value="Confirm visit purpose and primary contact.">Confirm visit purpose and primary contact.</option>
+        <option value="Review equipment condition and current needs.">Review equipment condition and current needs.</option>
+        <option value="Discuss service history and replacement planning.">Discuss service history and replacement planning.</option>
+        <option value="Confirm stakeholders and decision timeline.">Confirm stakeholders and decision timeline.</option>
+        <option value="Review trade-in or disposal considerations.">Review trade-in or disposal considerations.</option>
+      </select>
+      <button class="green" type="button" onclick="confirmVisitListNote()">Add to Visit List</button>
+      <button style="background:#eee;color:#333;margin-top:10px;" type="button" onclick="closeVisitListNoteModal()">Cancel</button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function openVisitListNoteModal(recordId, event){
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  pendingVisitListRecordId = String(recordId || "");
+  ensureVisitListNoteModal();
+  $("visitListNoteModal").style.display = "flex";
+}
+
+function closeVisitListNoteModal(){
+  const modal = $("visitListNoteModal");
+  if (modal) modal.style.display = "none";
+  pendingVisitListRecordId = "";
+}
+
+function confirmVisitListNote(){
+  const note = $("visitListNoteSelect")?.value || "";
+  const recordId = pendingVisitListRecordId;
+  closeVisitListNoteModal();
+  if (recordId) addRepRecordToVisitList(recordId, null, note);
+}
+
+function addRepRecordToVisitList(recordId, event, visitNote = ""){
   if (event) {
     event.preventDefault();
     event.stopPropagation();
@@ -14894,7 +14943,7 @@ function addRepRecordToVisitList(recordId, event){
       "Equipment review"
     ),
 
-    note: "",
+    note: clean(visitNote),
 
     status: "Selected by Rep",
 
@@ -19827,7 +19876,7 @@ Thank you.`;
   syncFeedStatus(rec);
   render();
 
-  window.open("demo_email.html", "_blank", "noopener,noreferrer");
+  window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
 }
 
 function openDemoQuoteEmail(rec) {
