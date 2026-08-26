@@ -390,6 +390,9 @@ html,body{
   background:#02101d;
 }
 .card-body{padding:12px}
+.installation-note-picker{width:100%;min-height:48px;padding:11px 13px;border:1px solid rgba(22,217,255,.52);border-radius:6px;background:#071b2a;color:#d9f7ff;font:inherit;text-align:left;cursor:pointer}
+.installation-note-picker:hover:not(:disabled),.installation-note-picker:focus-visible{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(22,217,255,.14),0 0 14px rgba(22,217,255,.12);outline:none}
+.installation-note-picker:disabled{cursor:not-allowed;opacity:.65}
 .card-footer{
   padding:12px;
   border-top:1px solid rgba(22,217,255,.16);
@@ -761,11 +764,18 @@ const debouncedSave = ((fn, d=600) => {
 
 /* RENDER */
 function demoImagePath(url) {
+  const rawUrl = String(url || "").trim();
+  if (!rawUrl) return "/demo-images/CT/4EDD4C01-7933-42F4-829E-AB599E2BAED1.jpeg";
+  const demoImageIndex = rawUrl.indexOf("/demo-images/");
+  if (demoImageIndex >= 0) return rawUrl.slice(demoImageIndex);
+  if (rawUrl.startsWith("demo-images/")) return `/${rawUrl}`;
   try {
-    const parsed = new URL(url, location.origin);
-    return parsed.pathname.startsWith("/demo-images/") ? `${parsed.pathname}${parsed.search}` : "";
+    const parsed = new URL(rawUrl, location.origin);
+    return parsed.pathname.startsWith("/demo-images/")
+      ? `${parsed.pathname}${parsed.search}`
+      : "/demo-images/CT/4EDD4C01-7933-42F4-829E-AB599E2BAED1.jpeg";
   } catch {
-    return "";
+    return "/demo-images/CT/4EDD4C01-7933-42F4-829E-AB599E2BAED1.jpeg";
   }
 }
 
@@ -788,9 +798,9 @@ function appendCard(p, badgeSet, forceBadge = false) {
     <div class="card-header">
   <input class="image-title-input" type="text" value="${p.photo_title||''}" placeholder="Input image title here">
 </div>
-    <img src="${p.photo_url}">
+    <img src="${p.photo_url}" alt="${p.photo_title || "Installation project image"}">
     <div class="card-body">
-      <textarea placeholder="Add a comment...">${p.photo_comment||''}</textarea>
+      <button type="button" class="installation-note-picker">${p.photo_comment ? `Visit note: ${p.photo_comment}` : "Add predefined visit note"}</button>
     </div>
     <div class="card-footer">
       <input type="checkbox">
@@ -798,14 +808,18 @@ function appendCard(p, badgeSet, forceBadge = false) {
     </div>`;
 const img = card.querySelector("img");
 img.style.cursor = "zoom-in";
-img.onclick = () => openPreview(p.photo_url);
+img.onerror = () => {
+  img.onerror = null;
+  img.src = "/demo-images/CT/4EDD4C01-7933-42F4-829E-AB599E2BAED1.jpeg";
+};
+img.onclick = () => openPreview(img.currentSrc || p.photo_url);
   const title = card.querySelector("input");
-  const note = card.querySelector("textarea");
+  const notePicker = card.querySelector(".installation-note-picker");
   const cb = card.querySelector("input[type=checkbox]");
 
   if (isArchived) {
     title.disabled = true;
-    note.disabled = true;
+    notePicker.disabled = true;
     cb.disabled = true;
   }
 
@@ -815,10 +829,7 @@ img.onclick = () => openPreview(p.photo_url);
     updateBatchState();
   };
 
-  note.oninput = () => {
-    p.photo_comment = note.value;
-    debouncedSave(p);
-  };
+  notePicker.onclick = () => openInstallationNoteModal(p, notePicker);
 
  cb.onchange = () => {
   cb.checked ? selected.add(pid) : selected.delete(pid);
@@ -827,6 +838,44 @@ img.onclick = () => openPreview(p.photo_url);
 
 gallery.append(card);
 return card;
+}
+
+function ensureInstallationNoteModal() {
+  let modal = document.getElementById("installationNoteModal");
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "installationNoteModal";
+  modal.style.cssText = "display:none;position:fixed;inset:0;z-index:10000;padding:24px;background:rgba(0,0,0,.7);align-items:center;justify-content:center;";
+  modal.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="installationNoteHeading" style="width:min(460px,100%);background:#fff;border-radius:12px;padding:24px;color:#123;box-shadow:0 18px 48px rgba(0,0,0,.35)">
+    <h2 id="installationNoteHeading" style="margin:0 0 10px">Add Installation Note</h2>
+    <p style="margin:0 0 16px">Select a fictional sandbox note for this image.</p>
+    <select id="installationNoteSelect" style="width:100%;padding:12px;margin-bottom:16px">
+      <option value="Equipment delivered and staging area confirmed.">Equipment delivered and staging area confirmed.</option>
+      <option value="Site access and room readiness verified.">Site access and room readiness verified.</option>
+      <option value="Installation progress documented for project review.">Installation progress documented for project review.</option>
+      <option value="Safety check completed; no issues observed.">Safety check completed; no issues observed.</option>
+      <option value="Follow-up coordination with the site is required.">Follow-up coordination with the site is required.</option>
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button type="button" data-cancel>Cancel</button><button type="button" data-save style="background:#0b67b2;color:#fff;border:0;border-radius:6px;padding:10px 16px">Save Note</button></div>
+  </div>`;
+  document.body.append(modal);
+  modal.querySelector("[data-cancel]").onclick = () => { modal.style.display = "none"; };
+  modal.addEventListener("click", event => { if (event.target === modal) modal.style.display = "none"; });
+  return modal;
+}
+
+function openInstallationNoteModal(photo, button) {
+  if (isArchived) return;
+  const modal = ensureInstallationNoteModal();
+  const select = modal.querySelector("#installationNoteSelect");
+  select.value = [...select.options].some(option => option.value === photo.photo_comment) ? photo.photo_comment : select.options[0].value;
+  modal.style.display = "flex";
+  modal.querySelector("[data-save]").onclick = () => {
+    photo.photo_comment = select.value;
+    button.textContent = `Visit note: ${photo.photo_comment}`;
+    debouncedSave(photo);
+    modal.style.display = "none";
+  };
 }
 /* UPLOAD */
 chooseFileBtn.addEventListener("click", function () {
