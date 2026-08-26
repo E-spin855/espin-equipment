@@ -26875,7 +26875,10 @@ window.addEventListener("load", () => {
     const right=[rec.oem_project_id,rec.project_id,rec.id,rec.key].map(lower).filter(Boolean);
     return left.some(id => right.includes(id));
   };
-  const evaluatedTradeIn = rec => tradeInRecords().find(t => sameProject(t,rec) && (t.tradein_evaluation_complete === true || lower(t.tradein_evaluation_status) === "evaluation_complete" || lower(t.tradein_status) === "evaluation_complete"));
+  const tradeDeskEquipment = rec => tradeInRecords().filter(t =>
+    sameProject(t, rec) &&
+    (t.make || t.tradein_equipment_make || t.model || t.tradein_equipment_model)
+  );
   const activeRemoval = identity => { try { return JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]").find(o => lower(o.operation_type)==="deinstall" && !/complete|cancel|archiv/.test(lower(o.status)) && [o.tradein_record_id,o.source_record_id,o.asset_id,o.serial_number].map(lower).includes(lower(identity))); } catch (_) { return null; } };
   const management = operation => { const u=new URL("/removal-install/management.html",location.origin); Object.entries(operation).forEach(([k,v]) => { if (["string","number","boolean"].includes(typeof v) && clean(v)) u.searchParams.set(k,String(v)); }); if (operation.project_id) u.searchParams.set("projectId",operation.project_id); return u.toString(); };
   const saveOperation = operation => { let records=[]; try { records=JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]"); if(!Array.isArray(records)) records=[]; } catch (_) {} records.unshift(operation); localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records)); localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation)); if(operation.project_id) localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation)); };
@@ -26979,7 +26982,7 @@ window.addEventListener("load", () => {
     window.open(selection.toString(), "_blank");
   }
 
-  async function launchEvaluated(rec, trade, button) {
+  async function launchTradeDeskEquipment(rec, trade, button) {
     const identity=trade.tradein_record_id || trade.id || trade.axis_record_id || trade.serial_number || trade.asset_id;
     const existing=activeRemoval(identity);
     if(existing){ window.open(existing.project_url || management(existing),"_blank"); return; }
@@ -27001,7 +27004,7 @@ window.addEventListener("load", () => {
     });
     selection.searchParams.set("facility_name",trade.facility || trade.site || trade.facility_name || rec.facility || rec.site || "");
     selection.searchParams.set("sales_rep_email",rec.sales_rep_email || "");
-    notifyManagerRemovalStarted(rec, identity, "evaluated_tradein");
+    notifyManagerRemovalStarted(rec, identity, "trade_desk_equipment");
     if (typeof render === "function") render();
     window.open(selection.toString(),"_blank");
     return;
@@ -27038,7 +27041,7 @@ window.addEventListener("load", () => {
 
     if (!rec) return alert("Open a record first");
 
-    const trade = evaluatedTradeIn(rec);
+    const trades = tradeDeskEquipment(rec);
     const modal = document.createElement("div");
 
     modal.style.cssText =
@@ -27059,8 +27062,8 @@ window.addEventListener("load", () => {
         <h2 style="margin-top:0">What equipment is being removed?</h2>
         <p style="color:#9db4c7">
           Start removal for the selected equipment record.
-          ${trade
-            ? "An evaluated trade-in linked to this project is also available."
+          ${trades.length
+            ? "Equipment previously sent to Trade Desk is also available."
             : ""}
         </p>
 
@@ -27079,9 +27082,10 @@ window.addEventListener("load", () => {
             Use selected equipment
           </button>
 
-          ${trade ? `
+          ${trades.map((trade, index) => `
             <button
-              id="useTrade"
+              class="useTradeDeskEquipment"
+              data-trade-index="${index}"
               style="
                 padding:14px;
                 border-radius:10px;
@@ -27091,9 +27095,9 @@ window.addEventListener("load", () => {
                 font-weight:800
               "
             >
-              Use evaluated Trade-In equipment
+              Use Trade Desk equipment — ${escapeHtml([trade.make || trade.tradein_equipment_make, trade.model || trade.tradein_equipment_model, (trade.serial_number || trade.axis_serial_number || trade.tradein_equipment_serial_number) ? `S/N ${trade.serial_number || trade.axis_serial_number || trade.tradein_equipment_serial_number}` : ""].filter(Boolean).join(" · ") || "Equipment record")}
             </button>
-          ` : ""}
+          `).join("")}
 
           <button
             id="cancelChoice"
@@ -27119,12 +27123,13 @@ window.addEventListener("load", () => {
       launchSelectedEquipment(rec);
     };
 
-    if (trade) {
-      modal.querySelector("#useTrade").onclick = event => {
+    modal.querySelectorAll(".useTradeDeskEquipment").forEach(button => {
+      button.onclick = event => {
+        const trade = trades[Number(event.currentTarget.dataset.tradeIndex || 0)];
         modal.remove();
-        launchEvaluated(rec, trade, event.currentTarget);
+        launchTradeDeskEquipment(rec, trade, event.currentTarget);
       };
-    }
+    });
   };
 })();
 </script>
