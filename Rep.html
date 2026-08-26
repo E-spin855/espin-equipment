@@ -20217,14 +20217,6 @@ function saveInstallBaseFix(id) {
           : "✅ Trade Desk follow-up date saved"
       );
     }
-    function renderTradeDeskRequestPanel(rec){
-      if(rec.trade_desk_info_request_status!=="requested"&&rec.trade_desk_info_request_status!=="rep_responded")return"";
-      if(rec.trade_desk_info_request_status==="rep_responded")return`<div class="detail-card" style="grid-column:1/-1;border-color:#41ff9c"><div class="k" style="color:#41ff9c">TRADE DESK REQUEST</div><div class="v">✓ Update Sent to Trade Desk</div></div>`;
-      const items=Array.isArray(rec.trade_desk_info_request_items)?rec.trade_desk_info_request_items:[];
-      const select=(field,label,options)=>`<label style="display:block;margin-top:10px">${label}<select data-trade-desk-response="${field}" style="width:100%"><option value="">Select response</option>${options.map(x=>`<option>${x}</option>`).join("")}</select></label>`;
-      return`<div class="detail-card" style="grid-column:1/-1;border:1px solid #ffd84d;background:rgba(255,216,77,.07)"><div class="k" style="color:#ffd84d">TRADE DESK REQUEST</div><div class="v">Additional Information Required</div><div class="mini">${items.map(x=>`• ${escapeHtml(x)}`).join("<br>")}</div>${rec.trade_desk_info_request_notes?`<div class="mini" style="margin-top:8px"><strong>Trade Desk Note</strong><br>${escapeHtml(rec.trade_desk_info_request_notes)}</div>`:""}${items.includes("Hard drive removal status needed")?select("hard_drive_removed","Hard Drive Removal Status",["Confirmed removed","Not removed","Not applicable","Pending confirmation"]):""}${items.includes("System in-use status needed")?select("in_use_status","System In-Use Status",["In use","Out of use","Scheduled to be out of use","Unknown"]):""}<button class="green" style="margin-top:12px" onclick="submitTradeDeskRequestUpdate('${escapeJs(rec.id)}')">Submit Update to Trade Desk</button></div>`;
-    }
-    function submitTradeDeskRequestUpdate(id){const rec=state.records.find(x=>String(x.id)===String(id));if(!rec)return;const values={};document.querySelectorAll("[data-trade-desk-response]").forEach(input=>{if(input.value)values[input.dataset.tradeDeskResponse]=input.value});if(!Object.keys(values).length){alert("Select a response for the requested fields.");return}Object.assign(rec,values);rec.trade_desk_info_request_status="rep_responded";rec.trade_desk_info_request_responded_at=new Date().toISOString();rec.trade_desk_info_request_updated_fields=Object.keys(values);rec.last_tradein_update_at=rec.trade_desk_info_request_responded_at;saveRecords();let synced=[];try{synced=JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1")||"[]");if(!Array.isArray(synced))synced=[]}catch(_){}const update={...rec,equipment_details_source:true,trade_desk_info_request_updated_values:values,updated_at:rec.last_tradein_update_at};const index=synced.findIndex(item=>tradeInReturnMatchesRecord(rec,item));if(index>=0)synced[index]={...synced[index],...update};else synced.unshift(update);localStorage.setItem("axis_tradein_sync_records_v1",JSON.stringify(synced));renderNewProjectDetail(rec);showBanner("✅ Update sent to Trade Desk")}
 
     function renderNewProjectDetail(rec) {
       const detail = $("newProjectDetailArea");
@@ -20497,7 +20489,7 @@ function saveInstallBaseFix(id) {
             ? ""
             : rec.tradein_sync_received
             ? `
-              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid ${rec.trade_desk_info_request_status === "requested" ? "rgba(255,216,77,.65)" : "rgba(65,255,156,.35)"};background:${rec.trade_desk_info_request_status === "requested" ? "rgba(255,216,77,.07)" : "rgba(65,255,156,.07)"};">
+              <div class="detail-card new-project-tradein-card new-project-team-card" style="border:1px solid rgba(65,255,156,.35);background:rgba(65,255,156,.07);">
                 <div>
                   <div class="k">Associated Trade-In Equipment</div>
                   <div class="v">${escapeHtml(rec.tradein_equipment_make || "-")} ${escapeHtml(rec.tradein_equipment_model || "")}</div>
@@ -20581,7 +20573,6 @@ function saveInstallBaseFix(id) {
                     </div>
                   </div>
                 ` : ""}
-                ${renderTradeDeskRequestPanel(rec)}
               </div>
             `
             : `
@@ -24917,7 +24908,6 @@ return true;
         item.id ||
         `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
       const version =
-        `${item.trade_desk_info_request_id || ""}_${item.trade_desk_info_request_status || ""}_${item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at || ""}_` +
         item.last_tradein_update_at ||
         item.updated_at ||
         `${item.trade_in_value || item.trade_in_credit || item.tradein_credit || ""}_${item.image_count || item.images?.length || 0}`;
@@ -25292,7 +25282,6 @@ return true;
       rec.tradein_last_update_at = item.last_tradein_update_at || item.updated_at || rec.tradein_last_update_at || "";
       rec.tradein_last_update_by = item.last_tradein_update_by || rec.tradein_last_update_by || "";
       rec.tradein_acceptance_deadline = item.tradein_acceptance_deadline || item.response_deadline || item.bid_deadline || rec.tradein_acceptance_deadline || "";
-      ["trade_desk_info_request_id","trade_desk_info_request_status","trade_desk_info_request_items","trade_desk_info_request_notes","trade_desk_info_request_sent_at","trade_desk_info_request_responded_at"].forEach(key=>{if(item[key] !== undefined)rec[key]=item[key]});
       if (!alreadyProcessed) {
         rec.manager_unseen_update = true;
         rec.manager_flash_at = new Date().toISOString();
@@ -25404,7 +25393,6 @@ return true;
       rec.images = item.images || rec.images || [];
       rec.last_image_update_by = item.last_image_update_by || rec.last_image_update_by || "";
       rec.last_image_update_at = item.last_image_update_at || rec.last_image_update_at || "";
-      ["trade_desk_info_request_id","trade_desk_info_request_status","trade_desk_info_request_items","trade_desk_info_request_notes","trade_desk_info_request_sent_at","trade_desk_info_request_responded_at"].forEach(key=>{if(item[key] !== undefined)rec[key]=item[key]});
 
       if (!alreadyProcessed) {
         syncToManagerQueue(rec);

@@ -543,7 +543,7 @@ Trade-In App / ESPIN LINK Rep Workflow → Manual Trade Desk Review → Prepare 
     <div class="check-group">
       <h3>Availability / Removal</h3>
       <label class="check-row"><input type="checkbox" value="Availability timeframe needed"> Availability timeframe needed</label>
-      <label class="check-row"><input type="checkbox" value="System in-use status needed" data-sandbox-required="true" checked disabled> System in-use status needed <strong>(sandbox required)</strong></label>
+      <label class="check-row"><input type="checkbox" value="System in-use status needed"> System in-use status needed</label>
       <label class="check-row"><input type="checkbox" value="Out-of-use date needed"> Out-of-use date needed</label>
       <label class="check-row"><input type="checkbox" value="Removal pathway details needed"> Removal pathway details needed</label>
       <label class="check-row"><input type="checkbox" value="Loading dock access needs confirmation"> Loading dock access needs confirmation</label>
@@ -552,7 +552,7 @@ Trade-In App / ESPIN LINK Rep Workflow → Manual Trade Desk Review → Prepare 
 
     <div class="check-group">
       <h3>Data / Compliance</h3>
-      <label class="check-row"><input type="checkbox" value="Hard drive removal status needed" data-sandbox-required="true" checked disabled> Hard drive removal status needed <strong>(sandbox required)</strong></label>
+      <label class="check-row"><input type="checkbox" value="Hard drive removal status needed"> Hard drive removal status needed</label>
       <label class="check-row"><input type="checkbox" value="Software version needed"> Software version needed</label>
       <label class="check-row"><input type="checkbox" value="Installed date or DOM needed"> Installed date or DOM needed</label>
       <label class="check-row"><input type="checkbox" value="Service, upgrade, or configuration history needed"> Service, upgrade, or configuration history needed</label>
@@ -1320,13 +1320,6 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
-    if (incoming.trade_desk_info_request_status === "rep_responded") {
-      const changed = incoming.trade_desk_info_request_updated_values || {};
-      Object.entries(changed).forEach(([key, value]) => { if (value !== "" && value != null) existing[key] = value; });
-      existing.trade_desk_rep_updated_fields = Object.fromEntries(Object.keys(changed).map(key => [key, { updated_at: incoming.trade_desk_info_request_responded_at || incoming.last_tradein_update_at, buyer_packet_reviewed:false }]));
-      ["trade_desk_info_request_id","trade_desk_info_request_status","trade_desk_info_request_items","trade_desk_info_request_notes","trade_desk_info_request_sent_at","trade_desk_info_request_responded_at","trade_desk_info_request_updated_fields","last_tradein_update_at"].forEach(key => { if(incoming[key] !== undefined) existing[key]=incoming[key]; });
-      return;
-    }
     const keepEquipmentDetails =
       existing.equipment_details_source === true &&
       record.equipment_details_source !== true;
@@ -1481,12 +1474,17 @@ function importAutomaticIntake(){
   let deskData = loadData();
   let changed = false;
 
-  const isEquipmentDetailsIntake = item =>
-    item &&
-    (
-      item.equipment_details_source === true ||
-      item.source === "Equipment Details"
-    );
+  const isEquipmentDetailsIntake = item => {
+    if (!item) return false;
+    const source = String(item.source || item.handoff_source || item.origin || "").toLowerCase();
+    const mode = String(item.sync_mode || "").toLowerCase();
+    // Preserve both established paths: Equipment Details direct intake and
+    // the Equipment Details → Equipment Images handoff. Some image handoffs
+    // retain the source label but omit equipment_details_source.
+    return item.equipment_details_source === true ||
+      /equipment\s*details|equipment\s*images|equipmentimages/.test(source) ||
+      /attach_field_intake|update_existing_axis_record|create_manual_trade_desk_review_record/.test(mode);
+  };
 
   const sources = [
     AXIS_TRADE_DESK_QUEUE_KEY,
@@ -1518,7 +1516,8 @@ function importAutomaticIntake(){
       const isTradeDeskRelevant =
         hasTradeDeskValue ||
         hasImages ||
-        item.trade_desk_info_request_status ||
+        item.equipment_details_source === true ||
+        /equipment\s*details|equipment\s*images|equipmentimages/.test(String(item.source || item.handoff_source || "").toLowerCase()) ||
         item.sync_mode === "attach_field_intake_to_existing_record" ||
         item.sync_mode === "attach_field_intake_to_project_review" ||
         item.sync_mode === "create_manual_trade_desk_review_record" ||
@@ -1627,7 +1626,6 @@ function prepareBuyerReviewPacket(id, btn = null){
   rec.review_packet_prepared = true;
   rec.review_packet_prepared_at = rec.approved_for_bidding_at;
   rec.tradein_buyer_review_packet_prepared_at = rec.approved_for_bidding_at;
-  rec.trade_desk_rep_updated_fields = {};
 
   rec.manually_shared_with_buyers = matchingBuyers.map(b => ({
     company: b.company,
@@ -1873,7 +1871,7 @@ function openInfoRequestModal(id){
   activeInfoRequestId = String(id || "");
 
   document.querySelectorAll("#infoRequestModal input[type='checkbox']").forEach(cb => {
-    cb.checked = cb.dataset.sandboxRequired === "true";
+    cb.checked = false;
   });
 
   const notes = document.getElementById("infoRequestNotes");
@@ -2005,15 +2003,8 @@ function sendInfoRequestToRep(btn = null){
   rec.info_request_notes = notes;
   rec.info_request_sent_to = repEmail;
   rec.info_request_sent_at = new Date().toISOString();
-  rec.trade_desk_info_request_id = uid("trade_desk_info_request");
-  rec.trade_desk_info_request_status = "requested";
-  rec.trade_desk_info_request_items = checked;
-  rec.trade_desk_info_request_notes = notes;
-  rec.trade_desk_info_request_sent_at = rec.info_request_sent_at;
-  rec.last_tradein_update_at = rec.info_request_sent_at;
 
   saveData(data, true);
-  publishTradeDeskProgress(rec, { trade_desk_info_request_id: rec.trade_desk_info_request_id, trade_desk_info_request_status:"requested", trade_desk_info_request_items:checked, trade_desk_info_request_notes:notes, trade_desk_info_request_sent_at:rec.info_request_sent_at, last_tradein_update_at:rec.last_tradein_update_at });
 
   const subject = `Additional information needed for trade-in review – ${rec.make || ""} ${rec.model || ""} / ${rec.serial_number || rec.axis_serial_number || "No Serial"}`;
 
@@ -2487,14 +2478,11 @@ function tradeInFieldRows(rec){
 
   return rows
     .filter(([label, value]) => String(value || "").trim())
-    .map(([label, value]) => {
-      const keyByLabel={"Hard Drives Removed":"hard_drive_removed","System In Use":"in_use_status","Software Version":"software_version","Loading Dock":"loading_dock","Availability Timeframe":"availability_timeframe","Removal Pathways":"removal_pathways"};
-      const updated=rec.trade_desk_rep_updated_fields?.[keyByLabel[label]]?.buyer_packet_reviewed === false;
-      return `
-      <div class="kv" style="${updated ? "background:rgba(65,255,156,.12);border-left:3px solid #41ff9c;padding-left:8px;color:#d8ffe9;" : ""}">
+    .map(([label, value]) => `
+      <div class="kv">
         <strong>${htmlSafe(label)}:</strong> ${htmlSafe(value || "-")}
-      </div>`;
-    })
+      </div>
+    `)
     .join("");
 }
 
@@ -3022,7 +3010,6 @@ function render(){
   manualCreditsEl.innerHTML += `<button class="red" onclick="clearDemo()">Clear Demo Data</button>`;
 }
 
-let tradeDeskSyncTimer = null;
 window.addEventListener("storage", (e) => {
   const watchedKeys = [
     AXIS_TRADE_DESK_QUEUE_KEY,
@@ -3043,15 +3030,8 @@ window.addEventListener("storage", (e) => {
   if (isTradeDeskInputFocused()) return;
   if (shouldSuppressRender()) return;
 
-  // A Rep response can update several storage keys. Coalesce them into one
-  // refresh so the opened packet is not repeatedly rebuilt/collapsed.
-  if (tradeDeskSyncTimer) clearTimeout(tradeDeskSyncTimer);
-  tradeDeskSyncTimer = setTimeout(() => {
-    tradeDeskSyncTimer = null;
-    if (isTradeDeskInputFocused() || shouldSuppressRender()) return;
-    const changed = importAutomaticIntake();
-    if (changed) render();
-  }, 120);
+  importAutomaticIntake();
+  render();
 });
 function recoverPageAfterExternalAction(){
   suppressRenderUntil = 0;
@@ -3100,14 +3080,6 @@ render();
 </script>
 <script>
 /* Keep Trade Desk requests constrained to the approved checklist. */
-document.addEventListener("click", event => {
-  const row = event.target.closest("#infoRequestModal .check-row");
-  if (!row) return;
-  const checkbox = row.querySelector("input[type='checkbox']");
-  if (checkbox?.dataset.sandboxRequired === "true") return;
-  event.preventDefault();
-  alert("Fields disabled in sandbox test");
-});
 document.querySelectorAll('textarea, input[type="email"], input[type="text"], input:not([type])').forEach(el => {
   el.disabled = true;
   el.setAttribute('aria-disabled', 'true');
