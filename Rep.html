@@ -7805,7 +7805,7 @@ body tr:is(
 
         <div class="footer-note" style="color:#555;">This project will be assigned to the single demo rep automatically.</div>
 
-        <button class="green" onclick="saveNewProject()">Create New Project</button>
+        <button id="newProjectSubmitBtn" class="green" onclick="saveNewProject()">Create New Project</button>
         <button style="background:#eee;color:#333;margin-top:10px;" onclick="closeNewProjectModal()">Cancel</button>
       </div>
     </div>
@@ -18137,7 +18137,7 @@ function renderDetail() {
   const detail = $("detailArea");
   const lifecycleDetailPanel = $("lifecycleDetailPanel");
 
-  if (!rec || !recordMatchesSelectedRep(rec)) {
+  if (!rec || (!recordMatchesSelectedRep(rec) && rec.project_type !== "new_project_record")) {
   state.selectedId = null;
   lifecycleDetailPanel?.classList.add("hidden");
   $("newProjectDetailArea")?.classList.add("hidden");
@@ -22123,7 +22123,7 @@ manager_flash_at: now,        manager_flash_type: "rep_added_install_base",
       );
     }
 
-    function openNewProjectModal() {
+    function openNewProjectModal(fixRecord = null) {
       [
   "newProjectCustomer",
   "newProjectStreet",
@@ -22144,8 +22144,24 @@ manager_flash_at: now,        manager_flash_type: "rep_added_install_base",
   const el = $(id);
   if (el) el.value = "";
 });
-      $("newProjectDOM").value = "2026";
+      $("newProjectDOM").value = fixRecord?.dom || "2026";
       $("newProjectTradeInRequired").value = "yes";
+      const fields = {
+        newProjectCustomer: fixRecord?.site || fixRecord?.facility || "",
+        newProjectName: fixRecord?.modality || "",
+        newProjectMake: fixRecord?.make || "",
+        newProjectModel: fixRecord?.model || "",
+        newProjectSerial: fixRecord?.serial_number || fixRecord?.serial || ""
+      };
+      Object.entries(fields).forEach(([id, value]) => { const el=$(id); if(el) el.value = value === "Not Entered" ? "" : value; });
+      const missing = new Set((fixRecord?.new_project_missing_fields || []).map(String));
+      ["newProjectMake","newProjectModel","newProjectSerial"].forEach(id => {
+        const key = id === "newProjectMake" ? "make" : id === "newProjectModel" ? "model" : "serial_number";
+        const el=$(id); if(el) el.style.outline = missing.has(key) ? "3px solid #ff5b5b" : "";
+      });
+      window.__newProjectFixId = fixRecord?.id || "";
+      const submit = $("newProjectSubmitBtn");
+      if (submit) submit.textContent = fixRecord ? "Submit Fixed Data" : "Create New Project";
       $("newProjectModal").style.display = "flex";
     }
 
@@ -22179,6 +22195,28 @@ const repFirst = repNameParts[0] || "Demo";
 const repLast = repNameParts.slice(1).join(" ") || "Rep";
       if (!customer || !projectModality) {
         alert("Fill out customer and modality.");
+        return;
+      }
+
+      const fixId = String(window.__newProjectFixId || "");
+      const existingFix = fixId && state.records.find(item => String(item.id) === fixId);
+      if (existingFix) {
+        const fixed = {
+          ...existingFix, site: customer, modality: projectModality,
+          make: projectMake, model: projectModel, serial_number: projectSerial,
+          serial: projectSerial, dom: projectDOM, manufacture_year: projectDOM,
+          new_project_missing_fields: [], new_project_fix_description: "",
+          install_base_fix_request: false, install_base_fix_request_fields: "",
+          manager_fix_required: "", rep_fix_required: "",
+          install_base_action_label: "", install_base_action_reason: "",
+          rep_status: "new_project_fixed", rep_action: "new_project_data_fixed",
+          rep_action_label: "Fixed New Project Data", rep_last_action_at: new Date().toISOString()
+        };
+        state.records = state.records.map(item => String(item.id) === fixId ? fixed : item);
+        state.selectedId = fixed.id;
+        window.__newProjectFixId = "";
+        saveRecords(); syncToManagerQueue(fixed); closeNewProjectModal(); render();
+        showBanner("Fixed new project data submitted.");
         return;
       }
 
@@ -25675,6 +25713,12 @@ function markRepRowUpdateSeen(id) {
   return true;
 }
 function openInstallBaseReviewReason(id) {
+  const newProject = state.records.find(record => String(record.id || "") === String(id || ""));
+  if (newProject?.project_type === "new_project_record" && getNewProjectMissingFixFields(newProject).length) {
+    // Missing new-project data is corrected in its original intake form, not Quote.
+    openNewProjectModal(newProject);
+    return;
+  }
   // Review badges open the selected record and focus the OEM-provided reason.
   // They do not open Install Base communication unless the user opens it separately.
   selectRow(id);
@@ -25708,9 +25752,10 @@ function handleRepRowClick(id) {
   const clickedRedHotRecord = state.records.find(
     record => String(record.id || record.key || "") === selectedId
   );
-  if (!clickedRedHotRecord || !recordMatchesSelectedRep(clickedRedHotRecord)) {
+  if (!clickedRedHotRecord || (!recordMatchesSelectedRep(clickedRedHotRecord) && clickedRedHotRecord.project_type !== "new_project_record")) {
     state.selectedId = null;
     renderDetail();
+    showBanner("This project could not be opened.");
     return;
   }
   const rowHadIncomingManagerCommunication =
