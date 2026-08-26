@@ -164,6 +164,19 @@ pre{
   color:#ffffff;
 }
 
+
+.rep-updated-field{
+  margin:5px 0;
+  padding:8px 10px;
+  border-radius:9px;
+  border:1px solid rgba(24,165,88,.72);
+  background:rgba(24,165,88,.16);
+  box-shadow:inset 3px 0 0 #18a558;
+}
+.rep-updated-field strong{
+  color:#b9ffd6;
+}
+
 .field-block{
   margin-top:8px;
   padding:10px;
@@ -1310,6 +1323,62 @@ function normalizeIncomingRecord(item){
   };
 }
 
+
+const TRADE_DESK_REQUEST_FIELD_MAP = {
+  "Serial number missing or unclear": ["serial_number"],
+  "Additional identifier needed": ["hospital_asset_id"],
+  "Manufacturer/model does not match submitted details or photos": ["make", "model"],
+  "Modality unclear or needs confirmation": ["modality"],
+  "Availability timeframe needed": ["availability_timeframe"],
+  "System in-use status needed": ["in_use_status"],
+  "Out-of-use date needed": ["out_of_use_date"],
+  "Removal pathway details needed": ["removal_pathways"],
+  "Loading dock access needs confirmation": ["loading_dock"],
+  "Rigging, hallway, elevator, or room access details needed": ["removal_pathways"],
+  "Hard drive removal status needed": ["hard_drive_removed"],
+  "Software version needed": ["software_version"],
+  "Installed date or DOM needed": ["dom", "installed_date"],
+  "Service, upgrade, or configuration history needed": ["upgrade_notes"]
+};
+
+function getRequestedEquipmentFieldKeys(rec){
+  const requested = Array.isArray(rec?.info_request_items) ? rec.info_request_items : [];
+  const keys = new Set();
+  requested.forEach(item => {
+    const mapped = TRADE_DESK_REQUEST_FIELD_MAP[String(item || "").trim()];
+    if (Array.isArray(mapped)) mapped.forEach(key => keys.add(key));
+  });
+  return keys;
+}
+
+function getRepChangedRequestedFields(existing, incoming){
+  if (!existing || !incoming) return [];
+  const requestedKeys = getRequestedEquipmentFieldKeys(existing);
+  if (!requestedKeys.size || !existing.info_request_sent_at) return [];
+
+  const sentAt = new Date(existing.info_request_sent_at || 0).getTime();
+  const incomingAt = new Date(
+    incoming.last_tradein_update_at ||
+    incoming.sent_to_trade_desk_at ||
+    incoming.updated_at ||
+    incoming.createdAt ||
+    0
+  ).getTime();
+
+  // A Trade Desk request being echoed through the sync key is not a Rep response.
+  if (Number.isFinite(sentAt) && Number.isFinite(incomingAt) && incomingAt <= sentAt) return [];
+
+  const changed = [];
+  requestedKeys.forEach(key => {
+    const oldValue = existing[key];
+    const newValue = incoming[key];
+    if (newValue === undefined || newValue === null || String(newValue).trim() === "") return;
+    if (String(oldValue ?? "") !== String(newValue ?? "")) changed.push(key);
+  });
+
+  return changed;
+}
+
 function mergeRecordIntoDesk(deskData, incoming){
   const record = normalizeIncomingRecord(incoming);
   const recordKey = getRecordKey(record);
@@ -1335,6 +1404,8 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
+    const repChangedRequestedFields = getRepChangedRequestedFields(existing, record);
+    const repChangedRequestedFieldSet = new Set(repChangedRequestedFields);
     const keepEquipmentDetails =
       existing.equipment_details_source === true &&
       record.equipment_details_source !== true;
@@ -1403,7 +1474,16 @@ function mergeRecordIntoDesk(deskData, incoming){
 
       images: record.images && record.images.length ? record.images : existing.images || [],
       image_sync_received: Boolean(record.images && record.images.length) || existing.image_sync_received || false,
-      image_count: record.images && record.images.length ? record.images.length : existing.image_count || 0
+      image_count: record.images && record.images.length ? record.images.length : existing.image_count || 0,
+
+      // Temporary Trade Desk review metadata only. Values remain on the main record.
+      rep_updated_fields: Array.from(new Set([
+        ...(Array.isArray(existing.rep_updated_fields) ? existing.rep_updated_fields : []),
+        ...repChangedRequestedFields
+      ])),
+      rep_update_received_at: repChangedRequestedFields.length
+        ? (record.last_tradein_update_at || new Date().toISOString())
+        : (existing.rep_update_received_at || "")
     };
 
     // Rep project updates can continue to update workflow state, but they
@@ -1416,7 +1496,9 @@ function mergeRecordIntoDesk(deskData, incoming){
         "dom", "installed_date", "in_use_status", "out_of_use_date", "availability_timeframe",
         "removal_pathways", "loading_dock", "hard_drive_removed", "software_version", "upgrade_notes"
       ].forEach(key => {
-        merged[key] = existing[key];
+        // Keep authoritative Equipment Details unless this exact field was
+        // explicitly requested by Trade Desk and changed by the Rep response.
+        if (!repChangedRequestedFieldSet.has(key)) merged[key] = existing[key];
       });
     }
   } else {
@@ -1641,6 +1723,14 @@ function prepareBuyerReviewPacket(id, btn = null){
   rec.review_packet_prepared = true;
   rec.review_packet_prepared_at = rec.approved_for_bidding_at;
   rec.tradein_buyer_review_packet_prepared_at = rec.approved_for_bidding_at;
+
+  // Preparing the buyer packet is the manual review boundary for Rep-supplied
+  // Equipment Detail changes. Clear only the temporary highlight metadata;
+  // the actual updated values and images remain unchanged.
+  if (Array.isArray(rec.rep_updated_fields) && rec.rep_updated_fields.length) {
+    rec.rep_updates_acknowledged_at = rec.approved_for_bidding_at;
+    rec.rep_updated_fields = [];
+  }
 
   rec.manually_shared_with_buyers = matchingBuyers.map(b => ({
     company: b.company,
@@ -2449,86 +2539,87 @@ function tradeInFieldRows(rec){
   const state = getV(rec, "state");
   const zip = getV(rec, "zip_code", "zip");
   const location = [city, state, zip].filter(Boolean).join(" ");
+  const updatedFields = new Set(Array.isArray(rec.rep_updated_fields) ? rec.rep_updated_fields : []);
 
   const modality = String(getV(rec, "modality", "tradein_equipment_modality")).toUpperCase();
 
   const rows = [
-    ["Location", location],
-    ["Modality", getV(rec, "modality", "tradein_equipment_modality")],
-    ["Manufacturer", getV(rec, "make", "tradein_equipment_make", "ct_manufacturer", "mri_manufacturer", "mamo_manufacturer", "xray_manufacturer", "carm_manufacturer", "pet_manufacturer")],
-    ["Model", getV(rec, "model", "tradein_equipment_model", "ct_model", "mri_model", "mamo_model", "xray_model", "carm_model", "pet_model")],
-    ["Serial", getV(rec, "serial_number", "axis_serial_number", "tradein_equipment_serial_number", "ct_serial", "mri_serial", "mamo_serial", "xray_serial", "carm_serial", "pet_serial")],
-    ["Additional Identifier", getV(rec, "hospital_asset_id", "additional_identifier")],
-    ["Date Manufactured / Year", getV(rec, "dom", "tradein_equipment_dom", "ct_dom", "mri_yom", "mamo_dom", "pet_tube_dom")],
-    ["Installed Date", getV(rec, "installed_date", "ct_installed")],
-    ["System In Use", yesNo(getV(rec, "in_use_status", "tradein_in_use_status", "ct_in_use", "mri_in_use", "mamo_in_use", "xray_in_use", "carm_in_use", "pet_in_use"))],
-    ["Out Of Use Date", getV(rec, "out_of_use_date", "tradein_out_of_use_date", "ct_out_of_use_date", "mri_out_of_use_date", "mamo_out_of_use_date", "xray_out_of_use_date", "carm_out_of_use_date", "pet_out_of_use_date")],
-    ["Availability Timeframe", getV(rec, "availability_timeframe", "tradein_availability_timeframe", "ct_availability_timeframe", "mri_availability_timeframe", "mamo_availability_timeframe", "xray_availability_timeframe", "carm_availability_timeframe", "pet_availability_timeframe")],
-    ["Removal Pathways", getV(rec, "removal_pathways", "tradein_removal_pathways", "ct_removal_pathways", "mri_removal_pathways", "mamo_removal_pathways", "xray_removal_pathways", "pet_removal_pathways")],
-    ["Loading Dock", yesNo(getV(rec, "loading_dock", "tradein_loading_dock", "ct_loading_dock", "mamo_loading_dock", "xray_loading_dock", "pet_loading_dock"))],
-    ["Hard Drives Removed", yesNo(getV(rec, "hard_drive_removed", "tradein_hard_drive_removed", "ct_hard_drive_removed", "mri_hard_drive_removed", "mamo_hard_drive_removed", "carm_hard_drive_removed", "pet_hard_drive_removed"))],
-    ["Software Version", getV(rec, "software_version", "tradein_software_version", "ct_sw_version", "mri_sw_version", "carm_sw_version")],
-    ["Upgrade / Configuration Notes", getV(rec, "upgrade_notes", "tradein_upgrade_notes", "ct_upgrades_desc", "mri_coils")]
+    ["Location", location, "location"],
+    ["Modality", getV(rec, "modality", "tradein_equipment_modality"), "modality"],
+    ["Manufacturer", getV(rec, "make", "tradein_equipment_make", "ct_manufacturer", "mri_manufacturer", "mamo_manufacturer", "xray_manufacturer", "carm_manufacturer", "pet_manufacturer"), "make"],
+    ["Model", getV(rec, "model", "tradein_equipment_model", "ct_model", "mri_model", "mamo_model", "xray_model", "carm_model", "pet_model"), "model"],
+    ["Serial", getV(rec, "serial_number", "axis_serial_number", "tradein_equipment_serial_number", "ct_serial", "mri_serial", "mamo_serial", "xray_serial", "carm_serial", "pet_serial"), "serial_number"],
+    ["Additional Identifier", getV(rec, "hospital_asset_id", "additional_identifier"), "hospital_asset_id"],
+    ["Date Manufactured / Year", getV(rec, "dom", "tradein_equipment_dom", "ct_dom", "mri_yom", "mamo_dom", "pet_tube_dom"), "dom"],
+    ["Installed Date", getV(rec, "installed_date", "ct_installed"), "installed_date"],
+    ["System In Use", yesNo(getV(rec, "in_use_status", "tradein_in_use_status", "ct_in_use", "mri_in_use", "mamo_in_use", "xray_in_use", "carm_in_use", "pet_in_use")), "in_use_status"],
+    ["Out Of Use Date", getV(rec, "out_of_use_date", "tradein_out_of_use_date", "ct_out_of_use_date", "mri_out_of_use_date", "mamo_out_of_use_date", "xray_out_of_use_date", "carm_out_of_use_date", "pet_out_of_use_date"), "out_of_use_date"],
+    ["Availability Timeframe", getV(rec, "availability_timeframe", "tradein_availability_timeframe", "ct_availability_timeframe", "mri_availability_timeframe", "mamo_availability_timeframe", "xray_availability_timeframe", "carm_availability_timeframe", "pet_availability_timeframe"), "availability_timeframe"],
+    ["Removal Pathways", getV(rec, "removal_pathways", "tradein_removal_pathways", "ct_removal_pathways", "mri_removal_pathways", "mamo_removal_pathways", "xray_removal_pathways", "pet_removal_pathways"), "removal_pathways"],
+    ["Loading Dock", yesNo(getV(rec, "loading_dock", "tradein_loading_dock", "ct_loading_dock", "mamo_loading_dock", "xray_loading_dock", "pet_loading_dock")), "loading_dock"],
+    ["Hard Drives Removed", yesNo(getV(rec, "hard_drive_removed", "tradein_hard_drive_removed", "ct_hard_drive_removed", "mri_hard_drive_removed", "mamo_hard_drive_removed", "carm_hard_drive_removed", "pet_hard_drive_removed")), "hard_drive_removed"],
+    ["Software Version", getV(rec, "software_version", "tradein_software_version", "ct_sw_version", "mri_sw_version", "carm_sw_version"), "software_version"],
+    ["Upgrade / Configuration Notes", getV(rec, "upgrade_notes", "tradein_upgrade_notes", "ct_upgrades_desc", "mri_coils"), "upgrade_notes"]
   ];
 
   if (modality === "CT") {
     rows.push(
-      ["CT Slices", getV(rec, "ct_slices")],
-      ["CT Tube mAs / Scan/sec", getV(rec, "ct_tube_mas")],
-      ["CT Tube Size", getV(rec, "ct_mhu")],
-      ["CT Tube DOM", getV(rec, "ct_tube_dom")],
-      ["CT Injector", yesNo(getV(rec, "ct_injector"))],
-      ["CT Injector Model", getV(rec, "ct_injector_model")],
-      ["CT Upgrades", yesNo(getV(rec, "ct_upgrades"))],
-      ["CT Chiller", yesNo(getV(rec, "ct_chiller"))]
+      ["CT Slices", getV(rec, "ct_slices"), "ct_slices"],
+      ["CT Tube mAs / Scan/sec", getV(rec, "ct_tube_mas"), "ct_tube_mas"],
+      ["CT Tube Size", getV(rec, "ct_mhu"), "ct_mhu"],
+      ["CT Tube DOM", getV(rec, "ct_tube_dom"), "ct_tube_dom"],
+      ["CT Injector", yesNo(getV(rec, "ct_injector")), "ct_injector"],
+      ["CT Injector Model", getV(rec, "ct_injector_model"), "ct_injector_model"],
+      ["CT Upgrades", yesNo(getV(rec, "ct_upgrades")), "ct_upgrades"],
+      ["CT Chiller", yesNo(getV(rec, "ct_chiller")), "ct_chiller"]
     );
   }
 
   if (modality === "MRI") {
     rows.push(
-      ["MRI Magnet Type", getV(rec, "mri_magnet_type")],
-      ["MRI Bore Size", getV(rec, "mri_bore_size_cm")],
-      ["MRI Channels", getV(rec, "mri_num_channels")],
-      ["MRI Gradient", getV(rec, "mri_gradient")],
-      ["MRI Service", getV(rec, "mri_service")],
-      ["MRI Service Company", getV(rec, "mri_service_name")]
+      ["MRI Magnet Type", getV(rec, "mri_magnet_type"), "mri_magnet_type"],
+      ["MRI Bore Size", getV(rec, "mri_bore_size_cm"), "mri_bore_size_cm"],
+      ["MRI Channels", getV(rec, "mri_num_channels"), "mri_num_channels"],
+      ["MRI Gradient", getV(rec, "mri_gradient"), "mri_gradient"],
+      ["MRI Service", getV(rec, "mri_service"), "mri_service"],
+      ["MRI Service Company", getV(rec, "mri_service_name"), "mri_service_name"]
     );
   }
 
   if (modality === "XRAY") {
     rows.push(
-      ["X-Ray Floor Mounted", yesNo(getV(rec, "xray_floor_mounted"))],
-      ["X-Ray Ceiling Mounted", yesNo(getV(rec, "xray_ceiling_mounted"))]
+      ["X-Ray Floor Mounted", yesNo(getV(rec, "xray_floor_mounted")), "xray_floor_mounted"],
+      ["X-Ray Ceiling Mounted", yesNo(getV(rec, "xray_ceiling_mounted")), "xray_ceiling_mounted"]
     );
   }
 
   if (modality === "CARM" || modality === "C-ARM") {
     rows.push(
-      ["C-Arm Monitors", getV(rec, "carm_monitors")],
-      ["C-Arm Image Intensifier", getV(rec, "carm_image_intensifier")]
+      ["C-Arm Monitors", getV(rec, "carm_monitors"), "carm_monitors"],
+      ["C-Arm Image Intensifier", getV(rec, "carm_image_intensifier"), "carm_image_intensifier"]
     );
   }
 
   if (modality === "PET" || modality === "PETCT") {
     rows.push(
-      ["PET/CT Slice Count", getV(rec, "pet_ct_slices")],
-      ["PET/CT Tube DOM", getV(rec, "pet_tube_dom")],
-      ["PET/CT Tube mAs / Scan/sec", getV(rec, "pet_tube_mas")]
+      ["PET/CT Slice Count", getV(rec, "pet_ct_slices"), "pet_ct_slices"],
+      ["PET/CT Tube DOM", getV(rec, "pet_tube_dom"), "pet_tube_dom"],
+      ["PET/CT Tube mAs / Scan/sec", getV(rec, "pet_tube_mas"), "pet_tube_mas"]
     );
   }
 
   if (modality === "MAMMO") {
     rows.push(
-      ["Mammo 2D / 3D", getV(rec, "mamo_dimensionality")],
-      ["Mammo Stereotactic Options", getV(rec, "mamo_stereotactic_options")],
-      ["Mammo CAD", getV(rec, "mamo_cad")]
+      ["Mammo 2D / 3D", getV(rec, "mamo_dimensionality"), "mamo_dimensionality"],
+      ["Mammo Stereotactic Options", getV(rec, "mamo_stereotactic_options"), "mamo_stereotactic_options"],
+      ["Mammo CAD", getV(rec, "mamo_cad"), "mamo_cad"]
     );
   }
 
   return rows
-    .filter(([label, value]) => String(value || "").trim())
-    .map(([label, value]) => `
-      <div class="kv">
+    .filter(([, value]) => String(value || "").trim())
+    .map(([label, value, fieldKey]) => `
+      <div class="kv${updatedFields.has(fieldKey) ? " rep-updated-field" : ""}">
         <strong>${htmlSafe(label)}:</strong> ${htmlSafe(value || "-")}
       </div>
     `)
