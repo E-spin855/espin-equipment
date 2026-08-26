@@ -26875,10 +26875,15 @@ window.addEventListener("load", () => {
     const right=[rec.oem_project_id,rec.project_id,rec.id,rec.key].map(lower).filter(Boolean);
     return left.some(id => right.includes(id));
   };
-  const tradeDeskEquipment = rec => tradeInRecords().filter(t =>
-    sameProject(t, rec) &&
-    (t.make || t.tradein_equipment_make || t.model || t.tradein_equipment_model)
-  );
+  const tradeDeskEquipment = rec => {
+    const available = tradeInRecords().filter(t =>
+      t && (t.make || t.tradein_equipment_make || t.model || t.tradein_equipment_model)
+    );
+    const related = available.filter(t => sameProject(t, rec));
+    // Some sandbox handoffs use different project identifiers. In that case,
+    // let the Rep explicitly choose from the submitted Trade Desk equipment.
+    return related.length ? related : available;
+  };
   const activeRemoval = identity => { try { return JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]").find(o => lower(o.operation_type)==="deinstall" && !/complete|cancel|archiv/.test(lower(o.status)) && [o.tradein_record_id,o.source_record_id,o.asset_id,o.serial_number].map(lower).includes(lower(identity))); } catch (_) { return null; } };
   const management = operation => { const u=new URL("/removal-install/management.html",location.origin); Object.entries(operation).forEach(([k,v]) => { if (["string","number","boolean"].includes(typeof v) && clean(v)) u.searchParams.set(k,String(v)); }); if (operation.project_id) u.searchParams.set("projectId",operation.project_id); return u.toString(); };
   const saveOperation = operation => { let records=[]; try { records=JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]"); if(!Array.isArray(records)) records=[]; } catch (_) {} records.unshift(operation); localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records)); localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation)); if(operation.project_id) localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation)); };
