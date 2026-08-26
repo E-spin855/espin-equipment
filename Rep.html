@@ -26869,7 +26869,24 @@ window.addEventListener("load", () => {
 (() => {
   const clean = v => String(v ?? "").trim();
   const lower = v => clean(v).toLowerCase();
-  const tradeInRecords = () => { try { const r=JSON.parse(localStorage.getItem("axis_tradein_sync_records_v1") || "[]"); return Array.isArray(r)?r:[]; } catch (_) { return []; } };
+  const tradeInRecords = () => {
+    const keys = [
+      "axis_tradein_sync_records_v1",
+      "espin_tradein_sync_records_v1",
+      "axis_trade_desk_sync_records_v1",
+      "axis_trade_desk_records_v1",
+      "axis_trade_desk_demo_v1"
+    ];
+    const seen = new Set();
+    return keys.flatMap(key => {
+      try { const records = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(records) ? records : []; } catch (_) { return []; }
+    }).filter(record => {
+      const identity = [record.id, record.trade_desk_record_id, record.axis_record_id, record.serial_number, record.axis_serial_number].map(lower).filter(Boolean).join("|");
+      if (identity && seen.has(identity)) return false;
+      if (identity) seen.add(identity);
+      return true;
+    });
+  };
   const sameProject = (trade, rec) => {
     const left=[trade.axis_project_id,trade.project_id,trade.axis_record_id,trade.axis_parent_record_id].map(lower).filter(Boolean);
     const right=[rec.oem_project_id,rec.project_id,rec.id,rec.key].map(lower).filter(Boolean);
@@ -27087,7 +27104,7 @@ window.addEventListener("load", () => {
             Use selected equipment
           </button>
 
-          ${trades.map((trade, index) => `
+          ${trades.length ? trades.map((trade, index) => `
             <button
               class="useTradeDeskEquipment"
               data-trade-index="${index}"
@@ -27102,7 +27119,14 @@ window.addEventListener("load", () => {
             >
               Use Trade Desk equipment — ${escapeHtml([trade.make || trade.tradein_equipment_make, trade.model || trade.tradein_equipment_model, (trade.serial_number || trade.axis_serial_number || trade.tradein_equipment_serial_number) ? `S/N ${trade.serial_number || trade.axis_serial_number || trade.tradein_equipment_serial_number}` : ""].filter(Boolean).join(" · ") || "Equipment record")}
             </button>
-          `).join("")}
+          `).join("") : `
+            <button
+              id="chooseTradeDeskEquipment"
+              style="padding:14px;border-radius:10px;border:1px solid #25d9bb;background:#0d3a3b;color:#bfffee;font-weight:800"
+            >
+              Choose equipment sent to Trade Desk
+            </button>
+          `}
 
           <button
             id="cancelChoice"
@@ -27135,6 +27159,12 @@ window.addEventListener("load", () => {
         launchTradeDeskEquipment(rec, trade, event.currentTarget);
       };
     });
+    const chooseTradeDeskButton = modal.querySelector("#chooseTradeDeskEquipment");
+    if (chooseTradeDeskButton) {
+      chooseTradeDeskButton.onclick = () => {
+        alert("No Trade Desk equipment is synchronized in this browser session yet. Open the submitted equipment in Trade Desk first, then return here to select it.");
+      };
+    }
   };
 })();
 </script>
