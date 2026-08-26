@@ -5129,7 +5129,8 @@ tr.unread-message-row td{
 .active-project-expanded{display:none;padding:0 18px 18px;border-top:1px solid rgba(88,184,255,.12)}
 .active-project-card.open .active-project-expanded{display:block}
 .active-project-milestones{position:relative;margin:15px 0 0;padding-left:4px;display:grid;gap:0}
-.active-project-milestone{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;min-height:48px;color:#6f8ba5}
+.active-project-milestone{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;min-height:48px;color:#6f8ba5;text-decoration:none;cursor:pointer;border-radius:8px;transition:background .18s ease,transform .18s ease}
+.active-project-milestone:hover,.active-project-milestone:focus-visible{background:rgba(0,214,255,.09);outline:none;transform:translateX(3px)}
 .active-project-milestone:not(:last-child)::before{content:"";position:absolute;left:13px;top:26px;bottom:-2px;width:2px;background:linear-gradient(#173653,#0b1b2b)}
 .active-project-milestone.done:not(:last-child)::before{background:linear-gradient(#39ef9e,#15885a);box-shadow:0 0 8px rgba(65,255,156,.42)}
 .milestone-node{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #29445f;background:#07111f;color:#6f8ba5;font-size:13px;font-weight:950;box-shadow:inset 0 0 8px rgba(0,0,0,.8)}
@@ -17588,17 +17589,20 @@ function renderActiveProjects() {
       projectTypeKey === "installation" ||
       (projectTypeKey.includes("install") && !projectTypeKey.includes("deinstall"));
 
+    const milestoneDetailsUrl = installationProject
+      ? "removal-install/install_project_details.html"
+      : "removal-install/ProjectDetails.html";
     const milestoneHtml = milestones.map((milestone, index) => {
       const isDone = milestone.completed === true;
       const isCurrent = !isDone && index === milestones.findIndex(m => m.completed !== true);
       return `
-        <div class="active-project-milestone ${isDone ? "done" : ""} ${isCurrent ? "current" : ""}">
+        <a class="active-project-milestone ${isDone ? "done" : ""} ${isCurrent ? "current" : ""}" href="${milestoneDetailsUrl}" aria-label="Open ${escapeHtml(milestone.name || "milestone")} project details">
           <div class="milestone-node">${isDone ? "✓" : isCurrent ? "●" : "○"}</div>
           <div>
             <div class="milestone-title">${escapeHtml(milestone.name || "Milestone")}</div>
             ${milestone.completed_at ? `<div class="milestone-date">${escapeHtml(formatActiveProjectDate(milestone.completed_at))}</div>` : ""}
           </div>
-        </div>`;
+        </a>`;
     }).join("");
 
     return `
