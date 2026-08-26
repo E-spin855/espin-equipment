@@ -1303,6 +1303,11 @@ function normalizeIncomingRecord(item){
     quote_id: item.quote_id || projectId || "",
 
     info_request_items: Array.isArray(item.info_request_items) ? item.info_request_items : [],
+    trade_desk_info_request_id: item.trade_desk_info_request_id || "",
+    trade_desk_info_request_status: item.trade_desk_info_request_status || "",
+    trade_desk_info_request_items: Array.isArray(item.trade_desk_info_request_items) ? item.trade_desk_info_request_items : [],
+    trade_desk_info_request_responded_at: item.trade_desk_info_request_responded_at || "",
+    trade_desk_info_request_updated_fields: Array.isArray(item.trade_desk_info_request_updated_fields) ? item.trade_desk_info_request_updated_fields : [],
     info_request_notes: item.info_request_notes || "",
     info_request_sent_to: item.info_request_sent_to || "",
     info_request_sent_at: item.info_request_sent_at || "",
@@ -1404,7 +1409,12 @@ function mergeRecordIntoDesk(deskData, incoming){
 
   if (matchIndex >= 0) {
     const existing = deskData[matchIndex];
-    const repChangedRequestedFields = getRepChangedRequestedFields(existing, record);
+    const explicitRepFields = record.trade_desk_info_request_status === "rep_responded"
+      ? (Array.isArray(record.trade_desk_info_request_updated_fields) ? record.trade_desk_info_request_updated_fields : [])
+      : [];
+    const repChangedRequestedFields = explicitRepFields.length
+      ? explicitRepFields
+      : getRepChangedRequestedFields(existing, record);
     const repChangedRequestedFieldSet = new Set(repChangedRequestedFields);
     const keepEquipmentDetails =
       existing.equipment_details_source === true &&
@@ -2130,6 +2140,11 @@ function sendInfoRequestToRep(btn = null){
   rec.info_request_notes = notes;
   rec.info_request_sent_to = repEmail;
   rec.info_request_sent_at = new Date().toISOString();
+  rec.trade_desk_info_request_id = `trade_desk_request_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  rec.trade_desk_info_request_status = "requested";
+  rec.trade_desk_info_request_items = checked;
+  rec.trade_desk_info_request_notes = notes;
+  rec.trade_desk_info_request_sent_at = rec.info_request_sent_at;
 
   saveData(data, true);
 
@@ -2140,6 +2155,11 @@ function sendInfoRequestToRep(btn = null){
     info_request_notes: "",
     info_request_sent_to: repEmail,
     info_request_sent_at: rec.info_request_sent_at,
+    trade_desk_info_request_id: rec.trade_desk_info_request_id,
+    trade_desk_info_request_status: rec.trade_desk_info_request_status,
+    trade_desk_info_request_items: rec.trade_desk_info_request_items,
+    trade_desk_info_request_notes: rec.trade_desk_info_request_notes,
+    trade_desk_info_request_sent_at: rec.trade_desk_info_request_sent_at,
     trade_desk_status: rec.trade_desk_status,
     buyer_response_status: rec.buyer_response_status,
     crm_status: rec.crm_status
