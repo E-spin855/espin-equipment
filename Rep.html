@@ -7917,17 +7917,17 @@ body tr:is(
           <option value="low">Rep Marked: Monitor</option>
         </select>
 
-        <label>Expected Close Date</label>
-        <input id="quoteExpectedCloseDate" type="date" />
+        <label>Expected Close Date <span style="color:#ff3347;">*</span></label>
+        <input id="quoteExpectedCloseDate" type="date" required />
 
         <label>Quote Expiration Date</label>
         <input id="quoteExpirationDate" type="date" />
 
         <label>Quote Recipient Email</label>
-        <input id="quoteRecipientEmail" type="email" placeholder="customer@hospital.org" />
+        <input id="quoteRecipientEmail" type="email" placeholder="Disabled for Sandbox testing" readonly aria-readonly="true" onclick="alert('Disabled for Sandbox testing')" onkeydown="event.preventDefault(); alert('Disabled for Sandbox testing')" />
 
         <label>CC Email</label>
-        <input id="quoteCcEmail" type="email" placeholder="optional" />
+        <input id="quoteCcEmail" type="email" placeholder="Disabled for Sandbox testing" readonly aria-readonly="true" onclick="alert('Disabled for Sandbox testing')" onkeydown="event.preventDefault(); alert('Disabled for Sandbox testing')" />
 
         <label>Quote Follow-Up Date</label>
         <input id="quoteFollowUpAlertDate" type="date" />
@@ -22584,10 +22584,17 @@ manufacture_year: projectDOM,
       const tradeInCredit = rec.tradein_required === "no" ? 0 : Number($("quoteTradeInCredit").value || getTradeInCreditValue(rec) || 0);
       const status = $("quoteStatus").value;
       const followUpDate = $("quoteFollowUpAlertDate").value;
+      const expectedCloseDate = $("quoteExpectedCloseDate").value;
       const lossReason = clean($("quoteLossReason").value);
 
       if (!amount || amount <= 0) {
   alert("Enter quote amount");
+  return false;
+}
+
+if (!expectedCloseDate) {
+  alert("Expected closing date is required");
+  $("quoteExpectedCloseDate").focus();
   return false;
 }
 
@@ -22619,7 +22626,7 @@ if (status === "lost" && !lossReason) {
 
       rec.quote_status = status;
       rec.quote_follow_up_tag = $("quoteFollowUpTag").value;
-      rec.quote_expected_close_date = $("quoteExpectedCloseDate").value;
+      rec.quote_expected_close_date = expectedCloseDate;
       rec.quote_expiration_date = $("quoteExpirationDate").value;
       rec.quote_recipient_email = clean($("quoteRecipientEmail").value);
       rec.quote_cc_email = clean($("quoteCcEmail").value);
@@ -27103,6 +27110,14 @@ window.addEventListener("load", () => {
     document.querySelectorAll('input:not([type="hidden"]):not([type="date"]):not([type="number"]), textarea, [contenteditable="true"]').forEach(el => {
       if (el.matches("input[id^='fix_'], textarea#installBaseFixReason")) {
         el.disabled = false; el.removeAttribute('aria-disabled'); el.removeAttribute('title');
+        return;
+      }
+      if (el.matches("#quoteRecipientEmail, #quoteCcEmail")) {
+        el.disabled = false;
+        el.readOnly = true;
+        el.setAttribute('aria-readonly', 'true');
+        el.removeAttribute('aria-disabled');
+        el.title = 'Disabled for Sandbox testing';
         return;
       }
       el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.title = 'Disabled in the closed sandbox';
