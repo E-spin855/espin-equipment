@@ -26446,12 +26446,24 @@ function scheduleRepSyncRender() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       saveRecords();
+      return;
     }
+
+    // Quote Review may have returned a decision while the Rep tab was hidden.
+    // Re-read the approval queues as soon as the Rep becomes visible again.
+    scheduleRepSyncRender();
   });
   importRepQueueRecords();
   importTradeInSyncRecords();
+  importQuoteApprovalDecisions();
   syncRepRecordsDirectlyToService(state.records);
   updateAxisShareStatus();
+
+  // A Quote decision can be written before this Rep page is opened or while
+  // another tab/window has focus. Always refresh when the Rep returns.
+  window.addEventListener("focus", scheduleRepSyncRender);
+  window.addEventListener("pageshow", scheduleRepSyncRender);
+  window.addEventListener("axis_quote_approval_update", scheduleRepSyncRender);
 
   document.addEventListener("input", e => {
     if (e.target && e.target.id === "installBaseFixReason") {
