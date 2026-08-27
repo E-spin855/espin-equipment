@@ -15406,7 +15406,7 @@ function renderQuoteApprovalActionPanel(rec) {
 
         <div class="btns" style="margin-top:12px;">
           <button type="button" class="green" onclick="reviewApprovedQuote()">Review Approved Quote</button>
-         <button type="button" class="green" onclick="sendQuoteToCustomer()">Download PDF + Open Email Draft</button>
+         <button type="button" class="green" onclick="sendQuoteToCustomer()">Send Demo Email</button>
         </div>
 
         <div class="mini" style="margin-top:10px;line-height:1.45;color:#d9c98a;">
@@ -24370,27 +24370,14 @@ function reviewApprovedQuote() {
       const safeName = String(quoteNumber).replace(/[^a-z0-9-_]/gi, "_").slice(0, 40);
       const fileName = `quote_${safeName}.pdf`;
 
-      if (shouldSave) doc.save(fileName);
-
+      // Sandbox: PDF generation is preview-only. Never invoke doc.save() or any browser download.
       return { doc, fileName };
     }
 
     function exportQuotePDF() {
-      const rec = state.records.find(r => r.id === state.selectedId);
-      const result = buildQuotePDF(rec, true);
-      if (!result) return;
-
-      rec.quote_delivery_status = "pdf_saved";
-      rec.quote_pdf_saved_at = new Date().toISOString();
-
-      rec.manager_unseen_update = true;
-      rec.manager_flash_at = new Date().toISOString();
-      rec.manager_flash_type = "quote_submitted_for_approval";
-
-      syncFeedStatus(rec);
-      render();
-
-      showBanner("✅ Quote PDF saved");
+      // Sandbox safety: downloading files is intentionally disabled.
+      alert("Disabled fro sandbox test");
+      return false;
     }
 
    function sendQuoteToCustomer() {
@@ -24418,20 +24405,13 @@ function reviewApprovedQuote() {
     return;
   }
 
-  const pdfResult = buildQuotePDF(rec, true);
-
-  if (!pdfResult) {
-    alert("Quote PDF could not be prepared.");
-    return;
-  }
-
   const quoteAmount = Number(rec.quote_amount || 0);
   const tradeInCredit = Number(rec.quote_trade_in_credit || rec.tradein_credit || 0);
   const netQuote = Number(rec.quote_net_amount || Math.max(0, quoteAmount - tradeInCredit));
 
-  rec.quote_delivery_status = "email_draft_opened_pdf_prepared";
-  rec.quote_pdf_saved_at = new Date().toISOString();
-  rec.quote_pdf_file_name = pdfResult.fileName;
+  rec.quote_delivery_status = "demo_email_opened";
+  rec.quote_pdf_saved_at = "";
+  rec.quote_pdf_file_name = "";
   rec.quote_sent_at = new Date().toISOString();
   rec.quote_sent_to = recipient;
   rec.quote_sent_cc = rec.quote_cc_email || "";
@@ -24439,7 +24419,7 @@ function reviewApprovedQuote() {
   rec.manager_unseen_update = true;
   rec.manager_flash_at = new Date().toISOString();
   rec.manager_flash_type = "quote_email_draft_opened";
-  rec.manager_flash_text = "Approved quote PDF prepared and customer email draft opened";
+  rec.manager_flash_text = "Approved quote demo email opened";
 
   syncFeedStatus(rec);
   render();
@@ -24449,7 +24429,7 @@ function reviewApprovedQuote() {
   const body = (
 `Hello,
 
-Please find the approved quote attached.
+Please review the approved quote details below.
 
 Facility: ${rec.site || ""}
 Equipment / Project: ${rec.make || ""} ${rec.model || ""}
@@ -24459,7 +24439,6 @@ Gross Quote: ${money(quoteAmount)}
 Trade-In Credit: -${money(tradeInCredit)}
 Net Quote: ${money(netQuote)}
 
-Quote PDF prepared: ${pdfResult.fileName}
 
 Please review and let me know if you have any questions.
 
@@ -24473,7 +24452,7 @@ Thank you.`
   inbox.unshift({ from: "ESPIN LINK Quotes", to: recipient, cc: rec.quote_cc_email || "", subject, body, createdAt: new Date().toISOString() });
   localStorage.setItem(inboxKey, JSON.stringify(inbox.slice(0, 100)));
   try { new BroadcastChannel("espin_demo_email_inbox").postMessage("new-email"); } catch (_) {}
-  showBanner("✅ Quote PDF prepared in the Demo Inbox.");
+  showBanner("✅ Demo quote email opened. No file was downloaded.");
 
   setTimeout(() => {
     window.open("Demo_Email.html", "_blank", "noopener,noreferrer");
