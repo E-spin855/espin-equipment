@@ -7382,19 +7382,27 @@ body tr:is(
     0 0 0 1px rgba(65,255,156,.28),
     0 0 18px rgba(65,255,156,.42)!important;
 }
-</style>
 
-<style>#dailyBriefingBack{position:fixed;top:16px;left:16px;z-index:99999}#dailyBriefingBack .btn{min-height:36px;padding:9px 13px;border:1px solid #39d9ff;border-radius:8px;background:#06213a;color:#e9fbff;font-weight:700;letter-spacing:.04em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.28)}</style>
-<style id="espin-new-project-fix-final-override">
-/* New Project FIX missing fields must override later white-modal control styling. */
-#newProjectModal .modal-box .new-project-fix-missing,
-#newProjectModal .modal-box .new-project-fix-missing:focus{
-  border:2px solid #ff4d4d!important;
-  box-shadow:0 0 0 3px rgba(255,77,77,.18),0 0 14px rgba(255,77,77,.26)!important;
+/* Keep the Rep response form above the adjacent Financial Record after the
+   selected-record cards are stacked into their final layout. */
+.rep-response-under-action,
+.rep-response-under-action .rep-install-base-fix-response-panel,
+.rep-install-base-response-expanded{
+  position:relative!important;
+  z-index:40!important;
+  pointer-events:auto!important;
+}
+.rep-install-base-fix-response-panel input,
+.rep-install-base-fix-response-panel textarea{
+  position:relative!important;
+  z-index:41!important;
+  pointer-events:auto!important;
+  cursor:text!important;
+  user-select:text!important;
 }
 </style>
 
-</head>
+<style>#dailyBriefingBack{position:fixed;top:16px;left:16px;z-index:99999}#dailyBriefingBack .btn{min-height:36px;padding:9px 13px;border:1px solid #39d9ff;border-radius:8px;background:#06213a;color:#e9fbff;font-weight:700;letter-spacing:.04em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.28)}</style></head>
 
 <body data-sandbox-page="rep"><div id="dailyBriefingBack"><button class="btn" type="button" onclick="window.location.href='ESPIN_LINK_Fullscreen_Opening_Demo.html?view=briefing'">← GO BACK TO DAILY BRIEFING</button></div>
 <script src="espin_sandbox_access_guard.js"></script>
@@ -8173,18 +8181,41 @@ installBaseFixResponseRecordId: "",
     const ageFromDom = window.AxisUtils?.ageFromDom || AxisFallback.ageFromDom;
 
     const fakeContacts = [
-      { name: "Michael Carter", email: "m.carter@hospital.org", phone: "(206) 555-2143" },
-      { name: "Jennifer Lopez", email: "j.lopez@hospital.org", phone: "(425) 555-7782" },
-      { name: "David Kim", email: "d.kim@hospital.org", phone: "(253) 555-6621" },
-      { name: "Sarah Mitchell", email: "s.mitchell@hospital.org", phone: "(360) 555-9034" },
-      { name: "Robert Hayes", email: "r.hayes@hospital.org", phone: "(509) 555-1187" },
-      { name: "Emily Chen", email: "e.chen@hospital.org", phone: "(206) 555-4472" },
-      { name: "Daniel Brooks", email: "d.brooks@hospital.org", phone: "(425) 555-3319" },
-      { name: "Lisa Rodriguez", email: "l.rodriguez@hospital.org", phone: "(253) 555-8891" }
+      { name: "Facility Contact 1", email: "contact1@example.test", phone: "(555) 010-0001" },
+      { name: "Facility Contact 2", email: "contact2@example.test", phone: "(555) 010-0002" },
+      { name: "Facility Contact 3", email: "contact3@example.test", phone: "(555) 010-0003" }
     ];
 
     function clean(v) {
       return String(v || "").trim();
+    }
+
+    function anonymizeRepRecord(rec, index = 0) {
+      const slot = (index % 3) + 1;
+      const facility = `Facility ${String.fromCharCode(64 + slot)}`;
+      return {
+        ...rec,
+        site: facility,
+        site_name: facility,
+        facility,
+        facility_name: facility,
+        hospital: facility,
+        hospital_name: facility,
+        customer: facility,
+        customer_name: facility,
+        site_address: "123 Main St",
+        city: "Any City",
+        state: "CA",
+        zip_code: `0000${slot}`,
+        contact_name: `Facility Contact ${slot}`,
+        contact_title: "Facility Contact",
+        contact_phone: `(555) 010-000${slot}`,
+        contact_email: `contact${slot}@example.test`,
+        assigned_rep_name: `Rep ${slot}`,
+        assigned_rep_email: `rep${slot}@example.test`,
+        manager_name: "Manager",
+        manager_email: "manager@example.test"
+      };
     }
 
     function lower(v) {
@@ -10584,7 +10615,8 @@ function resetStoredRepActionsOnly(key) {
     sharedRecords
   ).filter(isAllowedRepWorkspaceRecord);
 
-  state.records = combinedRecords.map(rec => {
+  state.records = combinedRecords.map((rawRec, index) => {
+    const rec = anonymizeRepRecord(rawRec, index);
     const isRepCreated =
       rec?.rep_added_install_base === true ||
       rec?.rep_owned_install_base === true ||
@@ -18100,13 +18132,14 @@ function renderDetail() {
   if (
     activeFixInput &&
     activeFixInput !== document.body &&
-    activeFixInput.matches?.("input[id^='fix_'], textarea[id^='fix_'], select[id^='fix_']") &&
+    activeFixInput.matches?.("input[id^='fix_'], textarea[id^='fix_'], select[id^='fix_'], #installBaseFixReason") &&
     activeFixInput.closest?.(".rep-install-base-fix-response-panel")
   ) {
     return;
   }
 
-  const rec = state.records.find(r => r.id === state.selectedId);
+  const sourceRec = state.records.find(r => r.id === state.selectedId);
+  const rec = sourceRec ? anonymizeRepRecord(sourceRec, state.records.indexOf(sourceRec)) : sourceRec;
   const empty = $("emptyState");
   const detail = $("detailArea");
   const lifecycleDetailPanel = $("lifecycleDetailPanel");
@@ -19648,6 +19681,7 @@ function renderRepInstallBaseFixResponsePanel(rec) {
               onclick="event.stopPropagation();"
               onmousedown="event.stopPropagation();"
               onfocus="event.stopPropagation();"
+              oninput="event.stopPropagation();"
             ></textarea>
 
             <div class="btns" style="margin-top:10px;">
@@ -20410,7 +20444,7 @@ function saveInstallBaseFix(id) {
             <div class="quote-team-contact-block">
               <div class="new-project-team-label">Contact</div>
               <button type="button" class="new-project-contact-toggle quote" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','quote',event)">
-                Sarah Johnson <span class="new-project-contact-caret">${quoteContactOpen ? "⌃" : "⌄"}</span>
+                Quote Contact <span class="new-project-contact-caret">${quoteContactOpen ? "⌃" : "⌄"}</span>
               </button>
             </div>
 
@@ -20441,16 +20475,16 @@ function saveInstallBaseFix(id) {
           ${quoteContactOpen ? `
             <div class="new-project-contact-panel quote">
               <div>
-                <div class="new-project-contact-name">Sarah Johnson</div>
+                <div class="new-project-contact-name">Quote Contact</div>
                 <div class="new-project-contact-role">Quote Team Specialist</div>
                 <div class="new-project-contact-lines">
                   <span>☎ (555) 214-8831</span>
-                  <span>✉ sarah.johnson@company.com</span>
+                  <span>✉ quote-contact@example.test</span>
                 </div>
               </div>
               <div class="new-project-contact-actions quote">
                 <a href="tel:+15552148831">☎ Call</a>
-                <a href="mailto:sarah.johnson@company.com">✉ Email</a>
+                <a href="mailto:quote-contact@example.test">✉ Email</a>
               </div>
             </div>
           ` : ""}
@@ -20503,7 +20537,7 @@ function saveInstallBaseFix(id) {
                   <div class="trade-team-contact-block">
                     <div class="new-project-team-label">Contact</div>
                     <button type="button" class="new-project-contact-toggle trade" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','trade',event)">
-                      Mike Adams <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
+                      Trade Desk Contact <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
                     </button>
                   </div>
 
@@ -20534,16 +20568,16 @@ function saveInstallBaseFix(id) {
                 ${tradeContactOpen ? `
                   <div class="new-project-contact-panel trade">
                     <div>
-                      <div class="new-project-contact-name">Mike Adams</div>
+                      <div class="new-project-contact-name">Trade Desk Contact</div>
                       <div class="new-project-contact-role">Trade Desk Specialist</div>
                       <div class="new-project-contact-lines">
                         <span>☎ (555) 321-7788</span>
-                        <span>✉ mike.adams@company.com</span>
+                        <span>✉ trade-contact@example.test</span>
                       </div>
                     </div>
                     <div class="new-project-contact-actions trade">
                       <a href="tel:+15553217788">☎ Call</a>
-                      <a href="mailto:mike.adams@company.com">✉ Email</a>
+                      <a href="mailto:trade-contact@example.test">✉ Email</a>
                     </div>
                   </div>
                 ` : ""}
@@ -20581,7 +20615,7 @@ function saveInstallBaseFix(id) {
                   <div class="trade-team-contact-block">
                     <div class="new-project-team-label">Contact</div>
                     <button type="button" class="new-project-contact-toggle trade" onclick="toggleNewProjectTeamContact('${escapeJs(rec.id)}','trade',event)">
-                      Mike Adams <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
+                      Trade Desk Contact <span class="new-project-contact-caret">${tradeContactOpen ? "⌃" : "⌄"}</span>
                     </button>
                   </div>
 
@@ -20612,16 +20646,16 @@ function saveInstallBaseFix(id) {
                 ${tradeContactOpen ? `
                   <div class="new-project-contact-panel trade">
                     <div>
-                      <div class="new-project-contact-name">Mike Adams</div>
+                      <div class="new-project-contact-name">Trade Desk Contact</div>
                       <div class="new-project-contact-role">Trade Desk Specialist</div>
                       <div class="new-project-contact-lines">
                         <span>☎ (555) 321-7788</span>
-                        <span>✉ mike.adams@company.com</span>
+                        <span>✉ trade-contact@example.test</span>
                       </div>
                     </div>
                     <div class="new-project-contact-actions trade">
                       <a href="tel:+15553217788">☎ Call</a>
-                      <a href="mailto:mike.adams@company.com">✉ Email</a>
+                      <a href="mailto:trade-contact@example.test">✉ Email</a>
                     </div>
                   </div>
                 ` : ""}
@@ -20730,7 +20764,7 @@ ${renderQuoteApprovalActionPanel(rec)}
 
       const newProjectFlash = state.detailUpdateFlash || {};
       if (newProjectFlash.financial) {
-        (tradeInCard || financialCard)?.classList.add("detail-update-frame");
+        financialCard?.classList.add("detail-update-frame");
       }
       if (newProjectFlash.review) {
         grid
@@ -22308,7 +22342,6 @@ const repLast = repNameParts.slice(1).join(" ") || "Rep";
         showBanner("Fixed project data submitted.");
         return;
       }
-
 
       const rec = {
         id: uuid(),
@@ -25011,27 +25044,50 @@ return true;
       }).finally(() => clearTimeout(timer));
     }
 
-    function submitAssociatedTradeIn(kind) {
-      const rec = state.records.find(r => r.id === state.selectedId);
-
-      if (!rec) {
-        alert("Select a new project first.");
-        return;
-      }
-
-      if (!rec.tradein_sync_received) {
-        alert("No associated trade-in equipment has been synced yet.");
-        return;
-      }
-
-      sendToEspin(kind, rec);
-    }
-
     function hasSandboxTradeDeskRequest(rec, token) {
       const requested = Array.isArray(rec?.trade_desk_info_request_items)
         ? rec.trade_desk_info_request_items
         : (Array.isArray(rec?.info_request_items) ? rec.info_request_items : []);
-      return requested.some(item => clean(item).toLowerCase().includes(clean(token).toLowerCase()));
+      const target = clean(token).toLowerCase();
+      return requested.some(item => clean(item).toLowerCase().includes(target));
+    }
+
+    function renderSandboxTradeDeskResponseFields(rec) {
+      if (!rec || !rec.tradein_sync_received) return "";
+      if (rec.trade_desk_info_request_status === "rep_responded") {
+        return `<div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(65,255,156,.45);color:#41ff9c;font-weight:900;">✓ Update Sent to Trade Desk</div>`;
+      }
+      if (rec.trade_desk_info_request_status && rec.trade_desk_info_request_status !== "requested") return "";
+
+      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
+      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
+      if (!needsInUse && !needsHardDrive) return "";
+
+      const inUseValue = clean(rec.trade_desk_in_use_status_response || "");
+      const hardDriveValue = clean(rec.trade_desk_hard_drive_removal_status_response || "");
+
+      return `
+        <div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,216,77,.30);">
+          <div class="mini" style="margin-bottom:10px;font-weight:900;color:#ffd84d;">TRADE DESK REQUESTED INFORMATION</div>
+          ${needsInUse ? `
+            <label style="display:block;margin-top:8px;">System in-use status</label>
+            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','in_use',this.value)">
+              <option value="" ${!inUseValue ? "selected" : ""}>Select response</option>
+              <option value="In Use" ${inUseValue === "In Use" ? "selected" : ""}>In Use</option>
+              <option value="Not In Use" ${inUseValue === "Not In Use" ? "selected" : ""}>Not In Use</option>
+            </select>
+          ` : ""}
+          ${needsHardDrive ? `
+            <label style="display:block;margin-top:10px;">Hard drive removal status</label>
+            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','hard_drive',this.value)">
+              <option value="" ${!hardDriveValue ? "selected" : ""}>Select response</option>
+              <option value="Removed" ${hardDriveValue === "Removed" ? "selected" : ""}>Removed</option>
+              <option value="Not Removed" ${hardDriveValue === "Not Removed" ? "selected" : ""}>Not Removed</option>
+            </select>
+          ` : ""}
+          <button type="button" class="green" style="margin-top:12px;" onclick="submitSandboxTradeDeskResponses('${escapeJs(rec.id)}')">Submit Additional Data to Trade Desk</button>
+        </div>
+      `;
     }
 
     function saveSandboxTradeDeskResponse(recordId, fieldName, value) {
@@ -25094,44 +25150,6 @@ return true;
 
       renderDetail();
       showBanner("Trade Desk response saved.");
-    }
-
-    function renderSandboxTradeDeskResponseFields(rec) {
-      if (!rec || !rec.tradein_sync_received) return "";
-      if (rec.trade_desk_info_request_status === "rep_responded") {
-        return `<div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(65,255,156,.45);color:#41ff9c;font-weight:900;">✓ Update Sent to Trade Desk</div>`;
-      }
-      if (rec.trade_desk_info_request_status && rec.trade_desk_info_request_status !== "requested") return "";
-
-      const needsInUse = hasSandboxTradeDeskRequest(rec, "system in-use status");
-      const needsHardDrive = hasSandboxTradeDeskRequest(rec, "hard drive removal status");
-      if (!needsInUse && !needsHardDrive) return "";
-
-      const inUseValue = clean(rec.trade_desk_in_use_status_response || "");
-      const hardDriveValue = clean(rec.trade_desk_hard_drive_removal_status_response || "");
-
-      return `
-        <div class="trade-desk-request-response" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,216,77,.30);">
-          <div class="mini" style="margin-bottom:10px;font-weight:900;color:#ffd84d;">TRADE DESK REQUESTED INFORMATION</div>
-          ${needsInUse ? `
-            <label style="display:block;margin-top:8px;">System in-use status</label>
-            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','in_use',this.value)">
-              <option value="" ${!inUseValue ? "selected" : ""}>Select response</option>
-              <option value="In Use" ${inUseValue === "In Use" ? "selected" : ""}>In Use</option>
-              <option value="Not In Use" ${inUseValue === "Not In Use" ? "selected" : ""}>Not In Use</option>
-            </select>
-          ` : ""}
-          ${needsHardDrive ? `
-            <label style="display:block;margin-top:10px;">Hard drive removal status</label>
-            <select onchange="saveSandboxTradeDeskResponse('${escapeJs(rec.id)}','hard_drive',this.value)">
-              <option value="" ${!hardDriveValue ? "selected" : ""}>Select response</option>
-              <option value="Removed" ${hardDriveValue === "Removed" ? "selected" : ""}>Removed</option>
-              <option value="Not Removed" ${hardDriveValue === "Not Removed" ? "selected" : ""}>Not Removed</option>
-            </select>
-          ` : ""}
-          <button type="button" class="green" style="margin-top:12px;" onclick="submitSandboxTradeDeskResponses('${escapeJs(rec.id)}')">Submit Additional Data to Trade Desk</button>
-        </div>
-      `;
     }
 
     function submitSandboxTradeDeskResponses(recordId) {
@@ -25218,12 +25236,32 @@ return true;
       showBanner("Additional data submitted to Trade Desk.");
     }
 
+    function submitAssociatedTradeIn(kind) {
+      const rec = state.records.find(r => r.id === state.selectedId);
+
+      if (!rec) {
+        alert("Select a new project first.");
+        return;
+      }
+
+      if (!rec.tradein_sync_received) {
+        alert("No associated trade-in equipment has been synced yet.");
+        return;
+      }
+
+      sendToEspin(kind, rec);
+    }
+
     function getTradeInSyncSeenKey(item) {
       const identity =
         item.sync_event_id ||
         item.id ||
         `${item.project_id || ""}_${item.modality_id || ""}_${item.serial_number || item.axis_serial_number || ""}`;
-      const requestVersion = [item.trade_desk_info_request_id, item.trade_desk_info_request_status, item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at].filter(Boolean).join("_");
+      const requestVersion = [
+        item.trade_desk_info_request_id,
+        item.trade_desk_info_request_status,
+        item.trade_desk_info_request_sent_at || item.trade_desk_info_request_responded_at
+      ].filter(Boolean).join("_");
       const payloadVersion =
         item.last_tradein_update_at ||
         item.updated_at ||
@@ -26766,23 +26804,6 @@ window.addEventListener("load", () => {
     return left.some(id => right.includes(id));
   };
   const evaluatedTradeIn = rec => tradeInRecords().find(t => sameProject(t,rec) && (t.tradein_evaluation_complete === true || lower(t.tradein_evaluation_status) === "evaluation_complete" || lower(t.tradein_status) === "evaluation_complete"));
-  function openTradeInProjectsForRemoval(rec) {
-    localStorage.setItem("espin_removal_tradein_context_v1", JSON.stringify({
-      parent_record_id: rec.id || "",
-      parent_project_id: rec.oem_project_id || rec.project_id || rec.id || "",
-      project_group_id: rec.project_group_id || "",
-      sales_rep_email: rec.sales_rep_email || "",
-      facility_name: rec.site || rec.facility || rec.hospital || ""
-    }));
-    rec.removal_equipment_selection_opened_at = new Date().toISOString();
-    rec.removal_handoff_source = "tradein_projects_picker";
-    if (typeof saveRecords === "function") saveRecords();
-    if (typeof render === "function") render();
-    const projectsUrl = new URL("equipmentprojects.html", location.href);
-    projectsUrl.searchParams.set("mode", "removal-select");
-    projectsUrl.searchParams.set("source", "rep-removal");
-    window.open(projectsUrl.toString(), "_blank", "noopener,noreferrer");
-  }
   const activeRemoval = identity => { try { return JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]").find(o => lower(o.operation_type)==="deinstall" && !/complete|cancel|archiv/.test(lower(o.status)) && [o.tradein_record_id,o.source_record_id,o.asset_id,o.serial_number].map(lower).includes(lower(identity))); } catch (_) { return null; } };
   const management = operation => { const u=new URL("/removal-install/management.html",location.origin); Object.entries(operation).forEach(([k,v]) => { if (["string","number","boolean"].includes(typeof v) && clean(v)) u.searchParams.set(k,String(v)); }); if (operation.project_id) u.searchParams.set("projectId",operation.project_id); return u.toString(); };
   const saveOperation = operation => { let records=[]; try { records=JSON.parse(localStorage.getItem("espin_equipment_operations_v1") || "[]"); if(!Array.isArray(records)) records=[]; } catch (_) {} records.unshift(operation); localStorage.setItem("espin_equipment_operations_v1",JSON.stringify(records)); localStorage.setItem(`espin_operation_context:${operation.operation_id}`,JSON.stringify(operation)); if(operation.project_id) localStorage.setItem(`espin_project_operation_context:${operation.project_id}`,JSON.stringify(operation)); };
@@ -26881,10 +26902,7 @@ window.addEventListener("load", () => {
       new Date().toISOString()
     );
 
-    // Selection has opened, but a Removal project does not exist yet.
-    rec.removal_equipment_selection_opened_at = new Date().toISOString();
-    rec.removal_handoff_source = "rep_selected_equipment";
-    if (typeof saveRecords === "function") saveRecords();
+    notifyManagerRemovalStarted(rec, identity, "rep_selected_equipment");
     if (typeof render === "function") render();
     window.open(selection.toString(), "_blank");
   }
@@ -26969,7 +26987,9 @@ window.addEventListener("load", () => {
         <h2 style="margin-top:0">What equipment is being removed?</h2>
         <p style="color:#9db4c7">
           Start removal for the selected equipment record.
-          Select the current field equipment, or choose a Trade-In Project and its equipment.
+          ${trade
+            ? "An evaluated trade-in linked to this project is also available."
+            : ""}
         </p>
 
         <div style="display:grid;gap:12px">
@@ -26987,8 +27007,9 @@ window.addEventListener("load", () => {
             Use selected equipment
           </button>
 
-          <button
-              id="chooseTradeInProject"
+          ${trade ? `
+            <button
+              id="useTrade"
               style="
                 padding:14px;
                 border-radius:10px;
@@ -26998,8 +27019,9 @@ window.addEventListener("load", () => {
                 font-weight:800
               "
             >
-              Choose from Trade-In Projects
+              Use evaluated Trade-In equipment
             </button>
+          ` : ""}
 
           <button
             id="cancelChoice"
@@ -27025,18 +27047,25 @@ window.addEventListener("load", () => {
       launchSelectedEquipment(rec);
     };
 
-    modal.querySelector("#chooseTradeInProject").onclick = () => {
-      modal.remove();
-      openTradeInProjectsForRemoval(rec);
-    };
+    if (trade) {
+      modal.querySelector("#useTrade").onclick = event => {
+        modal.remove();
+        launchEvaluated(rec, trade, event.currentTarget);
+      };
+    }
   };
 })();
 </script>
 <script>
-/* Sandbox closed-system guard: arbitrary text, addresses, contacts, and customer email entry are not permitted. */
+/* Sandbox closed-system guard: arbitrary text, addresses, contacts, and customer email entry are not permitted.
+   Rep correction fields are the approved exception for responding to Install Base. */
 (() => {
   const apply = () => {
     document.querySelectorAll('input:not([type="hidden"]):not([type="date"]):not([type="number"]), textarea, [contenteditable="true"]').forEach(el => {
+      if (el.matches("input[id^='fix_'], textarea#installBaseFixReason")) {
+        el.disabled = false; el.removeAttribute('aria-disabled'); el.removeAttribute('title');
+        return;
+      }
       el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.title = 'Disabled in the closed sandbox';
     });
     document.querySelectorAll('a[href^="mailto:"],a[href^="tel:"]').forEach(a => { a.removeAttribute('href'); a.title = 'External contact actions are disabled in the closed sandbox'; });
@@ -27055,4 +27084,36 @@ window.addEventListener("load", () => {
   function render(){var list=items(),panel=document.getElementById("espinPersonalCalendar");if(!panel){panel=document.createElement("section");panel.id="espinPersonalCalendar";panel.style.cssText="margin:18px 0;padding:14px 16px;border:1px solid rgba(73,202,255,.35);border-radius:12px;background:linear-gradient(135deg,rgba(7,33,56,.96),rgba(5,20,38,.96));color:#d9efff";var anchor=document.querySelector("#managerTodaySummary")||document.querySelector("main")||document.body.firstElementChild;if(anchor&&anchor.parentNode)anchor.parentNode.insertBefore(panel,anchor);else document.body.prepend(panel)}panel.innerHTML="<strong style=\"letter-spacing:.05em\">PERSONAL GENERIC CALENDAR</strong><small style=\"display:block;margin:4px 0 9px;color:#99b9d1\">Items imported from your ESPIN LINK Daily Briefing</small>"+(list.length?"<ul style=\"margin:0;padding-left:20px\">"+list.map(function(x){return"<li style=\"margin:4px 0\">"+esc(x.title)+"</li>"}).join("")+"</ul>":"<span style=\"color:#99b9d1\">No personal calendar items imported.</span>")}
   document.addEventListener("DOMContentLoaded",render);window.addEventListener("storage",function(e){if(e.key===KEY||e.key===PING)render()});
 }());
-</script></body></html>
+</script><script>
+/* Daily Briefing deep link: open the related Rep record and focus its updated section. */
+(() => {
+  const params = new URLSearchParams(location.search), record = params.get("record"), focus = params.get("focus");
+  if (!record) return;
+  const openLinkedRecord = () => {
+    const records = typeof state !== "undefined" && Array.isArray(state.records) ? state.records : [];
+    const match = records.find(item => [item.id,item.oem_project_id,item.project_id,item.asset_id,item.record_id,item.serial_number].some(value => String(value || "") === record));
+    if (!match) return;
+    state.selectedId = match.id;
+    render();
+    setTimeout(() => {
+      const target = document.getElementById(focus) || document.getElementById("detailGrid");
+      if (target) { target.classList.add("briefing-linked-update"); target.scrollIntoView({ behavior:"smooth", block:"center" }); }
+    }, 80);
+  };
+  window.addEventListener("load", () => setTimeout(openLinkedRecord, 120));
+})();
+</script><style>.briefing-linked-update{outline:3px solid #41ff9c!important;outline-offset:5px;border-radius:14px}
+/* Keep New Project quote and trade-desk controls readable at every viewport. */
+.new-project-team-card{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(300px,.72fr)!important;gap:18px!important;align-items:start!important;overflow:hidden!important}.quote-team-side,.trade-team-side{width:100%!important;min-width:0!important;grid-template-columns:minmax(0,1fr) minmax(150px,.9fr)!important;gap:14px!important}.quote-team-status,.trade-team-status{min-width:0!important;word-break:normal!important;overflow-wrap:normal!important}.new-project-team-status{white-space:normal!important;line-height:1.25!important}.new-project-contact-toggle{white-space:normal!important;min-width:0!important}.workflow-followup-row{max-width:100%!important}.new-project-tradein-card .trade-team-side{align-items:start!important}@media(max-width:900px){.new-project-team-card,.quote-team-side,.trade-team-side{grid-template-columns:1fr!important;grid-template-areas:"status" "contact" "followup" "alert"!important}}
+
+/* New Project FIX missing fields must override the later white-modal control styling. */
+#newProjectModal .modal-box select.new-project-fix-missing,
+#newProjectModal .modal-box select.new-project-fix-missing:focus,
+#newProjectModal .modal-box input.new-project-fix-missing,
+#newProjectModal .modal-box input.new-project-fix-missing:focus{
+  border:3px solid #ff3347!important;
+  outline:2px solid rgba(255,51,71,.82)!important;
+  outline-offset:1px!important;
+  box-shadow:0 0 0 3px rgba(255,51,71,.22),0 0 16px rgba(255,51,71,.34)!important;
+}
+</style></body></html>
