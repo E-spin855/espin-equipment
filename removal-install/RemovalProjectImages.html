@@ -23,9 +23,10 @@ const API_BASE = "";
 const userEmail = (localStorage.getItem("espinUserEmail") || "").toLowerCase().trim();
 
 const params = new URLSearchParams(location.search);
-const urlProjectId = params.get("id") || params.get("projectId");
-if (urlProjectId) localStorage.setItem("activeProjectId", urlProjectId);
-const projectId = localStorage.getItem("activeProjectId");
+const urlProjectId = String(params.get("id") || params.get("projectId") || "").trim();
+if (!urlProjectId) throw new Error("RemovalProjectImages requires an id or projectId URL parameter.");
+const projectId = urlProjectId;
+localStorage.setItem("activeProjectId", projectId);
 
 /* ===============================
    NEW PILL (IMAGES) — STABLE
@@ -811,6 +812,27 @@ gallery.prepend(card);
 };
 
 /* SEND */
+const DEMO_EMAIL_INBOX_KEY = "espin_demo_email_inbox_v1";
+const demoEmailChannel = typeof BroadcastChannel === "function"
+  ? new BroadcastChannel("espin_demo_email_inbox")
+  : null;
+
+function escapeDemoEmailHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function demoEmailLabel(key) {
+  return String(key || "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
 async function syncImagesToDemoEmail(photoIds) {
   const selectedPhotos = photos.filter(p => photoIds.includes(getPrimaryId(p)));
   let project = {};
@@ -818,59 +840,59 @@ async function syncImagesToDemoEmail(photoIds) {
     const projectRes = await fetch(`${API_BASE}/api/removal-install/projects?id=${projectId}`, {
       headers: { "x-user-email": userEmail }
     });
-    if (projectRes.ok) project = await projectRes.json();
+    if (projectRes.ok) {
+      const payload = await projectRes.json();
+      project = Array.isArray(payload) ? payload[0] || {} : payload || {};
+    }
   } catch {}
   const projectName = project?.project_name || project?.name || project?.facility_name || `Project ${projectId}`;
-  const equipment = project?.equipment_model || project?.equipment || project?.modality || projectName;
-  const manufacturer = project?.make || project?.manufacturer || "—";
-  const model = project?.model || "—";
-  const serial = project?.serial_number || "—";
-  const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[char]));
-  const rows = items => items.map(row => `
+  const hiddenDetailKeys = new Set([
+    "id", "projectId", "project_id", "data", "created_at", "updated_at", "admin_email",
+    "is_archived", "hidden", "project_completed", "project_images", "photos"
+  ]);
+  const detailRows = Object.entries(project)
+    .filter(([key]) => !hiddenDetailKeys.has(key))
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined && typeof value !== "object")
+    .map(([key, value]) => `
     <div style="display:grid;grid-template-columns:50% 50%;padding:16px;border-bottom:1px solid #ddd;font-size:20px;">
-      <div style="font-weight:700;">${escapeHtml(row[0])}</div>
-      <div style="font-weight:700;color:${row[1] !== "—" ? "#0b67b2" : "#222"};">${escapeHtml(row[1])}</div>
+      <div style="font-weight:700;">${escapeDemoEmailHtml(demoEmailLabel(key))}</div>
+      <div style="font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(value)}</div>
     </div>`).join("");
   const imagesHtml = selectedPhotos.map(p => `
-    <div style="padding:16px;border-bottom:1px solid #ddd;">
-      <div style="font-size:20px;font-weight:700;color:#0b67b2;margin-bottom:10px;">${escapeHtml(p.photo_title)}</div>
-      <img src="${escapeHtml(p.photo_url)}" alt="${escapeHtml(p.photo_title)}" style="display:block;max-width:100%;max-height:420px;border:1px solid #ddd;border-radius:4px;">
-      ${p.photo_comment ? `<div style="margin-top:10px;font-size:18px;">${escapeHtml(p.photo_comment)}</div>` : ""}
+    <div style="margin:18px 0;padding:14px;border:1px solid #ddd;border-radius:10px;">
+      <div style="font-size:18px;font-weight:700;color:#0b67b2;">${escapeDemoEmailHtml(p.photo_title || "Project Image")}</div>
+      ${p.photo_comment ? `<div style="margin:8px 0;color:#333;">${escapeDemoEmailHtml(p.photo_comment)}</div>` : ""}
+      <img src="${escapeDemoEmailHtml(p.photo_url || p.url || "")}" alt="${escapeDemoEmailHtml(p.photo_title || "Project image")}" style="display:block;max-width:100%;max-height:420px;margin-top:10px;border-radius:6px;">
     </div>`).join("");
   const html = `
     <div style="font-family:Arial,sans-serif;color:#222;">
-      <h1 style="font-size:34px;">Equipment Update: ${escapeHtml(equipment)}</h1>
-      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Equipment Update Details</div>
-      ${rows([["PET Manufacturer", manufacturer], ["PET Model", model], ["PET Serial", serial], ["Project", projectName]])}
-      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Project Images</div>
+      <h1 style="font-size:34px;">Equipment Update: ${escapeDemoEmailHtml(projectName)}</h1>
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;">Equipment Details</div>
+      ${detailRows || '<div style="padding:16px;font-size:20px;">No equipment details available.</div>'}
+      <div style="background:#2167a5;color:white;padding:18px 26px;font-size:26px;font-weight:700;margin-top:30px;">Selected Images</div>
       ${imagesHtml}
     </div>`;
-  const imageLines = selectedPhotos.map(p => `${p.photo_title}: ${p.photo_url}`).join("\n");
   const message = {
-    id: `project-images-${projectId}-${Date.now()}`,
+    id: Date.now().toString(),
     from: "Espin Medical <info@espinmedical.com>",
-    to: userEmail || "ESPIN LINK Team",
-    subject: `Equipment Update: ${equipment}`,
-    body: `Project images are ready for review.\n\nProject: ${projectName}\nProject ID: ${projectId}\n\nImages:\n${imageLines}`,
+    subject: `Equipment Update: ${projectName}`,
     html,
     projectId,
-    images: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
-    attachments: selectedPhotos.map(p => ({ url: p.photo_url, title: p.photo_title, comment: p.photo_comment || "" })),
-    createdAt: new Date().toISOString(),
-    timestamp: Date.now(),
-    read: false
+    createdAt: new Date().toLocaleString()
   };
   let inbox = [];
-  try { inbox = JSON.parse(localStorage.getItem("espin_demo_email_inbox_v1") || "[]"); } catch {}
+  try { inbox = JSON.parse(localStorage.getItem(DEMO_EMAIL_INBOX_KEY) || "[]"); } catch {}
+  if (!Array.isArray(inbox)) inbox = [];
   inbox.unshift(message);
-  localStorage.setItem("espin_demo_email_inbox_v1", JSON.stringify(inbox));
-  try { new BroadcastChannel("espin_demo_email").postMessage({ type: "email", message }); } catch {}
+  localStorage.setItem(DEMO_EMAIL_INBOX_KEY, JSON.stringify(inbox.slice(0, 100)));
+  demoEmailChannel?.postMessage({ type: "inbox-updated" });
 }
 
 sendBtn.onclick = async () => {
   if (isArchived || sendBtn.disabled) return;
 
   const originalText = "Send Selected Images";
+  const demoEmailPreview = window.open("/Demo_Email.html", "_blank");
 
   sendBtn.disabled = true;
   sendBtn.innerText = "Sending...";
@@ -907,7 +929,7 @@ sendBtn.onclick = async () => {
 
     // SUCCESS
     sendBtn.innerText = "Sent";
-    location.href = `/Demo_Email.html?projectId=${encodeURIComponent(projectId)}`;
+    if (demoEmailPreview && !demoEmailPreview.closed) demoEmailPreview.focus();
 
   } catch (e) {
     console.error("Send failed:", e);
