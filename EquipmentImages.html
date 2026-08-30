@@ -569,6 +569,69 @@ button:disabled{
 }
 @media (max-width:560px){.demo-library-grid{grid-template-columns:1fr;}}
 
+
+/* === Compact image card + stable selection layout === */
+.container{
+  max-width:1180px!important;
+  padding:14px 16px 120px!important;
+}
+.section-title{margin:10px 0 12px!important;}
+.upload-card{
+  padding:10px!important;
+  margin-bottom:10px!important;
+}
+.sandbox-note{margin:6px 0 12px!important;}
+
+.gallery{
+  grid-template-columns:repeat(auto-fit,minmax(360px,520px))!important;
+  justify-content:center!important;
+  align-items:start!important;
+  gap:16px!important;
+}
+
+.card{
+  display:flex!important;
+  flex-direction:column!important;
+  padding:10px!important;
+  min-width:0!important;
+}
+.card-header{order:1!important;}
+.card-footer{
+  order:2!important;
+  padding:9px 12px!important;
+  border-top:0!important;
+  border-bottom:1px solid #eee!important;
+  background:rgba(255,255,255,.96)!important;
+  position:relative!important;
+  z-index:4!important;
+}
+.card > img{
+  order:3!important;
+  height:260px!important;
+  margin-top:8px!important;
+}
+.card-body{
+  order:4!important;
+  padding:9px 12px!important;
+}
+
+.batch-bar{
+  padding:10px 14px!important;
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:12px!important;
+}
+.batch-btn{
+  margin:0!important;
+  min-height:48px!important;
+  padding:10px 14px!important;
+}
+
+@media(max-width:700px){
+  .gallery{grid-template-columns:1fr!important;}
+  .card > img{height:230px!important;}
+}
+
 </style>
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
 <link rel="stylesheet" href="field-command-theme.css" />
@@ -653,6 +716,24 @@ previewModal.onclick = e => {
 
 let photos = [];
 let selected = new Set();
+let lastPhotoRenderSignature = "";
+let photoRefreshInFlight = false;
+
+function photoRenderSignature(list, badges = []) {
+  const normalized = (Array.isArray(list) ? list : []).map(photo => ({
+    id:getPrimaryId(photo),
+    url:String(photo?.photo_url || photo?.url || ""),
+    title:String(photo?.photo_title || ""),
+    comment:String(photo?.photo_comment || ""),
+    created_at:String(photo?.created_at || ""),
+    updated_at:String(photo?.updated_at || "")
+  }));
+
+  return JSON.stringify({
+    photos:normalized,
+    badges:[...(Array.isArray(badges) ? badges : [])].map(String).sort()
+  });
+}
 function updateBatchState(){
   const sel = photos.filter(p => selected.has(getPrimaryId(p)));
 
@@ -910,7 +991,7 @@ async function addDemoImageToProject(item){
     const out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out?.error || "Demo image save failed");
 
-    await loadPhotos({ silent: true });
+    await loadPhotos({ silent: true, force: true });
     demoLibraryModal.classList.remove("active");
     demoLibraryModal.setAttribute("aria-hidden", "true");
   } catch (err) {
@@ -1531,7 +1612,10 @@ deleteBtn.onclick = async () => {
     deleteBtn.disabled = false;
   }
 };
-async function loadPhotos({ silent = false } = {}) {
+async function loadPhotos({ silent = false, force = false } = {}) {
+  if (photoRefreshInFlight) return;
+  photoRefreshInFlight = true;
+
   try {
     const listUrl = new URL(`/api/equipment-photos/photo-list`, location.origin);
     if (modalityId) listUrl.searchParams.set("modalityId", modalityId);
@@ -1561,13 +1645,14 @@ async function loadPhotos({ silent = false } = {}) {
       activeElement &&
       (
         activeElement.tagName === "INPUT" ||
-        activeElement.tagName === "TEXTAREA"
+        activeElement.tagName === "TEXTAREA" ||
+        activeElement.tagName === "SELECT"
       );
 
-    if (userEditing) return;
+    if (userEditing && !force) return;
 
     const savedNotes = getSavedPhotoNotes();
-    photos = (Array.isArray(out) ? out : []).map(photo => ({
+    const nextPhotos = (Array.isArray(out) ? out : []).map(photo => ({
       ...photo,
       photo_comment: photo.photo_comment || savedNotes[getPrimaryId(photo)] || ""
     }));
@@ -1587,6 +1672,18 @@ async function loadPhotos({ silent = false } = {}) {
       } catch {}
     }
 
+    const nextSignature = photoRenderSignature(nextPhotos, serverBadges);
+
+    // Do not rebuild the gallery if nothing actually changed.
+    // The old 5-second full DOM rebuild caused the visible image flicker.
+    if (!force && nextSignature === lastPhotoRenderSignature) {
+      return;
+    }
+
+    const previousSelected = new Set(selected);
+    const previousScrollTop = document.querySelector(".page")?.scrollTop || 0;
+
+    photos = nextPhotos;
     saveBadgesLocally(serverBadges);
 
     const badgeSet = new Set(serverBadges);
@@ -1595,25 +1692,38 @@ async function loadPhotos({ silent = false } = {}) {
     photos.forEach(p => appendCard(p, badgeSet));
 
     selected = new Set(
-      [...selected].filter(id =>
+      [...previousSelected].filter(id =>
         photos.some(p => getPrimaryId(p) === id)
       )
     );
 
+    document.querySelectorAll(".card").forEach(card => {
+      const cb = card.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = selected.has(card.dataset.id);
+    });
+
+    lastPhotoRenderSignature = nextSignature;
     updateBatchState();
+
+    const page = document.querySelector(".page");
+    if (page && previousScrollTop) {
+      page.scrollTop = previousScrollTop;
+    }
 
   } catch (err) {
     if (!silent) {
       console.error("LOAD ERROR:", err);
     }
+  } finally {
+    photoRefreshInFlight = false;
   }
 }
 
-loadPhotos();
+loadPhotos({ force: true });
 
 setInterval(() => {
   loadPhotos({ silent: true });
-}, 5000);
+}, 8000);
 
 window.addEventListener("focus", () => {
   loadPhotos({ silent: true });

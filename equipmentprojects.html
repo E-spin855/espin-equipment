@@ -1,6 +1,442 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+<script id="espin-manager-solo-equipment-api-bridge">
+(() => {
+  const session = (() => {
+    try { return JSON.parse(sessionStorage.getItem("espinSandboxSession") || "{}"); }
+    catch (_) { return {}; }
+  })();
+
+  if (session?.manager_solo !== true) return;
+
+  const nativeFetch = window.fetch.bind(window);
+
+  const PROJECTS_KEY = "espin_solo_equipment_projects_v1";
+  const DETAILS_KEY = "espin_solo_equipment_details_v1";
+  const PHOTOS_KEY = "espin_solo_equipment_photos_v1";
+  const KV_PREFIX = "espin_solo_equipment_kv:";
+
+  const readArray = key => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  };
+
+  const writeArray = (key, value) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify(Array.isArray(value) ? value : [])
+    );
+  };
+
+  const jsonResponse = (body, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
+
+  const parseBody = init => {
+    const raw = init?.body;
+    if (!raw) return {};
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw); } catch (_) { return {}; }
+    }
+    return {};
+  };
+
+  const projectIdOf = project =>
+    String(project?.id || project?.project_id || project?.projectId || "").trim();
+
+  const detailIdOf = row =>
+    String(row?.modalityId || row?.modality_id || row?.id || "").trim();
+
+  const photoIdOf = photo =>
+    String(photo?.id || photo?.photoId || photo?.photo_id || "").trim();
+
+  const getProjects = () => readArray(PROJECTS_KEY);
+  const getDetails = () => readArray(DETAILS_KEY);
+  const getPhotos = () => readArray(PHOTOS_KEY);
+
+  const saveProject = payload => {
+    const projects = getProjects();
+    const id = String(payload?.id || "").trim() ||
+      `SOLO-EQP-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+    const index = projects.findIndex(project => projectIdOf(project) === id);
+    const next = {
+      ...(index >= 0 ? projects[index] : {}),
+      ...payload,
+      id,
+      project_id:id,
+      projectId:id,
+      updated_at:new Date().toISOString(),
+      created_at:
+        (index >= 0 ? projects[index]?.created_at : "") ||
+        payload?.created_at ||
+        new Date().toISOString(),
+      source:"manager_solo"
+    };
+
+    if (index >= 0) projects[index] = next;
+    else projects.unshift(next);
+
+    writeArray(PROJECTS_KEY, projects);
+    return next;
+  };
+
+  const deleteProject = projectId => {
+    const id = String(projectId || "");
+
+    writeArray(
+      PROJECTS_KEY,
+      getProjects().filter(project => projectIdOf(project) !== id)
+    );
+
+    writeArray(
+      DETAILS_KEY,
+      getDetails().filter(row => String(row?.projectId || row?.project_id || "") !== id)
+    );
+
+    writeArray(
+      PHOTOS_KEY,
+      getPhotos().filter(photo => String(photo?.projectId || photo?.project_id || "") !== id)
+    );
+  };
+
+  const saveDetail = payload => {
+    const details = getDetails();
+    const projectId = String(payload?.projectId || payload?.project_id || "").trim();
+    const modality = String(payload?.modality || payload?.data?.modality || "").toUpperCase().trim();
+    const requestedId = String(payload?.modalityId || payload?.modality_id || "").trim();
+    const modalityId = requestedId ||
+      `SOLO-MOD-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+    const index = details.findIndex(row =>
+      String(row?.projectId || row?.project_id || "") === projectId &&
+      detailIdOf(row) === modalityId
+    );
+
+    const previousData =
+      index >= 0 && details[index]?.data && typeof details[index].data === "object"
+        ? details[index].data
+        : {};
+
+    const incomingData =
+      payload?.data && typeof payload.data === "object"
+        ? payload.data
+        : {};
+
+    const nextData = {
+      ...previousData,
+      ...incomingData,
+      modality:modality || incomingData.modality || previousData.modality || ""
+    };
+
+    const changedFields = Object.keys(incomingData).filter(key =>
+      JSON.stringify(previousData?.[key]) !== JSON.stringify(incomingData?.[key])
+    );
+
+    const next = {
+      ...(index >= 0 ? details[index] : {}),
+      id:modalityId,
+      modalityId,
+      modality_id:modalityId,
+      projectId,
+      project_id:projectId,
+      modality:nextData.modality,
+      data:nextData,
+      updated_at:new Date().toISOString(),
+      created_at:
+        (index >= 0 ? details[index]?.created_at : "") ||
+        new Date().toISOString(),
+      source:"manager_solo"
+    };
+
+    if (index >= 0) details[index] = next;
+    else details.unshift(next);
+
+    writeArray(DETAILS_KEY, details);
+
+    // Ensure a project shell exists so Equipment Projects / Equipment Records
+    // can navigate the locally created Solo project.
+    if (projectId && !getProjects().some(project => projectIdOf(project) === projectId)) {
+      saveProject({
+        id:projectId,
+        project_name:
+          localStorage.getItem("axis_parent_project_name") ||
+          localStorage.getItem("axis_project_id") ||
+          "Sandbox Equipment Project",
+        sales_rep_first:localStorage.getItem("axis_sales_rep_first") || "Rep",
+        sales_rep_last:localStorage.getItem("axis_sales_rep_last") || "1",
+        sales_rep_company:localStorage.getItem("axis_sales_rep_company") || "OEM Demo",
+        sales_rep_phone:"",
+        sales_rep_email:localStorage.getItem("axis_sales_rep_email") || ""
+      });
+    }
+
+    return { ...next, changedFields };
+  };
+
+  const savePhoto = payload => {
+    const photos = getPhotos();
+    const id = String(payload?.photoId || payload?.photo_id || payload?.id || "").trim() ||
+      `SOLO-PHOTO-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+
+    const index = photos.findIndex(photo => photoIdOf(photo) === id);
+
+    const next = {
+      ...(index >= 0 ? photos[index] : {}),
+      ...payload,
+      id,
+      photoId:id,
+      photo_id:id,
+      projectId:String(payload?.projectId || (index >= 0 ? photos[index]?.projectId : "") || ""),
+      modalityId:String(payload?.modalityId || (index >= 0 ? photos[index]?.modalityId : "") || ""),
+      photo_url:
+        payload?.photo_url ||
+        payload?.url ||
+        (index >= 0 ? photos[index]?.photo_url : "") ||
+        "",
+      created_at:
+        (index >= 0 ? photos[index]?.created_at : "") ||
+        payload?.created_at ||
+        new Date().toISOString(),
+      updated_at:new Date().toISOString(),
+      source:"manager_solo"
+    };
+
+    if (index >= 0) photos[index] = next;
+    else photos.unshift(next);
+
+    writeArray(PHOTOS_KEY, photos);
+    return next;
+  };
+
+  window.fetch = async (input, init = {}) => {
+    let url;
+    try {
+      const raw = typeof input === "string" ? input : input?.url;
+      url = new URL(raw, location.href);
+    } catch (_) {
+      return nativeFetch(input, init);
+    }
+
+    const path = url.pathname;
+    const method = String(init?.method || "GET").toUpperCase();
+    const body = parseBody(init);
+
+    if (!path.startsWith("/api/")) {
+      return nativeFetch(input, init);
+    }
+
+    if (path === "/api/kv-get") {
+      const key = String(body.key || url.searchParams.get("key") || "");
+      const value = localStorage.getItem(`${KV_PREFIX}${key}`);
+      return jsonResponse({ value: value ?? "" });
+    }
+
+    if (path === "/api/kv-set") {
+      const key = String(body.key || "");
+      const value = body.value ?? "";
+      localStorage.setItem(
+        `${KV_PREFIX}${key}`,
+        typeof value === "string" ? value : JSON.stringify(value)
+      );
+      return jsonResponse({ ok:true });
+    }
+
+    if (path === "/api/admin/equipment") {
+      if (method === "GET") {
+        return jsonResponse(getProjects());
+      }
+
+      if (method === "POST" || method === "PUT") {
+        return jsonResponse(saveProject(body), method === "POST" ? 201 : 200);
+      }
+    }
+
+    if (path === "/api/equipment-projects/proj-delete") {
+      deleteProject(body.projectId || body.id);
+      return jsonResponse({ ok:true });
+    }
+
+    if (
+      path === "/api/equipment-project-mark-read" ||
+      path === "/api/ios-clear-badge-equipment" ||
+      path === "/api/badge-refresh-equipment"
+    ) {
+      return jsonResponse({ ok:true });
+    }
+
+    if (path === "/api/equipment-updates") {
+      return jsonResponse({
+        total:0,
+        projects:{},
+        details:{},
+        images:{}
+      });
+    }
+
+    if (path === "/api/equipment-details/equipment-save") {
+      const saved = saveDetail(body);
+      return jsonResponse({
+        ok:true,
+        modalityId:saved.modalityId,
+        modality:saved.modality,
+        data:saved.data,
+        changedFields:saved.changedFields || []
+      });
+    }
+
+    if (path === "/api/equipment-details") {
+      const projectId = String(url.searchParams.get("projectId") || body.projectId || "");
+      const modalityId = String(url.searchParams.get("modalityId") || body.modalityId || "");
+      const modality = String(url.searchParams.get("modality") || body.modality || "").toUpperCase();
+
+      let rows = getDetails().filter(row =>
+        String(row?.projectId || row?.project_id || "") === projectId
+      );
+
+      if (modalityId) {
+        rows = rows.filter(row => detailIdOf(row) === modalityId);
+      } else if (modality) {
+        rows = rows.filter(row => String(row?.modality || row?.data?.modality || "").toUpperCase() === modality);
+      }
+
+      const row = rows[0] || null;
+
+      if (!row) {
+        return jsonResponse({
+          projectId,
+          modalityId:modalityId || "",
+          modality:modality || "",
+          data:{}
+        });
+      }
+
+      return jsonResponse(row);
+    }
+
+    if (path === "/api/equipment-details/list") {
+      const projectId = String(url.searchParams.get("projectId") || "");
+      const project =
+        getProjects().find(item => projectIdOf(item) === projectId) ||
+        {
+          id:projectId,
+          project_name:"Sandbox Equipment Project",
+          site_address:"",
+          zip_code:""
+        };
+
+      const modalities = getDetails()
+        .filter(row => String(row?.projectId || row?.project_id || "") === projectId)
+        .map(row => ({
+          ...row,
+          ...(row?.data && typeof row.data === "object" ? row.data : {})
+        }));
+
+      return jsonResponse({ project, modalities, items:modalities });
+    }
+
+    if (path === "/api/equipment-modalities/equipment-delete") {
+      const projectId = String(body.projectId || "");
+      const modalityId = String(body.modalityId || body.id || "");
+
+      writeArray(
+        DETAILS_KEY,
+        getDetails().filter(row =>
+          !(
+            String(row?.projectId || row?.project_id || "") === projectId &&
+            detailIdOf(row) === modalityId
+          )
+        )
+      );
+
+      writeArray(
+        PHOTOS_KEY,
+        getPhotos().filter(photo =>
+          !(
+            String(photo?.projectId || photo?.project_id || "") === projectId &&
+            String(photo?.modalityId || photo?.modality_id || "") === modalityId
+          )
+        )
+      );
+
+      return jsonResponse({ ok:true });
+    }
+
+    if (path === "/api/equipment-photos/photo-list") {
+      const modalityId = String(url.searchParams.get("modalityId") || "");
+      const projectId = String(url.searchParams.get("projectId") || "");
+
+      let photos = getPhotos();
+
+      if (projectId) {
+        photos = photos.filter(photo =>
+          String(photo?.projectId || photo?.project_id || "") === projectId
+        );
+      }
+
+      if (modalityId) {
+        photos = photos.filter(photo =>
+          String(photo?.modalityId || photo?.modality_id || "") === modalityId
+        );
+      }
+
+      return jsonResponse(photos);
+    }
+
+    if (path === "/api/equipment-photos/photo-save") {
+      return jsonResponse(savePhoto(body), 201);
+    }
+
+    if (path === "/api/equipment-photos/photo-update") {
+      const photos = getPhotos();
+      const photoId = String(body.photoId || body.id || "");
+      const index = photos.findIndex(photo => photoIdOf(photo) === photoId);
+
+      if (index >= 0) {
+        photos[index] = {
+          ...photos[index],
+          ...body,
+          updated_at:new Date().toISOString()
+        };
+        writeArray(PHOTOS_KEY, photos);
+        return jsonResponse(photos[index]);
+      }
+
+      return jsonResponse({ ok:true });
+    }
+
+    if (path === "/api/equipment-photos/photo-delete") {
+      const photoId = String(body.photoId || body.id || "");
+      writeArray(
+        PHOTOS_KEY,
+        getPhotos().filter(photo => photoIdOf(photo) !== photoId)
+      );
+      return jsonResponse({ ok:true });
+    }
+
+    // Downloads are disabled in these sandbox pages; keep any accidental
+    // API call from becoming a Solo 500.
+    if (
+      path === "/api/export-excel" ||
+      path === "/api/export-package"
+    ) {
+      return jsonResponse({ ok:false, error:"Disabled for Sandbox test." }, 403);
+    }
+
+    return nativeFetch(input, init);
+  };
+})();
+</script>
+
+
 <meta charset="UTF-8">
 <title>Equipment Projects | Espin Medical</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -302,6 +738,375 @@ body{
 <link rel="stylesheet" href="removal-install/rep-theme.css" />
 <link rel="stylesheet" href="field-command-theme.css" />
 <link rel="stylesheet" href="removal-install/field-command-theme.css">
+
+<style>
+/* ===== RESPONSIVE / FLUID MONITOR-SIZE PASS ===== */
+html, body{
+  width:100%;
+  max-width:100%;
+  overflow-x:hidden;
+}
+
+body{
+  padding-top:calc(env(safe-area-inset-top) + clamp(68px,7vw,80px));
+}
+
+.header{
+  width:100%;
+  min-width:0;
+  padding-left:clamp(10px,2vw,18px);
+  padding-right:clamp(10px,2vw,18px);
+  gap:10px;
+}
+
+.header h2{
+  min-width:0;
+  font-size:clamp(18px,1.8vw,22px);
+  padding-inline:8px;
+}
+
+.add-project-btn{
+  max-width:100%;
+  min-width:0;
+  white-space:normal;
+  padding:clamp(10px,1.4vw,14px) clamp(14px,2vw,22px);
+}
+
+.list{
+  width:min(100%,1180px);
+  max-width:none;
+  margin-inline:auto;
+  padding:
+    clamp(14px,2vw,22px)
+    clamp(10px,2.5vw,24px)
+    clamp(96px,10vw,120px);
+  overflow-x:hidden;
+}
+
+.card{
+  min-width:0;
+  width:100%;
+  overflow:hidden;
+}
+
+.card-main{
+  min-width:0;
+  padding-right:clamp(72px,8vw,110px);
+}
+
+.card h3,
+.card p{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.icon-row{
+  max-width:calc(100% - 32px);
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.badge-wrap{
+  min-width:0;
+}
+
+.modal{
+  padding:clamp(10px,2vw,20px);
+}
+
+.modal-box{
+  width:min(100%,520px);
+  max-width:none;
+  max-height:90vh;
+  overflow-y:auto;
+}
+
+.modal-box input,
+.modal-box button{
+  max-width:100%;
+  min-width:0;
+}
+
+.nav{
+  width:100%;
+}
+
+.nav a{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+@media (min-width:900px){
+  .list{
+    width:min(92vw,1280px);
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:16px;
+    align-items:start;
+  }
+
+  .card{
+    margin-bottom:0;
+  }
+}
+
+@media (max-width:760px){
+  body{
+    padding-top:calc(env(safe-area-inset-top) + 72px);
+  }
+
+  .header{
+    min-height:72px;
+    padding-top:calc(env(safe-area-inset-top) + 5px);
+    padding-bottom:8px;
+  }
+
+  .header h2{
+    text-align:left;
+  }
+
+  .add-project-btn{
+    font-size:12px;
+    border-radius:14px;
+  }
+
+  .card-main{
+    padding-right:88px;
+  }
+}
+
+@media (max-width:560px){
+  .header{
+    align-items:center;
+  }
+
+  .header-spacer{
+    display:none;
+  }
+
+  .header h2{
+    flex:1 1 auto;
+    text-align:left;
+  }
+
+  .add-project-btn{
+    flex:0 1 148px;
+    line-height:1.15;
+  }
+
+  .list{
+    padding-left:10px;
+    padding-right:10px;
+  }
+
+  .card{
+    padding:14px;
+  }
+
+  .card-main{
+    padding-right:0;
+    padding-top:52px;
+  }
+
+  .icon-row{
+    top:10px;
+    right:10px;
+  }
+
+  .project-count-badge{
+    top:12px;
+    left:12px;
+    right:auto;
+  }
+
+  .modal-box{
+    padding:16px;
+    border-radius:16px;
+  }
+
+  .nav a{
+    font-size:11px;
+  }
+}
+</style>
+
+
+<style id="equipment-projects-layout-fix">
+/* Stable two-column project grid */
+#projectList.list{
+  box-sizing:border-box!important;
+  width:min(94vw,1400px)!important;
+  max-width:1400px!important;
+  margin:0 auto!important;
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:18px 22px!important;
+  align-items:stretch!important;
+  overflow:visible!important;
+}
+
+/* Each card must stay inside its own grid track */
+#projectList .card{
+  position:relative!important;
+  width:auto!important;
+  min-width:0!important;
+  max-width:100%!important;
+  margin:0!important;
+  box-sizing:border-box!important;
+  overflow:hidden!important;
+  display:block!important;
+}
+
+/* Reserve a fixed action area on the right so content never runs under icons */
+#projectList .card-main{
+  min-width:0!important;
+  padding-right:124px!important;
+  box-sizing:border-box!important;
+}
+
+/* Keep edit/delete controls contained in their own card */
+#projectList .icon-row{
+  position:absolute!important;
+  top:14px!important;
+  right:14px!important;
+  display:flex!important;
+  flex-wrap:nowrap!important;
+  gap:8px!important;
+  width:auto!important;
+  max-width:none!important;
+  z-index:3!important;
+}
+
+#projectList .icon-btn{
+  flex:0 0 44px!important;
+  width:44px!important;
+  min-width:44px!important;
+  height:44px!important;
+  padding:0!important;
+  box-sizing:border-box!important;
+}
+
+#projectList .card h3,
+#projectList .card p{
+  max-width:100%!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+}
+
+/* Single-column fallback before cards become cramped */
+@media (max-width:980px){
+  #projectList.list{
+    grid-template-columns:1fr!important;
+    width:min(96vw,820px)!important;
+    gap:14px!important;
+  }
+}
+
+/* Small-screen action row remains inside card */
+@media (max-width:560px){
+  #projectList .card{
+    padding:14px!important;
+  }
+
+  #projectList .card-main{
+    padding-right:0!important;
+    padding-top:56px!important;
+  }
+
+  #projectList .icon-row{
+    top:10px!important;
+    right:10px!important;
+  }
+}
+</style>
+
+
+<style id="equipment-projects-bulk-select-style">
+.project-bulk-toolbar{
+  width:min(94vw,1400px);
+  max-width:1400px;
+  margin:10px auto 0;
+  padding:10px 14px;
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+  border:1px solid rgba(42,201,255,.45);
+  background:rgba(6,26,58,.88);
+  border-radius:12px;
+}
+.project-select-all{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:#dcecff;
+  font-weight:800;
+  cursor:pointer;
+}
+.project-select-all input,
+.project-select-toggle{
+  width:20px;
+  height:20px;
+  accent-color:#22b7ff;
+  cursor:pointer;
+}
+.project-selected-count{
+  color:#9fc7e8;
+  font-size:13px;
+  font-weight:700;
+}
+.bulk-delete-btn{
+  margin-left:auto;
+  border:1px solid rgba(255,90,105,.65);
+  background:#9d2131;
+  color:#fff;
+  border-radius:10px;
+  padding:10px 14px;
+  font-weight:800;
+  cursor:pointer;
+}
+.bulk-delete-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.project-select-box{
+  position:absolute;
+  left:14px;
+  top:14px;
+  z-index:4;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;
+  height:30px;
+  border-radius:8px;
+  background:rgba(4,19,39,.86);
+  border:1px solid rgba(55,205,255,.55);
+}
+#projectList .card.has-project-select .card-main{
+  padding-left:46px!important;
+}
+@media(max-width:980px){
+  .project-bulk-toolbar{
+    width:min(96vw,820px);
+  }
+}
+@media(max-width:560px){
+  .project-bulk-toolbar{
+    margin-top:6px;
+    padding:9px 10px;
+  }
+  .bulk-delete-btn{
+    width:100%;
+    margin-left:0;
+  }
+  #projectList .card.has-project-select .card-main{
+    padding-left:38px!important;
+  }
+}
+</style>
+
 </head>
 
 <body>
@@ -310,6 +1115,17 @@ body{
   <div class="header-spacer"></div>
   <h2>Projects</h2>
   <button class="add-project-btn" id="addBtn" type="button" onclick="openProjectModal()">ADD PROJECT</button>
+</div>
+
+<div class="project-bulk-toolbar" id="projectBulkToolbar">
+  <label class="project-select-all">
+    <input type="checkbox" id="selectAllProjects">
+    <span>Select All</span>
+  </label>
+  <span class="project-selected-count" id="selectedProjectCount">0 selected</span>
+  <button type="button" class="bulk-delete-btn" id="deleteSelectedProjects" disabled>
+    Delete Selected
+  </button>
 </div>
 
 <div class="list" id="projectList"></div>
@@ -413,7 +1229,10 @@ localStorage.setItem(EMAIL_KEY, email);
 
 const ADMIN_EMAIL = "info@espinmedical.com";
 const isAdmin = email === ADMIN_EMAIL;
-const removalSelectionMode = new URLSearchParams(window.location.search).get("mode") === "removal-select";
+const equipmentProjectsParams = new URLSearchParams(window.location.search);
+const removalSelectionMode = equipmentProjectsParams.get("mode") === "removal-select";
+const existingEquipmentTradeInMode =
+  equipmentProjectsParams.get("existing_equipment_tradein") === "1";
 
 
 let deleteBusy = false;
@@ -422,6 +1241,8 @@ let pendingDeleteName = "";
 let unreadSummary = { total: 0, projects: {}, details: {}, images: {} };
 let initialLoadDone = false;
 let refreshBusy = false;
+const selectedProjectIds = new Set();
+let lastRenderedProjectIds = [];
 
 function field(id) {
   return document.getElementById(id);
@@ -432,6 +1253,86 @@ function resetProjectState(projectId) {
   localStorage.removeItem(MODALITY_ID_KEY);
   localStorage.removeItem(`${MODALITY_ID_KEY}_${projectId}`);
   localStorage.removeItem(`${MODALITY_KEY}_${projectId}`);
+}
+
+function redirectExistingEquipmentTradeInToDetails() {
+  if (!existingEquipmentTradeInMode) return false;
+
+  const projectId = String(
+    equipmentProjectsParams.get("projectId") ||
+    equipmentProjectsParams.get("id") ||
+    ""
+  ).trim();
+
+  if (!projectId) return false;
+
+  let handoff = {};
+  try {
+    handoff = JSON.parse(
+      localStorage.getItem("axis_tradein_handoff_v1") || "{}"
+    );
+  } catch (_) {
+    handoff = {};
+  }
+
+  const modality = String(
+    equipmentProjectsParams.get("modality") ||
+    handoff.modality ||
+    handoff?.equipment_payload?.modality ||
+    ""
+  ).toUpperCase().trim();
+
+  resetProjectState(projectId);
+
+  if (modality) {
+    localStorage.setItem(`${MODALITY_KEY}_${projectId}`, modality);
+  }
+
+  // Preserve the Rep-selected equipment handoff exactly as Equipment Details
+  // expects it. Equipment Details already maps these values into its
+  // modality-specific fields before the Rep continues to images/Trade Desk.
+  const target = new URL(
+    "/Equipment-Details.html",
+    window.location.origin
+  );
+
+  target.searchParams.set("projectId", projectId);
+  target.searchParams.set("source", "projects");
+  target.searchParams.set("mode", "create");
+  target.searchParams.set("handoff", "axis_tradein_handoff_v1");
+  target.searchParams.set("existing_equipment_tradein", "1");
+
+  if (modality) {
+    target.searchParams.set("modality", modality);
+  }
+
+  [
+    "axis_record_id",
+    "axis_parent_record_id",
+    "axis_project_id",
+    "axis_serial_number",
+    "axis_parent_project_type",
+    "axis_parent_project_name",
+    "axis_source",
+    "sync_mode",
+    "sales_rep_first",
+    "sales_rep_last",
+    "sales_rep_company",
+    "sales_rep_phone",
+    "sales_rep_email"
+  ].forEach(key => {
+    const value =
+      equipmentProjectsParams.get(key) ||
+      handoff[key] ||
+      "";
+
+    if (String(value).trim()) {
+      target.searchParams.set(key, String(value));
+    }
+  });
+
+  window.location.replace(target.toString());
+  return true;
 }
 
 async function refreshEquipmentBadge(clearAll = false) {
@@ -758,6 +1659,105 @@ function bindSafeTap(element, handler) {
   });
 }
 
+function updateBulkSelectionUi() {
+  const toolbar = field("projectBulkToolbar");
+  const selectAll = field("selectAllProjects");
+  const deleteSelected = field("deleteSelectedProjects");
+  const countLabel = field("selectedProjectCount");
+
+  if (removalSelectionMode) {
+    if (toolbar) toolbar.style.display = "none";
+    return;
+  }
+
+  const renderedIds = lastRenderedProjectIds.filter(Boolean);
+  const selectedVisible = renderedIds.filter(id => selectedProjectIds.has(id));
+
+  if (countLabel) countLabel.textContent = `${selectedVisible.length} selected`;
+  if (deleteSelected) deleteSelected.disabled = selectedVisible.length === 0 || deleteBusy;
+
+  if (selectAll) {
+    selectAll.checked =
+      renderedIds.length > 0 &&
+      selectedVisible.length === renderedIds.length;
+    selectAll.indeterminate =
+      selectedVisible.length > 0 &&
+      selectedVisible.length < renderedIds.length;
+  }
+}
+
+function toggleProjectSelection(projectId, checked) {
+  const id = String(projectId || "").trim();
+  if (!id) return;
+
+  if (checked) selectedProjectIds.add(id);
+  else selectedProjectIds.delete(id);
+
+  updateBulkSelectionUi();
+}
+
+function toggleSelectAllProjects(checked) {
+  lastRenderedProjectIds.forEach(id => {
+    if (checked) selectedProjectIds.add(id);
+    else selectedProjectIds.delete(id);
+  });
+
+  document.querySelectorAll(".project-select-toggle").forEach(input => {
+    input.checked = checked;
+  });
+
+  updateBulkSelectionUi();
+}
+
+async function deleteSelectedProjects() {
+  if (deleteBusy) return;
+
+  const ids = lastRenderedProjectIds.filter(id => selectedProjectIds.has(id));
+  if (!ids.length) return;
+
+  const plural = ids.length === 1 ? "project" : "projects";
+  if (!confirm(`Delete ${ids.length} selected ${plural}? This cannot be undone.`)) {
+    return;
+  }
+
+  deleteBusy = true;
+  const button = field("deleteSelectedProjects");
+  const oldText = button?.textContent || "Delete Selected";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = `Deleting ${ids.length}...`;
+  }
+
+  try {
+    for (const projectId of ids) {
+      const r = await fetch("/api/equipment-projects/proj-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": email
+        },
+        body: JSON.stringify({ projectId })
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data?.error) {
+        throw new Error(data?.error || `Delete failed for project ${projectId}`);
+      }
+    }
+
+    ids.forEach(id => selectedProjectIds.delete(id));
+    await loadUnreadSummary();
+    await loadProjects(true);
+  } catch (e) {
+    alert(`Delete failed: ${e?.message || e}`);
+  } finally {
+    deleteBusy = false;
+    if (button) button.textContent = oldText;
+    updateBulkSelectionUi();
+  }
+}
+
 async function loadProjects(forceFresh = false) {
   const list = field("projectList");
 
@@ -779,8 +1779,21 @@ async function loadProjects(forceFresh = false) {
     const projects = await r.json();
 const changedMap = isAdmin ? await getChangedMap(projects) : {};
     if (!Array.isArray(projects) || !projects.length) {
+      lastRenderedProjectIds = [];
+      selectedProjectIds.clear();
       list.innerHTML = "<p style='padding:20px'>No projects found</p>";
+      updateBulkSelectionUi();
       return;
+    }
+
+    lastRenderedProjectIds = projects
+      .map(project => String(project?.id || "").trim())
+      .filter(Boolean);
+
+    for (const selectedId of [...selectedProjectIds]) {
+      if (!lastRenderedProjectIds.includes(selectedId)) {
+        selectedProjectIds.delete(selectedId);
+      }
     }
 
     list.innerHTML = "";
@@ -799,10 +1812,22 @@ const hasChangedImages = changedMap[p.id]?.images;
   }, 0);
 
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = removalSelectionMode ? "card" : "card has-project-select";
 
   card.innerHTML = `
   ${unreadCount > 0 ? `<div class="project-count-badge">${unreadCount}</div>` : ""}
+
+  ${!removalSelectionMode ? `
+    <label class="project-select-box" title="Select project">
+      <input
+        type="checkbox"
+        class="project-select-toggle"
+        data-select-project="${p.id}"
+        ${selectedProjectIds.has(String(p.id)) ? "checked" : ""}
+        aria-label="Select project"
+      >
+    </label>
+  ` : ""}
 
   <div class="card-main">
     <h3>${p.project_name || ""}</h3>
@@ -829,6 +1854,17 @@ const hasChangedImages = changedMap[p.id]?.images;
   const main = card.querySelector(".card-main");
   const editBtn = card.querySelector(`[data-edit="${p.id}"]`);
   const deleteBtn = card.querySelector(`[data-delete="${p.id}"]`);
+  const selectToggle = card.querySelector(`[data-select-project="${p.id}"]`);
+
+  if (selectToggle) {
+    selectToggle.addEventListener("click", event => {
+      event.stopPropagation();
+    });
+    selectToggle.addEventListener("change", event => {
+      event.stopPropagation();
+      toggleProjectSelection(p.id, event.currentTarget.checked);
+    });
+  }
 
   if (removalSelectionMode) {
     const selectBtn = document.createElement("button");
@@ -847,6 +1883,8 @@ const hasChangedImages = changedMap[p.id]?.images;
 
   list.appendChild(card);
 }
+
+    updateBulkSelectionUi();
 
   } catch (e) {
     console.warn("loadProjects failed:", e);
@@ -883,9 +1921,21 @@ document.getElementById("deleteModal").addEventListener("click", (e) => {
   if (e.target === e.currentTarget) closeDeleteModal();
 });
 
+field("selectAllProjects")?.addEventListener("change", event => {
+  toggleSelectAllProjects(event.currentTarget.checked);
+});
+
+field("deleteSelectedProjects")?.addEventListener("click", () => {
+  deleteSelectedProjects();
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
 
   await runInitialLoad();
+
+  if (redirectExistingEquipmentTradeInToDetails()) {
+    return;
+  }
 
   setInterval(async () => {
 
